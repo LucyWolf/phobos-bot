@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phobos Bot – Einstellungen</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2a2d3a;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #7c3aed;
+    --success: #22c55e;
+  }
+
+  body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 1rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  header h1 { font-size: 1.25rem; font-weight: 600; }
+  nav a { color: var(--muted); text-decoration: none; font-size: 0.875rem; }
+  nav a:hover { color: var(--text); }
+
+  main { padding: 2rem; max-width: 600px; margin: 0 auto; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+  }
+
+  .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1.25rem; }
+
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.4rem; }
+
+  input[type="password"], input[type="text"] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 0.6rem 0.875rem;
+    color: var(--text);
+    font-size: 0.875rem;
+    font-family: monospace;
+    outline: none;
+    margin-bottom: 1rem;
+  }
+  input:focus { border-color: var(--accent); }
+
+  .current {
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: var(--muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.875rem;
+    margin-bottom: 1rem;
+    word-break: break-all;
+  }
+
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 0.5rem;
+    padding: 0.6rem 1.25rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { opacity: 0.85; }
+
+  .alert {
+    background: rgba(34,197,94,0.1);
+    border: 1px solid var(--success);
+    color: var(--success);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .hint {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-top: 1rem;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span>🛡️</span>
+  <h1>Phobos Bot</h1>
+  <nav style="margin-left:auto"><a href="/">← Dashboard</a></nav>
+</header>
+
+<main>
+  <div class="card">
+    <h2>⚙️ Einstellungen</h2>
+
+    {% if saved %}
+    <div class="alert">Token gespeichert. Der Bot verbindet sich in wenigen Sekunden.</div>
+    {% endif %}
+
+    {% if masked %}
+    <label>Aktueller Token</label>
+    <div class="current">{{ masked }}</div>
+    {% endif %}
+
+    <form method="post" action="/settings">
+      <label>Discord Bot Token</label>
+      <input type="password" name="token" placeholder="Neuen Token eintragen..." autocomplete="off" required>
+      <button type="submit">Speichern</button>
+    </form>
+
+    <p class="hint">
+      Den Token findest du im
+      <a href="https://discord.com/developers/applications" target="_blank" style="color:#7c3aed">Discord Developer Portal</a>
+      unter deiner App → Bot → Token.
+      Nach dem Speichern verbindet sich der Bot automatisch.
+    </p>
+  </div>
+</main>
+
+</body>
+</html>
