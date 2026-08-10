@@ -70,6 +70,7 @@ COGS = [
     "cogs.tickets",
     "cogs.giveaways",
     "cogs.notifications",
+    "cogs.freestuff",
 ]
 
 
@@ -448,6 +449,52 @@ async def bot_update_apply(request: Request):
     except Exception as e:
         msg = urllib.parse.quote(str(e)[:120])
         return RedirectResponse(f"/bot/update?error={msg}", status_code=302)
+
+
+# ── Free Stuff ────────────────────────────────────────────────────────────────
+
+@web.get("/servers/{guild_id}/freestuff", response_class=HTMLResponse)
+async def freestuff_page(request: Request, guild_id: str, success: str = "", error: str = ""):
+    if r := auth_redirect(request): return r
+    token_set = bool(await get_config("discord_token"))
+    guild = bot.get_guild(int(guild_id))
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
+    cfg = await db_one("SELECT * FROM freestuff_channels WHERE guild_id=?", (guild_id,))
+    return templates.TemplateResponse("freestuff.html", {
+        **session(request), "request": request,
+        "guilds": _guild_list(request), "token_set": token_set,
+        "active": f"server_{guild_id}",
+        "guild_id": guild_id, "guild_name": guild.name,
+        "channels": channels, "cfg": cfg,
+        "success": success, "error": error,
+    })
+
+
+@web.post("/servers/{guild_id}/freestuff/save")
+async def freestuff_save(
+    request: Request, guild_id: str,
+    channel_id: str = Form(...),
+    platforms: list[str] = Form(default=[]),
+):
+    if r := auth_redirect(request): return r
+    plat_str = ",".join(p for p in platforms if p in ("epic", "gog"))
+    if not plat_str:
+        plat_str = "epic"
+    await db_exec(
+        "INSERT INTO freestuff_channels (guild_id,channel_id,platforms) VALUES (?,?,?) "
+        "ON CONFLICT(guild_id) DO UPDATE SET channel_id=excluded.channel_id, platforms=excluded.platforms",
+        (guild_id, channel_id, plat_str),
+    )
+    return RedirectResponse(f"/servers/{guild_id}/freestuff?success=1", status_code=302)
+
+
+@web.post("/servers/{guild_id}/freestuff/disable")
+async def freestuff_disable(request: Request, guild_id: str):
+    if r := auth_redirect(request): return r
+    await db_exec("DELETE FROM freestuff_channels WHERE guild_id=?", (guild_id,))
+    return RedirectResponse(f"/servers/{guild_id}/freestuff?success=1", status_code=302)
 
 
 # ── Notifications ─────────────────────────────────────────────────────────────

@@ -148,6 +148,18 @@ async def init_db():
                 ended INTEGER DEFAULT 0,
                 created_by INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS freestuff_channels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL UNIQUE,
+                channel_id TEXT NOT NULL,
+                platforms TEXT DEFAULT 'epic'
+            );
+            CREATE TABLE IF NOT EXISTS freestuff_posted (
+                guild_id TEXT NOT NULL,
+                game_id TEXT NOT NULL,
+                platform TEXT NOT NULL,
+                PRIMARY KEY (guild_id, game_id, platform)
+            );
             CREATE TABLE IF NOT EXISTS notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL,

@@ -389,6 +389,9 @@
         <a href="/servers/{{ g.id }}/notifications" class="nav-item nav-sub {% if request.url.path == '/servers/' + g.id + '/notifications' %}active{% endif %}">
           <span class="icon">📡</span><span class="label">Benachrichtigungen</span>
         </a>
+        <a href="/servers/{{ g.id }}/freestuff" class="nav-item nav-sub {% if request.url.path == '/servers/' + g.id + '/freestuff' %}active{% endif %}">
+          <span class="icon">🎁</span><span class="label">Free Stuff</span>
+        </a>
       </div>
     </div>
     {% endfor %}

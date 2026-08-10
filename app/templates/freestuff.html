@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Phobos Bot – Free Stuff{% endblock %}
+{% block page_title %}🎁 Free Stuff – {{ guild_name }}{% endblock %}
+
+{% block content %}
+<style>
+  .fs-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.4rem; margin-bottom:1.25rem; max-width:600px; }
+  .platform-toggle { display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem; }
+  .plat-label { display:flex; align-items:center; gap:0.5rem; padding:0.5rem 1rem; border:1px solid var(--border); border-radius:0.5rem; cursor:pointer; font-size:0.85rem; font-weight:600; transition:border-color 0.15s, background 0.15s; user-select:none; }
+  .plat-label input { display:none; }
+  .plat-label:has(input:checked) { border-color:var(--accent); background:var(--accent-light); color:#a78bfa; }
+  .status-row { display:flex; align-items:center; gap:0.75rem; padding:0.85rem; background:var(--bg); border:1px solid var(--border); border-radius:0.5rem; margin-bottom:1.25rem; }
+  .dot-on  { width:9px; height:9px; border-radius:50%; background:var(--success); box-shadow:0 0 6px var(--success); flex-shrink:0; }
+  .dot-off { width:9px; height:9px; border-radius:50%; background:var(--muted); flex-shrink:0; }
+  select { margin-bottom:0; }
+</style>
+
+{% if success %}<div class="alert alert-success">✅ Gespeichert.</div>{% endif %}
+{% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
+
+<!-- Status -->
+<div class="status-row">
+  {% if cfg %}
+  <span class="dot-on"></span>
+  <span style="font-size:0.85rem;">Aktiv — postet in
+    <b>#{{ channels | selectattr('id', 'equalto', cfg.channel_id) | map(attribute='name') | first | default(cfg.channel_id) }}</b>
+    · Plattformen: <b>{{ cfg.platforms.upper() }}</b>
+  </span>
+  {% else %}
+  <span class="dot-off"></span>
+  <span style="font-size:0.85rem; color:var(--muted);">Nicht konfiguriert.</span>
+  {% endif %}
+</div>
+
+<div class="fs-card">
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:1.1rem;">⚙️ Einstellungen</div>
+  <form method="post" action="/servers/{{ guild_id }}/freestuff/save">
+    <label>Discord-Kanal (wo Free-Stuff gepostet wird)</label>
+    <select name="channel_id" required style="margin-bottom:1rem;">
+      {% for c in channels %}
+      <option value="{{ c.id }}" {% if cfg and cfg.channel_id == c.id %}selected{% endif %}>#{{ c.name }}</option>
+      {% endfor %}
+    </select>
+
+    <label style="margin-bottom:0.5rem;">Plattformen</label>
+    <div class="platform-toggle" style="margin-bottom:1rem;">
+      <label class="plat-label">
+        <input type="checkbox" name="platforms" value="epic" {% if not cfg or 'epic' in cfg.platforms %}checked{% endif %}>
+        🎮 Epic Games
+      </label>
+      <label class="plat-label">
+        <input type="checkbox" name="platforms" value="gog" {% if cfg and 'gog' in cfg.platforms %}checked{% endif %}>
+        🟣 GOG
+      </label>
+    </div>
+
+    <div style="display:flex;gap:0.75rem;align-items:center;">
+      <button type="submit" class="btn btn-primary">💾 Speichern</button>
+      {% if cfg %}
+      <button type="button" class="btn btn-danger"
+        onclick="if(confirm('Free Stuff deaktivieren?'))document.getElementById('disable-form').submit()">
+        Deaktivieren
+      </button>
+      {% endif %}
+    </div>
+  </form>
+  <form id="disable-form" method="post" action="/servers/{{ guild_id }}/freestuff/disable" style="display:none;"></form>
+</div>
+
+<div class="fs-card" style="opacity:0.85;">
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.75rem;">ℹ️ Wie es funktioniert</div>
+  <ul style="font-size:0.83rem;color:var(--muted);line-height:1.9;padding-left:1.2rem;">
+    <li><b>Epic Games</b> — prüft alle 2 Stunden auf wöchentliche Gratis-Spiele (Donnerstags ~17:00 Uhr)</li>
+    <li><b>GOG</b> — prüft auf aktuelle Gratis-Aktionen</li>
+    <li>Jedes Spiel wird nur <b>einmal pro Server</b> angekündigt</li>
+    <li>Der Bot sendet ein Embed mit Titel, Cover-Bild und direktem Link zum Shop</li>
+  </ul>
+</div>
+{% endblock %}
