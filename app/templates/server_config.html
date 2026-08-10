@@ -291,7 +291,7 @@
         <tr>
           <td style="font-weight:500">{{ t.username }}</td>
           <td style="color:#a78bfa">{{ t.channel_name }}</td>
-          <td style="color:var(--muted);font-size:0.8rem">{{ t.created_at }}</td>
+          <td style="color:var(--muted);font-size:0.8rem">{{ t.created_at | dt }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -322,7 +322,7 @@
           <td style="font-weight:600">🎉 {{ g.prize }}</td>
           <td style="color:var(--muted)">{{ g.channel_name }}</td>
           <td>{{ g.winners }}</td>
-          <td style="color:var(--muted);font-size:0.8rem">{{ g.ends_at[:16].replace('T',' ') }} UTC</td>
+          <td style="color:var(--muted);font-size:0.8rem">{{ g.ends_at | dt }}</td>
           <td style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
             <form method="post" action="/servers/{{ guild.id }}/giveaways/{{ g.id }}/end" style="display:inline">
               <button class="btn btn-danger" onclick="return confirm('Giveaway sofort beenden?')">⏹ Beenden</button>

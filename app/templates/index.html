@@ -159,7 +159,7 @@
           <td>{{ a.target_name }}</td>
           <td>{{ a.moderator_name }}</td>
           <td style="color:#94a3b8">{{ a.reason or '—' }}</td>
-          <td style="color:#64748b;font-size:0.8rem">{{ a.timestamp }}</td>
+          <td style="color:#64748b;font-size:0.8rem">{{ a.timestamp | dt }}</td>
         </tr>
         {% endfor %}
       </tbody>

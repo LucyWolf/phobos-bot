@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import email.mime.text
 import os
+from zoneinfo import ZoneInfo
 import platform
 import secrets
 import shutil
@@ -186,9 +187,35 @@ async def run_bot():
 
 # ── Web UI ────────────────────────────────────────────────────────────────────
 
+_CURRENT_TZ: ZoneInfo = ZoneInfo("Europe/Berlin")
+
+
+async def _load_tz():
+    global _CURRENT_TZ
+    tz_name = await get_config("timezone") or "Europe/Berlin"
+    try:
+        _CURRENT_TZ = ZoneInfo(tz_name)
+    except Exception:
+        _CURRENT_TZ = ZoneInfo("Europe/Berlin")
+
+
+def _fmt_dt(value) -> str:
+    if not value:
+        return ""
+    try:
+        s = str(value).replace(" ", "T")
+        dt = datetime.datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return dt.astimezone(_CURRENT_TZ).strftime("%d.%m.%Y %H:%M")
+    except Exception:
+        return str(value)[:16]
+
+
 web = FastAPI()
 web.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="phobos_session")
 templates = Jinja2Templates(directory="templates")
+templates.env.filters["dt"] = _fmt_dt
 
 ACTION_COLORS = {
     "ban": "#ef4444", "kick": "#f97316", "timeout": "#eab308",
@@ -433,11 +460,13 @@ async def settings_page(request: Request, saved: bool = False, error: str = "", 
         await db_rows("SELECT id, username, role, created_at FROM users ORDER BY created_at")
         if request.session.get("role") == "admin" else []
     )
+    current_tz = await get_config("timezone") or "Europe/Berlin"
     return templates.TemplateResponse("settings.html", {
         **session(request), "request": request,
         "masked": masked, "saved": saved, "token_set": bool(token),
         "users": all_users, "error": error, "success": success,
         "guilds": await _guild_list(request), "active": "settings",
+        "current_tz": current_tz,
     })
 
 
@@ -447,6 +476,18 @@ async def settings_save(request: Request, token: str = Form(...)):
     if token.strip():
         await set_config("discord_token", token.strip())
     return RedirectResponse("/settings?saved=true", status_code=303)
+
+
+@web.post("/settings/timezone")
+async def settings_timezone_save(request: Request, timezone: str = Form(...)):
+    if r := admin_redirect(request): return r
+    try:
+        ZoneInfo(timezone)
+    except Exception:
+        return RedirectResponse("/settings?error=Ungültige+Zeitzone", status_code=302)
+    await set_config("timezone", timezone)
+    await _load_tz()
+    return RedirectResponse("/settings?success=Zeitzone+gespeichert", status_code=302)
 
 
 @web.get("/users", response_class=HTMLResponse)
@@ -1534,6 +1575,7 @@ async def api_guilds():
 
 async def main():
     await init_db()
+    await _load_tz()
 
     user_count = (await db_one("SELECT COUNT(*) as c FROM users") or {}).get("c", 0)
     if user_count == 0:

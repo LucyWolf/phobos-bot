@@ -51,7 +51,7 @@
               <button type="submit" class="btn btn-secondary" style="padding:0.25rem 0.5rem;font-size:0.75rem;">💾</button>
             </form>
           </td>
-          <td style="color:var(--muted); font-size:0.8rem">{{ u.created_at }}</td>
+          <td style="color:var(--muted); font-size:0.8rem">{{ u.created_at | dt }}</td>
           <td style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
             {% if u.username == username %}
             <span style="font-size:0.78rem; color:var(--muted);">Du</span>

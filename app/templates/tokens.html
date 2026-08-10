@@ -57,7 +57,7 @@
   </div>
   <div class="tok-info">
     <span class="tok-masked">{{ t.masked }}</span>
-    &nbsp;·&nbsp; Hinzugefügt: {{ t.created_at[:10] }}
+    &nbsp;·&nbsp; Hinzugefügt: {{ t.created_at | dt }}
   </div>
 </div>
 {% endfor %}

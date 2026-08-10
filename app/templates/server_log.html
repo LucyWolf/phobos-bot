@@ -48,7 +48,7 @@
       <div class="log-title">{{ e.title }}</div>
       {% if e.description %}<div class="log-desc">{{ e.description }}</div>{% endif %}
     </div>
-    <div class="log-time">{{ e.created_at[:16].replace('T',' ') }}</div>
+    <div class="log-time">{{ e.created_at | dt }}</div>
   </div>
   {% endfor %}
   {% else %}

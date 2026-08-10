@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Phobos Bot – Token{% endblock %}
-{% block page_title %}🔑 Discord Token{% endblock %}
+{% block title %}Phobos Bot – Einstellungen{% endblock %}
+{% block page_title %}⚙️ Einstellungen{% endblock %}
 
 {% block content %}
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 {% if saved %}<div class="alert alert-success">✅ Token gespeichert. Der Bot verbindet sich in wenigen Sekunden.</div>{% endif %}
+{% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
 
 <div class="card">
   {% if masked %}
@@ -23,4 +24,28 @@
     → deine App → Bot → Token zurücksetzen.
   </p>
 </div>
+
+{% if role == 'admin' %}
+<div class="card">
+  <div style="font-size:0.95rem;font-weight:700;margin-bottom:1rem;">🕐 Zeitzone</div>
+  <form method="post" action="/settings/timezone" style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+    <select name="timezone" style="margin:0;width:auto;min-width:220px;">
+      {% set tzones = [
+        'Europe/Berlin','Europe/Vienna','Europe/Zurich','Europe/London',
+        'Europe/Paris','Europe/Amsterdam','Europe/Brussels','Europe/Warsaw',
+        'Europe/Bucharest','Europe/Helsinki','Europe/Moscow',
+        'America/New_York','America/Chicago','America/Denver','America/Los_Angeles',
+        'America/Toronto','America/Sao_Paulo',
+        'Asia/Tokyo','Asia/Shanghai','Asia/Kolkata','Asia/Dubai',
+        'Australia/Sydney','Pacific/Auckland','UTC'
+      ] %}
+      {% for tz in tzones %}
+      <option value="{{ tz }}" {% if current_tz == tz %}selected{% endif %}>{{ tz }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">💾 Speichern</button>
+  </form>
+  <p class="hint" style="margin-top:0.5rem;">Bestimmt wie Zeitangaben im Dashboard angezeigt werden. Aktuell: <strong>{{ current_tz }}</strong></p>
+</div>
+{% endif %}
 {% endblock %}
