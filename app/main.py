@@ -493,16 +493,18 @@ async def users_delete(request: Request, user_id: int, next: str = "/users"):
 
 
 @web.post("/users/{user_id}/guilds")
-async def users_guilds_save(request: Request, user_id: int, guild_ids: list[str] = Form(default=[])):
+async def users_guilds_save(request: Request, user_id: int):
     if r := admin_redirect(request): return r
+    form = await request.form()
+    guild_ids = form.getlist("guild_ids")
     valid_ids = {str(g.id) for g in bot.guilds}
-    guild_ids = [gid for gid in guild_ids if gid in valid_ids]
     await db_exec("DELETE FROM user_guild_permissions WHERE user_id=?", (user_id,))
     for gid in guild_ids:
-        await db_exec(
-            "INSERT OR IGNORE INTO user_guild_permissions (user_id, guild_id) VALUES (?,?)",
-            (user_id, gid),
-        )
+        if gid in valid_ids:
+            await db_exec(
+                "INSERT OR IGNORE INTO user_guild_permissions (user_id, guild_id) VALUES (?,?)",
+                (user_id, gid),
+            )
     return RedirectResponse("/users?success=Serverrechte+gespeichert", status_code=302)
 
 
