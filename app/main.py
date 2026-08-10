@@ -316,20 +316,24 @@ async def dashboard(request: Request):
         "colors": ACTION_COLORS, "token_set": token_set,
         "username": request.session.get("username"),
         "role": request.session.get("role"),
-        "version": VERSION,
+        "version": VERSION, "active": "dashboard",
     })
 
 
 @web.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request, saved: bool = False):
+async def settings_page(request: Request, saved: bool = False, error: str = "", success: str = ""):
     if r := auth_redirect(request): return r
     token = await get_config("discord_token")
     masked = ("•" * 40 + token[-6:]) if token else None
+    all_users = await db_rows("SELECT id, username, role, created_at FROM users ORDER BY created_at") if request.session.get("role") == "admin" else []
+    token_set = bool(await get_config("discord_token"))
     return templates.TemplateResponse("settings.html", {
         "request": request, "masked": masked, "saved": saved,
         "username": request.session.get("username"),
         "role": request.session.get("role"),
-        "version": VERSION,
+        "version": VERSION, "active": "settings",
+        "users": all_users, "error": error, "success": success,
+        "token_set": token_set,
     })
 
 
@@ -357,7 +361,7 @@ async def users_page(request: Request, error: str = "", success: str = ""):
 async def users_create(request: Request, username: str = Form(...), password: str = Form(...), role: str = Form(...)):
     if r := admin_redirect(request): return r
     if len(password) < 6:
-        return RedirectResponse("/users?error=Passwort+mindestens+6+Zeichen", status_code=302)
+        return RedirectResponse("/settings?error=Passwort+mindestens+6+Zeichen", status_code=302)
     try:
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute(
@@ -366,19 +370,19 @@ async def users_create(request: Request, username: str = Form(...), password: st
             )
             await db.commit()
     except Exception:
-        return RedirectResponse("/users?error=Benutzername+bereits+vergeben", status_code=302)
-    return RedirectResponse("/users?success=Benutzer+erstellt", status_code=302)
+        return RedirectResponse("/settings?error=Benutzername+bereits+vergeben", status_code=302)
+    return RedirectResponse("/settings?success=Benutzer+erstellt", status_code=302)
 
 
 @web.post("/users/delete/{user_id}")
 async def users_delete(request: Request, user_id: int):
     if r := admin_redirect(request): return r
     if user_id == request.session.get("user_id"):
-        return RedirectResponse("/users?error=Du+kannst+dich+nicht+selbst+löschen", status_code=302)
+        return RedirectResponse("/settings?error=Du+kannst+dich+nicht+selbst+löschen", status_code=302)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
         await db.commit()
-    return RedirectResponse("/users?success=Benutzer+gelöscht", status_code=302)
+    return RedirectResponse("/settings?success=Benutzer+gelöscht", status_code=302)
 
 
 # ── API ───────────────────────────────────────────────────────────────────────
