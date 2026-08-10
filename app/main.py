@@ -256,17 +256,50 @@ async def users_delete(request: Request, user_id: int, next: str = "/users"):
     return RedirectResponse(f"{dest}?success=Benutzer+gelöscht", status_code=302)
 
 
+def _cgroup_ram() -> tuple[int, int] | None:
+    """Return (used_bytes, limit_bytes) from cgroup memory, or None if unavailable."""
+    NO_LIMIT = 2 ** 62
+    # cgroups v2 (modern Docker / systemd)
+    try:
+        limit = int(Path("/sys/fs/cgroup/memory.max").read_text().strip())
+        used  = int(Path("/sys/fs/cgroup/memory.current").read_text().strip())
+        if 0 < limit < NO_LIMIT:
+            return used, limit
+    except Exception:
+        pass
+    # cgroups v1 (older Docker)
+    try:
+        limit = int(Path("/sys/fs/cgroup/memory/memory.limit_in_bytes").read_text().strip())
+        used  = int(Path("/sys/fs/cgroup/memory/memory.usage_in_bytes").read_text().strip())
+        if 0 < limit < NO_LIMIT:
+            return used, limit
+    except Exception:
+        pass
+    return None
+
+
 def get_system_stats() -> dict:
     proc = psutil.Process()
-    vm = psutil.virtual_memory()
     uptime = datetime.datetime.utcnow() - PROCESS_START
     h, rem = divmod(int(uptime.total_seconds()), 3600)
     m, s = divmod(rem, 60)
+
+    cg = _cgroup_ram()
+    if cg:
+        ram_used  = cg[0] // (1024 ** 2)
+        ram_total = cg[1] // (1024 ** 2)
+        ram_pct   = round(cg[0] / cg[1] * 100, 1)
+    else:
+        vm = psutil.virtual_memory()
+        ram_used  = vm.used  // (1024 ** 2)
+        ram_total = vm.total // (1024 ** 2)
+        ram_pct   = round(vm.percent, 1)
+
     return {
         "cpu": psutil.cpu_percent(interval=0.1),
-        "ram_used": vm.used // (1024 ** 2),
-        "ram_total": vm.total // (1024 ** 2),
-        "ram_pct": round(vm.percent, 1),
+        "ram_used": ram_used,
+        "ram_total": ram_total,
+        "ram_pct": ram_pct,
         "proc_ram": proc.memory_info().rss // (1024 ** 2),
         "uptime": f"{h}h {m}m {s}s",
         "latency": round(bot.latency * 1000, 1) if bot.is_ready() else None,
