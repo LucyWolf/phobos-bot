@@ -1,89 +1,103 @@
 {% extends "base.html" %}
 
-{% block title %}{{ guild.name }} – Konfiguration{% endblock %}
+{% block title %}{{ guild.name }} – Verwaltung{% endblock %}
 {% block page_title %}
-  {% if guild.icon %}<img src="{{ guild.icon }}" style="width:28px;height:28px;border-radius:50%;margin-right:0.5rem;vertical-align:middle;">{% endif %}
+  {% if guild.icon %}<img src="{{ guild.icon }}" style="width:26px;height:26px;border-radius:50%;margin-right:0.5rem;vertical-align:middle;">{% endif %}
   {{ guild.name }}
 {% endblock %}
 
 {% block content %}
-{% if saved %}
-<div class="alert alert-success">Einstellungen gespeichert.</div>
-{% endif %}
+<style>
+  .tab-nav { display:flex; gap:0.35rem; flex-wrap:wrap; margin-bottom:1.5rem; background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:0.4rem; }
+  .tab-btn { background:none; border:none; color:var(--muted); padding:0.5rem 0.9rem; border-radius:0.5rem; cursor:pointer; font-size:0.83rem; font-weight:600; transition:all 0.15s; white-space:nowrap; }
+  .tab-btn:hover { background:var(--accent-light); color:var(--text); }
+  .tab-btn.active { background:var(--accent); color:#fff; }
+  .tab-pane { display:none; }
+  .tab-pane.active { display:block; }
+  .feat-header { font-size:1rem; font-weight:700; margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem; }
+  .rr-emoji { font-size:1.4rem; }
+  .rank-medal { font-size:1rem; }
+  .empty-state { text-align:center; padding:2.5rem; color:var(--muted); font-size:0.9rem; }
+  code { background:var(--bg); border:1px solid var(--border); border-radius:0.3rem; padding:0.1rem 0.4rem; font-size:0.8rem; font-family:monospace; }
+</style>
 
+{% if saved %}<div class="alert alert-success">✅ Einstellungen gespeichert.</div>{% endif %}
+{% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
+{% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
+
+<div class="tab-nav">
+  <button class="tab-btn" data-tab="config">⚙️ Konfiguration</button>
+  <button class="tab-btn" data-tab="leveling">🏆 Leveling</button>
+  <button class="tab-btn" data-tab="rr">🎭 Reaction Roles</button>
+  <button class="tab-btn" data-tab="commands">📢 Commands</button>
+  <button class="tab-btn" data-tab="tickets">🎫 Tickets</button>
+  <button class="tab-btn" data-tab="giveaways">🎉 Giveaways</button>
+  <button class="tab-btn" data-tab="warnings">⚠️ Warnungen</button>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Konfiguration                                                  -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-config">
 <form method="post" action="/servers/{{ guild.id }}">
 
-  <!-- Welcome -->
   <div class="card">
-    <div class="section-label">Willkommensnachrichten</div>
+    <div class="feat-header">💬 Willkommensnachrichten</div>
     <div class="grid-2">
       <div>
         <label>Willkommens-Kanal</label>
         <select name="welcome_channel">
           <option value="">— Deaktiviert —</option>
-          {% for ch in channels %}
-          <option value="{{ ch.id }}" {% if cfg.get('welcome_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>
-          {% endfor %}
+          {% for ch in channels %}<option value="{{ ch.id }}" {% if cfg.get('welcome_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
         </select>
       </div>
       <div>
         <label>Verlassen-Kanal</label>
         <select name="leave_channel">
           <option value="">— Deaktiviert —</option>
-          {% for ch in channels %}
-          <option value="{{ ch.id }}" {% if cfg.get('leave_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>
-          {% endfor %}
+          {% for ch in channels %}<option value="{{ ch.id }}" {% if cfg.get('leave_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
         </select>
       </div>
     </div>
-    <label>Willkommensnachricht</label>
-    <input type="text" name="welcome_message" value="{{ cfg.get('welcome_message', 'Willkommen {user} auf {server}! Du bist Mitglied #{count}.') }}" placeholder="Platzhalter: {user} {username} {server} {count}">
+    <label>Willkommensnachricht <span style="color:var(--muted);font-size:0.75rem">– Platzhalter: {user} {username} {server} {count}</span></label>
+    <input type="text" name="welcome_message" value="{{ cfg.get('welcome_message', 'Willkommen {user} auf {server}! Du bist Mitglied #{count}.') }}">
     <label>Verlassensnachricht</label>
-    <input type="text" name="leave_message" value="{{ cfg.get('leave_message', '{username} hat den Server verlassen.') }}" placeholder="Platzhalter: {user} {username} {server}">
+    <input type="text" name="leave_message" value="{{ cfg.get('leave_message', '{username} hat den Server verlassen.') }}">
     <label>Auto-Rolle bei Beitritt</label>
     <select name="autorole">
       <option value="">— Keine —</option>
-      {% for r in roles %}
-      <option value="{{ r.id }}" {% if cfg.get('autorole') == r.id %}selected{% endif %}>{{ r.name }}</option>
-      {% endfor %}
+      {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('autorole') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
     </select>
   </div>
 
-  <!-- Logging -->
   <div class="card">
-    <div class="section-label">Event-Logging</div>
+    <div class="feat-header">📋 Event-Logging</div>
     <label>Log-Kanal</label>
     <select name="log_channel">
       <option value="">— Deaktiviert —</option>
-      {% for ch in channels %}
-      <option value="{{ ch.id }}" {% if cfg.get('log_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>
-      {% endfor %}
+      {% for ch in channels %}<option value="{{ ch.id }}" {% if cfg.get('log_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
     </select>
-    <p class="hint">Logs: Beitritt/Verlassen, Nachrichtenbearbeitung/-löschung, Bans, Rollenänderungen.</p>
+    <p class="hint">Loggt: Beitritt/Verlassen · Nachrichten bearbeitet/gelöscht · Bans/Unbans · Rollenänderungen</p>
   </div>
 
-  <!-- Leveling -->
   <div class="card">
-    <div class="section-label">XP &amp; Level-System</div>
+    <div class="feat-header">⭐ Leveling &amp; XP</div>
     <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
-      <input type="checkbox" name="leveling_enabled" value="1" {% if cfg.get('leveling_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;">
-      Leveling aktivieren
+      <input type="checkbox" name="leveling_enabled" value="1" {% if cfg.get('leveling_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> Leveling aktivieren
     </label>
     <label>Level-Up-Kanal <span style="color:var(--muted);font-size:0.75rem">(leer = aktueller Kanal)</span></label>
     <select name="level_channel">
       <option value="">— Aktueller Kanal —</option>
-      {% for ch in channels %}
-      <option value="{{ ch.id }}" {% if cfg.get('level_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>
-      {% endfor %}
+      {% for ch in channels %}<option value="{{ ch.id }}" {% if cfg.get('level_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
     </select>
+    <p class="hint">15–25 XP pro Nachricht · 60s Cooldown · Formel: 5n² + 50n + 100 · Commands: /rank /leaderboard /setxp</p>
   </div>
 
-  <!-- Auto-Mod -->
   <div class="card">
-    <div class="section-label">Auto-Moderation</div>
+    <div class="feat-header">🛡️ Auto-Moderation</div>
     <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
-      <input type="checkbox" name="automod_enabled" value="1" {% if cfg.get('automod_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;">
-      Auto-Moderation aktivieren
+      <input type="checkbox" name="automod_enabled" value="1" {% if cfg.get('automod_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> Auto-Mod aktivieren
     </label>
     <div class="grid-2">
       <div>
@@ -100,40 +114,335 @@
       </div>
     </div>
     <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
-      <input type="checkbox" name="automod_links" value="1" {% if cfg.get('automod_links') == '1' %}checked{% endif %} style="width:auto;margin:0;">
-      Links blockieren
+      <input type="checkbox" name="automod_links" value="1" {% if cfg.get('automod_links') == '1' %}checked{% endif %} style="width:auto;margin:0;"> Links blockieren
     </label>
     <label>Verbotene Wörter <span style="color:var(--muted);font-size:0.75rem">(kommagetrennt)</span></label>
     <input type="text" name="automod_banned_words" value="{{ cfg.get('automod_banned_words', '') }}" placeholder="wort1, wort2, wort3">
   </div>
 
-  <!-- Tickets -->
   <div class="card">
-    <div class="section-label">Ticket-System</div>
+    <div class="feat-header">🎫 Ticket-System</div>
     <div class="grid-2">
       <div>
         <label>Support-Rolle</label>
         <select name="ticket_support_role">
           <option value="">— Keine —</option>
-          {% for r in roles %}
-          <option value="{{ r.id }}" {% if cfg.get('ticket_support_role') == r.id %}selected{% endif %}>{{ r.name }}</option>
-          {% endfor %}
+          {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('ticket_support_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
         </select>
       </div>
       <div>
         <label>Ticket-Kategorie</label>
         <select name="ticket_category">
           <option value="">— Keine —</option>
-          {% for c in categories %}
-          <option value="{{ c.id }}" {% if cfg.get('ticket_category') == c.id %}selected{% endif %}">{{ c.name }}</option>
-          {% endfor %}
+          {% for c in categories %}<option value="{{ c.id }}" {% if cfg.get('ticket_category') == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
         </select>
       </div>
     </div>
-    <p class="hint">Poste ein Ticket-Panel mit <code>/ticket-panel</code>. Nutzer können dann über einen Button Tickets öffnen.</p>
+    <p class="hint">Ticket-Panel im Discord posten: <code>/ticket-panel</code></p>
   </div>
 
   <button type="submit" class="btn btn-primary">💾 Speichern</button>
-
 </form>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Leveling                                                       -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-leveling">
+<div class="card" style="padding:0;overflow:hidden;">
+  {% if leaderboard %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Nutzer</th><th>Level</th><th>XP</th><th>Nachrichten</th></tr></thead>
+      <tbody>
+        {% for e in leaderboard %}
+        <tr>
+          <td style="font-weight:700;color:{% if e.rank==1 %}#f59e0b{% elif e.rank==2 %}#94a3b8{% elif e.rank==3 %}#cd7c2e{% else %}var(--muted){% endif %}">
+            {% if e.rank == 1 %}🥇{% elif e.rank == 2 %}🥈{% elif e.rank == 3 %}🥉{% else %}{{ e.rank }}{% endif %}
+          </td>
+          <td style="font-weight:500;">{{ e.username }}</td>
+          <td><span class="badge" style="background:var(--accent-light);color:#a78bfa">{{ e.level }}</span></td>
+          <td>{{ e.xp }}</td>
+          <td style="color:var(--muted)">{{ e.messages }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">🏆 Noch keine XP-Daten vorhanden. Leveling aktivieren und warten!</div>
+  {% endif %}
+</div>
+{% if cfg.get('leveling_enabled') != '1' %}
+<div class="alert alert-error" style="margin-top:1rem;">Leveling ist deaktiviert – aktiviere es in der Konfiguration.</div>
+{% endif %}
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Reaction Roles                                                 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-rr">
+
+{% if rr_list %}
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem;">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Emoji</th><th>Kanal</th><th>Message-ID</th><th>Rolle</th><th></th></tr></thead>
+      <tbody>
+        {% for rr in rr_list %}
+        <tr>
+          <td class="rr-emoji">{{ rr.emoji }}</td>
+          <td style="color:var(--muted)">{{ rr.channel_name }}</td>
+          <td><code>{{ rr.message_id }}</code></td>
+          <td><span class="badge badge-moderator">{{ rr.role_name }}</span></td>
+          <td>
+            <form method="post" action="/servers/{{ guild.id }}/reaction_roles/{{ rr.id }}/delete" style="display:inline">
+              <button class="btn btn-danger" onclick="return confirm('Löschen?')">✕ Entfernen</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="feat-header">➕ Reaction Role hinzufügen</div>
+  <form method="post" action="/servers/{{ guild.id }}/reaction_roles/add">
+    <div class="grid-2">
+      <div>
+        <label>Kanal</label>
+        <select name="channel_id" required>
+          <option value="">Kanal wählen…</option>
+          {% for ch in channels %}<option value="{{ ch.id }}">#{{ ch.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Rolle</label>
+        <select name="role_id" required>
+          <option value="">Rolle wählen…</option>
+          {% for r in roles %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <label>Message-ID <span style="color:var(--muted);font-size:0.75rem">(Rechtsklick → ID kopieren)</span></label>
+        <input type="text" name="message_id" placeholder="z.B. 1234567890123456789" required pattern="[0-9]+">
+      </div>
+      <div>
+        <label>Emoji</label>
+        <input type="text" name="emoji" placeholder="z.B. ✅ oder :emoji:" required>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">➕ Hinzufügen</button>
+  </form>
+  <p class="hint">Schritt 1: Poste eine Nachricht im Discord. Schritt 2: Rechtsklick → Nachrichten-ID kopieren (Entwicklermodus nötig). Schritt 3: Hier eintragen.</p>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Custom Commands                                                -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-commands">
+
+{% if cmd_list %}
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem;">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Trigger</th><th>Antwort</th><th></th></tr></thead>
+      <tbody>
+        {% for c in cmd_list %}
+        <tr>
+          <td><code>!{{ c.trigger }}</code></td>
+          <td style="color:var(--muted);max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.response }}</td>
+          <td>
+            <form method="post" action="/servers/{{ guild.id }}/commands/{{ c.id }}/delete" style="display:inline">
+              <button class="btn btn-danger" onclick="return confirm('Löschen?')">✕</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="feat-header">➕ Command erstellen</div>
+  <form method="post" action="/servers/{{ guild.id }}/commands/add">
+    <div class="grid-2">
+      <div>
+        <label>Trigger <span style="color:var(--muted);font-size:0.75rem">(ohne !)</span></label>
+        <input type="text" name="trigger" placeholder="z.B. ping" required>
+      </div>
+      <div>
+        <label>Antwort</label>
+        <input type="text" name="response" placeholder="z.B. Pong! 🏓" required>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">➕ Erstellen</button>
+  </form>
+  <p class="hint">Nutzer können Commands mit <code>!trigger</code> aufrufen. Existierende Trigger werden überschrieben.</p>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Tickets                                                        -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-tickets">
+<div class="card" style="padding:0;overflow:hidden;">
+  {% if ticket_list %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Nutzer</th><th>Kanal</th><th>Erstellt</th></tr></thead>
+      <tbody>
+        {% for t in ticket_list %}
+        <tr>
+          <td style="font-weight:500">{{ t.username }}</td>
+          <td style="color:#a78bfa">{{ t.channel_name }}</td>
+          <td style="color:var(--muted);font-size:0.8rem">{{ t.created_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">🎫 Keine offenen Tickets.</div>
+  {% endif %}
+</div>
+<p class="hint" style="margin-top:1rem;">Ticket-Panel im Discord posten: <code>/ticket-panel</code> · Schließen: Button im Ticket-Kanal oder <code>/ticket-close</code></p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Giveaways                                                      -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-giveaways">
+
+{% if ga_list %}
+<div class="section-label" style="margin-bottom:0.6rem;">Aktive Giveaways</div>
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem;">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Preis</th><th>Kanal</th><th>Gewinner</th><th>Endet</th><th>Aktionen</th></tr></thead>
+      <tbody>
+        {% for g in ga_list %}
+        <tr>
+          <td style="font-weight:600">🎉 {{ g.prize }}</td>
+          <td style="color:var(--muted)">{{ g.channel_name }}</td>
+          <td>{{ g.winners }}</td>
+          <td style="color:var(--muted);font-size:0.8rem">{{ g.ends_at[:16].replace('T',' ') }} UTC</td>
+          <td style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+            <form method="post" action="/servers/{{ guild.id }}/giveaways/{{ g.id }}/end" style="display:inline">
+              <button class="btn btn-danger" onclick="return confirm('Giveaway sofort beenden?')">⏹ Beenden</button>
+            </form>
+            <form method="post" action="/servers/{{ guild.id }}/giveaways/{{ g.id }}/reroll" style="display:inline">
+              <button class="btn" style="background:var(--accent-light);color:#a78bfa;border:1px solid rgba(124,58,237,0.3);" onclick="return confirm('Neu auslosen?')">🎲 Reroll</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="feat-header">🎉 Giveaway starten</div>
+  <form method="post" action="/servers/{{ guild.id }}/giveaways/start">
+    <div class="grid-2">
+      <div>
+        <label>Kanal</label>
+        <select name="channel_id" required>
+          <option value="">Kanal wählen…</option>
+          {% for ch in channels %}<option value="{{ ch.id }}">#{{ ch.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Preis</label>
+        <input type="text" name="prize" placeholder="z.B. Discord Nitro" required>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <label>Dauer (Minuten)</label>
+        <input type="number" name="duration" placeholder="z.B. 60" min="1" required>
+      </div>
+      <div>
+        <label>Anzahl Gewinner</label>
+        <input type="number" name="winners" value="1" min="1" max="20">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">🎉 Starten</button>
+  </form>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Warnungen                                                      -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-warnings">
+<div class="card" style="padding:0;overflow:hidden;">
+  {% if warn_groups %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Nutzer</th><th>Warnungen</th><th>Letzte Warnung</th><th></th></tr></thead>
+      <tbody>
+        {% for wg in warn_groups %}
+        <tr>
+          <td style="font-weight:500">{{ wg.username }}</td>
+          <td>
+            <span class="badge" style="background:rgba(239,68,68,{% if wg.count >= 3 %}0.25{% else %}0.1{% endif %});color:#ef4444;border:1px solid rgba(239,68,68,0.3)">
+              {{ wg.count }}x
+            </span>
+          </td>
+          <td style="color:var(--muted);font-size:0.8rem">{{ wg.last }}</td>
+          <td>
+            <form method="post" action="/servers/{{ guild.id }}/warnings/{{ wg.user_id }}/clear" style="display:inline">
+              <button class="btn btn-danger" onclick="return confirm('Alle Warnungen für {{ wg.username }} löschen?')">✕ Löschen</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">✅ Keine Warnungen auf diesem Server.</div>
+  {% endif %}
+</div>
+<p class="hint" style="margin-top:1rem;">Warnen über Discord: <code>/warn @nutzer grund</code> · Alle Warnungen anzeigen: <code>/warnings @nutzer</code></p>
+</div>
+
+
+<script>
+const TABS = ['config','leveling','rr','commands','tickets','giveaways','warnings'];
+function showTab(name) {
+  if (!TABS.includes(name)) name = 'config';
+  TABS.forEach(t => {
+    const pane = document.getElementById('pane-' + t);
+    const btn  = document.querySelector('[data-tab="' + t + '"]');
+    if (pane) pane.classList.toggle('active', t === name);
+    if (btn)  btn.classList.toggle('active', t === name);
+  });
+  const u = new URL(location.href);
+  u.searchParams.set('tab', name);
+  history.replaceState(null, '', u);
+}
+const init = new URLSearchParams(location.search).get('tab') || '{{ tab }}';
+showTab(init);
+document.querySelectorAll('.tab-btn').forEach(b =>
+  b.addEventListener('click', () => showTab(b.dataset.tab))
+);
+</script>
 {% endblock %}
