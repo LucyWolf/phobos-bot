@@ -94,27 +94,6 @@
     <input type="text" name="automod_banned_words" value="{{ cfg.get('automod_banned_words', '') }}" placeholder="wort1, wort2, wort3">
   </div>
 
-  <div class="card">
-    <div class="feat-header">🎫 Ticket-System</div>
-    <div class="grid-2">
-      <div>
-        <label>Support-Rolle</label>
-        <select name="ticket_support_role">
-          <option value="">— Keine —</option>
-          {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('ticket_support_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
-        </select>
-      </div>
-      <div>
-        <label>Ticket-Kategorie</label>
-        <select name="ticket_category">
-          <option value="">— Keine —</option>
-          {% for c in categories %}<option value="{{ c.id }}" {% if cfg.get('ticket_category') == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
-        </select>
-      </div>
-    </div>
-    <p class="hint">Ticket-Panel im Discord posten: <code>/ticket-panel</code></p>
-  </div>
-
   <button type="submit" class="btn btn-primary">💾 Speichern</button>
 </form>
 </div>
@@ -288,6 +267,30 @@
 <!-- TAB: Tickets                                                        -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-tickets">
+<form method="post" action="/servers/{{ guild.id }}">
+<div class="card">
+  <div class="feat-header">🎫 Ticket-System</div>
+  <div class="grid-2">
+    <div>
+      <label>Support-Rolle</label>
+      <select name="ticket_support_role">
+        <option value="">— Keine —</option>
+        {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('ticket_support_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Ticket-Kategorie</label>
+      <select name="ticket_category">
+        <option value="">— Keine —</option>
+        {% for c in categories %}<option value="{{ c.id }}" {% if cfg.get('ticket_category') == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <p class="hint">Ticket-Panel im Discord posten: <code>/ticket-panel</code></p>
+  <button type="submit" class="btn btn-primary">💾 Speichern</button>
+</div>
+</form>
+
 <div class="card" style="padding:0;overflow:hidden;">
   {% if ticket_list %}
   <div class="table-wrap">
