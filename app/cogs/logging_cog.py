@@ -8,18 +8,16 @@ class Logging(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    async def _log(self, guild_id: int, embed: discord.Embed):
+    async def _log(self, guild_id: int, embed: discord.Embed, plain: str = ""):
         embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
-
-        # store in DB (keep last 300 per guild)
         title = embed.title or ""
         icon = title.split()[0] if title else "📋"
-        desc_parts = [f"{f.name}: {f.value}" for f in embed.fields[:3]]
-        desc = " · ".join(desc_parts)[:300]
+        label = title.lstrip(icon).strip()
+
         try:
             await db_exec(
                 "INSERT INTO server_logs (guild_id, icon, title, description) VALUES (?,?,?,?)",
-                (str(guild_id), icon, title.lstrip(icon).strip(), desc),
+                (str(guild_id), icon, label, plain[:300]),
             )
             await db_exec(
                 """DELETE FROM server_logs WHERE guild_id=? AND id NOT IN (
@@ -30,7 +28,6 @@ class Logging(commands.Cog):
         except Exception:
             pass
 
-        # send to Discord channel if configured
         channel_id = await get_guild_config(guild_id, "log_channel")
         if not channel_id:
             return
@@ -48,7 +45,7 @@ class Logging(commands.Cog):
         embed.add_field(name="Account-Alter", value=discord.utils.format_dt(member.created_at, "R"))
         embed.add_field(name="ID", value=str(member.id))
         embed.set_thumbnail(url=member.display_avatar.url)
-        await self._log(member.guild.id, embed)
+        await self._log(member.guild.id, embed, plain=f"{member.display_name} ({member.name})")
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
@@ -56,14 +53,16 @@ class Logging(commands.Cog):
         embed.set_author(name=str(member), icon_url=member.display_avatar.url)
         embed.add_field(name="Nutzer", value=str(member))
         embed.add_field(name="ID", value=str(member.id))
-        roles = [r.mention for r in member.roles if r.name != "@everyone"]
+        roles = [r.name for r in member.roles if r.name != "@everyone"]
         if roles:
-            embed.add_field(name="Hatte Rollen", value=" ".join(roles)[:1000], inline=False)
-        await self._log(member.guild.id, embed)
+            embed.add_field(name="Hatte Rollen", value=", ".join(roles)[:1000], inline=False)
+        plain = member.display_name
+        if roles:
+            plain += f" · Rollen: {', '.join(roles[:3])}"
+        await self._log(member.guild.id, embed, plain=plain)
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
-        # Rollen-Änderung
         if before.roles != after.roles:
             added   = [r for r in after.roles if r not in before.roles]
             removed = [r for r in before.roles if r not in after.roles]
@@ -75,29 +74,35 @@ class Logging(commands.Cog):
                     embed.add_field(name="➕ Hinzugefügt", value=" ".join(r.mention for r in added))
                 if removed:
                     embed.add_field(name="➖ Entfernt", value=" ".join(r.mention for r in removed))
-                await self._log(after.guild.id, embed)
+                parts = [after.display_name]
+                if added:
+                    parts.append("+" + ", ".join(r.name for r in added))
+                if removed:
+                    parts.append("-" + ", ".join(r.name for r in removed))
+                await self._log(after.guild.id, embed, plain=" · ".join(parts))
 
-        # Nickname-Änderung
         if before.nick != after.nick:
             embed = discord.Embed(title="✏️ Nickname geändert", color=0xa78bfa)
             embed.set_author(name=str(after), icon_url=after.display_avatar.url)
             embed.add_field(name="Nutzer", value=after.mention)
             embed.add_field(name="Vorher", value=before.nick or before.name, inline=False)
             embed.add_field(name="Nachher", value=after.nick or after.name, inline=False)
-            await self._log(after.guild.id, embed)
+            await self._log(after.guild.id, embed,
+                plain=f"{after.name} · {before.nick or before.name} → {after.nick or after.name}")
 
-        # Timeout
         if before.timed_out_until != after.timed_out_until:
             if after.timed_out_until:
                 embed = discord.Embed(title="⏱️ Timeout verhängt", color=0xf59e0b)
                 embed.set_author(name=str(after), icon_url=after.display_avatar.url)
                 embed.add_field(name="Nutzer", value=after.mention)
-                embed.add_field(name="Bis", value=discord.utils.format_dt(after.timed_out_until, "R"))
+                embed.add_field(name="Bis", value=discord.utils.format_dt(after.timed_out_until, "f"))
+                plain = f"{after.display_name} · bis {after.timed_out_until.strftime('%d.%m.%Y %H:%M')}"
             else:
                 embed = discord.Embed(title="⏱️ Timeout aufgehoben", color=0x22c55e)
                 embed.set_author(name=str(after), icon_url=after.display_avatar.url)
                 embed.add_field(name="Nutzer", value=after.mention)
-            await self._log(after.guild.id, embed)
+                plain = after.display_name
+            await self._log(after.guild.id, embed, plain=plain)
 
     # ── Bans ──────────────────────────────────────────────────────────────────
 
@@ -107,45 +112,45 @@ class Logging(commands.Cog):
         embed.set_author(name=str(user), icon_url=user.display_avatar.url)
         embed.add_field(name="Nutzer", value=str(user))
         embed.add_field(name="ID", value=str(user.id))
-        await self._log(guild.id, embed)
+        await self._log(guild.id, embed, plain=f"{user.display_name} ({user.name})")
 
     @commands.Cog.listener()
     async def on_member_unban(self, guild: discord.Guild, user: discord.User):
         embed = discord.Embed(title="✅ Member entbannt", color=0x22c55e)
         embed.set_author(name=str(user), icon_url=user.display_avatar.url)
         embed.add_field(name="Nutzer", value=str(user))
-        await self._log(guild.id, embed)
+        await self._log(guild.id, embed, plain=f"{user.display_name} ({user.name})")
 
     # ── Voice-Kanäle ──────────────────────────────────────────────────────────
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
         if before.channel == after.channel:
-            return  # nur Mute/Deaf-Änderungen, ignorieren
+            return
 
         if before.channel is None and after.channel is not None:
-            # Beigetreten
             embed = discord.Embed(title="🔊 Voice beigetreten", color=0x22c55e)
             embed.set_author(name=str(member), icon_url=member.display_avatar.url)
             embed.add_field(name="Nutzer", value=member.mention)
             embed.add_field(name="Kanal", value=after.channel.mention)
+            plain = f"{member.display_name} · #{after.channel.name}"
 
         elif before.channel is not None and after.channel is None:
-            # Verlassen
             embed = discord.Embed(title="🔇 Voice verlassen", color=0xef4444)
             embed.set_author(name=str(member), icon_url=member.display_avatar.url)
             embed.add_field(name="Nutzer", value=member.mention)
             embed.add_field(name="Kanal", value=before.channel.mention)
+            plain = f"{member.display_name} · #{before.channel.name}"
 
         else:
-            # Zwischen Kanälen gewechselt
             embed = discord.Embed(title="🔀 Voice gewechselt", color=0xf59e0b)
             embed.set_author(name=str(member), icon_url=member.display_avatar.url)
             embed.add_field(name="Nutzer", value=member.mention)
             embed.add_field(name="Von", value=before.channel.mention)
             embed.add_field(name="Nach", value=after.channel.mention)
+            plain = f"{member.display_name} · #{before.channel.name} → #{after.channel.name}"
 
-        await self._log(member.guild.id, embed)
+        await self._log(member.guild.id, embed, plain=plain)
 
     # ── Nachrichten ───────────────────────────────────────────────────────────
 
@@ -159,7 +164,10 @@ class Logging(commands.Cog):
         embed.add_field(name="Kanal", value=message.channel.mention)
         if message.content:
             embed.add_field(name="Inhalt", value=message.content[:1000], inline=False)
-        await self._log(message.guild.id, embed)
+        plain = f"{message.author.display_name} · #{message.channel.name}"
+        if message.content:
+            plain += f" · {message.content[:80]}"
+        await self._log(message.guild.id, embed, plain=plain)
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
@@ -172,7 +180,8 @@ class Logging(commands.Cog):
         embed.add_field(name="Vorher", value=before.content[:500] or "—", inline=False)
         embed.add_field(name="Nachher", value=after.content[:500] or "—", inline=False)
         embed.add_field(name="Link", value=f"[Zur Nachricht]({after.jump_url})")
-        await self._log(before.guild.id, embed)
+        await self._log(before.guild.id, embed,
+            plain=f"{before.author.display_name} · #{before.channel.name}")
 
     # ── Kanäle ────────────────────────────────────────────────────────────────
 
@@ -181,16 +190,14 @@ class Logging(commands.Cog):
         embed = discord.Embed(title="📁 Kanal erstellt", color=0x22c55e)
         embed.add_field(name="Name", value=channel.mention if hasattr(channel, "mention") else channel.name)
         embed.add_field(name="Typ", value=str(channel.type).replace("_", " ").title())
-        embed.add_field(name="ID", value=str(channel.id))
-        await self._log(channel.guild.id, embed)
+        await self._log(channel.guild.id, embed, plain=f"#{channel.name}")
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
         embed = discord.Embed(title="🗑️ Kanal gelöscht", color=0xef4444)
         embed.add_field(name="Name", value=f"#{channel.name}")
         embed.add_field(name="Typ", value=str(channel.type).replace("_", " ").title())
-        embed.add_field(name="ID", value=str(channel.id))
-        await self._log(channel.guild.id, embed)
+        await self._log(channel.guild.id, embed, plain=f"#{channel.name}")
 
     @commands.Cog.listener()
     async def on_guild_channel_update(self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel):
@@ -198,7 +205,7 @@ class Logging(commands.Cog):
             embed = discord.Embed(title="✏️ Kanal umbenannt", color=0xa78bfa)
             embed.add_field(name="Vorher", value=f"#{before.name}")
             embed.add_field(name="Nachher", value=after.mention if hasattr(after, "mention") else f"#{after.name}")
-            await self._log(after.guild.id, embed)
+            await self._log(after.guild.id, embed, plain=f"#{before.name} → #{after.name}")
 
     # ── Server-Boost ──────────────────────────────────────────────────────────
 
@@ -212,7 +219,8 @@ class Logging(commands.Cog):
             )
             embed.add_field(name="Boosts gesamt", value=str(after.premium_subscription_count))
             embed.add_field(name="Level", value=str(after.premium_tier))
-            await self._log(after.id, embed)
+            await self._log(after.id, embed,
+                plain=f"Boosts: {after.premium_subscription_count} · Level {after.premium_tier}")
 
 
 async def setup(bot):
