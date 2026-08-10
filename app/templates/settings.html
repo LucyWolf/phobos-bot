@@ -1,14 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Phobos Bot – Einstellungen{% endblock %}
-{% block page_title %}Einstellungen{% endblock %}
+{% block title %}Phobos Bot – Token{% endblock %}
+{% block page_title %}🔑 Discord Token{% endblock %}
 
 {% block content %}
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
-{% if success %}<div class="alert alert-success">{{ success }}</div>{% endif %}
-{% if saved %}<div class="alert alert-success">Token gespeichert. Der Bot verbindet sich in wenigen Sekunden.</div>{% endif %}
+{% if saved %}<div class="alert alert-success">✅ Token gespeichert. Der Bot verbindet sich in wenigen Sekunden.</div>{% endif %}
 
-<div class="section-label" id="token">Discord Token</div>
 <div class="card">
   {% if masked %}
   <label>Aktueller Token</label>
@@ -17,72 +15,12 @@
   <form method="post" action="/settings">
     <label>Neuen Token eintragen</label>
     <input type="password" name="token" placeholder="Discord Bot Token..." autocomplete="off" required>
-    <button type="submit" class="btn btn-primary">Speichern</button>
+    <button type="submit" class="btn btn-primary">💾 Speichern</button>
   </form>
   <p class="hint">
     Token findest du im
     <a href="https://discord.com/developers/applications" target="_blank" style="color:var(--accent)">Discord Developer Portal</a>
-    → deine App → Bot → Token.
+    → deine App → Bot → Token zurücksetzen.
   </p>
 </div>
-
-{% if role == 'admin' %}
-<div class="section-label" id="benutzer" style="margin-top:2rem">Neuen Benutzer erstellen</div>
-<div class="card">
-  <form method="post" action="/users/create">
-    <div class="grid-2">
-      <div>
-        <label>Benutzername</label>
-        <input type="text" name="username" required>
-      </div>
-      <div>
-        <label>Rolle</label>
-        <select name="role">
-          <option value="moderator">Moderator</option>
-          <option value="admin">Admin</option>
-        </select>
-      </div>
-      <div>
-        <label>Passwort (min. 6 Zeichen)</label>
-        <input type="password" name="password" required>
-      </div>
-    </div>
-    <button type="submit" class="btn btn-primary">Benutzer erstellen</button>
-  </form>
-</div>
-
-<div class="section-label">Alle Benutzer</div>
-<div class="card" style="padding:0; overflow:hidden;">
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Benutzername</th>
-          <th>Rolle</th>
-          <th>Erstellt</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for u in users %}
-        <tr>
-          <td>{{ u.username }}</td>
-          <td><span class="badge badge-{{ u.role }}">{{ u.role }}</span></td>
-          <td style="color:var(--muted); font-size:0.8rem">{{ u.created_at }}</td>
-          <td>
-            {% if u.username != username %}
-            <form method="post" action="/users/delete/{{ u.id }}" onsubmit="return confirm('Benutzer {{ u.username }} löschen?')">
-              <button type="submit" class="btn btn-danger">Löschen</button>
-            </form>
-            {% else %}
-            <span style="font-size:0.78rem; color:var(--muted)">Du</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-{% endif %}
 {% endblock %}

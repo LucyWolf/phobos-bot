@@ -205,28 +205,42 @@ async def settings_save(request: Request, token: str = Form(...)):
     return RedirectResponse("/settings?saved=true", status_code=303)
 
 
-@web.post("/users/create")
-async def users_create(request: Request, username: str = Form(...), password: str = Form(...), role: str = Form(...)):
+@web.get("/users", response_class=HTMLResponse)
+async def users_page(request: Request, error: str = "", success: str = ""):
     if r := admin_redirect(request): return r
+    all_users = await db_rows("SELECT id, username, role, created_at FROM users ORDER BY created_at")
+    token_set = bool(await get_config("discord_token"))
+    return templates.TemplateResponse("users.html", {
+        **session(request), "request": request,
+        "users": all_users, "error": error, "success": success,
+        "guilds": _guild_list(request), "token_set": token_set, "active": "users",
+    })
+
+
+@web.post("/users/create")
+async def users_create(request: Request, username: str = Form(...), password: str = Form(...), role: str = Form(...), next: str = "/users"):
+    if r := admin_redirect(request): return r
+    dest = next if next in ("/users", "/settings") else "/users"
     if len(password) < 6:
-        return RedirectResponse("/settings?error=Passwort+mindestens+6+Zeichen", status_code=302)
+        return RedirectResponse(f"{dest}?error=Passwort+mindestens+6+Zeichen", status_code=302)
     try:
         await db_exec(
             "INSERT INTO users (username,password_hash,role) VALUES (?,?,?)",
             (username.strip(), hash_pw(password), role),
         )
     except Exception:
-        return RedirectResponse("/settings?error=Benutzername+bereits+vergeben", status_code=302)
-    return RedirectResponse("/settings?success=Benutzer+erstellt", status_code=302)
+        return RedirectResponse(f"{dest}?error=Benutzername+bereits+vergeben", status_code=302)
+    return RedirectResponse(f"{dest}?success=Benutzer+erstellt", status_code=302)
 
 
 @web.post("/users/delete/{user_id}")
-async def users_delete(request: Request, user_id: int):
+async def users_delete(request: Request, user_id: int, next: str = "/users"):
     if r := admin_redirect(request): return r
+    dest = next if next in ("/users", "/settings") else "/users"
     if user_id == request.session.get("user_id"):
-        return RedirectResponse("/settings?error=Du+kannst+dich+nicht+selbst+löschen", status_code=302)
+        return RedirectResponse(f"{dest}?error=Du+kannst+dich+nicht+selbst+löschen", status_code=302)
     await db_exec("DELETE FROM users WHERE id=?", (user_id,))
-    return RedirectResponse("/settings?success=Benutzer+gelöscht", status_code=302)
+    return RedirectResponse(f"{dest}?success=Benutzer+gelöscht", status_code=302)
 
 
 # ── Server Config ─────────────────────────────────────────────────────────────
