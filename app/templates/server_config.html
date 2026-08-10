@@ -33,6 +33,8 @@
   <button class="tab-btn" data-tab="tickets">🎫 Tickets</button>
   <button class="tab-btn" data-tab="giveaways">🎉 Giveaways</button>
   <button class="tab-btn" data-tab="warnings">⚠️ Warnungen</button>
+  <button class="tab-btn" data-tab="notifications">📡 Twitch</button>
+  {% if role == 'admin' %}<button class="tab-btn" data-tab="users">👥 Benutzer</button>{% endif %}
 </div>
 
 
@@ -425,8 +427,112 @@
 </div>
 
 
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Twitch / Benachrichtigungen                                    -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-notifications">
+{% if not twitch_configured %}
+<div class="alert alert-error">
+  ⚠️ Twitch-API noch nicht konfiguriert.
+  <a href="/settings/notifications" style="color:var(--danger);font-weight:700;">Jetzt einrichten →</a>
+</div>
+{% endif %}
+
+<div class="card" style="margin-bottom:1.25rem;">
+  <div class="feat-header">🟣 Eingetragene Streamer</div>
+  {% set twitch_subs = subs | selectattr('platform', 'equalto', 'twitch') | list %}
+  {% if twitch_subs %}
+  <div style="margin-bottom:0.5rem;">
+  {% for s in twitch_subs %}
+  <div style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0;border-bottom:1px solid var(--border);flex-wrap:wrap;">
+    <span style="font-weight:600;flex:1;min-width:100px;">{{ s.target_name or s.target }}</span>
+    <span style="font-size:0.78rem;color:var(--muted);">
+      → #{{ channels | selectattr('id', 'equalto', s.discord_channel_id) | map(attribute='name') | first | default(s.discord_channel_id) }}
+    </span>
+    {% if s.custom_message %}<span style="font-size:0.75rem;color:var(--muted);font-style:italic;">"{{ s.custom_message }}"</span>{% endif %}
+    <form method="post" action="/servers/{{ guild.id }}/notifications/delete/{{ s.id }}" style="margin:0;">
+      <input type="hidden" name="next_url" value="/servers/{{ guild.id }}?tab=notifications">
+      <button class="btn btn-danger" type="submit" style="padding:0.25rem 0.5rem;font-size:0.78rem;">🗑</button>
+    </form>
+  </div>
+  {% endfor %}
+  </div>
+  {% else %}
+  <p style="color:var(--muted);font-size:0.83rem;margin-bottom:0.75rem;">Noch keine Streamer eingetragen.</p>
+  {% endif %}
+
+  <div style="border-top:1px solid var(--border);margin-top:0.75rem;padding-top:0.85rem;">
+    <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.6rem;">➕ Streamer hinzufügen</div>
+    <form method="post" action="/servers/{{ guild.id }}/notifications/add">
+      <input type="hidden" name="platform" value="twitch">
+      <input type="hidden" name="next_url" value="/servers/{{ guild.id }}?tab=notifications">
+      <div class="grid-2" style="margin-bottom:0.6rem;">
+        <div>
+          <label>Twitch-Benutzername</label>
+          <input type="text" name="target" placeholder="z.B. ninja" required style="margin:0;">
+        </div>
+        <div>
+          <label>Anzeigename (optional)</label>
+          <input type="text" name="target_name" placeholder="z.B. Ninja" style="margin:0;">
+        </div>
+      </div>
+      <div class="grid-2" style="margin-bottom:0.75rem;">
+        <div>
+          <label>Discord-Kanal</label>
+          <select name="discord_channel_id" required style="margin:0;">
+            {% for c in channels %}<option value="{{ c.id }}">#{{ c.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Ping-Nachricht (optional)</label>
+          <input type="text" name="custom_message" placeholder="@everyone ist live!" style="margin:0;">
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary" {% if not twitch_configured %}disabled title="Twitch-API zuerst konfigurieren"{% endif %}>
+        ➕ Hinzufügen
+      </button>
+    </form>
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Benutzer (Admin only)                                          -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-users">
+{% if role == 'admin' %}
+<div class="card">
+  <div class="feat-header">👥 Dashboard-Benutzer – Serverzugriff</div>
+  <p class="hint" style="margin-bottom:1rem;">Admins haben automatisch Zugriff auf alle Server. Moderatoren müssen explizit freigegeben werden.</p>
+  {% for u in all_users %}
+  <div style="display:flex;align-items:center;gap:0.75rem;padding:0.65rem 0;border-bottom:1px solid var(--border);">
+    <div style="flex:1;">
+      <span style="font-weight:600;">{{ u.username }}</span>
+      <span class="badge badge-{{ u.role }}" style="margin-left:0.5rem;font-size:0.72rem;">{{ u.role }}</span>
+    </div>
+    {% if u.role == 'admin' %}
+    <span style="color:var(--muted);font-size:0.8rem;">Globaler Zugriff</span>
+    {% elif u.id in server_perms %}
+    <form method="post" action="/servers/{{ guild.id }}/users/{{ u.id }}/revoke" style="margin:0;">
+      <button type="submit" class="btn" style="background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.25);font-size:0.78rem;padding:0.25rem 0.7rem;">✓ Zugriff entziehen</button>
+    </form>
+    {% else %}
+    <form method="post" action="/servers/{{ guild.id }}/users/{{ u.id }}/grant" style="margin:0;">
+      <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;padding:0.25rem 0.7rem;">+ Zugriff gewähren</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">Nur Admins können Serverzugriff verwalten.</div>
+{% endif %}
+</div>
+
+
 <script>
-const TABS = ['config','leveling','rr','commands','tickets','giveaways','warnings'];
+const TABS = ['config','leveling','rr','commands','tickets','giveaways','warnings','notifications','users'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {

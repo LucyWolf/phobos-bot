@@ -836,6 +836,7 @@ async def notifications_add(
     target_name: str = Form(""),
     discord_channel_id: str = Form(...),
     custom_message: str = Form(""),
+    next_url: str = Form(""),
 ):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
@@ -852,22 +853,25 @@ async def notifications_add(
         (guild_id, platform, target.lower() if platform == "twitch" else target),
     )
     if existing:
-        return RedirectResponse(f"/servers/{guild_id}/notifications?error=Bereits+eingetragen", status_code=302)
+        dest = next_url or f"/servers/{guild_id}/notifications"
+        return RedirectResponse(f"{dest}?error=Bereits+eingetragen", status_code=302)
     await db_exec(
         "INSERT INTO notifications (guild_id,platform,discord_channel_id,target,target_name,custom_message) VALUES (?,?,?,?,?,?)",
         (guild_id, platform, discord_channel_id, target.lower() if platform == "twitch" else target,
          target_name.strip(), custom_message.strip()),
     )
-    return RedirectResponse(f"/servers/{guild_id}/notifications?success=1", status_code=302)
+    dest = next_url or f"/servers/{guild_id}/notifications"
+    return RedirectResponse(f"{dest}&success=1" if "?" in dest else f"{dest}?success=1", status_code=302)
 
 
 @web.post("/servers/{guild_id}/notifications/delete/{nid}")
-async def notifications_delete(request: Request, guild_id: str, nid: int):
+async def notifications_delete(request: Request, guild_id: str, nid: int, next_url: str = Form("")):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
     await db_exec("DELETE FROM notifications WHERE id=? AND guild_id=?", (nid, guild_id))
-    return RedirectResponse(f"/servers/{guild_id}/notifications?success=1", status_code=302)
+    dest = next_url or f"/servers/{guild_id}/notifications"
+    return RedirectResponse(f"{dest}&success=1" if "?" in dest else f"{dest}?success=1", status_code=302)
 
 
 @web.get("/settings/notifications", response_class=HTMLResponse)
@@ -1183,6 +1187,19 @@ async def server_config(
         ch = guild.get_channel(g["channel_id"])
         g["channel_name"] = f"#{ch.name}" if ch else "?"
 
+    # Notifications
+    subs = await db_rows(
+        "SELECT * FROM notifications WHERE guild_id=? ORDER BY platform, target_name", (str(guild_id),)
+    )
+    twitch_configured = bool(await get_config("twitch_client_id"))
+
+    # Dashboard users & server access
+    all_users = await db_rows("SELECT id, username, role FROM users ORDER BY role DESC, username")
+    perm_rows = await db_rows(
+        "SELECT user_id FROM user_guild_permissions WHERE guild_id=?", (str(guild_id),)
+    )
+    server_perms = {p["user_id"] for p in perm_rows}
+
     return templates.TemplateResponse("server_config.html", {
         **session(request), "request": request,
         "guild": {"id": str(guild.id), "name": guild.name,
@@ -1195,6 +1212,8 @@ async def server_config(
         "rr_list": rr_list, "cmd_list": cmd_list,
         "leaderboard": lb, "warn_groups": warn_groups,
         "ticket_list": ticket_list, "ga_list": ga_list,
+        "subs": subs, "twitch_configured": twitch_configured,
+        "all_users": all_users, "server_perms": server_perms,
     })
 
 
@@ -1216,6 +1235,28 @@ async def server_config_save(request: Request, guild_id: int):
     for key in checkbox_keys:
         await set_guild_config(guild_id, key, "1" if form.get(key) else "0")
     return RedirectResponse(f"/servers/{guild_id}?tab=config&saved=true", status_code=303)
+
+
+# ── Server User Access ────────────────────────────────────────────────────────
+
+@web.post("/servers/{guild_id}/users/{user_id}/grant")
+async def server_grant_user(request: Request, guild_id: int, user_id: int):
+    if r := admin_redirect(request): return r
+    await db_exec(
+        "INSERT OR IGNORE INTO user_guild_permissions (user_id, guild_id) VALUES (?,?)",
+        (user_id, str(guild_id)),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=users&success=Zugriff+gewährt", status_code=302)
+
+
+@web.post("/servers/{guild_id}/users/{user_id}/revoke")
+async def server_revoke_user(request: Request, guild_id: int, user_id: int):
+    if r := admin_redirect(request): return r
+    await db_exec(
+        "DELETE FROM user_guild_permissions WHERE user_id=? AND guild_id=?",
+        (user_id, str(guild_id)),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=users&success=Zugriff+entzogen", status_code=302)
 
 
 # ── Reaction Roles ────────────────────────────────────────────────────────────
