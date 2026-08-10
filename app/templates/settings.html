@@ -8,7 +8,7 @@
 {% if success %}<div class="alert alert-success">{{ success }}</div>{% endif %}
 {% if saved %}<div class="alert alert-success">Token gespeichert. Der Bot verbindet sich in wenigen Sekunden.</div>{% endif %}
 
-<div class="section-label">Discord Token</div>
+<div class="section-label" id="token">Discord Token</div>
 <div class="card">
   {% if masked %}
   <label>Aktueller Token</label>
@@ -27,7 +27,7 @@
 </div>
 
 {% if role == 'admin' %}
-<div class="section-label" style="margin-top:2rem">Neuen Benutzer erstellen</div>
+<div class="section-label" id="benutzer" style="margin-top:2rem">Neuen Benutzer erstellen</div>
 <div class="card">
   <form method="post" action="/users/create">
     <div class="grid-2">

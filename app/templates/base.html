@@ -134,6 +134,49 @@
   body.collapsed .nav-item .label  { display: none; }
   body.collapsed .nav-section-label { display: none; }
 
+  /* Collapsible nav group (Einstellungen etc.) */
+  .nav-group-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.85rem;
+    border-radius: 0.5rem;
+    margin: 0 0.4rem;
+    transition: background 0.15s, color 0.15s;
+    user-select: none;
+  }
+  .nav-group-header:hover { background: var(--accent-light); color: var(--text); }
+  .nav-group-header.active { background: var(--accent-light); color: #a78bfa; }
+  .nav-group-header .icon { font-size: 1.05rem; flex-shrink: 0; width: 20px; text-align: center; }
+  .nav-group-header .label { flex: 1; overflow: hidden; }
+  .nav-warn-header { color: var(--danger) !important; }
+  .nav-warn-header:hover { background: rgba(239,68,68,0.12) !important; }
+
+  .nav-chevron { font-size: 0.6rem; flex-shrink: 0; transition: transform 0.22s; }
+  .nav-group.open .nav-chevron { transform: rotate(180deg); }
+
+  .nav-group-items {
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.25s ease;
+  }
+  .nav-group.open .nav-group-items { max-height: 300px; }
+
+  .nav-sub {
+    padding-left: 2.6rem !important;
+    font-size: 0.81rem !important;
+    margin: 0 0.4rem 0 0 !important;
+  }
+
+  /* Collapsed sidebar: nav-group shows only icon, no submenu */
+  body.collapsed .nav-group-header { justify-content: center; padding: 0.6rem 0; margin: 0 0.4rem; gap: 0; }
+  body.collapsed .nav-group-header .label { display: none; }
+  body.collapsed .nav-chevron { display: none; }
+  body.collapsed .nav-group-items { display: none !important; }
+
   /* Server icon in nav */
   .server-icon {
     width: 22px; height: 22px;
@@ -266,10 +309,26 @@
       <span class="icon">📊</span>
       <span class="label">Dashboard</span>
     </a>
-    <a href="/settings" class="nav-item {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn{% endif %}" title="Einstellungen">
-      <span class="icon">⚙️</span>
-      <span class="label">{% if not token_set %}⚠ Einstellungen{% else %}Einstellungen{% endif %}</span>
-    </a>
+    <div class="nav-group {% if active == 'settings' %}open{% endif %}" id="nav-group-settings">
+      <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn-header{% endif %}"
+           onclick="toggleNavGroup('settings')" title="Einstellungen">
+        <span class="icon">⚙️</span>
+        <span class="label">{% if not token_set %}⚠ Einstellungen{% else %}Einstellungen{% endif %}</span>
+        <span class="nav-chevron">▼</span>
+      </div>
+      <div class="nav-group-items">
+        <a href="/settings#token" class="nav-item nav-sub {% if active == 'settings' %}active{% endif %}">
+          <span class="icon">🔑</span>
+          <span class="label">Token</span>
+        </a>
+        {% if role == 'admin' %}
+        <a href="/settings#benutzer" class="nav-item nav-sub">
+          <span class="icon">👥</span>
+          <span class="label">Benutzer</span>
+        </a>
+        {% endif %}
+      </div>
+    </div>
 
     {% if guilds %}
     <div class="nav-section-label">Server</div>
@@ -313,10 +372,23 @@
     const collapsed = body.classList.toggle('collapsed');
     localStorage.setItem('phobos_sidebar', collapsed ? '1' : '0');
   }
-  // Restore state immediately to avoid flash
   if (localStorage.getItem('phobos_sidebar') === '1') {
     document.getElementById('body').classList.add('collapsed');
   }
+
+  function toggleNavGroup(id) {
+    const grp = document.getElementById('nav-group-' + id);
+    if (!grp) return;
+    const isOpen = grp.classList.toggle('open');
+    localStorage.setItem('phobos_ng_' + id, isOpen ? '1' : '0');
+  }
+  // Restore nav group states (skip groups that are already open due to active page)
+  ['settings'].forEach(id => {
+    const grp = document.getElementById('nav-group-' + id);
+    if (grp && !grp.classList.contains('open') && localStorage.getItem('phobos_ng_' + id) === '1') {
+      grp.classList.add('open');
+    }
+  });
 </script>
 </body>
 </html>
