@@ -187,7 +187,28 @@ async def init_db():
                 user_id INTEGER NOT NULL,
                 expires_at DATETIME NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS bot_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                label TEXT NOT NULL DEFAULT 'Bot',
+                token TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
         """)
+        # Migrate legacy discord_token config to bot_tokens table
+        try:
+            legacy = await db.execute("SELECT value FROM config WHERE key='discord_token'")
+            legacy = await legacy.fetchone()
+            if legacy:
+                count = await db.execute("SELECT COUNT(*) FROM bot_tokens")
+                count = (await count.fetchone())[0]
+                if count == 0:
+                    await db.execute(
+                        "INSERT INTO bot_tokens (label, token) VALUES (?, ?)",
+                        ("Hauptbot", legacy[0]),
+                    )
+        except Exception:
+            pass
         # Column migrations for existing installs
         for col in [
             "ALTER TABLE freestuff_channels ADD COLUMN deal_max_price REAL",

@@ -312,7 +312,7 @@
       <span class="label">Dashboard</span>
     </a>
 
-    <div class="nav-group {% if active in ['settings','users','bot_design','bot_info','bot_update','notif_settings','smtp','servers'] %}open{% endif %}" id="nav-group-settings">
+    <div class="nav-group {% if active in ['settings','users','bot_design','bot_info','bot_update','notif_settings','smtp','servers','tokens'] %}open{% endif %}" id="nav-group-settings">
       <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn-header{% endif %}"
            onclick="toggleNavGroup('settings')" title="Einstellungen">
         <span class="icon">⚙️</span>
@@ -320,9 +320,9 @@
         <span class="nav-chevron">▼</span>
       </div>
       <div class="nav-group-items">
-        <a href="/settings#token" class="nav-item nav-sub {% if active == 'settings' %}active{% endif %}">
+        <a href="/settings/tokens" class="nav-item nav-sub {% if active == 'tokens' %}active{% endif %}">
           <span class="icon">🔑</span>
-          <span class="label">Token</span>
+          <span class="label">Tokens</span>
         </a>
         {% if role == 'admin' %}
         <a href="/users" class="nav-item nav-sub {% if active == 'users' %}active{% endif %}">

@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Phobos Bot – Bot-Tokens{% endblock %}
+{% block page_title %}🔑 Bot-Tokens{% endblock %}
+
+{% block content %}
+<style>
+  .tok-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.25rem; margin-bottom:1rem; max-width:680px; }
+  .tok-row  { display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; }
+  .tok-label { font-weight:700; font-size:0.95rem; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tok-masked { font-family:monospace; font-size:0.78rem; color:var(--muted); }
+  .badge { display:inline-block; padding:0.15rem 0.55rem; border-radius:999px; font-size:0.72rem; font-weight:700; }
+  .badge-green  { background:rgba(34,197,94,.18); color:#22c55e; }
+  .badge-gray   { background:rgba(100,116,139,.18); color:#94a3b8; }
+  .badge-yellow { background:rgba(234,179,8,.18); color:#eab308; }
+  .tok-actions { display:flex; gap:0.5rem; flex-shrink:0; }
+  .tok-info { color:var(--muted); font-size:0.77rem; margin-top:0.35rem; }
+  .info-box { background:rgba(124,58,237,.08); border:1px solid rgba(124,58,237,.25); border-radius:0.6rem; padding:0.9rem 1rem; max-width:680px; margin-bottom:1.25rem; font-size:0.85rem; color:var(--muted); }
+</style>
+
+{% if success %}<div class="alert alert-success" style="max-width:680px;">✅ {{ success }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger"  style="max-width:680px;">❌ {{ error }}</div>{% endif %}
+
+<div class="info-box">
+  ℹ️ Jeder Token startet einen eigenen Bot-Account in Discord. Änderungen werden erst nach einem <strong>Neustart des Containers</strong> wirksam.
+</div>
+
+{% if legacy_token and not tokens %}
+<div class="tok-card">
+  <div class="tok-row">
+    <span class="tok-label">Haupt-Token (Legacy)</span>
+    <span class="badge {% if legacy_running %}badge-green{% else %}badge-yellow{% endif %}">
+      {% if legacy_running %}🟢 Online{% else %}⚙️ Gespeichert{% endif %}
+    </span>
+  </div>
+  <div class="tok-info">Gespeichert als <code>discord_token</code> in der Config. Wird automatisch verwendet, solange keine Tokens in der Tabelle eingetragen sind.</div>
+</div>
+{% endif %}
+
+{% for t in tokens %}
+<div class="tok-card">
+  <div class="tok-row">
+    <span class="tok-label">{{ t.label }}</span>
+    <span class="badge {% if t.running %}badge-green{% elif t.enabled %}badge-yellow{% else %}badge-gray{% endif %}">
+      {% if t.running %}🟢 Online{% elif t.enabled %}⚙️ Aktiviert{% else %}⏸ Deaktiviert{% endif %}
+    </span>
+    <div class="tok-actions">
+      <form method="post" action="/settings/tokens/toggle/{{ t.id }}" style="margin:0;">
+        <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.65rem;font-size:0.8rem;" title="{% if t.enabled %}Deaktivieren{% else %}Aktivieren{% endif %}">
+          {% if t.enabled %}⏸{% else %}▶{% endif %}
+        </button>
+      </form>
+      <form method="post" action="/settings/tokens/delete/{{ t.id }}" style="margin:0;"
+            onsubmit="return confirm('Token \'{{ t.label }}\' wirklich löschen?')">
+        <button type="submit" class="btn" style="padding:0.3rem 0.65rem;font-size:0.8rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
+      </form>
+    </div>
+  </div>
+  <div class="tok-info">
+    <span class="tok-masked">{{ t.masked }}</span>
+    &nbsp;·&nbsp; Hinzugefügt: {{ t.created_at[:10] }}
+  </div>
+</div>
+{% endfor %}
+
+{% if not tokens and not legacy_token %}
+<div style="color:var(--muted);font-size:0.88rem;margin-bottom:1rem;">Noch kein Token eingetragen.</div>
+{% endif %}
+
+<!-- Add token form -->
+<div class="tok-card" style="margin-top:1.5rem;">
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.85rem;">➕ Token hinzufügen</div>
+  <form method="post" action="/settings/tokens/add">
+    <div style="display:grid;grid-template-columns:1fr 2fr;gap:0.75rem;margin-bottom:0.75rem;">
+      <div>
+        <label>Bezeichnung</label>
+        <input type="text" name="label" value="Bot" placeholder="z.B. Hauptbot" style="margin-bottom:0;">
+      </div>
+      <div>
+        <label>Discord Bot-Token</label>
+        <input type="password" name="token" placeholder="Dein Bot-Token aus dem Discord Developer Portal" required style="margin-bottom:0;">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">💾 Token speichern</button>
+  </form>
+</div>
+
+<div style="max-width:680px;margin-top:1rem;">
+  <details>
+    <summary style="cursor:pointer;color:var(--muted);font-size:0.83rem;">Wo finde ich meinen Bot-Token?</summary>
+    <div style="margin-top:0.6rem;font-size:0.82rem;color:var(--muted);line-height:1.6;">
+      1. Öffne <strong>discord.com/developers/applications</strong><br>
+      2. Wähle deine Anwendung (oder erstelle eine neue)<br>
+      3. Navigiere zu <strong>Bot → Token → Reset Token</strong><br>
+      4. Kopiere den Token und füge ihn oben ein
+    </div>
+  </details>
+</div>
+{% endblock %}

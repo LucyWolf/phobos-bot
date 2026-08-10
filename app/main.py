@@ -58,9 +58,6 @@ def verify_pw(password: str, hashed: str) -> bool:
 
 # ── Discord Bot ───────────────────────────────────────────────────────────────
 
-intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="!", intents=intents)
-
 COGS = [
     "cogs.moderation",
     "cogs.leveling",
@@ -76,26 +73,115 @@ COGS = [
 ]
 
 
-@bot.event
-async def on_ready():
-    for cog in COGS:
-        try:
-            await bot.load_extension(cog)
-        except Exception as e:
-            print(f"Fehler beim Laden von {cog}: {e}")
-    await bot.tree.sync()
-    print(f"Phobos v{VERSION} online als {bot.user}")
+class BotManager:
+    """Aggregates multiple discord.py Bot instances behind a shared API."""
+
+    def __init__(self):
+        self._bots: dict[int, commands.Bot] = {}
+
+    def _ready_bots(self) -> list:
+        return [b for b in self._bots.values() if b.is_ready()]
+
+    def _bot_for_guild(self, guild_id: int):
+        for b in self._bots.values():
+            if b.get_guild(guild_id):
+                return b
+        return None
+
+    @property
+    def guilds(self) -> list:
+        seen: set[int] = set()
+        result = []
+        for b in self._bots.values():
+            for g in b.guilds:
+                if g.id not in seen:
+                    seen.add(g.id)
+                    result.append(g)
+        return result
+
+    def get_guild(self, guild_id: int):
+        for b in self._bots.values():
+            g = b.get_guild(guild_id)
+            if g:
+                return g
+        return None
+
+    def get_channel(self, channel_id: int):
+        for b in self._bots.values():
+            c = b.get_channel(channel_id)
+            if c:
+                return c
+        return None
+
+    def is_ready(self) -> bool:
+        return any(b.is_ready() for b in self._bots.values())
+
+    @property
+    def latency(self) -> float:
+        ready = self._ready_bots()
+        if not ready:
+            return float("inf")
+        return sum(b.latency for b in ready) / len(ready)
+
+    @property
+    def user(self):
+        for b in self._ready_bots():
+            return b.user
+        return None
+
+    @property
+    def application_id(self):
+        for b in self._ready_bots():
+            return b.application_id
+        return None
+
+    @property
+    def cogs(self) -> dict:
+        result: dict = {}
+        for b in self._bots.values():
+            result.update(b.cogs)
+        return result
+
+
+bot = BotManager()
+
+
+async def _run_single_bot(token_id: int, token: str):
+    intents = discord.Intents.all()
+    instance = commands.Bot(command_prefix="!", intents=intents)
+
+    @instance.event
+    async def on_ready():
+        await instance.tree.sync()
+        print(f"Phobos v{VERSION} online als {instance.user} [ID {token_id}]")
+
+    bot._bots[token_id] = instance
+    try:
+        async with instance:
+            for cog in COGS:
+                try:
+                    await instance.load_extension(cog)
+                except Exception as e:
+                    print(f"[Token-ID {token_id}] Fehler beim Laden von {cog}: {e}")
+            await instance.start(token)
+    finally:
+        bot._bots.pop(token_id, None)
 
 
 async def run_bot():
-    print("Warte auf Discord Token...")
+    print("Warte auf Discord Tokens...")
     while True:
-        token = await get_config("discord_token")
-        if token:
+        tokens = await db_rows("SELECT id, token FROM bot_tokens WHERE enabled=1")
+        if not tokens:
+            legacy = await get_config("discord_token")
+            if legacy:
+                tokens = [{"id": 0, "token": legacy}]
+        if tokens:
             break
         await asyncio.sleep(5)
-    async with bot:
-        await bot.start(token)
+    await asyncio.gather(*[
+        asyncio.create_task(_run_single_bot(t["id"], t["token"])) for t in tokens
+    ])
 
 
 # ── Web UI ────────────────────────────────────────────────────────────────────
@@ -134,6 +220,12 @@ def admin_redirect(request: Request) -> Optional[RedirectResponse]:
     if request.session.get("role") != "admin":
         return RedirectResponse("/", status_code=302)
     return None
+
+
+async def _token_configured() -> bool:
+    if await db_rows("SELECT id FROM bot_tokens WHERE enabled=1 LIMIT 1"):
+        return True
+    return bool(await get_config("discord_token"))
 
 
 def _guild_list(request: Request) -> list:
@@ -274,7 +366,7 @@ async def dashboard(request: Request):
     stats = {r["action"]: r["count"] for r in await db_rows(
         "SELECT action, COUNT(*) as count FROM mod_actions GROUP BY action"
     )}
-    token_set = bool(await get_config("discord_token"))
+    token_set = await _token_configured()
     guilds = _guild_list(request)
     return templates.TemplateResponse("index.html", {
         **session(request), "request": request,
@@ -315,7 +407,7 @@ async def settings_save(request: Request, token: str = Form(...)):
 async def users_page(request: Request, error: str = "", success: str = ""):
     if r := admin_redirect(request): return r
     all_users = await db_rows("SELECT id, username, role, email, created_at FROM users ORDER BY created_at")
-    token_set = bool(await get_config("discord_token"))
+    token_set = await _token_configured()
     admin_count = sum(1 for u in all_users if u["role"] == "admin")
     return templates.TemplateResponse("users.html", {
         **session(request), "request": request,
@@ -443,7 +535,7 @@ def get_invite_url() -> str:
 @web.get("/bot/design", response_class=HTMLResponse)
 async def bot_design_page(request: Request, success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
-    token_set = bool(await get_config("discord_token"))
+    token_set = await _token_configured()
     current_name = bot.user.name if bot.user else None
     current_avatar = str(bot.user.display_avatar.url) if bot.user else None
     return templates.TemplateResponse("bot_design.html", {
@@ -487,7 +579,7 @@ async def bot_design_save(
 @web.get("/bot/info", response_class=HTMLResponse)
 async def bot_info_page(request: Request):
     if r := auth_redirect(request): return r
-    token_set = bool(await get_config("discord_token"))
+    token_set = await _token_configured()
     return templates.TemplateResponse("bot_info.html", {
         **session(request), "request": request,
         "guilds": _guild_list(request), "token_set": token_set,
@@ -548,7 +640,7 @@ async def bot_update_page(request: Request, success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
     if session(request).get("role") != "admin":
         return RedirectResponse("/", status_code=302)
-    token_set = bool(await get_config("discord_token"))
+    token_set = await _token_configured()
     latest = await check_latest_version()
     update_available = bool(latest and _ver_tuple(latest) > _ver_tuple(VERSION))
     return templates.TemplateResponse("bot_update.html", {
@@ -608,7 +700,7 @@ async def bot_update_apply(request: Request):
 @web.get("/servers/{guild_id}/freestuff", response_class=HTMLResponse)
 async def freestuff_page(request: Request, guild_id: str, success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
-    token_set = bool(await get_config("discord_token"))
+    token_set = await _token_configured()
     guild = bot.get_guild(int(guild_id))
     if not guild:
         return RedirectResponse("/servers", status_code=302)
@@ -671,7 +763,7 @@ async def freestuff_disable(request: Request, guild_id: str):
 @web.get("/servers/{guild_id}/notifications", response_class=HTMLResponse)
 async def notifications_page(request: Request, guild_id: str, success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
-    token_set = bool(await get_config("discord_token"))
+    token_set = await _token_configured()
     guild = bot.get_guild(int(guild_id))
     if not guild:
         return RedirectResponse("/servers", status_code=302)
@@ -732,7 +824,7 @@ async def notif_settings_page(request: Request, saved: bool = False, error: str 
     if r := auth_redirect(request): return r
     if session(request).get("role") != "admin":
         return RedirectResponse("/", status_code=302)
-    token_set = bool(await get_config("discord_token"))
+    token_set = await _token_configured()
     return templates.TemplateResponse("notif_settings.html", {
         **session(request), "request": request,
         "guilds": _guild_list(request), "token_set": token_set,
@@ -763,7 +855,7 @@ async def notif_settings_save(
 @web.get("/settings/smtp", response_class=HTMLResponse)
 async def smtp_settings_page(request: Request, saved: bool = False, error: str = "", test_ok: bool = False):
     if r := admin_redirect(request): return r
-    token_set = bool(await get_config("discord_token"))
+    token_set = await _token_configured()
     return templates.TemplateResponse("smtp_settings.html", {
         **session(request), "request": request,
         "guilds": _guild_list(request), "token_set": token_set, "active": "smtp",
@@ -805,6 +897,64 @@ async def smtp_test(request: Request, test_email: str = Form(...)):
         return RedirectResponse(f"/settings/smtp?error={urllib.parse.quote(str(e))}", status_code=302)
 
 
+# ── Token Management ──────────────────────────────────────────────────────────
+
+@web.get("/settings/tokens", response_class=HTMLResponse)
+async def tokens_page(request: Request, success: str = "", error: str = ""):
+    if r := admin_redirect(request): return r
+    token_rows = await db_rows("SELECT id, label, token, enabled, created_at FROM bot_tokens ORDER BY id")
+    for t in token_rows:
+        tok = t["token"]
+        t["masked"] = ("•" * 40 + tok[-6:]) if len(tok) > 6 else "•" * len(tok)
+        t["running"] = t["id"] in bot._bots
+    legacy_token = await get_config("discord_token")
+    token_set = await _token_configured()
+    return templates.TemplateResponse("tokens.html", {
+        **session(request), "request": request,
+        "guilds": _guild_list(request), "token_set": token_set,
+        "active": "tokens", "tokens": token_rows,
+        "legacy_token": bool(legacy_token),
+        "legacy_running": 0 in bot._bots,
+        "success": success, "error": error,
+    })
+
+
+@web.post("/settings/tokens/add")
+async def tokens_add(request: Request, label: str = Form("Bot"), token: str = Form(...)):
+    if r := admin_redirect(request): return r
+    token = token.strip()
+    if not token:
+        return RedirectResponse("/settings/tokens?error=Token+darf+nicht+leer+sein", status_code=302)
+    await db_exec(
+        "INSERT INTO bot_tokens (label, token) VALUES (?, ?)",
+        (label.strip() or "Bot", token),
+    )
+    return RedirectResponse(
+        "/settings/tokens?success=Token+hinzugefügt.+Neustart+erforderlich+um+ihn+zu+aktivieren.",
+        status_code=302,
+    )
+
+
+@web.post("/settings/tokens/delete/{token_id}")
+async def tokens_delete(request: Request, token_id: int):
+    if r := admin_redirect(request): return r
+    await db_exec("DELETE FROM bot_tokens WHERE id=?", (token_id,))
+    return RedirectResponse(
+        "/settings/tokens?success=Token+gelöscht.+Neustart+erforderlich.",
+        status_code=302,
+    )
+
+
+@web.post("/settings/tokens/toggle/{token_id}")
+async def tokens_toggle(request: Request, token_id: int):
+    if r := admin_redirect(request): return r
+    await db_exec("UPDATE bot_tokens SET enabled = NOT enabled WHERE id=?", (token_id,))
+    return RedirectResponse(
+        "/settings/tokens?success=Status+geändert.+Neustart+erforderlich.",
+        status_code=302,
+    )
+
+
 # ── User Email ─────────────────────────────────────────────────────────────────
 
 @web.post("/users/email/{user_id}")
@@ -820,7 +970,7 @@ async def users_set_email(request: Request, user_id: int, email_addr: str = Form
 async def servers_list(request: Request, success: str = ""):
     if r := auth_redirect(request): return r
     guilds = _guild_list(request)
-    token_set = bool(await get_config("discord_token"))
+    token_set = await _token_configured()
     invite_url = get_invite_url()
     return templates.TemplateResponse("servers_list.html", {
         **session(request), "request": request,
@@ -833,7 +983,7 @@ async def servers_list(request: Request, success: str = ""):
 @web.get("/servers/{guild_id}/log", response_class=HTMLResponse)
 async def server_log_page(request: Request, guild_id: str, success: str = ""):
     if r := auth_redirect(request): return r
-    token_set = bool(await get_config("discord_token"))
+    token_set = await _token_configured()
     guild = bot.get_guild(int(guild_id))
     if not guild:
         return RedirectResponse("/servers", status_code=302)
@@ -876,7 +1026,7 @@ async def server_leave(request: Request, guild_id: int):
 async def leaderboard_page(request: Request, guild_id: str = ""):
     if r := auth_redirect(request): return r
     guilds = _guild_list(request)
-    token_set = bool(await get_config("discord_token"))
+    token_set = await _token_configured()
 
     if not guild_id and guilds:
         guild_id = guilds[0]["id"]
@@ -919,7 +1069,7 @@ async def server_config(
     if not guild:
         return RedirectResponse("/", status_code=302)
 
-    token_set = bool(await get_config("discord_token"))
+    token_set = await _token_configured()
     cfg = await get_all_guild_config(guild_id)
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
     roles = [{"id": str(ro.id), "name": ro.name} for ro in guild.roles if not ro.is_default()]
