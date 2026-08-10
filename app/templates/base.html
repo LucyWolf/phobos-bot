@@ -360,7 +360,7 @@
     </div>
 
     {% for g in guilds %}
-    {% set cur_tab = request.query_params.get('tab', 'konfiguration') %}
+    {% set cur_tab = request.query_params.get('tab', 'config') %}
     {% set is_server = active == 'server_' + g.id %}
     <div class="nav-group {% if is_server %}open{% endif %}" id="nav-group-srv-{{ g.id }}">
       <div class="nav-group-header {% if is_server %}active{% endif %}" onclick="toggleNavGroup('srv-{{ g.id }}')">
@@ -371,14 +371,17 @@
         <span class="nav-chevron">▼</span>
       </div>
       <div class="nav-group-items">
-        <a href="/servers/{{ g.id }}?tab=leveling" class="nav-item nav-sub {% if is_server and cur_tab == 'leveling' %}active{% endif %}">
-          <span class="icon">🏆</span><span class="label">Ränge</span>
+        <a href="/servers/{{ g.id }}?tab=config" class="nav-item nav-sub {% if is_server and cur_tab == 'config' %}active{% endif %}">
+          <span class="icon">⚙️</span><span class="label">Konfiguration</span>
         </a>
-        <a href="/servers/{{ g.id }}?tab=reaction_roles" class="nav-item nav-sub {% if is_server and cur_tab == 'reaction_roles' %}active{% endif %}">
+        <a href="/servers/{{ g.id }}?tab=leveling" class="nav-item nav-sub {% if is_server and cur_tab == 'leveling' %}active{% endif %}">
+          <span class="icon">🏆</span><span class="label">Leveling</span>
+        </a>
+        <a href="/servers/{{ g.id }}?tab=rr" class="nav-item nav-sub {% if is_server and cur_tab == 'rr' %}active{% endif %}">
           <span class="icon">🎭</span><span class="label">Reaction Roles</span>
         </a>
         <a href="/servers/{{ g.id }}?tab=commands" class="nav-item nav-sub {% if is_server and cur_tab == 'commands' %}active{% endif %}">
-          <span class="icon">💬</span><span class="label">Commands</span>
+          <span class="icon">📢</span><span class="label">Commands</span>
         </a>
         <a href="/servers/{{ g.id }}?tab=tickets" class="nav-item nav-sub {% if is_server and cur_tab == 'tickets' %}active{% endif %}">
           <span class="icon">🎫</span><span class="label">Tickets</span>
@@ -386,9 +389,14 @@
         <a href="/servers/{{ g.id }}?tab=giveaways" class="nav-item nav-sub {% if is_server and cur_tab == 'giveaways' %}active{% endif %}">
           <span class="icon">🎉</span><span class="label">Giveaways</span>
         </a>
-        <a href="/servers/{{ g.id }}?tab=warnungen" class="nav-item nav-sub {% if is_server and cur_tab == 'warnungen' %}active{% endif %}">
+        <a href="/servers/{{ g.id }}?tab=warnings" class="nav-item nav-sub {% if is_server and cur_tab == 'warnings' %}active{% endif %}">
           <span class="icon">⚠️</span><span class="label">Warnungen</span>
         </a>
+        {% if role == 'admin' %}
+        <a href="/servers/{{ g.id }}?tab=users" class="nav-item nav-sub {% if is_server and cur_tab == 'users' %}active{% endif %}">
+          <span class="icon">👥</span><span class="label">Benutzer</span>
+        </a>
+        {% endif %}
         <a href="/servers/{{ g.id }}/notifications" class="nav-item nav-sub {% if request.url.path == '/servers/' + g.id + '/notifications' %}active{% endif %}">
           <span class="icon">🟣</span><span class="label">Twitch</span>
         </a>
