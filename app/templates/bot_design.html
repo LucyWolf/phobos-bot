@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Phobos Bot – Bot-Design{% endblock %}
+{% block page_title %}🤖 Bot-Design{% endblock %}
+
+{% block content %}
+<style>
+  .design-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.5rem; margin-bottom:1.5rem; max-width:520px; }
+  .avatar-preview { width:96px; height:96px; border-radius:50%; object-fit:cover; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:2rem; font-weight:700; color:#fff; border:3px solid var(--border); overflow:hidden; }
+  .avatar-preview img { width:96px; height:96px; object-fit:cover; }
+  .avatar-row { display:flex; align-items:center; gap:1.5rem; margin-bottom:1.5rem; }
+  .avatar-meta { font-size:0.8rem; color:var(--muted); line-height:1.6; }
+  .file-input-label { display:inline-flex; align-items:center; gap:0.5rem; padding:0.5rem 1rem; border:1px solid var(--border); border-radius:0.5rem; cursor:pointer; font-size:0.83rem; color:var(--muted); transition:border-color 0.15s,color 0.15s; }
+  .file-input-label:hover { border-color:var(--accent); color:var(--text); }
+  input[type="file"] { display:none; }
+  #file-name { font-size:0.78rem; color:var(--muted); margin-top:0.4rem; }
+</style>
+
+{% if not bot_online %}
+<div class="alert alert-error">Bot ist offline. Token in den <a href="/settings" style="color:var(--danger)">Einstellungen</a> eintragen und Bot starten.</div>
+{% endif %}
+
+{% if success %}
+<div class="alert alert-success">✅ {{ success }}</div>
+{% endif %}
+{% if error %}
+<div class="alert alert-error">❌ {{ error }}</div>
+{% endif %}
+
+<form method="post" action="/bot/design" enctype="multipart/form-data">
+  <div class="design-card">
+    <div class="section-label" style="margin-bottom:1rem;">Bot-Profilbild</div>
+    <div class="avatar-row">
+      <div class="avatar-preview" id="avatar-preview">
+        {% if current_avatar %}
+        <img src="{{ current_avatar }}" alt="Avatar" id="avatar-img">
+        {% else %}
+        🛡️
+        {% endif %}
+      </div>
+      <div>
+        <label class="file-input-label" for="avatar-file">📁 Bild auswählen</label>
+        <input type="file" id="avatar-file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp">
+        <div id="file-name">Kein Bild ausgewählt</div>
+        <div class="avatar-meta" style="margin-top:0.5rem;">PNG, JPG, GIF, WebP · max. 8 MB<br>Discord ändert Avatare max. 2× / Stunde.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="design-card">
+    <div class="section-label" style="margin-bottom:1rem;">Bot-Name</div>
+    <label>Anzeigename (aktuell: {{ current_name or '—' }})</label>
+    <input type="text" name="bot_name" placeholder="{{ current_name or 'Name eingeben' }}" maxlength="32"
+           {% if not bot_online %}disabled{% endif %}>
+    <p class="hint">Discord erlaubt Namensänderungen max. 2× / Stunde.</p>
+  </div>
+
+  <button type="submit" class="btn btn-primary" {% if not bot_online %}disabled{% endif %}>💾 Speichern</button>
+</form>
+
+<script>
+  const fileInput = document.getElementById('avatar-file');
+  const fileLabel = document.getElementById('file-name');
+  const preview = document.getElementById('avatar-preview');
+  fileInput.addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) { fileLabel.textContent = 'Kein Bild ausgewählt'; return; }
+    fileLabel.textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = e => {
+      preview.innerHTML = '<img src="' + e.target.result + '" alt="Vorschau" style="width:96px;height:96px;object-fit:cover;">';
+    };
+    reader.readAsDataURL(file);
+  });
+</script>
+{% endblock %}

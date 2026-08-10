@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import platform
 import secrets
 from pathlib import Path
 from typing import Optional
@@ -7,12 +8,15 @@ from typing import Optional
 import aiosqlite
 import bcrypt
 import discord
+import psutil
 import uvicorn
 from discord.ext import commands
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
+
+PROCESS_START = datetime.datetime.utcnow()
 
 from database import (
     DB_PATH, init_db, get_config, set_config,
@@ -243,12 +247,94 @@ async def users_delete(request: Request, user_id: int, next: str = "/users"):
     return RedirectResponse(f"{dest}?success=Benutzer+gelöscht", status_code=302)
 
 
+def get_system_stats() -> dict:
+    proc = psutil.Process()
+    vm = psutil.virtual_memory()
+    uptime = datetime.datetime.utcnow() - PROCESS_START
+    h, rem = divmod(int(uptime.total_seconds()), 3600)
+    m, s = divmod(rem, 60)
+    return {
+        "cpu": psutil.cpu_percent(interval=0.1),
+        "ram_used": vm.used // (1024 ** 2),
+        "ram_total": vm.total // (1024 ** 2),
+        "ram_pct": round(vm.percent, 1),
+        "proc_ram": proc.memory_info().rss // (1024 ** 2),
+        "uptime": f"{h}h {m}m {s}s",
+        "latency": round(bot.latency * 1000, 1) if bot.is_ready() else None,
+        "guild_count": len(bot.guilds),
+        "member_count": sum(g.member_count or 0 for g in bot.guilds),
+        "hostname": platform.node(),
+        "os": f"{platform.system()} {platform.release()}",
+        "python": platform.python_version(),
+    }
+
+
 def get_invite_url() -> str:
     cid = bot.application_id or (bot.user.id if bot.user else None)
     if cid:
         return (f"https://discord.com/api/oauth2/authorize"
                 f"?client_id={cid}&permissions=8&scope=bot%20applications.commands")
     return ""
+
+
+# ── Bot Design ────────────────────────────────────────────────────────────────
+
+@web.get("/bot/design", response_class=HTMLResponse)
+async def bot_design_page(request: Request, success: str = "", error: str = ""):
+    if r := auth_redirect(request): return r
+    token_set = bool(await get_config("discord_token"))
+    current_name = bot.user.name if bot.user else None
+    current_avatar = str(bot.user.display_avatar.url) if bot.user else None
+    return templates.TemplateResponse("bot_design.html", {
+        **session(request), "request": request,
+        "guilds": _guild_list(request), "token_set": token_set,
+        "active": "bot_design", "success": success, "error": error,
+        "current_name": current_name, "current_avatar": current_avatar,
+        "bot_online": bot.is_ready(),
+    })
+
+
+@web.post("/bot/design")
+async def bot_design_save(
+    request: Request,
+    bot_name: str = Form(""),
+    avatar: UploadFile = File(None),
+):
+    if r := auth_redirect(request): return r
+    if not bot.is_ready():
+        return RedirectResponse("/bot/design?error=Bot+ist+offline", status_code=302)
+    try:
+        kwargs = {}
+        if bot_name.strip() and bot_name.strip() != bot.user.name:
+            kwargs["username"] = bot_name.strip()
+        if avatar and avatar.filename:
+            content = await avatar.read()
+            if content:
+                kwargs["avatar"] = content
+        if kwargs:
+            await bot.user.edit(**kwargs)
+        else:
+            return RedirectResponse("/bot/design?error=Keine+Änderungen", status_code=302)
+    except discord.HTTPException as e:
+        msg = str(e)[:80].replace(" ", "+")
+        return RedirectResponse(f"/bot/design?error={msg}", status_code=302)
+    return RedirectResponse("/bot/design?success=Gespeichert", status_code=302)
+
+
+# ── Bot Info ──────────────────────────────────────────────────────────────────
+
+@web.get("/bot/info", response_class=HTMLResponse)
+async def bot_info_page(request: Request):
+    if r := auth_redirect(request): return r
+    token_set = bool(await get_config("discord_token"))
+    return templates.TemplateResponse("bot_info.html", {
+        **session(request), "request": request,
+        "guilds": _guild_list(request), "token_set": token_set,
+        "active": "bot_info", "stats": get_system_stats(),
+        "bot_online": bot.is_ready(), "version": VERSION,
+        "bot_name": bot.user.name if bot.user else "—",
+        "bot_id": str(bot.user.id) if bot.user else "—",
+    })
 
 
 # ── Servers List ──────────────────────────────────────────────────────────────

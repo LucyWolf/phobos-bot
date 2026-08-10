@@ -163,7 +163,7 @@
     max-height: 0;
     transition: max-height 0.25s ease;
   }
-  .nav-group.open .nav-group-items { max-height: 300px; }
+  .nav-group.open .nav-group-items { max-height: 400px; }
 
   .nav-sub {
     padding-left: 2.6rem !important;
@@ -314,7 +314,7 @@
       <span class="label">Rangsystem</span>
     </a>
 
-    <div class="nav-group {% if active == 'settings' or active == 'users' %}open{% endif %}" id="nav-group-settings">
+    <div class="nav-group {% if active in ['settings','users','bot_design','bot_info'] %}open{% endif %}" id="nav-group-settings">
       <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn-header{% endif %}"
            onclick="toggleNavGroup('settings')" title="Einstellungen">
         <span class="icon">⚙️</span>
@@ -332,6 +332,14 @@
           <span class="label">Benutzer</span>
         </a>
         {% endif %}
+        <a href="/bot/design" class="nav-item nav-sub {% if active == 'bot_design' %}active{% endif %}">
+          <span class="icon">🤖</span>
+          <span class="label">Bot-Design</span>
+        </a>
+        <a href="/bot/info" class="nav-item nav-sub {% if active == 'bot_info' %}active{% endif %}">
+          <span class="icon">📊</span>
+          <span class="label">Bot-Info</span>
+        </a>
       </div>
     </div>
 

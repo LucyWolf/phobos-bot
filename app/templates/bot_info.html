@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Phobos Bot – Bot-Info{% endblock %}
+{% block page_title %}📊 Bot-Info{% endblock %}
+
+{% block content %}
+<style>
+  .info-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:1rem; margin-bottom:1.5rem; }
+  .info-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.25rem; }
+  .info-card-label { font-size:0.68rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.07em; margin-bottom:0.4rem; }
+  .info-card-value { font-size:1.45rem; font-weight:700; line-height:1.1; }
+  .info-card-sub { font-size:0.75rem; color:var(--muted); margin-top:0.25rem; }
+  .info-card-icon { font-size:1.4rem; margin-bottom:0.6rem; }
+  .bar-wrap { background:var(--bg); border-radius:999px; height:6px; margin-top:0.5rem; overflow:hidden; }
+  .bar-fill { height:6px; border-radius:999px; background:var(--accent); transition:width 0.4s; }
+  .section-title { font-size:0.72rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; margin:1.5rem 0 0.75rem; }
+  .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:0.4rem; }
+  .online { background:var(--success); box-shadow:0 0 6px var(--success); }
+  .offline { background:var(--danger); }
+</style>
+
+<!-- Bot Status -->
+<div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:1.25rem; font-size:0.85rem; color:{% if bot_online %}var(--success){% else %}var(--danger){% endif %};">
+  <span class="status-dot {% if bot_online %}online{% else %}offline{% endif %}"></span>
+  {{ bot_name }} – {% if bot_online %}Online{% else %}Offline{% endif %}
+  {% if bot_online %} · ID: <code style="font-size:0.78rem;">{{ bot_id }}</code>{% endif %}
+</div>
+
+<div class="section-title">Bot</div>
+<div class="info-grid">
+  <div class="info-card">
+    <div class="info-card-icon">🏷️</div>
+    <div class="info-card-label">Version</div>
+    <div class="info-card-value" style="font-size:1.1rem;">v{{ version }}</div>
+  </div>
+  <div class="info-card">
+    <div class="info-card-icon">⏱️</div>
+    <div class="info-card-label">Laufzeit</div>
+    <div class="info-card-value" style="font-size:1rem;">{{ stats.uptime }}</div>
+  </div>
+  <div class="info-card">
+    <div class="info-card-icon">📡</div>
+    <div class="info-card-label">Latenz (Discord)</div>
+    {% if stats.latency is not none %}
+    <div class="info-card-value" style="color:{% if stats.latency < 100 %}var(--success){% elif stats.latency < 250 %}#f59e0b{% else %}var(--danger){% endif %};">
+      {{ stats.latency }} ms
+    </div>
+    {% else %}
+    <div class="info-card-value" style="color:var(--muted);">—</div>
+    {% endif %}
+  </div>
+  <div class="info-card">
+    <div class="info-card-icon">🖥️</div>
+    <div class="info-card-label">Server</div>
+    <div class="info-card-value">{{ stats.guild_count }}</div>
+    <div class="info-card-sub">{{ stats.member_count }} Mitglieder gesamt</div>
+  </div>
+</div>
+
+<div class="section-title">Leistung</div>
+<div class="info-grid">
+  <div class="info-card">
+    <div class="info-card-icon">⚙️</div>
+    <div class="info-card-label">CPU</div>
+    <div class="info-card-value">{{ stats.cpu }}%</div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:{{ [stats.cpu,100]|min }}%;{% if stats.cpu > 80 %}background:var(--danger);{% elif stats.cpu > 50 %}background:#f59e0b;{% endif %}"></div></div>
+  </div>
+  <div class="info-card">
+    <div class="info-card-icon">🧠</div>
+    <div class="info-card-label">RAM (System)</div>
+    <div class="info-card-value">{{ stats.ram_pct }}%</div>
+    <div class="info-card-sub">{{ stats.ram_used }} / {{ stats.ram_total }} MB</div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:{{ [stats.ram_pct,100]|min }}%;{% if stats.ram_pct > 80 %}background:var(--danger);{% elif stats.ram_pct > 60 %}background:#f59e0b;{% endif %}"></div></div>
+  </div>
+  <div class="info-card">
+    <div class="info-card-icon">🤖</div>
+    <div class="info-card-label">Bot RAM</div>
+    <div class="info-card-value" style="font-size:1.1rem;">{{ stats.proc_ram }} MB</div>
+    <div class="info-card-sub">Prozess-Speicher</div>
+  </div>
+</div>
+
+<div class="section-title">System</div>
+<div class="info-grid">
+  <div class="info-card">
+    <div class="info-card-icon">🏠</div>
+    <div class="info-card-label">Hostname</div>
+    <div class="info-card-value" style="font-size:0.95rem;word-break:break-all;">{{ stats.hostname }}</div>
+  </div>
+  <div class="info-card">
+    <div class="info-card-icon">🐧</div>
+    <div class="info-card-label">Betriebssystem</div>
+    <div class="info-card-value" style="font-size:0.9rem;">{{ stats.os }}</div>
+  </div>
+  <div class="info-card">
+    <div class="info-card-icon">🐍</div>
+    <div class="info-card-label">Python</div>
+    <div class="info-card-value" style="font-size:1rem;">{{ stats.python }}</div>
+  </div>
+</div>
+
+<p class="hint" style="margin-top:0.5rem;">Daten werden beim Laden der Seite aktualisiert. Seite neu laden für aktuelle Werte.</p>
+{% endblock %}
