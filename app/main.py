@@ -204,7 +204,11 @@ def session(request: Request) -> dict:
         "role": request.session.get("role"),
         "user_id": request.session.get("user_id"),
         "version": VERSION,
+        **{p: request.session.get(p, False) for p in PERM_COLS},
     }
+
+
+PERM_COLS = ["perm_settings", "perm_tokens", "perm_users", "perm_bots"]
 
 
 def auth_redirect(request: Request) -> Optional[RedirectResponse]:
@@ -219,6 +223,20 @@ def admin_redirect(request: Request) -> Optional[RedirectResponse]:
         return r
     if request.session.get("role") != "admin":
         return RedirectResponse("/", status_code=302)
+    return None
+
+
+async def has_perm(request: Request, perm: str) -> bool:
+    if request.session.get("role") == "admin":
+        return True
+    if perm not in PERM_COLS:
+        return False
+    return bool(request.session.get(perm, False))
+
+
+async def perm_redirect(request: Request, perm: str) -> Optional[RedirectResponse]:
+    if not await has_perm(request, perm):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
     return None
 
 
@@ -273,6 +291,16 @@ async def login_submit(request: Request, username: str = Form(...), password: st
     request.session["user_id"] = user["id"]
     request.session["username"] = user["username"]
     request.session["role"] = user["role"]
+    if user["role"] == "admin":
+        for p in PERM_COLS:
+            request.session[p] = True
+    else:
+        custom = await db_one(
+            "SELECT r.* FROM roles r JOIN users u ON r.id=u.custom_role_id WHERE u.id=?",
+            (user["id"],),
+        )
+        for p in PERM_COLS:
+            request.session[p] = bool(custom.get(p, 0)) if custom else False
     return RedirectResponse("/", status_code=302)
 
 
@@ -424,7 +452,7 @@ async def settings_save(request: Request, token: str = Form(...)):
 @web.get("/users", response_class=HTMLResponse)
 async def users_page(request: Request, error: str = "", success: str = ""):
     if r := admin_redirect(request): return r
-    all_users = await db_rows("SELECT id, username, role, email, created_at FROM users ORDER BY created_at")
+    all_users = await db_rows("SELECT id, username, role, email, created_at, custom_role_id FROM users ORDER BY created_at")
     token_set = await _token_configured()
     admin_count = sum(1 for u in all_users if u["role"] == "admin")
     all_guilds = [{"id": str(g.id), "name": g.name} for g in bot.guilds]
@@ -432,6 +460,7 @@ async def users_page(request: Request, error: str = "", success: str = ""):
     user_perms: dict[int, set] = {}
     for p in perm_rows:
         user_perms.setdefault(p["user_id"], set()).add(str(p["guild_id"]))
+    all_roles = await db_rows("SELECT id, name, color FROM roles ORDER BY name")
     return templates.TemplateResponse("users.html", {
         **session(request), "request": request,
         "users": all_users, "error": error, "success": success,
@@ -439,6 +468,7 @@ async def users_page(request: Request, error: str = "", success: str = ""):
         "admin_count": admin_count,
         "all_guilds": all_guilds,
         "user_perms": user_perms,
+        "all_roles": all_roles,
     })
 
 
@@ -1031,6 +1061,72 @@ async def users_set_email(request: Request, user_id: int, email_addr: str = Form
     if r := admin_redirect(request): return r
     await db_exec("UPDATE users SET email=? WHERE id=?", (email_addr.strip(), user_id))
     return RedirectResponse("/users?success=E-Mail+gespeichert", status_code=302)
+
+
+# ── Roles ─────────────────────────────────────────────────────────────────────
+
+@web.get("/roles", response_class=HTMLResponse)
+async def roles_page(request: Request, success: str = "", error: str = ""):
+    if r := admin_redirect(request): return r
+    token_set = await _token_configured()
+    all_roles = await db_rows("SELECT * FROM roles ORDER BY name")
+    all_users = await db_rows("SELECT id, username, role, custom_role_id FROM users ORDER BY username")
+    return templates.TemplateResponse("roles.html", {
+        **session(request), "request": request,
+        "guilds": await _guild_list(request), "token_set": token_set,
+        "active": "roles", "success": success, "error": error,
+        "all_roles": all_roles, "all_users": all_users,
+    })
+
+
+@web.post("/roles/create")
+async def roles_create(request: Request,
+    name: str = Form(...), color: str = Form("#6366f1"),
+    perm_settings: int = Form(0), perm_tokens: int = Form(0),
+    perm_users: int = Form(0), perm_bots: int = Form(0),
+):
+    if r := admin_redirect(request): return r
+    try:
+        await db_exec(
+            "INSERT INTO roles (name,color,perm_settings,perm_tokens,perm_users,perm_bots) VALUES (?,?,?,?,?,?)",
+            (name.strip(), color, perm_settings, perm_tokens, perm_users, perm_bots),
+        )
+    except Exception:
+        return RedirectResponse("/roles?error=Name+bereits+vergeben", status_code=302)
+    return RedirectResponse("/roles?success=Rolle+erstellt", status_code=302)
+
+
+@web.post("/roles/edit/{role_id}")
+async def roles_edit(request: Request, role_id: int,
+    name: str = Form(...), color: str = Form("#6366f1"),
+    perm_settings: int = Form(0), perm_tokens: int = Form(0),
+    perm_users: int = Form(0), perm_bots: int = Form(0),
+):
+    if r := admin_redirect(request): return r
+    try:
+        await db_exec(
+            "UPDATE roles SET name=?,color=?,perm_settings=?,perm_tokens=?,perm_users=?,perm_bots=? WHERE id=?",
+            (name.strip(), color, perm_settings, perm_tokens, perm_users, perm_bots, role_id),
+        )
+    except Exception:
+        return RedirectResponse("/roles?error=Name+bereits+vergeben", status_code=302)
+    return RedirectResponse("/roles?success=Rolle+gespeichert", status_code=302)
+
+
+@web.post("/roles/delete/{role_id}")
+async def roles_delete(request: Request, role_id: int):
+    if r := admin_redirect(request): return r
+    await db_exec("UPDATE users SET custom_role_id=NULL WHERE custom_role_id=?", (role_id,))
+    await db_exec("DELETE FROM roles WHERE id=?", (role_id,))
+    return RedirectResponse("/roles?success=Rolle+gelöscht", status_code=302)
+
+
+@web.post("/users/{user_id}/custom_role")
+async def users_set_custom_role(request: Request, user_id: int, custom_role_id: str = Form("")):
+    if r := admin_redirect(request): return r
+    role_id = int(custom_role_id) if custom_role_id.isdigit() else None
+    await db_exec("UPDATE users SET custom_role_id=? WHERE id=?", (role_id, user_id))
+    return RedirectResponse("/users?success=Rolle+zugewiesen", status_code=302)
 
 
 # ── Servers List ──────────────────────────────────────────────────────────────

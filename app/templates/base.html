@@ -312,7 +312,7 @@
       <span class="label">Dashboard</span>
     </a>
 
-    <div class="nav-group {% if active in ['settings','users','bot_update','notif_settings','smtp','servers','tokens'] %}open{% endif %}" id="nav-group-settings">
+    <div class="nav-group {% if active in ['settings','users','roles','bot_update','notif_settings','smtp','servers','tokens'] %}open{% endif %}" id="nav-group-settings">
       <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn-header{% endif %}"
            onclick="toggleNavGroup('settings')" title="Einstellungen">
         <span class="icon">⚙️</span>
@@ -328,6 +328,10 @@
         <a href="/users" class="nav-item nav-sub {% if active == 'users' %}active{% endif %}">
           <span class="icon">👥</span>
           <span class="label">Benutzer</span>
+        </a>
+        <a href="/roles" class="nav-item nav-sub {% if active == 'roles' %}active{% endif %}">
+          <span class="icon">🎭</span>
+          <span class="label">Rollen</span>
         </a>
         {% endif %}
         <a href="/servers" class="nav-item nav-sub {% if active == 'servers' %}active{% endif %}">
@@ -384,11 +388,6 @@
         <a href="/servers/{{ g.id }}?tab=warnings" class="nav-item nav-sub {% if is_server and cur_tab == 'warnings' %}active{% endif %}">
           <span class="icon">⚠️</span><span class="label">Warnungen</span>
         </a>
-        {% if role == 'admin' %}
-        <a href="/servers/{{ g.id }}?tab=users" class="nav-item nav-sub {% if is_server and cur_tab == 'users' %}active{% endif %}">
-          <span class="icon">👥</span><span class="label">Benutzer</span>
-        </a>
-        {% endif %}
         <a href="/servers/{{ g.id }}/notifications" class="nav-item nav-sub {% if request.url.path == '/servers/' + g.id + '/notifications' %}active{% endif %}">
           <span class="icon">🟣</span><span class="label">Twitch</span>
         </a>

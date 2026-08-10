@@ -215,11 +215,24 @@ async def init_db():
         except Exception:
             pass
         # Column migrations for existing installs
+        await db.executescript("""
+            CREATE TABLE IF NOT EXISTS roles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                color TEXT NOT NULL DEFAULT '#6366f1',
+                perm_settings INTEGER NOT NULL DEFAULT 0,
+                perm_tokens   INTEGER NOT NULL DEFAULT 0,
+                perm_users    INTEGER NOT NULL DEFAULT 0,
+                perm_bots     INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
         for col in [
             "ALTER TABLE freestuff_channels ADD COLUMN deal_max_price REAL",
             "ALTER TABLE freestuff_channels ADD COLUMN deal_min_discount INTEGER DEFAULT 75",
             "ALTER TABLE freestuff_channels ADD COLUMN deal_channel_id TEXT",
             "ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN custom_role_id INTEGER",
         ]:
             try:
                 await db.execute(col)
