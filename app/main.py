@@ -314,7 +314,7 @@ async def settings_save(request: Request, token: str = Form(...)):
 @web.get("/users", response_class=HTMLResponse)
 async def users_page(request: Request, error: str = "", success: str = ""):
     if r := admin_redirect(request): return r
-    all_users = await db_rows("SELECT id, username, role, created_at FROM users ORDER BY created_at")
+    all_users = await db_rows("SELECT id, username, role, email, created_at FROM users ORDER BY created_at")
     token_set = bool(await get_config("discord_token"))
     admin_count = sum(1 for u in all_users if u["role"] == "admin")
     return templates.TemplateResponse("users.html", {
