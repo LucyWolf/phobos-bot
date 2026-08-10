@@ -228,12 +228,30 @@ async def _token_configured() -> bool:
     return bool(await get_config("discord_token"))
 
 
-def _guild_list(request: Request) -> list:
-    return [
+async def _guild_list(request: Request) -> list:
+    all_guilds = [
         {"id": str(g.id), "name": g.name, "members": g.member_count,
          "icon": str(g.icon.url) if g.icon else None}
         for g in bot.guilds
     ]
+    if request.session.get("role") == "admin":
+        return all_guilds
+    user_id = request.session.get("user_id")
+    perms = await db_rows(
+        "SELECT guild_id FROM user_guild_permissions WHERE user_id=?", (user_id,)
+    )
+    allowed = {p["guild_id"] for p in perms}
+    return [g for g in all_guilds if g["id"] in allowed]
+
+
+async def _guild_access(request: Request, guild_id) -> bool:
+    if request.session.get("role") == "admin":
+        return True
+    row = await db_one(
+        "SELECT 1 FROM user_guild_permissions WHERE user_id=? AND guild_id=?",
+        (request.session.get("user_id"), str(guild_id)),
+    )
+    return bool(row)
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -367,7 +385,7 @@ async def dashboard(request: Request):
         "SELECT action, COUNT(*) as count FROM mod_actions GROUP BY action"
     )}
     token_set = await _token_configured()
-    guilds = _guild_list(request)
+    guilds = await _guild_list(request)
     return templates.TemplateResponse("index.html", {
         **session(request), "request": request,
         "actions": actions, "stats": stats, "colors": ACTION_COLORS,
@@ -391,7 +409,7 @@ async def settings_page(request: Request, saved: bool = False, error: str = "", 
         **session(request), "request": request,
         "masked": masked, "saved": saved, "token_set": bool(token),
         "users": all_users, "error": error, "success": success,
-        "guilds": _guild_list(request), "active": "settings",
+        "guilds": await _guild_list(request), "active": "settings",
     })
 
 
@@ -409,11 +427,18 @@ async def users_page(request: Request, error: str = "", success: str = ""):
     all_users = await db_rows("SELECT id, username, role, email, created_at FROM users ORDER BY created_at")
     token_set = await _token_configured()
     admin_count = sum(1 for u in all_users if u["role"] == "admin")
+    all_guilds = [{"id": str(g.id), "name": g.name} for g in bot.guilds]
+    perm_rows = await db_rows("SELECT user_id, guild_id FROM user_guild_permissions")
+    user_perms: dict[int, set] = {}
+    for p in perm_rows:
+        user_perms.setdefault(p["user_id"], set()).add(str(p["guild_id"]))
     return templates.TemplateResponse("users.html", {
         **session(request), "request": request,
         "users": all_users, "error": error, "success": success,
-        "guilds": _guild_list(request), "token_set": token_set, "active": "users",
+        "guilds": await _guild_list(request), "token_set": token_set, "active": "users",
         "admin_count": admin_count,
+        "all_guilds": all_guilds,
+        "user_perms": user_perms,
     })
 
 
@@ -465,6 +490,20 @@ async def users_delete(request: Request, user_id: int, next: str = "/users"):
         request.session.clear()
         return RedirectResponse("/login?success=Konto+gelöscht", status_code=302)
     return RedirectResponse(f"{dest}?success=Benutzer+gelöscht", status_code=302)
+
+
+@web.post("/users/{user_id}/guilds")
+async def users_guilds_save(request: Request, user_id: int, guild_ids: list[str] = Form(default=[])):
+    if r := admin_redirect(request): return r
+    valid_ids = {str(g.id) for g in bot.guilds}
+    guild_ids = [gid for gid in guild_ids if gid in valid_ids]
+    await db_exec("DELETE FROM user_guild_permissions WHERE user_id=?", (user_id,))
+    for gid in guild_ids:
+        await db_exec(
+            "INSERT OR IGNORE INTO user_guild_permissions (user_id, guild_id) VALUES (?,?)",
+            (user_id, gid),
+        )
+    return RedirectResponse("/users?success=Serverrechte+gespeichert", status_code=302)
 
 
 def _cgroup_ram() -> tuple[int, int] | None:
@@ -540,7 +579,7 @@ async def bot_design_page(request: Request, success: str = "", error: str = ""):
     current_avatar = str(bot.user.display_avatar.url) if bot.user else None
     return templates.TemplateResponse("bot_design.html", {
         **session(request), "request": request,
-        "guilds": _guild_list(request), "token_set": token_set,
+        "guilds": await _guild_list(request), "token_set": token_set,
         "active": "bot_design", "success": success, "error": error,
         "current_name": current_name, "current_avatar": current_avatar,
         "bot_online": bot.is_ready(),
@@ -582,7 +621,7 @@ async def bot_info_page(request: Request):
     token_set = await _token_configured()
     return templates.TemplateResponse("bot_info.html", {
         **session(request), "request": request,
-        "guilds": _guild_list(request), "token_set": token_set,
+        "guilds": await _guild_list(request), "token_set": token_set,
         "active": "bot_info", "stats": get_system_stats(),
         "bot_online": bot.is_ready(), "version": VERSION,
         "bot_name": bot.user.name if bot.user else "—",
@@ -645,7 +684,7 @@ async def bot_update_page(request: Request, success: str = "", error: str = ""):
     update_available = bool(latest and _ver_tuple(latest) > _ver_tuple(VERSION))
     return templates.TemplateResponse("bot_update.html", {
         **session(request), "request": request,
-        "guilds": _guild_list(request), "token_set": token_set,
+        "guilds": await _guild_list(request), "token_set": token_set,
         "active": "bot_update",
         "current_version": VERSION, "latest_version": latest,
         "update_available": update_available,
@@ -704,11 +743,13 @@ async def freestuff_page(request: Request, guild_id: str, success: str = "", err
     guild = bot.get_guild(int(guild_id))
     if not guild:
         return RedirectResponse("/servers", status_code=302)
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
     cfg = await db_one("SELECT * FROM freestuff_channels WHERE guild_id=?", (guild_id,))
     return templates.TemplateResponse("freestuff.html", {
         **session(request), "request": request,
-        "guilds": _guild_list(request), "token_set": token_set,
+        "guilds": await _guild_list(request), "token_set": token_set,
         "active": f"server_{guild_id}",
         "guild_id": guild_id, "guild_name": guild.name,
         "channels": channels, "cfg": cfg,
@@ -726,6 +767,8 @@ async def freestuff_save(
     deal_channel_id: str = Form(""),
 ):
     if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     valid = {"epic", "steam", "gog", "humble", "ea", "ubisoft", "battlenet", "itchio"}
     plat_str = ",".join(p for p in platforms if p in valid)
     if not plat_str:
@@ -754,6 +797,8 @@ async def freestuff_save(
 @web.post("/servers/{guild_id}/freestuff/disable")
 async def freestuff_disable(request: Request, guild_id: str):
     if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     await db_exec("DELETE FROM freestuff_channels WHERE guild_id=?", (guild_id,))
     return RedirectResponse(f"/servers/{guild_id}/freestuff?success=1", status_code=302)
 
@@ -767,12 +812,14 @@ async def notifications_page(request: Request, guild_id: str, success: str = "",
     guild = bot.get_guild(int(guild_id))
     if not guild:
         return RedirectResponse("/servers", status_code=302)
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
     subs = await db_rows("SELECT * FROM notifications WHERE guild_id=? ORDER BY platform, target_name", (guild_id,))
     twitch_id = await get_config("twitch_client_id") or ""
     return templates.TemplateResponse("notifications.html", {
         **session(request), "request": request,
-        "guilds": _guild_list(request), "token_set": token_set,
+        "guilds": await _guild_list(request), "token_set": token_set,
         "active": f"server_{guild_id}",
         "guild_id": guild_id, "guild_name": guild.name,
         "channels": channels, "subs": subs,
@@ -791,6 +838,8 @@ async def notifications_add(
     custom_message: str = Form(""),
 ):
     if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     target = target.strip()
     if not target or not discord_channel_id:
         return RedirectResponse(f"/servers/{guild_id}/notifications?error=Pflichtfelder+fehlen", status_code=302)
@@ -815,6 +864,8 @@ async def notifications_add(
 @web.post("/servers/{guild_id}/notifications/delete/{nid}")
 async def notifications_delete(request: Request, guild_id: str, nid: int):
     if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     await db_exec("DELETE FROM notifications WHERE id=? AND guild_id=?", (nid, guild_id))
     return RedirectResponse(f"/servers/{guild_id}/notifications?success=1", status_code=302)
 
@@ -827,7 +878,7 @@ async def notif_settings_page(request: Request, saved: bool = False, error: str 
     token_set = await _token_configured()
     return templates.TemplateResponse("notif_settings.html", {
         **session(request), "request": request,
-        "guilds": _guild_list(request), "token_set": token_set,
+        "guilds": await _guild_list(request), "token_set": token_set,
         "active": "notif_settings",
         "twitch_client_id": await get_config("twitch_client_id") or "",
         "saved": saved, "error": error,
@@ -858,7 +909,7 @@ async def smtp_settings_page(request: Request, saved: bool = False, error: str =
     token_set = await _token_configured()
     return templates.TemplateResponse("smtp_settings.html", {
         **session(request), "request": request,
-        "guilds": _guild_list(request), "token_set": token_set, "active": "smtp",
+        "guilds": await _guild_list(request), "token_set": token_set, "active": "smtp",
         "smtp_host":  await get_config("smtp_host") or "",
         "smtp_port":  await get_config("smtp_port") or "587",
         "smtp_user":  await get_config("smtp_user") or "",
@@ -911,7 +962,7 @@ async def tokens_page(request: Request, success: str = "", error: str = ""):
     token_set = await _token_configured()
     return templates.TemplateResponse("tokens.html", {
         **session(request), "request": request,
-        "guilds": _guild_list(request), "token_set": token_set,
+        "guilds": await _guild_list(request), "token_set": token_set,
         "active": "tokens", "tokens": token_rows,
         "legacy_token": bool(legacy_token),
         "legacy_running": 0 in bot._bots,
@@ -969,7 +1020,7 @@ async def users_set_email(request: Request, user_id: int, email_addr: str = Form
 @web.get("/servers", response_class=HTMLResponse)
 async def servers_list(request: Request, success: str = ""):
     if r := auth_redirect(request): return r
-    guilds = _guild_list(request)
+    guilds = await _guild_list(request)
     token_set = await _token_configured()
     invite_url = get_invite_url()
     return templates.TemplateResponse("servers_list.html", {
@@ -987,6 +1038,8 @@ async def server_log_page(request: Request, guild_id: str, success: str = ""):
     guild = bot.get_guild(int(guild_id))
     if not guild:
         return RedirectResponse("/servers", status_code=302)
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
     log_channel = await get_guild_config(int(guild_id), "log_channel") or ""
     logs = await db_rows(
@@ -995,7 +1048,7 @@ async def server_log_page(request: Request, guild_id: str, success: str = ""):
     )
     return templates.TemplateResponse("server_log.html", {
         **session(request), "request": request,
-        "guilds": _guild_list(request), "token_set": token_set,
+        "guilds": await _guild_list(request), "token_set": token_set,
         "active": f"server_{guild_id}",
         "guild_id": guild_id, "guild_name": guild.name,
         "channels": channels, "log_channel": log_channel,
@@ -1006,6 +1059,8 @@ async def server_log_page(request: Request, guild_id: str, success: str = ""):
 @web.post("/servers/{guild_id}/log/save")
 async def server_log_save(request: Request, guild_id: str, log_channel: str = Form("")):
     if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     from database import set_guild_config
     await set_guild_config(int(guild_id), "log_channel", log_channel)
     return RedirectResponse(f"/servers/{guild_id}/log?success=1", status_code=302)
@@ -1025,7 +1080,7 @@ async def server_leave(request: Request, guild_id: int):
 @web.get("/leaderboard", response_class=HTMLResponse)
 async def leaderboard_page(request: Request, guild_id: str = ""):
     if r := auth_redirect(request): return r
-    guilds = _guild_list(request)
+    guilds = await _guild_list(request)
     token_set = await _token_configured()
 
     if not guild_id and guilds:
@@ -1068,6 +1123,8 @@ async def server_config(
     guild = bot.get_guild(guild_id)
     if not guild:
         return RedirectResponse("/", status_code=302)
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
 
     token_set = await _token_configured()
     cfg = await get_all_guild_config(guild_id)
@@ -1133,7 +1190,7 @@ async def server_config(
         "cfg": cfg, "channels": channels, "roles": roles, "categories": categories,
         "token_set": token_set, "saved": saved,
         "active": f"server_{guild_id}",
-        "guilds": _guild_list(request),
+        "guilds": await _guild_list(request),
         "tab": tab, "error": error, "success": success,
         "rr_list": rr_list, "cmd_list": cmd_list,
         "leaderboard": lb, "warn_groups": warn_groups,
@@ -1144,6 +1201,8 @@ async def server_config(
 @web.post("/servers/{guild_id}")
 async def server_config_save(request: Request, guild_id: int):
     if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     form = await request.form()
     text_keys = [
         "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
@@ -1168,6 +1227,8 @@ async def rr_add(
     emoji: str = Form(...), role_id: str = Form(...),
 ):
     if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     try:
         await db_exec(
             "INSERT INTO reaction_roles (guild_id,channel_id,message_id,emoji,role_id) VALUES (?,?,?,?,?)",
@@ -1181,6 +1242,8 @@ async def rr_add(
 @web.post("/servers/{guild_id}/reaction_roles/{rr_id}/delete")
 async def rr_delete(request: Request, guild_id: int, rr_id: int):
     if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     await db_exec("DELETE FROM reaction_roles WHERE id=? AND guild_id=?", (rr_id, guild_id))
     return RedirectResponse(f"/servers/{guild_id}?tab=rr", status_code=302)
 
@@ -1193,6 +1256,8 @@ async def cmd_add(
     trigger: str = Form(...), response: str = Form(...),
 ):
     if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     trigger = trigger.lower().strip("!").strip()
     try:
         await db_exec(
@@ -1210,6 +1275,8 @@ async def cmd_add(
 @web.post("/servers/{guild_id}/commands/{cmd_id}/delete")
 async def cmd_delete(request: Request, guild_id: int, cmd_id: int):
     if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     await db_exec("DELETE FROM custom_commands WHERE id=? AND guild_id=?", (cmd_id, guild_id))
     return RedirectResponse(f"/servers/{guild_id}?tab=commands", status_code=302)
 
@@ -1223,6 +1290,8 @@ async def giveaway_start_web(
     duration: int = Form(...), winners: int = Form(1),
 ):
     if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     channel = bot.get_channel(int(channel_id))
     if not channel:
         return RedirectResponse(
@@ -1265,6 +1334,8 @@ async def giveaway_start_web(
 @web.post("/servers/{guild_id}/giveaways/{gid}/end")
 async def giveaway_end_web(request: Request, guild_id: int, gid: int):
     if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     cog = bot.cogs.get("Giveaways")
     if cog:
         await cog._end_giveaway(gid)
@@ -1274,6 +1345,8 @@ async def giveaway_end_web(request: Request, guild_id: int, gid: int):
 @web.post("/servers/{guild_id}/giveaways/{gid}/reroll")
 async def giveaway_reroll_web(request: Request, guild_id: int, gid: int):
     if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     await db_exec("UPDATE giveaways SET ended=0 WHERE id=? AND guild_id=?", (gid, guild_id))
     cog = bot.cogs.get("Giveaways")
     if cog:
@@ -1286,6 +1359,8 @@ async def giveaway_reroll_web(request: Request, guild_id: int, gid: int):
 @web.post("/servers/{guild_id}/warnings/{user_id}/clear")
 async def warnings_clear(request: Request, guild_id: int, user_id: int):
     if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     await db_exec("DELETE FROM warnings WHERE user_id=? AND guild_id=?", (user_id, guild_id))
     return RedirectResponse(
         f"/servers/{guild_id}?tab=warnings&success=Warnungen+gelöscht", status_code=302

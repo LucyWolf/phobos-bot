@@ -74,12 +74,41 @@
             </form>
             {% endif %}
             {% endif %}
+            {% if u.role == 'moderator' %}
+            <button type="button" onclick="toggleServers({{ u.id }})"
+                    class="btn btn-secondary" style="font-size:0.78rem; padding:0.25rem 0.6rem;">🖥 Server</button>
+            {% endif %}
             <form method="post" action="/users/delete/{{ u.id }}?next=/users" onsubmit="return confirm('Benutzer {{ u.username }} wirklich löschen?')" style="display:inline">
               <button type="submit" class="btn btn-danger">✕ Löschen</button>
             </form>
             {% endif %}
           </td>
         </tr>
+        {% if u.role == 'moderator' and u.username != username %}
+        <tr id="srv-row-{{ u.id }}" style="display:none;">
+          <td colspan="5" style="padding:0.75rem 1.25rem; background:var(--bg);">
+            <form method="post" action="/users/{{ u.id }}/guilds">
+              <div style="font-size:0.82rem;font-weight:600;margin-bottom:0.5rem;color:var(--muted);">Server-Zugriff für {{ u.username }}:</div>
+              {% if all_guilds %}
+              <div style="display:flex;flex-wrap:wrap;gap:0.5rem 1rem;margin-bottom:0.75rem;">
+                {% set u_perms = user_perms.get(u.id) or [] %}
+                {% for g in all_guilds %}
+                <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.83rem;cursor:pointer;white-space:nowrap;">
+                  <input type="checkbox" name="guild_ids" value="{{ g.id }}"
+                    {% if g.id in u_perms %}checked{% endif %}
+                    style="width:14px;height:14px;cursor:pointer;">
+                  {{ g.name }}
+                </label>
+                {% endfor %}
+              </div>
+              {% else %}
+              <div style="color:var(--muted);font-size:0.82rem;margin-bottom:0.75rem;">Kein Server mit dem Bot verbunden.</div>
+              {% endif %}
+              <button type="submit" class="btn btn-primary" style="font-size:0.8rem;padding:0.3rem 0.8rem;">💾 Speichern</button>
+            </form>
+          </td>
+        </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>
@@ -87,7 +116,14 @@
 </div>
 
 <p class="hint">
-  <strong>Admin</strong> — Dashboard, Einstellungen, Benutzerverwaltung, Server-Konfiguration<br>
-  <strong>Moderator</strong> — Dashboard, Server-Konfiguration
+  <strong>Admin</strong> — Dashboard, Einstellungen, Benutzerverwaltung, alle Server<br>
+  <strong>Moderator</strong> — Dashboard + nur zugewiesene Server (🖥 Server-Button)
 </p>
+
+<script>
+function toggleServers(uid) {
+  const row = document.getElementById('srv-row-' + uid);
+  if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+</script>
 {% endblock %}

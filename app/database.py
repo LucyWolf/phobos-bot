@@ -194,6 +194,11 @@ async def init_db():
                 enabled INTEGER NOT NULL DEFAULT 1,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS user_guild_permissions (
+                user_id INTEGER NOT NULL,
+                guild_id TEXT NOT NULL,
+                PRIMARY KEY (user_id, guild_id)
+            );
         """)
         # Migrate legacy discord_token config to bot_tokens table
         try:
