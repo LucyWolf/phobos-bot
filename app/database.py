@@ -148,6 +148,18 @@ async def init_db():
                 ended INTEGER DEFAULT 0,
                 created_by INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                platform TEXT NOT NULL,
+                discord_channel_id TEXT NOT NULL,
+                target TEXT NOT NULL,
+                target_name TEXT DEFAULT '',
+                last_id TEXT DEFAULT '',
+                live INTEGER DEFAULT 0,
+                custom_message TEXT DEFAULT '',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
         """)
         await db.commit()
 

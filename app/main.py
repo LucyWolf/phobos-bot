@@ -69,6 +69,7 @@ COGS = [
     "cogs.custom_commands",
     "cogs.tickets",
     "cogs.giveaways",
+    "cogs.notifications",
 ]
 
 
@@ -447,6 +448,98 @@ async def bot_update_apply(request: Request):
     except Exception as e:
         msg = urllib.parse.quote(str(e)[:120])
         return RedirectResponse(f"/bot/update?error={msg}", status_code=302)
+
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+
+@web.get("/servers/{guild_id}/notifications", response_class=HTMLResponse)
+async def notifications_page(request: Request, guild_id: str, success: str = "", error: str = ""):
+    if r := auth_redirect(request): return r
+    token_set = bool(await get_config("discord_token"))
+    guild = bot.get_guild(int(guild_id))
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
+    subs = await db_rows("SELECT * FROM notifications WHERE guild_id=? ORDER BY platform, target_name", (guild_id,))
+    twitch_id = await get_config("twitch_client_id") or ""
+    return templates.TemplateResponse("notifications.html", {
+        **session(request), "request": request,
+        "guilds": _guild_list(request), "token_set": token_set,
+        "active": f"server_{guild_id}",
+        "guild_id": guild_id, "guild_name": guild.name,
+        "channels": channels, "subs": subs,
+        "twitch_configured": bool(twitch_id),
+        "success": success, "error": error,
+    })
+
+
+@web.post("/servers/{guild_id}/notifications/add")
+async def notifications_add(
+    request: Request, guild_id: str,
+    platform: str = Form(...),
+    target: str = Form(...),
+    target_name: str = Form(""),
+    discord_channel_id: str = Form(...),
+    custom_message: str = Form(""),
+):
+    if r := auth_redirect(request): return r
+    target = target.strip()
+    if not target or not discord_channel_id:
+        return RedirectResponse(f"/servers/{guild_id}/notifications?error=Pflichtfelder+fehlen", status_code=302)
+    # Normalize YouTube channel URL to ID
+    if platform == "youtube" and "youtube.com" in target:
+        parts = target.rstrip("/").split("/")
+        target = parts[-1]
+    existing = await db_rows(
+        "SELECT id FROM notifications WHERE guild_id=? AND platform=? AND target=?",
+        (guild_id, platform, target.lower() if platform == "twitch" else target),
+    )
+    if existing:
+        return RedirectResponse(f"/servers/{guild_id}/notifications?error=Bereits+eingetragen", status_code=302)
+    await db_exec(
+        "INSERT INTO notifications (guild_id,platform,discord_channel_id,target,target_name,custom_message) VALUES (?,?,?,?,?,?)",
+        (guild_id, platform, discord_channel_id, target.lower() if platform == "twitch" else target,
+         target_name.strip(), custom_message.strip()),
+    )
+    return RedirectResponse(f"/servers/{guild_id}/notifications?success=1", status_code=302)
+
+
+@web.post("/servers/{guild_id}/notifications/delete/{nid}")
+async def notifications_delete(request: Request, guild_id: str, nid: int):
+    if r := auth_redirect(request): return r
+    await db_exec("DELETE FROM notifications WHERE id=? AND guild_id=?", (nid, guild_id))
+    return RedirectResponse(f"/servers/{guild_id}/notifications?success=1", status_code=302)
+
+
+@web.get("/settings/notifications", response_class=HTMLResponse)
+async def notif_settings_page(request: Request, saved: bool = False, error: str = ""):
+    if r := auth_redirect(request): return r
+    if session(request).get("role") != "admin":
+        return RedirectResponse("/", status_code=302)
+    token_set = bool(await get_config("discord_token"))
+    return templates.TemplateResponse("notif_settings.html", {
+        **session(request), "request": request,
+        "guilds": _guild_list(request), "token_set": token_set,
+        "active": "notif_settings",
+        "twitch_client_id": await get_config("twitch_client_id") or "",
+        "saved": saved, "error": error,
+    })
+
+
+@web.post("/settings/notifications")
+async def notif_settings_save(
+    request: Request,
+    twitch_client_id: str = Form(""),
+    twitch_client_secret: str = Form(""),
+):
+    if r := auth_redirect(request): return r
+    if session(request).get("role") != "admin":
+        return RedirectResponse("/", status_code=302)
+    if twitch_client_id.strip():
+        await set_config("twitch_client_id", twitch_client_id.strip())
+    if twitch_client_secret.strip():
+        await set_config("twitch_client_secret", twitch_client_secret.strip())
+    return RedirectResponse("/settings/notifications?saved=1", status_code=302)
 
 
 # ── Servers List ──────────────────────────────────────────────────────────────

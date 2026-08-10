@@ -163,7 +163,7 @@
     max-height: 0;
     transition: max-height 0.25s ease;
   }
-  .nav-group.open .nav-group-items { max-height: 400px; }
+  .nav-group.open .nav-group-items { max-height: 500px; }
 
   .nav-sub {
     padding-left: 2.6rem !important;
@@ -310,7 +310,7 @@
       <span class="label">Dashboard</span>
     </a>
 
-    <div class="nav-group {% if active in ['settings','users','bot_design','bot_info','bot_update','servers'] %}open{% endif %}" id="nav-group-settings">
+    <div class="nav-group {% if active in ['settings','users','bot_design','bot_info','bot_update','notif_settings','servers'] %}open{% endif %}" id="nav-group-settings">
       <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn-header{% endif %}"
            onclick="toggleNavGroup('settings')" title="Einstellungen">
         <span class="icon">⚙️</span>
@@ -341,6 +341,10 @@
           <span class="label">Server</span>
         </a>
         {% if role == 'admin' %}
+        <a href="/settings/notifications" class="nav-item nav-sub {% if active == 'notif_settings' %}active{% endif %}">
+          <span class="icon">📡</span>
+          <span class="label">Benachrichtigungs-API</span>
+        </a>
         <a href="/bot/update" class="nav-item nav-sub {% if active == 'bot_update' %}active{% endif %}" id="nav-update-link">
           <span class="icon">🔄</span>
           <span class="label">Updates <span id="nav-update-badge" style="display:none;background:#f59e0b;color:#000;font-size:0.6rem;font-weight:700;border-radius:999px;padding:0.1rem 0.4rem;margin-left:0.3rem;">NEU</span></span>
@@ -381,6 +385,9 @@
         </a>
         <a href="/servers/{{ g.id }}?tab=warnungen" class="nav-item nav-sub {% if is_server and cur_tab == 'warnungen' %}active{% endif %}">
           <span class="icon">⚠️</span><span class="label">Warnungen</span>
+        </a>
+        <a href="/servers/{{ g.id }}/notifications" class="nav-item nav-sub {% if request.url.path == '/servers/' + g.id + '/notifications' %}active{% endif %}">
+          <span class="icon">📡</span><span class="label">Benachrichtigungen</span>
         </a>
       </div>
     </div>
