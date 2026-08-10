@@ -1,0 +1,161 @@
+import aiosqlite
+from pathlib import Path
+from typing import Optional
+
+DB_PATH = Path("/app/data/phobos.db")
+
+
+async def db_rows(query: str, params: tuple = ()):
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(query, params)
+            return [dict(r) for r in await cur.fetchall()]
+    except Exception:
+        return []
+
+
+async def db_one(query: str, params: tuple = ()):
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(query, params)
+            row = await cur.fetchone()
+            return dict(row) if row else None
+    except Exception:
+        return None
+
+
+async def db_exec(query: str, params: tuple = ()):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(query, params)
+        await db.commit()
+
+
+async def get_config(key: str) -> Optional[str]:
+    row = await db_one("SELECT value FROM config WHERE key = ?", (key,))
+    return row["value"] if row else None
+
+
+async def set_config(key: str, value: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO config (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
+        )
+        await db.commit()
+
+
+async def get_guild_config(guild_id: int, key: str) -> Optional[str]:
+    row = await db_one(
+        "SELECT value FROM guild_configs WHERE guild_id=? AND key=?", (guild_id, key)
+    )
+    return row["value"] if row else None
+
+
+async def set_guild_config(guild_id: int, key: str, value: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO guild_configs (guild_id,key,value) VALUES (?,?,?) ON CONFLICT(guild_id,key) DO UPDATE SET value=excluded.value",
+            (guild_id, key, value),
+        )
+        await db.commit()
+
+
+async def get_all_guild_config(guild_id: int) -> dict:
+    rows = await db_rows("SELECT key, value FROM guild_configs WHERE guild_id=?", (guild_id,))
+    return {r["key"]: r["value"] for r in rows}
+
+
+async def init_db():
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.executescript("""
+            CREATE TABLE IF NOT EXISTS config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'moderator',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS guild_configs (
+                guild_id INTEGER NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                PRIMARY KEY (guild_id, key)
+            );
+            CREATE TABLE IF NOT EXISTS mod_actions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                action TEXT NOT NULL,
+                target_id INTEGER NOT NULL,
+                target_name TEXT NOT NULL,
+                moderator_id INTEGER NOT NULL,
+                moderator_name TEXT NOT NULL,
+                guild_id INTEGER NOT NULL,
+                reason TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS warnings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                moderator_id INTEGER NOT NULL,
+                reason TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS levels (
+                user_id INTEGER NOT NULL,
+                guild_id INTEGER NOT NULL,
+                xp INTEGER DEFAULT 0,
+                level INTEGER DEFAULT 0,
+                messages INTEGER DEFAULT 0,
+                PRIMARY KEY (user_id, guild_id)
+            );
+            CREATE TABLE IF NOT EXISTS reaction_roles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                channel_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                emoji TEXT NOT NULL,
+                role_id INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS custom_commands (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                trigger TEXT NOT NULL,
+                response TEXT NOT NULL,
+                UNIQUE(guild_id, trigger)
+            );
+            CREATE TABLE IF NOT EXISTS tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                channel_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                status TEXT DEFAULT 'open',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS giveaways (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                channel_id INTEGER NOT NULL,
+                message_id INTEGER,
+                prize TEXT NOT NULL,
+                winners INTEGER DEFAULT 1,
+                ends_at TEXT NOT NULL,
+                ended INTEGER DEFAULT 0,
+                created_by INTEGER NOT NULL
+            );
+        """)
+        await db.commit()
+
+
+async def log_mod_action(action: str, target, moderator, guild_id: int, reason: str = None):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO mod_actions (action,target_id,target_name,moderator_id,moderator_name,guild_id,reason) VALUES (?,?,?,?,?,?,?)",
+            (action, target.id, str(target), moderator.id, str(moderator), guild_id, reason),
+        )
+        await db.commit()

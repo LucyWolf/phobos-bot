@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}{{ guild.name }} – Konfiguration{% endblock %}
+{% block page_title %}
+  {% if guild.icon %}<img src="{{ guild.icon }}" style="width:28px;height:28px;border-radius:50%;margin-right:0.5rem;vertical-align:middle;">{% endif %}
+  {{ guild.name }}
+{% endblock %}
+
+{% block content %}
+{% if saved %}
+<div class="alert alert-success">Einstellungen gespeichert.</div>
+{% endif %}
+
+<form method="post" action="/servers/{{ guild.id }}">
+
+  <!-- Welcome -->
+  <div class="card">
+    <div class="section-label">Willkommensnachrichten</div>
+    <div class="grid-2">
+      <div>
+        <label>Willkommens-Kanal</label>
+        <select name="welcome_channel">
+          <option value="">— Deaktiviert —</option>
+          {% for ch in channels %}
+          <option value="{{ ch.id }}" {% if cfg.get('welcome_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Verlassen-Kanal</label>
+        <select name="leave_channel">
+          <option value="">— Deaktiviert —</option>
+          {% for ch in channels %}
+          <option value="{{ ch.id }}" {% if cfg.get('leave_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <label>Willkommensnachricht</label>
+    <input type="text" name="welcome_message" value="{{ cfg.get('welcome_message', 'Willkommen {user} auf {server}! Du bist Mitglied #{count}.') }}" placeholder="Platzhalter: {user} {username} {server} {count}">
+    <label>Verlassensnachricht</label>
+    <input type="text" name="leave_message" value="{{ cfg.get('leave_message', '{username} hat den Server verlassen.') }}" placeholder="Platzhalter: {user} {username} {server}">
+    <label>Auto-Rolle bei Beitritt</label>
+    <select name="autorole">
+      <option value="">— Keine —</option>
+      {% for r in roles %}
+      <option value="{{ r.id }}" {% if cfg.get('autorole') == r.id %}selected{% endif %}>{{ r.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Logging -->
+  <div class="card">
+    <div class="section-label">Event-Logging</div>
+    <label>Log-Kanal</label>
+    <select name="log_channel">
+      <option value="">— Deaktiviert —</option>
+      {% for ch in channels %}
+      <option value="{{ ch.id }}" {% if cfg.get('log_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>
+      {% endfor %}
+    </select>
+    <p class="hint">Logs: Beitritt/Verlassen, Nachrichtenbearbeitung/-löschung, Bans, Rollenänderungen.</p>
+  </div>
+
+  <!-- Leveling -->
+  <div class="card">
+    <div class="section-label">XP &amp; Level-System</div>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
+      <input type="checkbox" name="leveling_enabled" value="1" {% if cfg.get('leveling_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;">
+      Leveling aktivieren
+    </label>
+    <label>Level-Up-Kanal <span style="color:var(--muted);font-size:0.75rem">(leer = aktueller Kanal)</span></label>
+    <select name="level_channel">
+      <option value="">— Aktueller Kanal —</option>
+      {% for ch in channels %}
+      <option value="{{ ch.id }}" {% if cfg.get('level_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Auto-Mod -->
+  <div class="card">
+    <div class="section-label">Auto-Moderation</div>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
+      <input type="checkbox" name="automod_enabled" value="1" {% if cfg.get('automod_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;">
+      Auto-Moderation aktivieren
+    </label>
+    <div class="grid-2">
+      <div>
+        <label>Spam-Schwelle <span style="color:var(--muted);font-size:0.75rem">(Nachrichten in 5s)</span></label>
+        <input type="number" name="automod_spam_threshold" value="{{ cfg.get('automod_spam_threshold', '5') }}" min="2" max="30">
+      </div>
+      <div>
+        <label>Aktion bei Verstoß</label>
+        <select name="automod_action">
+          {% for opt in ['warn','timeout','kick','ban'] %}
+          <option value="{{ opt }}" {% if cfg.get('automod_action', 'warn') == opt %}selected{% endif %}>{{ opt }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
+      <input type="checkbox" name="automod_links" value="1" {% if cfg.get('automod_links') == '1' %}checked{% endif %} style="width:auto;margin:0;">
+      Links blockieren
+    </label>
+    <label>Verbotene Wörter <span style="color:var(--muted);font-size:0.75rem">(kommagetrennt)</span></label>
+    <input type="text" name="automod_banned_words" value="{{ cfg.get('automod_banned_words', '') }}" placeholder="wort1, wort2, wort3">
+  </div>
+
+  <!-- Tickets -->
+  <div class="card">
+    <div class="section-label">Ticket-System</div>
+    <div class="grid-2">
+      <div>
+        <label>Support-Rolle</label>
+        <select name="ticket_support_role">
+          <option value="">— Keine —</option>
+          {% for r in roles %}
+          <option value="{{ r.id }}" {% if cfg.get('ticket_support_role') == r.id %}selected{% endif %}>{{ r.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Ticket-Kategorie</label>
+        <select name="ticket_category">
+          <option value="">— Keine —</option>
+          {% for c in categories %}
+          <option value="{{ c.id }}" {% if cfg.get('ticket_category') == c.id %}selected{% endif %}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <p class="hint">Poste ein Ticket-Panel mit <code>/ticket-panel</code>. Nutzer können dann über einen Button Tickets öffnen.</p>
+  </div>
+
+  <button type="submit" class="btn btn-primary">💾 Speichern</button>
+
+</form>
+{% endblock %}

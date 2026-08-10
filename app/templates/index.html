@@ -21,6 +21,23 @@
   {% endif %}
 </div>
 
+{% if guilds %}
+<div class="section-label" style="margin-bottom:0.6rem;">Verbundene Server</div>
+<div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:2rem;">
+  {% for g in guilds %}
+  <a href="/servers/{{ g.id }}" style="text-decoration:none;">
+    <div class="card" style="padding:1rem 1.25rem; display:flex; align-items:center; gap:0.75rem; margin-bottom:0; cursor:pointer; transition:border-color 0.15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+      {% if g.icon %}<img src="{{ g.icon }}" style="width:36px;height:36px;border-radius:50%;">{% else %}<div style="width:36px;height:36px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;">{{ g.name[0] }}</div>{% endif %}
+      <div>
+        <div style="font-weight:600;font-size:0.9rem;">{{ g.name }}</div>
+        <div style="font-size:0.75rem;color:var(--muted);">{{ g.members }} Mitglieder</div>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
 <div class="section-label">Letzte Moderations-Aktionen</div>
 
 {% if actions %}

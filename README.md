@@ -1,23 +1,34 @@
 # 🛡️ Phobos Bot
 
-Ein Discord Moderations-Bot mit Web-Dashboard, gebaut mit Python und Docker.
+Ein selbst-hostbarer Discord-Bot – ähnlich wie MEE6 – mit Web-Dashboard. Open Source, kostenlos, für immer.
 
 ## Features
 
-- Slash-Commands für Moderation: `/kick`, `/ban`, `/unban`, `/timeout`, `/warn`, `/warnings`, `/clear`
-- Web-Dashboard mit Übersicht aller Moderations-Aktionen
-- Login-System mit Benutzerverwaltung (Rollen: Admin / Moderator)
-- Discord Token direkt im Web-Dashboard eintragen — kein manuelles Konfigurieren nötig
-- Alles in einem einzigen Docker-Container
-- SQLite-Datenbank (kein extra Datenbank-Container nötig)
-- Kompatibel mit Nginx Proxy Manager
+| Feature | Commands |
+|---|---|
+| **Moderation** | `/kick` `/ban` `/unban` `/timeout` `/warn` `/warnings` `/clearwarns` `/clear` |
+| **Leveling / XP** | `/rank` `/leaderboard` `/setxp` |
+| **Willkommen** | Automatische Beitrittsnachrichten, Verlassensnachrichten, Auto-Rolle |
+| **Auto-Moderation** | Spam-Schutz, Link-Filter, Wort-Filter |
+| **Reaction Roles** | `/reactionrole-add` `/reactionrole-remove` `/reactionrole-list` |
+| **Event-Logging** | Beitritt/Verlassen, Nachrichten, Bans, Rollen |
+| **Eigene Commands** | `/addcommand` `/delcommand` `/commands` (Präfix `!`) |
+| **Tickets** | `/ticket-panel` – Button-basiertes Ticket-System |
+| **Giveaways** | `/giveaway-start` `/giveaway-end` `/giveaway-reroll` |
 
-## Voraussetzungen
+## Web-Dashboard
 
-- [Docker](https://www.docker.com/) & Docker Compose
-- Einen Discord Bot Token ([Discord Developer Portal](https://discord.com/developers/applications))
+- Login mit Benutzername + Passwort
+- Dashboard mit Moderations-Statistiken und allen verbundenen Servern
+- Einstellungen: Discord-Token, Benutzer verwalten (Admin/Moderator)
+- Pro Server: alle Features konfigurieren (Kanäle, Rollen, Auto-Mod, etc.)
+- Standardzugang beim ersten Start: `admin` / `admin`
 
 ## Installation
+
+### Voraussetzungen
+- Docker & Docker Compose
+- Nginx Proxy Manager (empfohlen) oder anderer Reverse-Proxy
 
 ```bash
 git clone https://github.com/LucyWolf/phobos-bot.git
@@ -25,16 +36,16 @@ cd phobos-bot
 docker compose up -d --build
 ```
 
-Das Web-Dashboard ist danach erreichbar unter `http://server-ip:8080`.
+Das Dashboard ist dann auf Port `8080` erreichbar.
 
-## Erster Start
+### Erster Start
 
 1. `http://server-ip:8080` aufrufen
-2. Mit den Standard-Zugangsdaten einloggen: **admin** / **admin**
-3. Unter **Einstellungen** den Discord Bot Token eintragen
-4. Unter **Benutzer** einen eigenen Admin-Account anlegen und den Standard-User löschen
+2. Mit `admin` / `admin` einloggen
+3. Unter **Einstellungen** den Discord Bot-Token eintragen
+4. Bot verbindet sich automatisch – Server erscheinen in der Sidebar
 
-## Updates
+### Updates
 
 ```bash
 git pull
@@ -43,33 +54,28 @@ docker compose up -d --build
 
 ## Nginx Proxy Manager
 
-Neuen Proxy Host anlegen:
-
 | Feld | Wert |
 |---|---|
 | Forward Hostname | `localhost` |
 | Forward Port | `8080` |
 
-Danach optional ein SSL-Zertifikat über Let's Encrypt ausstellen lassen.
+Optional: SSL-Zertifikat über Let's Encrypt.
 
-## Slash-Commands
+## Server-Konfiguration
 
-| Command | Beschreibung | Berechtigung |
-|---|---|---|
-| `/kick` | Mitglied kicken | Kick Members |
-| `/ban` | Mitglied bannen | Ban Members |
-| `/unban` | User anhand ID entbannen | Ban Members |
-| `/timeout` | Mitglied für X Minuten timen | Moderate Members |
-| `/warn` | Mitglied verwarnen | Moderate Members |
-| `/warnings` | Verwarnungen eines Mitglieds anzeigen | Moderate Members |
-| `/clear` | Nachrichten löschen | Manage Messages |
+Pro Server im Dashboard konfigurierbar:
+- **Willkommen**: Kanal, Nachricht, Auto-Rolle
+- **Logging**: Log-Kanal für alle Events
+- **Leveling**: Aktivieren, Level-Up-Kanal
+- **Auto-Moderation**: Spam, Links, Wortfilter, Aktion (warn/timeout/kick/ban)
+- **Tickets**: Support-Rolle, Ticket-Kategorie
 
 ## Benutzerverwaltung
 
 | Rolle | Rechte |
 |---|---|
-| Admin | Dashboard, Einstellungen, Benutzerverwaltung |
-| Moderator | Dashboard, Einstellungen |
+| Admin | Dashboard, Einstellungen, Benutzerverwaltung, Server-Konfiguration |
+| Moderator | Dashboard, Server-Konfiguration |
 
 ## Projektstruktur
 
@@ -80,12 +86,31 @@ phobos-bot/
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   ├── VERSION
-│   ├── main.py          # Bot + Web UI in einem Prozess
+│   ├── main.py
+│   ├── database.py
+│   ├── cogs/
+│   │   ├── moderation.py
+│   │   ├── leveling.py
+│   │   ├── welcome.py
+│   │   ├── automod.py
+│   │   ├── reaction_roles.py
+│   │   ├── logging_cog.py
+│   │   ├── custom_commands.py
+│   │   ├── tickets.py
+│   │   └── giveaways.py
 │   └── templates/
-│       ├── index.html   # Dashboard
+│       ├── base.html
+│       ├── index.html
 │       ├── settings.html
-│       ├── users.html
-│       ├── login.html
-│       └── setup.html
-└── data/                # SQLite Datenbank (automatisch erstellt)
+│       ├── server_config.html
+│       └── login.html
+└── data/                # SQLite-Datenbank + Secret-Key (automatisch erstellt)
 ```
+
+## Technologie
+
+- Python 3.11, discord.py 2.3.2, Cog-Architektur
+- FastAPI + Uvicorn + Jinja2 (Bot und Web im selben asyncio-Prozess)
+- SQLite via aiosqlite
+- bcrypt 4.2.1
+- Docker Compose, single-container

@@ -229,6 +229,9 @@
   .table-wrap { overflow-x: auto; }
   .hint { font-size: 0.78rem; color: var(--muted); margin-top: 0.75rem; line-height: 1.5; }
   .current-val { font-family: monospace; font-size: 0.8rem; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.5rem 0.875rem; margin-bottom: 1rem; word-break: break-all; }
+  .nav-section-label { font-size: 0.68rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; padding: 0.6rem 1.5rem 0.25rem; white-space: nowrap; overflow: hidden; }
+  body.collapsed .nav-section-label { opacity: 0; }
+  .nav-server .icon.server-icon { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; font-size: 0.8rem; flex-shrink: 0; }
 </style>
 </head>
 <body class="{{ 'collapsed' if sidebar_collapsed else '' }}" id="body">
@@ -249,6 +252,15 @@
       <span class="icon">⚙️</span>
       <span class="label">{% if not token_set %}⚠ Einstellungen{% else %}Einstellungen{% endif %}</span>
     </a>
+    {% if guilds %}
+    <div class="nav-section-label">Server</div>
+    {% for g in guilds %}
+    <a href="/servers/{{ g.id }}" class="nav-item nav-server {% if active == 'server_' + g.id %}active{% endif %}" title="{{ g.name }}">
+      <span class="icon server-icon">{% if g.icon %}<img src="{{ g.icon }}" alt="{{ g.name[0] }}" style="width:22px;height:22px;border-radius:50%;object-fit:cover;">{% else %}{{ g.name[0] }}{% endif %}</span>
+      <span class="label">{{ g.name }}</span>
+    </a>
+    {% endfor %}
+    {% endif %}
   </nav>
 
   <div class="sidebar-footer">
