@@ -335,17 +335,28 @@
       </div>
     </div>
 
-    {% if guilds %}
-    <div class="nav-section-label">Server</div>
-    {% for g in guilds %}
-    <a href="/servers/{{ g.id }}" class="nav-item {% if active == 'server_' + g.id %}active{% endif %}" title="{{ g.name }}">
-      <span class="icon" style="width:auto;">
-        <span class="server-icon">{% if g.icon %}<img src="{{ g.icon }}" alt="">{% else %}{{ g.name[0] }}{% endif %}</span>
-      </span>
-      <span class="label">{{ g.name }}</span>
-    </a>
-    {% endfor %}
-    {% endif %}
+    <div class="nav-group {% if active and (active == 'servers' or active.startswith('server_')) %}open{% endif %}" id="nav-group-servers">
+      <div class="nav-group-header {% if active and (active == 'servers' or active.startswith('server_')) %}active{% endif %}"
+           onclick="toggleNavGroup('servers')" title="Server">
+        <span class="icon">🖥️</span>
+        <span class="label">Server</span>
+        <span class="nav-chevron">▼</span>
+      </div>
+      <div class="nav-group-items">
+        {% for g in guilds %}
+        <a href="/servers/{{ g.id }}" class="nav-item nav-sub {% if active == 'server_' + g.id %}active{% endif %}" title="{{ g.name }}">
+          <span class="icon" style="width:auto;flex-shrink:0;">
+            <span class="server-icon">{% if g.icon %}<img src="{{ g.icon }}" alt="">{% else %}{{ g.name[0] }}{% endif %}</span>
+          </span>
+          <span class="label">{{ g.name }}</span>
+        </a>
+        {% endfor %}
+        <a href="/servers" class="nav-item nav-sub {% if active == 'servers' %}active{% endif %}" title="Server verwalten / hinzufügen">
+          <span class="icon">➕</span>
+          <span class="label">Server hinzufügen</span>
+        </a>
+      </div>
+    </div>
   </nav>
 
   <div class="sidebar-footer">

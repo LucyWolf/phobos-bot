@@ -243,6 +243,30 @@ async def users_delete(request: Request, user_id: int, next: str = "/users"):
     return RedirectResponse(f"{dest}?success=Benutzer+gelöscht", status_code=302)
 
 
+def get_invite_url() -> str:
+    cid = bot.application_id or (bot.user.id if bot.user else None)
+    if cid:
+        return (f"https://discord.com/api/oauth2/authorize"
+                f"?client_id={cid}&permissions=8&scope=bot%20applications.commands")
+    return ""
+
+
+# ── Servers List ──────────────────────────────────────────────────────────────
+
+@web.get("/servers", response_class=HTMLResponse)
+async def servers_list(request: Request):
+    if r := auth_redirect(request): return r
+    guilds = _guild_list(request)
+    token_set = bool(await get_config("discord_token"))
+    invite_url = get_invite_url()
+    return templates.TemplateResponse("servers_list.html", {
+        **session(request), "request": request,
+        "guilds": guilds, "token_set": token_set,
+        "invite_url": invite_url, "bot_online": bot.is_ready(),
+        "active": "servers",
+    })
+
+
 # ── Leaderboard ───────────────────────────────────────────────────────────────
 
 @web.get("/leaderboard", response_class=HTMLResponse)

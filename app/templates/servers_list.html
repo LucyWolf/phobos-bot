@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Phobos Bot – Server{% endblock %}
+{% block page_title %}🖥️ Server{% endblock %}
+
+{% block content %}
+<style>
+  .server-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.25rem; display:flex; align-items:center; gap:1rem; margin-bottom:0; transition:border-color 0.15s; }
+  .server-card:hover { border-color:var(--accent); }
+  .server-card-icon { width:52px; height:52px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:1.3rem; font-weight:700; color:#fff; flex-shrink:0; overflow:hidden; }
+  .server-card-icon img { width:52px; height:52px; object-fit:cover; }
+  .server-card-info { flex:1; min-width:0; }
+  .server-card-name { font-weight:700; font-size:1rem; margin-bottom:0.2rem; }
+  .server-card-meta { font-size:0.78rem; color:var(--muted); }
+  .server-card-actions { display:flex; gap:0.5rem; flex-shrink:0; }
+  .invite-box { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.75rem; text-align:center; }
+  .invite-box .big-icon { font-size:2.5rem; margin-bottom:0.75rem; }
+  .invite-box h3 { font-size:1rem; font-weight:700; margin-bottom:0.5rem; }
+  .invite-box p { font-size:0.82rem; color:var(--muted); margin-bottom:1.25rem; line-height:1.5; }
+  .btn-invite { display:inline-flex; align-items:center; gap:0.5rem; background:var(--accent); color:#fff; padding:0.7rem 1.5rem; border-radius:0.5rem; font-weight:700; font-size:0.9rem; text-decoration:none; transition:opacity 0.15s; }
+  .btn-invite:hover { opacity:0.85; }
+  .server-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:1rem; margin-bottom:2rem; }
+</style>
+
+<!-- Status -->
+{% if bot_online %}
+<div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:1.5rem; font-size:0.85rem; color:var(--success);">
+  <span style="width:8px;height:8px;border-radius:50%;background:var(--success);display:inline-block;box-shadow:0 0 6px var(--success);"></span>
+  Bot online · {{ guilds|length }} Server verbunden
+</div>
+{% else %}
+<div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:1.5rem; font-size:0.85rem; color:var(--danger);">
+  <span style="width:8px;height:8px;border-radius:50%;background:var(--danger);display:inline-block;"></span>
+  Bot offline — zuerst Token in den <a href="/settings" style="color:var(--danger)">Einstellungen</a> eintragen
+</div>
+{% endif %}
+
+<!-- Verbundene Server -->
+{% if guilds %}
+<div class="section-label" style="margin-bottom:0.75rem;">Verbundene Server ({{ guilds|length }})</div>
+<div class="server-grid">
+  {% for g in guilds %}
+  <div class="server-card">
+    <div class="server-card-icon">
+      {% if g.icon %}<img src="{{ g.icon }}" alt="">{% else %}{{ g.name[0] }}{% endif %}
+    </div>
+    <div class="server-card-info">
+      <div class="server-card-name">{{ g.name }}</div>
+      <div class="server-card-meta">👥 {{ g.members }} Mitglieder</div>
+    </div>
+    <div class="server-card-actions">
+      <a href="/servers/{{ g.id }}" class="btn btn-primary" style="font-size:0.8rem;padding:0.45rem 0.9rem;">⚙️ Verwalten</a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Server hinzufügen -->
+<div class="section-label" style="margin-bottom:0.75rem;">Server hinzufügen</div>
+<div class="invite-box">
+  <div class="big-icon">➕</div>
+  <h3>Weiteren Server einladen</h3>
+  <p>
+    Klicke auf den Button, wähle deinen Discord-Server aus<br>
+    und bestätige die Berechtigung. Der Server erscheint<br>
+    danach automatisch in der Sidebar.
+  </p>
+  {% if invite_url %}
+  <a href="{{ invite_url }}" target="_blank" class="btn-invite">
+    🔗 Bot zu Server einladen
+  </a>
+  {% else %}
+  <div class="alert alert-error" style="display:inline-block;">Bot muss online sein um den Einlade-Link zu generieren.</div>
+  {% endif %}
+</div>
+
+<p class="hint" style="margin-top:1rem;">
+  Nach der Einladung kann es einige Sekunden dauern bis der Server in der Sidebar erscheint.<br>
+  Seite neu laden falls nötig.
+</p>
+{% endblock %}
