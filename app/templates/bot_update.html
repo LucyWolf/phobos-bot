@@ -57,8 +57,8 @@
     </button>
   </form>
   <p class="restart-note" style="margin-top:0.75rem;">
-    Der Bot wird automatisch neu gestartet. Das dauert ca. 10–30 Sekunden.<br>
-    <strong>Voraussetzung:</strong> <code>git</code> muss im Container verfügbar sein und <code>restart: unless-stopped</code> muss in der docker-compose.yml gesetzt sein.
+    Lädt die neue Version von GitHub herunter, überschreibt die Dateien und startet den Bot neu.<br>
+    Dauert ca. 10–30 Sekunden. Die Datenbank bleibt dabei unangetastet.
   </p>
   {% else %}
   <p style="font-size:0.85rem; color:var(--muted);">Kein Update nötig — du hast die neueste Version.</p>

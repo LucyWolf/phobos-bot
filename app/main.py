@@ -3,8 +3,10 @@ import datetime
 import os
 import platform
 import secrets
-import subprocess
+import shutil
 import sys
+import tarfile
+import tempfile
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -405,20 +407,37 @@ async def bot_update_apply(request: Request):
     if session(request).get("role") != "admin":
         return RedirectResponse("/", status_code=302)
     try:
-        result = subprocess.run(
-            ["git", "pull", "origin", "main"],
-            capture_output=True, text=True, timeout=60,
-            cwd="/app",
-        )
-        output = (result.stdout + result.stderr).strip()
-        if result.returncode != 0:
-            msg = urllib.parse.quote(output[:120])
-            return RedirectResponse(f"/bot/update?error={msg}", status_code=302)
-        # Trigger process restart — Docker will restart the container automatically
-        asyncio.get_event_loop().call_later(1.5, lambda: os._exit(0))
+        tar_url = "https://github.com/LucyWolf/phobos-bot/archive/refs/heads/main.tar.gz"
+
+        def _download_and_apply():
+            with tempfile.TemporaryDirectory() as tmp:
+                tar_path = os.path.join(tmp, "update.tar.gz")
+                urllib.request.urlretrieve(tar_url, tar_path)
+                with tarfile.open(tar_path, "r:gz") as tf:
+                    tf.extractall(tmp)
+                # Find extracted root dir (e.g. phobos-bot-main)
+                dirs = [d for d in os.listdir(tmp) if os.path.isdir(os.path.join(tmp, d))]
+                if not dirs:
+                    raise RuntimeError("Archiv leer")
+                src_app = os.path.join(tmp, dirs[0], "app")
+                dst = "/app"
+                skip = {"data"}  # never overwrite database / persistent data
+                for item in os.listdir(src_app):
+                    if item in skip:
+                        continue
+                    s = os.path.join(src_app, item)
+                    d = os.path.join(dst, item)
+                    if os.path.isfile(s):
+                        shutil.copy2(s, d)
+                    elif os.path.isdir(s):
+                        if os.path.exists(d):
+                            shutil.rmtree(d)
+                        shutil.copytree(s, d)
+
+        await asyncio.get_event_loop().run_in_executor(None, _download_and_apply)
+        # Restart Python process in-place (works in Docker without rebuild)
+        asyncio.get_event_loop().call_later(1.5, lambda: os.execv(sys.executable, [sys.executable] + sys.argv))
         return RedirectResponse("/bot/update?success=1", status_code=302)
-    except FileNotFoundError:
-        return RedirectResponse("/bot/update?error=git+nicht+verfügbar+%28manuelles+Update+nötig%29", status_code=302)
     except Exception as e:
         msg = urllib.parse.quote(str(e)[:120])
         return RedirectResponse(f"/bot/update?error={msg}", status_code=302)
