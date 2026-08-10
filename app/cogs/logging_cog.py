@@ -1,6 +1,11 @@
+import datetime
 import discord
 from discord.ext import commands
 from database import get_guild_config
+
+
+def _ts() -> str:
+    return discord.utils.format_dt(datetime.datetime.now(datetime.timezone.utc), "T")
 
 
 class Logging(commands.Cog):
@@ -13,32 +18,127 @@ class Logging(commands.Cog):
             return
         channel = self.bot.get_channel(int(channel_id))
         if channel:
+            embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
             await channel.send(embed=embed)
+
+    # ── Mitglieder ────────────────────────────────────────────────────────────
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
-        embed = discord.Embed(title="Member beigetreten", color=0x22c55e)
+        embed = discord.Embed(title="📥 Member beigetreten", color=0x22c55e)
         embed.set_author(name=str(member), icon_url=member.display_avatar.url)
-        embed.add_field(name="Account erstellt", value=discord.utils.format_dt(member.created_at, "R"))
+        embed.add_field(name="Nutzer", value=member.mention)
+        embed.add_field(name="Account-Alter", value=discord.utils.format_dt(member.created_at, "R"))
         embed.add_field(name="ID", value=str(member.id))
+        embed.set_thumbnail(url=member.display_avatar.url)
         await self._log(member.guild.id, embed)
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
-        embed = discord.Embed(title="Member verlassen", color=0xef4444)
+        embed = discord.Embed(title="📤 Member verlassen", color=0xef4444)
         embed.set_author(name=str(member), icon_url=member.display_avatar.url)
+        embed.add_field(name="Nutzer", value=str(member))
         embed.add_field(name="ID", value=str(member.id))
         roles = [r.mention for r in member.roles if r.name != "@everyone"]
         if roles:
-            embed.add_field(name="Rollen", value=" ".join(roles), inline=False)
+            embed.add_field(name="Hatte Rollen", value=" ".join(roles)[:1000], inline=False)
         await self._log(member.guild.id, embed)
+
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        # Rollen-Änderung
+        if before.roles != after.roles:
+            added   = [r for r in after.roles if r not in before.roles]
+            removed = [r for r in before.roles if r not in after.roles]
+            if added or removed:
+                embed = discord.Embed(title="🏷️ Rollen aktualisiert", color=0x3b82f6)
+                embed.set_author(name=str(after), icon_url=after.display_avatar.url)
+                embed.add_field(name="Nutzer", value=after.mention)
+                if added:
+                    embed.add_field(name="➕ Hinzugefügt", value=" ".join(r.mention for r in added))
+                if removed:
+                    embed.add_field(name="➖ Entfernt", value=" ".join(r.mention for r in removed))
+                await self._log(after.guild.id, embed)
+
+        # Nickname-Änderung
+        if before.nick != after.nick:
+            embed = discord.Embed(title="✏️ Nickname geändert", color=0xa78bfa)
+            embed.set_author(name=str(after), icon_url=after.display_avatar.url)
+            embed.add_field(name="Nutzer", value=after.mention)
+            embed.add_field(name="Vorher", value=before.nick or before.name, inline=False)
+            embed.add_field(name="Nachher", value=after.nick or after.name, inline=False)
+            await self._log(after.guild.id, embed)
+
+        # Timeout
+        if before.timed_out_until != after.timed_out_until:
+            if after.timed_out_until:
+                embed = discord.Embed(title="⏱️ Timeout verhängt", color=0xf59e0b)
+                embed.set_author(name=str(after), icon_url=after.display_avatar.url)
+                embed.add_field(name="Nutzer", value=after.mention)
+                embed.add_field(name="Bis", value=discord.utils.format_dt(after.timed_out_until, "R"))
+            else:
+                embed = discord.Embed(title="⏱️ Timeout aufgehoben", color=0x22c55e)
+                embed.set_author(name=str(after), icon_url=after.display_avatar.url)
+                embed.add_field(name="Nutzer", value=after.mention)
+            await self._log(after.guild.id, embed)
+
+    # ── Bans ──────────────────────────────────────────────────────────────────
+
+    @commands.Cog.listener()
+    async def on_member_ban(self, guild: discord.Guild, user: discord.User):
+        embed = discord.Embed(title="🔨 Member gebannt", color=0xef4444)
+        embed.set_author(name=str(user), icon_url=user.display_avatar.url)
+        embed.add_field(name="Nutzer", value=str(user))
+        embed.add_field(name="ID", value=str(user.id))
+        await self._log(guild.id, embed)
+
+    @commands.Cog.listener()
+    async def on_member_unban(self, guild: discord.Guild, user: discord.User):
+        embed = discord.Embed(title="✅ Member entbannt", color=0x22c55e)
+        embed.set_author(name=str(user), icon_url=user.display_avatar.url)
+        embed.add_field(name="Nutzer", value=str(user))
+        await self._log(guild.id, embed)
+
+    # ── Voice-Kanäle ──────────────────────────────────────────────────────────
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+        if before.channel == after.channel:
+            return  # nur Mute/Deaf-Änderungen, ignorieren
+
+        if before.channel is None and after.channel is not None:
+            # Beigetreten
+            embed = discord.Embed(title="🔊 Voice beigetreten", color=0x22c55e)
+            embed.set_author(name=str(member), icon_url=member.display_avatar.url)
+            embed.add_field(name="Nutzer", value=member.mention)
+            embed.add_field(name="Kanal", value=after.channel.mention)
+
+        elif before.channel is not None and after.channel is None:
+            # Verlassen
+            embed = discord.Embed(title="🔇 Voice verlassen", color=0xef4444)
+            embed.set_author(name=str(member), icon_url=member.display_avatar.url)
+            embed.add_field(name="Nutzer", value=member.mention)
+            embed.add_field(name="Kanal", value=before.channel.mention)
+
+        else:
+            # Zwischen Kanälen gewechselt
+            embed = discord.Embed(title="🔀 Voice gewechselt", color=0xf59e0b)
+            embed.set_author(name=str(member), icon_url=member.display_avatar.url)
+            embed.add_field(name="Nutzer", value=member.mention)
+            embed.add_field(name="Von", value=before.channel.mention)
+            embed.add_field(name="Nach", value=after.channel.mention)
+
+        await self._log(member.guild.id, embed)
+
+    # ── Nachrichten ───────────────────────────────────────────────────────────
 
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message):
         if message.author.bot or not message.guild:
             return
-        embed = discord.Embed(title="Nachricht gelöscht", color=0xf97316)
+        embed = discord.Embed(title="🗑️ Nachricht gelöscht", color=0xf97316)
         embed.set_author(name=str(message.author), icon_url=message.author.display_avatar.url)
+        embed.add_field(name="Nutzer", value=message.author.mention)
         embed.add_field(name="Kanal", value=message.channel.mention)
         if message.content:
             embed.add_field(name="Inhalt", value=message.content[:1000], inline=False)
@@ -48,42 +148,54 @@ class Logging(commands.Cog):
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
         if before.author.bot or not before.guild or before.content == after.content:
             return
-        embed = discord.Embed(title="Nachricht bearbeitet", color=0xeab308)
+        embed = discord.Embed(title="✏️ Nachricht bearbeitet", color=0xeab308)
         embed.set_author(name=str(before.author), icon_url=before.author.display_avatar.url)
+        embed.add_field(name="Nutzer", value=before.author.mention)
         embed.add_field(name="Kanal", value=before.channel.mention)
         embed.add_field(name="Vorher", value=before.content[:500] or "—", inline=False)
         embed.add_field(name="Nachher", value=after.content[:500] or "—", inline=False)
         embed.add_field(name="Link", value=f"[Zur Nachricht]({after.jump_url})")
         await self._log(before.guild.id, embed)
 
-    @commands.Cog.listener()
-    async def on_member_ban(self, guild: discord.Guild, user: discord.User):
-        embed = discord.Embed(title="Member gebannt", color=0xef4444)
-        embed.set_author(name=str(user), icon_url=user.display_avatar.url)
-        embed.add_field(name="ID", value=str(user.id))
-        await self._log(guild.id, embed)
+    # ── Kanäle ────────────────────────────────────────────────────────────────
 
     @commands.Cog.listener()
-    async def on_member_unban(self, guild: discord.Guild, user: discord.User):
-        embed = discord.Embed(title="Member entbannt", color=0x22c55e)
-        embed.set_author(name=str(user), icon_url=user.display_avatar.url)
-        await self._log(guild.id, embed)
+    async def on_guild_channel_create(self, channel: discord.abc.GuildChannel):
+        embed = discord.Embed(title="📁 Kanal erstellt", color=0x22c55e)
+        embed.add_field(name="Name", value=channel.mention if hasattr(channel, "mention") else channel.name)
+        embed.add_field(name="Typ", value=str(channel.type).replace("_", " ").title())
+        embed.add_field(name="ID", value=str(channel.id))
+        await self._log(channel.guild.id, embed)
 
     @commands.Cog.listener()
-    async def on_member_update(self, before: discord.Member, after: discord.Member):
-        if before.roles == after.roles:
-            return
-        added = [r for r in after.roles if r not in before.roles]
-        removed = [r for r in before.roles if r not in after.roles]
-        if not added and not removed:
-            return
-        embed = discord.Embed(title="Rollen aktualisiert", color=0x3b82f6)
-        embed.set_author(name=str(after), icon_url=after.display_avatar.url)
-        if added:
-            embed.add_field(name="Hinzugefügt", value=" ".join(r.mention for r in added))
-        if removed:
-            embed.add_field(name="Entfernt", value=" ".join(r.mention for r in removed))
-        await self._log(after.guild.id, embed)
+    async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
+        embed = discord.Embed(title="🗑️ Kanal gelöscht", color=0xef4444)
+        embed.add_field(name="Name", value=f"#{channel.name}")
+        embed.add_field(name="Typ", value=str(channel.type).replace("_", " ").title())
+        embed.add_field(name="ID", value=str(channel.id))
+        await self._log(channel.guild.id, embed)
+
+    @commands.Cog.listener()
+    async def on_guild_channel_update(self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel):
+        if before.name != after.name:
+            embed = discord.Embed(title="✏️ Kanal umbenannt", color=0xa78bfa)
+            embed.add_field(name="Vorher", value=f"#{before.name}")
+            embed.add_field(name="Nachher", value=after.mention if hasattr(after, "mention") else f"#{after.name}")
+            await self._log(after.guild.id, embed)
+
+    # ── Server-Boost ──────────────────────────────────────────────────────────
+
+    @commands.Cog.listener()
+    async def on_guild_update(self, before: discord.Guild, after: discord.Guild):
+        if before.premium_subscription_count != after.premium_subscription_count:
+            diff = after.premium_subscription_count - before.premium_subscription_count
+            embed = discord.Embed(
+                title="💎 Server-Boost" if diff > 0 else "💎 Boost entfernt",
+                color=0xff73fa if diff > 0 else 0x94a3b8,
+            )
+            embed.add_field(name="Boosts gesamt", value=str(after.premium_subscription_count))
+            embed.add_field(name="Level", value=str(after.premium_tier))
+            await self._log(after.id, embed)
 
 
 async def setup(bot):
