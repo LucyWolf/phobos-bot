@@ -173,6 +173,16 @@ async def init_db():
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        # Column migrations for existing installs
+        for col in [
+            "ALTER TABLE freestuff_channels ADD COLUMN deal_max_price REAL",
+            "ALTER TABLE freestuff_channels ADD COLUMN deal_min_discount INTEGER DEFAULT 75",
+            "ALTER TABLE freestuff_channels ADD COLUMN deal_channel_id TEXT",
+        ]:
+            try:
+                await db.execute(col)
+            except Exception:
+                pass
         await db.commit()
 
 

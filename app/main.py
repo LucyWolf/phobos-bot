@@ -477,15 +477,31 @@ async def freestuff_save(
     request: Request, guild_id: str,
     channel_id: str = Form(...),
     platforms: list[str] = Form(default=[]),
+    deal_max_price: str = Form(""),
+    deal_min_discount: str = Form("75"),
+    deal_channel_id: str = Form(""),
 ):
     if r := auth_redirect(request): return r
-    plat_str = ",".join(p for p in platforms if p in ("epic", "gog"))
+    plat_str = ",".join(p for p in platforms if p in ("epic", "steam", "gog", "humble"))
     if not plat_str:
         plat_str = "epic"
+    try:
+        max_price = float(deal_max_price.replace(",", ".")) if deal_max_price.strip() else None
+    except ValueError:
+        max_price = None
+    min_disc = max(0, min(100, int(deal_min_discount or 75)))
+    deal_ch = deal_channel_id if deal_channel_id else None
     await db_exec(
-        "INSERT INTO freestuff_channels (guild_id,channel_id,platforms) VALUES (?,?,?) "
-        "ON CONFLICT(guild_id) DO UPDATE SET channel_id=excluded.channel_id, platforms=excluded.platforms",
-        (guild_id, channel_id, plat_str),
+        """INSERT INTO freestuff_channels
+               (guild_id, channel_id, platforms, deal_max_price, deal_min_discount, deal_channel_id)
+           VALUES (?,?,?,?,?,?)
+           ON CONFLICT(guild_id) DO UPDATE SET
+               channel_id=excluded.channel_id,
+               platforms=excluded.platforms,
+               deal_max_price=excluded.deal_max_price,
+               deal_min_discount=excluded.deal_min_discount,
+               deal_channel_id=excluded.deal_channel_id""",
+        (guild_id, channel_id, plat_str, max_price, min_disc, deal_ch),
     )
     return RedirectResponse(f"/servers/{guild_id}/freestuff?success=1", status_code=302)
 

@@ -1,116 +1,157 @@
 {% extends "base.html" %}
 
-{% block title %}Phobos Bot – Free Stuff{% endblock %}
-{% block page_title %}🎁 Free Stuff – {{ guild_name }}{% endblock %}
+{% block title %}Phobos Bot – Free Stuff & Deals{% endblock %}
+{% block page_title %}🎁 Free Stuff & Deals – {{ guild_name }}{% endblock %}
 
 {% block content %}
 <style>
-  .fs-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.4rem; margin-bottom:1.25rem; max-width:620px; }
+  .fs-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.4rem; margin-bottom:1.25rem; max-width:640px; }
   .platform-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.6rem; margin-bottom:1.1rem; }
   .plat-label {
     display:flex; align-items:center; gap:0.6rem;
-    padding:0.7rem 1rem; border:1px solid var(--border); border-radius:0.6rem;
-    cursor:pointer; font-size:0.85rem; font-weight:600;
+    padding:0.65rem 1rem; border:1px solid var(--border); border-radius:0.6rem;
+    cursor:pointer; font-size:0.84rem; font-weight:600;
     transition:border-color 0.15s, background 0.15s; user-select:none;
   }
   .plat-label input { display:none; }
   .plat-label:has(input:checked) { border-color:var(--accent); background:var(--accent-light); color:#a78bfa; }
   .plat-icon { font-size:1.1rem; }
-  .plat-desc { font-size:0.72rem; color:var(--muted); font-weight:400; display:block; margin-top:0.1rem; }
-  .status-row { display:flex; align-items:center; gap:0.75rem; padding:0.85rem 1rem; background:var(--bg); border:1px solid var(--border); border-radius:0.5rem; margin-bottom:1.25rem; max-width:620px; }
-  .dot-on  { width:9px; height:9px; border-radius:50%; background:var(--success); box-shadow:0 0 6px var(--success); flex-shrink:0; }
-  .dot-off { width:9px; height:9px; border-radius:50%; background:var(--muted); flex-shrink:0; }
-  select { margin-bottom:0; }
+  .plat-desc { font-size:0.71rem; color:var(--muted); font-weight:400; display:block; margin-top:0.1rem; }
+  .status-row { display:flex; align-items:center; gap:0.75rem; padding:0.8rem 1rem; background:var(--bg); border:1px solid var(--border); border-radius:0.5rem; margin-bottom:0.6rem; max-width:640px; font-size:0.84rem; }
+  .dot-on  { width:8px; height:8px; border-radius:50%; background:var(--success); box-shadow:0 0 6px var(--success); flex-shrink:0; }
+  .dot-off { width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0; }
+  .divider { border:none; border-top:1px solid var(--border); margin:1.1rem 0; }
+  .row-2 { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:0.85rem; }
+  .toggle-section { display:flex; align-items:center; gap:0.6rem; margin-bottom:0.85rem; cursor:pointer; user-select:none; font-size:0.88rem; font-weight:600; }
+  .toggle-section input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var(--accent); }
+  select, input[type=number], input[type=text] { margin-bottom:0; }
+  .deal-fields { display:none; }
+  .deal-fields.active { display:block; }
+  .price-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.75rem; margin-bottom:0.85rem; align-items:end; }
+  .badge-deal { display:inline-block; background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3); border-radius:999px; padding:0.1rem 0.55rem; font-size:0.7rem; font-weight:700; margin-left:0.4rem; vertical-align:middle; }
 </style>
 
-{% if success %}<div class="alert alert-success">✅ Gespeichert.</div>{% endif %}
-{% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
+{% if success %}<div class="alert alert-success" style="max-width:640px;">✅ Gespeichert.</div>{% endif %}
+{% if error %}<div class="alert alert-error" style="max-width:640px;">❌ {{ error }}</div>{% endif %}
 
+<!-- Status -->
 <div class="status-row">
   {% if cfg %}
   <span class="dot-on"></span>
-  <span style="font-size:0.85rem;">Aktiv in
-    <b>#{{ channels | selectattr('id', 'equalto', cfg.channel_id) | map(attribute='name') | first | default(cfg.channel_id) }}</b>
-    · {{ cfg.platforms.upper().replace(',', ' · ') }}
-  </span>
+  Gratis: <b>#{{ channels | selectattr('id','equalto',cfg.channel_id) | map(attribute='name') | first | default(cfg.channel_id) }}</b>
+  · {{ cfg.platforms.upper().replace(',', ' · ') }}
+  {% if cfg.deal_max_price %}
+  &nbsp;|&nbsp; Deals bis <b>{{ "%.2f"|format(cfg.deal_max_price|float) }} €</b>
+  (min. {{ cfg.deal_min_discount or 75 }}% Rabatt)
+  {% endif %}
   {% else %}
   <span class="dot-off"></span>
-  <span style="font-size:0.85rem; color:var(--muted);">Nicht konfiguriert.</span>
+  <span style="color:var(--muted);">Nicht konfiguriert.</span>
   {% endif %}
 </div>
 
+<form method="post" action="/servers/{{ guild_id }}/freestuff/save">
 <div class="fs-card">
-  <div style="font-weight:700;font-size:0.95rem;margin-bottom:1.1rem;">⚙️ Konfiguration</div>
-  <form method="post" action="/servers/{{ guild_id }}/freestuff/save">
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:1.1rem;">🎮 Gratis-Spiele</div>
 
-    <label style="margin-bottom:0.35rem;">Plattformen überwachen</label>
-    <div class="platform-grid">
-      <label class="plat-label">
-        <input type="checkbox" name="platforms" value="epic"
-               {% if not cfg or 'epic' in cfg.platforms %}checked{% endif %}>
-        <span class="plat-icon">🎮</span>
-        <span>
-          Epic Games
-          <span class="plat-desc">Gratis-Spiele jeden Donnerstag</span>
-        </span>
-      </label>
-      <label class="plat-label">
-        <input type="checkbox" name="platforms" value="steam"
-               {% if cfg and 'steam' in cfg.platforms %}checked{% endif %}>
-        <span class="plat-icon">🖥️</span>
-        <span>
-          Steam
-          <span class="plat-desc">Free Weekends &amp; Aktionen</span>
-        </span>
-      </label>
-      <label class="plat-label">
-        <input type="checkbox" name="platforms" value="gog"
-               {% if cfg and 'gog' in cfg.platforms %}checked{% endif %}>
-        <span class="plat-icon">🟣</span>
-        <span>
-          GOG
-          <span class="plat-desc">Gelegentliche Gratis-Aktionen</span>
-        </span>
-      </label>
-      <label class="plat-label">
-        <input type="checkbox" name="platforms" value="humble"
-               {% if cfg and 'humble' in cfg.platforms %}checked{% endif %}>
-        <span class="plat-icon">🙏</span>
-        <span>
-          Humble Bundle
-          <span class="plat-desc">Gratis-Aktionen &amp; Bundles</span>
-        </span>
-      </label>
-    </div>
+  <label style="margin-bottom:0.35rem;">Plattformen überwachen</label>
+  <div class="platform-grid">
+    <label class="plat-label">
+      <input type="checkbox" name="platforms" value="epic"
+             {% if not cfg or 'epic' in (cfg.platforms or 'epic') %}checked{% endif %}>
+      <span class="plat-icon">🎮</span>
+      <span>Epic Games<span class="plat-desc">Gratis-Spiele jeden Donnerstag</span></span>
+    </label>
+    <label class="plat-label">
+      <input type="checkbox" name="platforms" value="steam"
+             {% if cfg and 'steam' in cfg.platforms %}checked{% endif %}>
+      <span class="plat-icon">🖥️</span>
+      <span>Steam<span class="plat-desc">Free Weekends & Aktionen</span></span>
+    </label>
+    <label class="plat-label">
+      <input type="checkbox" name="platforms" value="gog"
+             {% if cfg and 'gog' in cfg.platforms %}checked{% endif %}>
+      <span class="plat-icon">🟣</span>
+      <span>GOG<span class="plat-desc">Gelegentliche Gratis-Aktionen</span></span>
+    </label>
+    <label class="plat-label">
+      <input type="checkbox" name="platforms" value="humble"
+             {% if cfg and 'humble' in cfg.platforms %}checked{% endif %}>
+      <span class="plat-icon">🙏</span>
+      <span>Humble Bundle<span class="plat-desc">Gratis-Promotions</span></span>
+    </label>
+  </div>
 
-    <label style="margin-bottom:0.35rem;">Discord-Kanal</label>
-    <select name="channel_id" required style="margin-bottom:1.1rem;">
-      {% for c in channels %}
-      <option value="{{ c.id }}" {% if cfg and cfg.channel_id == c.id %}selected{% endif %}>#{{ c.name }}</option>
-      {% endfor %}
-    </select>
-
-    <div style="display:flex;gap:0.75rem;align-items:center;">
-      <button type="submit" class="btn btn-primary">💾 Speichern</button>
-      {% if cfg %}
-      <button type="button" class="btn btn-danger"
-        onclick="if(confirm('Free Stuff deaktivieren?'))document.getElementById('dis-form').submit()">
-        Deaktivieren
-      </button>
-      {% endif %}
-    </div>
-  </form>
-  <form id="dis-form" method="post" action="/servers/{{ guild_id }}/freestuff/disable" style="display:none;"></form>
+  <label style="margin-bottom:0.35rem;">Kanal für Gratis-Spiele</label>
+  <select name="channel_id" required style="margin-bottom:0;">
+    {% for c in channels %}
+    <option value="{{ c.id }}" {% if cfg and cfg.channel_id == c.id %}selected{% endif %}>#{{ c.name }}</option>
+    {% endfor %}
+  </select>
 </div>
 
-<div class="fs-card" style="opacity:0.85;">
-  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.75rem;">ℹ️ Wie es funktioniert</div>
-  <ul style="font-size:0.83rem;color:var(--muted);line-height:2;padding-left:1.2rem;margin:0;">
-    <li>Bot prüft alle <b>2 Stunden</b> automatisch auf neue Gratis-Spiele</li>
-    <li>Jedes Spiel wird <b>nur einmal pro Server</b> gepostet — kein Spam</li>
-    <li><b>Epic Games</b> nutzt die offizielle Epic-API (zuverlässigste Quelle)</li>
-    <li><b>Steam, GOG, Humble</b> über CheapShark API — nur Spiele die normalerweise etwas kosten</li>
-    <li>Embed enthält Spielname, Cover-Bild, Normalpreis und direkten Shop-Link</li>
-  </ul>
+<div class="fs-card">
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.9rem;">
+    🔥 Angebote
+    <span class="badge-deal">NEU</span>
+  </div>
+
+  <label class="toggle-section" for="deals-toggle">
+    <input type="checkbox" id="deals-toggle" onchange="toggleDeals(this.checked)"
+           {% if cfg and cfg.deal_max_price %}checked{% endif %}>
+    Angebots-Benachrichtigungen aktivieren
+  </label>
+
+  <div class="deal-fields {% if cfg and cfg.deal_max_price %}active{% endif %}" id="deal-fields">
+    <div class="price-row">
+      <div>
+        <label>Max. Preis (€)</label>
+        <input type="number" name="deal_max_price" min="0.50" max="100" step="0.50"
+               placeholder="z.B. 5"
+               value="{{ '%.2f'|format(cfg.deal_max_price|float) if cfg and cfg.deal_max_price else '' }}">
+      </div>
+      <div>
+        <label>Mindest-Rabatt (%)</label>
+        <input type="number" name="deal_min_discount" min="25" max="99" step="5"
+               placeholder="75"
+               value="{{ cfg.deal_min_discount or 75 if cfg else 75 }}">
+      </div>
+      <div>
+        <label>Kanal für Deals</label>
+        <select name="deal_channel_id">
+          <option value="">— gleicher wie Gratis —</option>
+          {% for c in channels %}
+          <option value="{{ c.id }}"
+            {% if cfg and cfg.deal_channel_id == c.id %}selected{% endif %}>#{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <p class="hint">
+      Beispiel: Max. Preis 5 € + 75% Rabatt → nur Spiele die normalerweise ≥ 20 € kosten und gerade ≤ 5 € sind.<br>
+      Epic Games wird für Deals nicht unterstützt (kein Preis-API). Steam, GOG und Humble funktionieren.
+    </p>
+  </div>
 </div>
+
+<div style="display:flex;gap:0.75rem;align-items:center;max-width:640px;">
+  <button type="submit" class="btn btn-primary">💾 Speichern</button>
+  {% if cfg %}
+  <button type="button" class="btn btn-danger"
+    onclick="if(confirm('Alles deaktivieren?'))document.getElementById('dis-form').submit()">
+    Deaktivieren
+  </button>
+  {% endif %}
+</div>
+</form>
+<form id="dis-form" method="post" action="/servers/{{ guild_id }}/freestuff/disable" style="display:none;"></form>
+
+<script>
+function toggleDeals(on) {
+  document.getElementById('deal-fields').classList.toggle('active', on);
+  if (!on) {
+    document.querySelector('[name="deal_max_price"]').value = '';
+  }
+}
+</script>
 {% endblock %}

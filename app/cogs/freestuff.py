@@ -30,12 +30,11 @@ def _epic_extract(elements: list) -> list:
             if price.get("discountPrice", -1) != 0:
                 continue
             if price.get("originalPrice", 0) == 0:
-                continue  # always free
+                continue
             offers = (el.get("promotions") or {}).get("promotionalOffers") or []
             if not offers or not offers[0].get("promotionalOffers"):
                 continue
-            inner = offers[0]["promotionalOffers"][0]
-            end = inner.get("endDate", "")[:10]
+            end = offers[0]["promotionalOffers"][0].get("endDate", "")[:10]
             img = next(
                 (i["url"] for i in el.get("keyImages", [])
                  if i.get("type") in ("Thumbnail", "DieselStoreFrontWide", "OfferImageWide")),
@@ -43,17 +42,17 @@ def _epic_extract(elements: list) -> list:
             )
             mappings = (el.get("catalogNs") or {}).get("mappings") or []
             slug = mappings[0].get("pageSlug", "") if mappings else el.get("productSlug", "")
-            store_url = (
-                f"https://store.epicgames.com/de/p/{slug}"
-                if slug else "https://store.epicgames.com/de/free-games"
-            )
             out.append({
                 "id": f"epic_{el.get('id', '')}",
                 "title": el.get("title", ""),
                 "description": (el.get("description") or "")[:180],
-                "url": store_url,
+                "url": (f"https://store.epicgames.com/de/p/{slug}"
+                        if slug else "https://store.epicgames.com/de/free-games"),
                 "image": img,
                 "end_date": end,
+                "original_price": None,
+                "sale_price": 0.0,
+                "discount": 100,
                 "platform": "epic",
             })
         except Exception:
@@ -69,7 +68,7 @@ class FreeStuff(commands.Cog):
     def cog_unload(self):
         self.check_loop.cancel()
 
-    # ── Main loop ─────────────────────────────────────────────────────────────
+    # ── Loop ──────────────────────────────────────────────────────────────────
 
     @tasks.loop(hours=2)
     async def check_loop(self):
@@ -78,37 +77,65 @@ class FreeStuff(commands.Cog):
             if not configs:
                 return
 
-            # Collect which platforms any server needs
-            needed = set()
+            needed_free = set()
+            needed_deals = set()
             for cfg in configs:
-                needed.update((cfg["platforms"] or "epic").split(","))
+                needed_free.update((cfg["platforms"] or "epic").split(","))
+                if cfg.get("deal_max_price"):
+                    needed_deals.update((cfg["platforms"] or "epic").split(","))
 
-            all_games = await self._fetch_all(needed)
-            if not all_games:
-                return
+            free_games = await self._fetch_free(needed_free) if needed_free else []
 
             for cfg in configs:
+                guild_id = cfg["guild_id"]
                 platforms = set((cfg["platforms"] or "epic").split(","))
-                ch = self.bot.get_channel(int(cfg["channel_id"]))
-                if not ch:
-                    continue
-                for game in all_games:
-                    if game["platform"] not in platforms:
-                        continue
-                    already = await db_one(
-                        "SELECT 1 FROM freestuff_posted WHERE guild_id=? AND game_id=? AND platform=?",
-                        (cfg["guild_id"], game["id"], game["platform"]),
-                    )
-                    if already:
-                        continue
-                    try:
-                        await self._send_embed(ch, game)
-                    except Exception as e:
-                        print(f"[FreeStuff] Send error: {e}")
-                    await db_exec(
-                        "INSERT OR IGNORE INTO freestuff_posted (guild_id, game_id, platform) VALUES (?,?,?)",
-                        (cfg["guild_id"], game["id"], game["platform"]),
-                    )
+
+                # ── Free games ────────────────────────────────────────────
+                ch_free = self.bot.get_channel(int(cfg["channel_id"]))
+                if ch_free:
+                    for game in free_games:
+                        if game["platform"] not in platforms:
+                            continue
+                        if await db_one(
+                            "SELECT 1 FROM freestuff_posted WHERE guild_id=? AND game_id=? AND platform=?",
+                            (guild_id, game["id"], game["platform"]),
+                        ):
+                            continue
+                        try:
+                            await self._send_embed(ch_free, game, is_deal=False)
+                        except Exception as e:
+                            print(f"[FreeStuff] send error: {e}")
+                        await db_exec(
+                            "INSERT OR IGNORE INTO freestuff_posted (guild_id,game_id,platform) VALUES (?,?,?)",
+                            (guild_id, game["id"], game["platform"]),
+                        )
+
+                # ── Deals ─────────────────────────────────────────────────
+                max_price = cfg.get("deal_max_price")
+                min_disc = int(cfg.get("deal_min_discount") or 75)
+                deal_ch_id = cfg.get("deal_channel_id") or cfg["channel_id"]
+                ch_deals = self.bot.get_channel(int(deal_ch_id))
+
+                if max_price and ch_deals:
+                    deals = await self._fetch_deals(platforms, float(max_price), min_disc)
+                    for game in deals:
+                        if game["platform"] not in platforms:
+                            continue
+                        deal_key = f"deal_{game['id']}"
+                        if await db_one(
+                            "SELECT 1 FROM freestuff_posted WHERE guild_id=? AND game_id=? AND platform=?",
+                            (guild_id, deal_key, game["platform"]),
+                        ):
+                            continue
+                        try:
+                            await self._send_embed(ch_deals, game, is_deal=True)
+                        except Exception as e:
+                            print(f"[FreeStuff] deal send error: {e}")
+                        await db_exec(
+                            "INSERT OR IGNORE INTO freestuff_posted (guild_id,game_id,platform) VALUES (?,?,?)",
+                            (guild_id, deal_key, game["platform"]),
+                        )
+
         except Exception as e:
             print(f"[FreeStuff] Loop error: {e}")
 
@@ -118,19 +145,35 @@ class FreeStuff(commands.Cog):
 
     # ── Fetchers ──────────────────────────────────────────────────────────────
 
-    async def _fetch_all(self, platforms: set) -> list:
+    async def _fetch_free(self, platforms: set) -> list:
         tasks = []
         if "epic" in platforms:
             tasks.append(self._fetch_epic())
         for key, info in PLATFORMS.items():
             if key != "epic" and key in platforms and info["cs_id"]:
-                tasks.append(self._fetch_cheapshark(info["cs_id"], key))
+                tasks.append(self._fetch_cheapshark(info["cs_id"], key, upper=0, lower=0, min_disc=100))
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        games = []
+        out = []
         for r in results:
             if isinstance(r, list):
-                games.extend(r)
-        return games
+                out.extend(r)
+        return out
+
+    async def _fetch_deals(self, platforms: set, max_price: float, min_disc: int) -> list:
+        tasks = []
+        for key, info in PLATFORMS.items():
+            if key in platforms and info["cs_id"]:
+                tasks.append(self._fetch_cheapshark(
+                    info["cs_id"], key,
+                    upper=max_price, lower=0.01,
+                    min_disc=min_disc,
+                ))
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        out = []
+        for r in results:
+            if isinstance(r, list):
+                out.extend(r)
+        return out
 
     async def _fetch_epic(self) -> list:
         try:
@@ -138,23 +181,28 @@ class FreeStuff(commands.Cog):
                 req = urllib.request.Request(EPIC_URL, headers={"User-Agent": "PhobosBot/1.0"})
                 with urllib.request.urlopen(req, timeout=10) as r:
                     return json.loads(r.read())
-
             data = await asyncio.to_thread(_get)
-            elements = (data.get("data", {})
-                           .get("Catalog", {})
-                           .get("searchStore", {})
-                           .get("elements", []))
+            elements = (data.get("data", {}).get("Catalog", {})
+                            .get("searchStore", {}).get("elements", []))
             return _epic_extract(elements)
         except Exception as e:
             print(f"[FreeStuff] Epic error: {e}")
             return []
 
-    async def _fetch_cheapshark(self, store_id: str, platform: str) -> list:
+    async def _fetch_cheapshark(
+        self, store_id: str, platform: str,
+        upper: float, lower: float, min_disc: int,
+    ) -> list:
         try:
-            url = (
-                f"https://www.cheapshark.com/api/1.0/deals"
-                f"?upperPrice=0&pageSize=60&storeID={store_id}&sortBy=Recent"
-            )
+            params = {
+                "storeID": store_id,
+                "pageSize": "60",
+                "sortBy": "Recent",
+                "upperPrice": str(upper),
+            }
+            if lower > 0:
+                params["lowerPrice"] = str(lower)
+            url = "https://www.cheapshark.com/api/1.0/deals?" + urllib.parse.urlencode(params)
 
             def _get():
                 req = urllib.request.Request(url, headers={"User-Agent": "PhobosBot/1.0"})
@@ -165,11 +213,13 @@ class FreeStuff(commands.Cog):
             out = []
             for d in deals:
                 try:
-                    normal = float(d.get("normalPrice", "0") or "0")
+                    normal = float(d.get("normalPrice") or 0)
+                    sale = float(d.get("salePrice") or 0)
+                    savings = float(d.get("savings") or 0)
                     if normal <= 0:
-                        continue  # always free, skip
-                    deal_id = d.get("dealID", "")
-                    game_id = f"{platform}_{d.get('gameID', deal_id)}"
+                        continue  # always free
+                    if savings < min_disc:
+                        continue
                     title = d.get("title", "")
                     if not title:
                         continue
@@ -178,14 +228,17 @@ class FreeStuff(commands.Cog):
                         f"https://cdn.cloudflare.steamstatic.com/steam/apps/{steam_id}/header.jpg"
                         if steam_id else d.get("thumb", "")
                     )
-                    store_url = f"https://www.cheapshark.com/redirect?dealID={urllib.parse.quote(deal_id)}"
+                    deal_id = d.get("dealID", "")
                     out.append({
-                        "id": game_id,
+                        "id": f"{platform}_{d.get('gameID', deal_id)}",
                         "title": title,
-                        "description": f"Normalpreis: {normal:.2f} €",
-                        "url": store_url,
+                        "description": "",
+                        "url": f"https://www.cheapshark.com/redirect?dealID={urllib.parse.quote(deal_id)}",
                         "image": image,
                         "end_date": "",
+                        "original_price": normal,
+                        "sale_price": sale,
+                        "discount": int(savings),
                         "platform": platform,
                     })
                 except Exception:
@@ -197,20 +250,34 @@ class FreeStuff(commands.Cog):
 
     # ── Embed ─────────────────────────────────────────────────────────────────
 
-    async def _send_embed(self, channel: discord.TextChannel, game: dict):
+    async def _send_embed(self, channel: discord.TextChannel, game: dict, is_deal: bool):
         info = PLATFORMS.get(game["platform"], {"name": game["platform"], "icon": "🎁", "color": 0x5865F2})
+        disc = game.get("discount", 100)
+        orig = game.get("original_price")
+        sale = game.get("sale_price", 0.0)
+
+        if is_deal:
+            title_str = f"🔥 {game['title']} — -{disc}%"
+        else:
+            title_str = f"{info['icon']} {game['title']} — Kostenlos!"
+
         embed = discord.Embed(
-            title=f"{info['icon']} {game['title']} — Kostenlos!",
-            description=game["description"] or "Jetzt gratis holen!",
+            title=title_str,
+            description=game.get("description") or "",
             url=game["url"],
             color=info["color"],
         )
-        if game["image"]:
+        if game.get("image"):
             embed.set_image(url=game["image"])
-        if game["end_date"]:
+        if orig is not None and is_deal:
+            embed.add_field(name="Normalpreis", value=f"{orig:.2f} €", inline=True)
+            embed.add_field(name="Angebotspreis", value=f"{sale:.2f} €" if sale > 0 else "Gratis", inline=True)
+            embed.add_field(name="Rabatt", value=f"-{disc}%", inline=True)
+        elif game.get("end_date"):
             embed.add_field(name="Verfügbar bis", value=game["end_date"], inline=True)
         embed.add_field(name="Plattform", value=info["name"], inline=True)
-        embed.set_footer(text=f"{info['name']} • Kostenlos-Benachrichtigung")
+        footer = "Angebot" if is_deal else "Kostenlos"
+        embed.set_footer(text=f"{info['name']} • {footer}-Benachrichtigung")
         await channel.send(embed=embed)
 
 
