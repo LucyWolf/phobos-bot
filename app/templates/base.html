@@ -395,6 +395,9 @@
         <a href="/servers/{{ g.id }}/freestuff" class="nav-item nav-sub {% if request.url.path == '/servers/' + g.id + '/freestuff' %}active{% endif %}">
           <span class="icon">🎁</span><span class="label">Free Stuff</span>
         </a>
+        <a href="/servers/{{ g.id }}/log" class="nav-item nav-sub {% if request.url.path == '/servers/' + g.id + '/log' %}active{% endif %}">
+          <span class="icon">📋</span><span class="label">Log</span>
+        </a>
       </div>
     </div>
     {% endfor %}

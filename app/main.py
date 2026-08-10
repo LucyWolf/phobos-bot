@@ -830,6 +830,37 @@ async def servers_list(request: Request, success: str = ""):
     })
 
 
+@web.get("/servers/{guild_id}/log", response_class=HTMLResponse)
+async def server_log_page(request: Request, guild_id: str, success: str = ""):
+    if r := auth_redirect(request): return r
+    token_set = bool(await get_config("discord_token"))
+    guild = bot.get_guild(int(guild_id))
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
+    log_channel = await get_guild_config(int(guild_id), "log_channel") or ""
+    logs = await db_rows(
+        "SELECT icon, title, description, created_at FROM server_logs WHERE guild_id=? ORDER BY id DESC LIMIT 200",
+        (guild_id,),
+    )
+    return templates.TemplateResponse("server_log.html", {
+        **session(request), "request": request,
+        "guilds": _guild_list(request), "token_set": token_set,
+        "active": f"server_{guild_id}",
+        "guild_id": guild_id, "guild_name": guild.name,
+        "channels": channels, "log_channel": log_channel,
+        "logs": logs, "success": success,
+    })
+
+
+@web.post("/servers/{guild_id}/log/save")
+async def server_log_save(request: Request, guild_id: str, log_channel: str = Form("")):
+    if r := auth_redirect(request): return r
+    from database import set_guild_config
+    await set_guild_config(int(guild_id), "log_channel", log_channel)
+    return RedirectResponse(f"/servers/{guild_id}/log?success=1", status_code=302)
+
+
 @web.post("/servers/{guild_id}/leave")
 async def server_leave(request: Request, guild_id: int):
     if r := admin_redirect(request): return r

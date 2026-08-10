@@ -174,6 +174,14 @@ async def init_db():
             );
         """)
         await db.executescript("""
+            CREATE TABLE IF NOT EXISTS server_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                icon TEXT NOT NULL DEFAULT '📋',
+                title TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
                 token TEXT PRIMARY KEY,
                 user_id INTEGER NOT NULL,

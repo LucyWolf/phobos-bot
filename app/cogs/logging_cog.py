@@ -1,11 +1,7 @@
 import datetime
 import discord
 from discord.ext import commands
-from database import get_guild_config
-
-
-def _ts() -> str:
-    return discord.utils.format_dt(datetime.datetime.now(datetime.timezone.utc), "T")
+from database import get_guild_config, db_exec
 
 
 class Logging(commands.Cog):
@@ -13,12 +9,33 @@ class Logging(commands.Cog):
         self.bot = bot
 
     async def _log(self, guild_id: int, embed: discord.Embed):
+        embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
+
+        # store in DB (keep last 300 per guild)
+        title = embed.title or ""
+        icon = title.split()[0] if title else "📋"
+        desc_parts = [f"{f.name}: {f.value}" for f in embed.fields[:3]]
+        desc = " · ".join(desc_parts)[:300]
+        try:
+            await db_exec(
+                "INSERT INTO server_logs (guild_id, icon, title, description) VALUES (?,?,?,?)",
+                (str(guild_id), icon, title.lstrip(icon).strip(), desc),
+            )
+            await db_exec(
+                """DELETE FROM server_logs WHERE guild_id=? AND id NOT IN (
+                    SELECT id FROM server_logs WHERE guild_id=? ORDER BY id DESC LIMIT 300
+                )""",
+                (str(guild_id), str(guild_id)),
+            )
+        except Exception:
+            pass
+
+        # send to Discord channel if configured
         channel_id = await get_guild_config(guild_id, "log_channel")
         if not channel_id:
             return
         channel = self.bot.get_channel(int(channel_id))
         if channel:
-            embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
             await channel.send(embed=embed)
 
     # ── Mitglieder ────────────────────────────────────────────────────────────

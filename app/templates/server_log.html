@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Phobos Bot – Log – {{ guild_name }}{% endblock %}
+{% block page_title %}📋 Server-Log – {{ guild_name }}{% endblock %}
+
+{% block content %}
+<style>
+  .log-settings { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.25rem; max-width:560px; margin-bottom:1.5rem; }
+  .log-table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; overflow:hidden; }
+  .log-table-head { padding:0.75rem 1.25rem; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  .log-entry { display:grid; grid-template-columns:2rem 1fr auto; gap:0.5rem 0.75rem; align-items:start; padding:0.6rem 1.25rem; border-bottom:1px solid var(--border); font-size:0.83rem; }
+  .log-entry:last-child { border-bottom:none; }
+  .log-entry:hover { background:var(--bg); }
+  .log-icon { font-size:1rem; text-align:center; margin-top:0.1rem; }
+  .log-title { font-weight:600; }
+  .log-desc { color:var(--muted); font-size:0.77rem; margin-top:0.1rem; }
+  .log-time { color:var(--muted); font-size:0.72rem; white-space:nowrap; margin-top:0.15rem; }
+  .empty { text-align:center; padding:3rem 1rem; color:var(--muted); font-size:0.9rem; }
+</style>
+
+{% if success %}<div class="alert alert-success" style="max-width:560px;">✅ Gespeichert.</div>{% endif %}
+
+<div class="log-settings">
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.85rem;">⚙️ Log-Kanal</div>
+  <form method="post" action="/servers/{{ guild_id }}/log/save" style="display:flex;gap:0.75rem;align-items:flex-end;">
+    <div style="flex:1;">
+      <label>Log-Kanal <span style="color:var(--muted);font-size:0.72rem">(leer = nur Dashboard)</span></label>
+      <select name="log_channel" style="margin-bottom:0;">
+        <option value="">— Nur Dashboard —</option>
+        {% for c in channels %}
+        <option value="{{ c.id }}" {% if log_channel == c.id %}selected{% endif %}>#{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">💾 Speichern</button>
+  </form>
+</div>
+
+<div class="log-table-wrap">
+  <div class="log-table-head">
+    <span style="font-weight:700;font-size:0.9rem;">Letzte Ereignisse</span>
+    <span style="font-size:0.78rem;color:var(--muted);">{{ logs|length }} Einträge (max. 200)</span>
+  </div>
+  {% if logs %}
+  {% for e in logs %}
+  <div class="log-entry">
+    <div class="log-icon">{{ e.icon }}</div>
+    <div>
+      <div class="log-title">{{ e.title }}</div>
+      {% if e.description %}<div class="log-desc">{{ e.description }}</div>{% endif %}
+    </div>
+    <div class="log-time">{{ e.created_at[:16].replace('T',' ') }}</div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="empty">Noch keine Ereignisse aufgezeichnet.</div>
+  {% endif %}
+</div>
+{% endblock %}
