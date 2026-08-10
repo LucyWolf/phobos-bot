@@ -439,18 +439,26 @@
     }
   });
 
-  // Update check (non-blocking, cached server-side for 1h)
-  fetch('/api/version').then(r => r.json()).then(data => {
-    if (!data.update_available) return;
-    const fu = document.getElementById('footer-update');
-    if (fu) fu.style.display = 'inline';
-    const badge = document.getElementById('nav-update-badge');
-    if (badge) badge.style.display = 'inline';
-    if (data.latest) {
-      const link = document.getElementById('footer-update-link');
-      if (link) link.textContent = '🔔 Update v' + data.latest + ' verfügbar';
-    }
-  }).catch(() => {});
+  // Update check — runs on load and every 5 minutes
+  function runUpdateCheck(force) {
+    fetch('/api/version' + (force ? '?force=1' : '')).then(r => r.json()).then(data => {
+      const fu = document.getElementById('footer-update');
+      const badge = document.getElementById('nav-update-badge');
+      if (data.update_available) {
+        if (fu) fu.style.display = 'inline';
+        if (badge) badge.style.display = 'inline';
+        const link = document.getElementById('footer-update-link');
+        if (link) link.textContent = '🔔 Update v' + data.latest + ' verfügbar';
+      } else {
+        if (fu) fu.style.display = 'none';
+        if (badge) badge.style.display = 'none';
+      }
+      // notify update page if open
+      if (typeof window._onVersionData === 'function') window._onVersionData(data);
+    }).catch(() => {});
+  }
+  runUpdateCheck(false);
+  setInterval(() => runUpdateCheck(false), 5 * 60 * 1000);
 </script>
 </body>
 </html>

@@ -5,86 +5,149 @@
 
 {% block content %}
 <style>
-  .update-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.5rem; margin-bottom:1.25rem; max-width:560px; }
-  .version-row { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
-  .version-box { flex:1; min-width:120px; }
+  .update-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.5rem; margin-bottom:1.25rem; max-width:580px; }
+  .version-row { display:flex; align-items:center; gap:1.25rem; flex-wrap:wrap; margin-bottom:1.25rem; }
+  .version-box { flex:1; min-width:110px; }
   .version-label { font-size:0.68rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.07em; margin-bottom:0.3rem; }
   .version-val { font-size:1.6rem; font-weight:700; font-family:monospace; }
-  .version-arrow { font-size:1.4rem; color:var(--muted); }
-  .badge-update { display:inline-flex; align-items:center; gap:0.4rem; background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.4); border-radius:999px; padding:0.3rem 0.85rem; font-size:0.8rem; font-weight:700; margin-bottom:1rem; }
-  .badge-ok { display:inline-flex; align-items:center; gap:0.4rem; background:rgba(34,197,94,0.1); color:var(--success); border:1px solid rgba(34,197,94,0.3); border-radius:999px; padding:0.3rem 0.85rem; font-size:0.8rem; font-weight:700; margin-bottom:1rem; }
-  .manual-steps { background:var(--bg); border:1px solid var(--border); border-radius:0.5rem; padding:1rem 1.25rem; font-family:monospace; font-size:0.8rem; line-height:2; color:var(--muted); }
+  .version-arrow { font-size:1.3rem; color:var(--muted); }
+  .status-badge { display:inline-flex; align-items:center; gap:0.4rem; border-radius:999px; padding:0.3rem 0.85rem; font-size:0.8rem; font-weight:700; margin-bottom:1.1rem; }
+  .badge-update { background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.4); }
+  .badge-ok     { background:rgba(34,197,94,0.1);  color:var(--success); border:1px solid rgba(34,197,94,0.3); }
+  .badge-check  { background:rgba(100,116,139,0.1); color:var(--muted); border:1px solid var(--border); }
+  .btn-row { display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; }
+  .btn-search { background:var(--bg); border:1px solid var(--border); color:var(--text); padding:0.5rem 1.1rem; border-radius:0.5rem; font-size:0.85rem; font-weight:600; cursor:pointer; transition:border-color 0.15s; display:inline-flex; align-items:center; gap:0.4rem; }
+  .btn-search:hover { border-color:var(--accent); color:#a78bfa; }
+  .checked-at { font-size:0.75rem; color:var(--muted); margin-top:0.6rem; }
+  .manual-steps { background:var(--bg); border:1px solid var(--border); border-radius:0.5rem; padding:1rem 1.25rem; font-family:monospace; font-size:0.8rem; line-height:2; }
   .manual-steps span { color:var(--text); }
-  .restart-note { font-size:0.78rem; color:var(--muted); margin-top:0.75rem; line-height:1.6; }
-  .spinner { display:none; width:16px; height:16px; border:2px solid #fff4; border-top-color:#fff; border-radius:50%; animation:spin 0.7s linear infinite; }
+  .restart-note { font-size:0.78rem; color:var(--muted); margin-top:0.6rem; line-height:1.6; }
+  .spinner { display:none; width:14px; height:14px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:spin 0.7s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
 </style>
 
 {% if success %}
-<div class="alert alert-success">✅ Update heruntergeladen! Bot wird neu gestartet — Seite in 10 Sekunden neu laden…</div>
-<script>setTimeout(()=>location.reload(), 10000);</script>
+<div class="alert alert-success">✅ Update heruntergeladen — Bot wird neu gestartet. Seite lädt automatisch neu…</div>
+<script>setTimeout(() => location.reload(), 12000);</script>
 {% endif %}
 {% if error %}
 <div class="alert alert-error">❌ {{ error }}</div>
 {% endif %}
 
 <div class="update-card">
-  {% if update_available %}
-  <div class="badge-update">🔔 Update verfügbar</div>
-  {% else %}
-  <div class="badge-ok">✅ Aktuell</div>
-  {% endif %}
+  <div id="status-badge" class="status-badge badge-check">⏳ Suche läuft…</div>
 
-  <div class="version-row" style="margin-bottom:1.25rem;">
+  <div class="version-row">
     <div class="version-box">
       <div class="version-label">Installiert</div>
       <div class="version-val" style="color:var(--text);">v{{ current_version }}</div>
     </div>
-    {% if latest_version %}
     <div class="version-arrow">→</div>
     <div class="version-box">
-      <div class="version-label">Verfügbar</div>
-      <div class="version-val" style="color:{% if update_available %}#f59e0b{% else %}var(--success){% endif %};">v{{ latest_version }}</div>
+      <div class="version-label">Verfügbar auf GitHub</div>
+      <div class="version-val" id="latest-val" style="color:var(--muted);">…</div>
     </div>
-    {% endif %}
   </div>
 
-  {% if update_available %}
-  <form method="post" action="/bot/update/apply" onsubmit="startUpdate(this)">
-    <button type="submit" class="btn btn-primary" id="update-btn">
-      <span id="btn-text">⬇️ Jetzt updaten</span>
-      <span class="spinner" id="btn-spin"></span>
+  <div class="btn-row">
+    <button class="btn-search" id="search-btn" onclick="doCheck(true)">
+      <span class="spinner" id="search-spin"></span>
+      <span id="search-txt">🔍 Jetzt suchen</span>
     </button>
-  </form>
-  <p class="restart-note" style="margin-top:0.75rem;">
-    Lädt die neue Version von GitHub herunter, überschreibt die Dateien und startet den Bot neu.<br>
-    Dauert ca. 10–30 Sekunden. Die Datenbank bleibt dabei unangetastet.
-  </p>
-  {% else %}
-  <p style="font-size:0.85rem; color:var(--muted);">Kein Update nötig — du hast die neueste Version.</p>
-  {% endif %}
+    <form method="post" action="/bot/update/apply" id="apply-form" style="display:none;" onsubmit="startApply()">
+      <button type="submit" class="btn btn-primary" id="apply-btn">
+        <span class="spinner" id="apply-spin"></span>
+        <span id="apply-txt">⬇️ Jetzt updaten</span>
+      </button>
+    </form>
+  </div>
+  <div class="checked-at" id="checked-at"></div>
+  <div class="restart-note" id="apply-note" style="display:none;">
+    Lädt die neue Version von GitHub, überschreibt die Dateien und startet den Bot in-place neu.<br>
+    Dauert ca. 10–30 Sekunden. Die Datenbank bleibt unangetastet.
+  </div>
 
   <a href="https://github.com/LucyWolf/phobos-bot/commits/main" target="_blank"
-     style="display:inline-flex;align-items:center;gap:0.4rem;margin-top:1rem;font-size:0.8rem;color:var(--muted);text-decoration:none;">
-    📋 Changelog auf GitHub ansehen →
+     style="display:inline-flex;align-items:center;gap:0.4rem;margin-top:1.1rem;font-size:0.8rem;color:var(--muted);text-decoration:none;">
+    📋 Changelog auf GitHub →
   </a>
 </div>
 
 <div class="update-card">
   <div class="section-label" style="margin-bottom:0.75rem;">Manuelles Update (immer möglich)</div>
   <div class="manual-steps">
-    <span>cd /path/to/phobos-bot</span><br>
+    <span>cd /pfad/zu/phobos-bot</span><br>
     <span>git pull origin main</span><br>
     <span>docker compose up -d --build</span>
   </div>
-  <p class="restart-note">Auf dem Server ausführen — funktioniert unabhängig davon ob git im Container verfügbar ist.</p>
+  <p class="restart-note">Auf dem Server ausführen — bei Änderungen an requirements.txt immer notwendig.</p>
 </div>
 
 <script>
-function startUpdate(form) {
-  document.getElementById('btn-text').textContent = 'Update wird geladen…';
-  document.getElementById('btn-spin').style.display = 'inline-block';
-  document.getElementById('update-btn').disabled = true;
-}
+  const current = '{{ current_version }}';
+
+  function setSpinner(id, on) {
+    document.getElementById(id).style.display = on ? 'inline-block' : 'none';
+  }
+
+  function doCheck(force) {
+    setSpinner('search-spin', true);
+    document.getElementById('search-txt').textContent = 'Suche läuft…';
+    document.getElementById('search-btn').disabled = true;
+    fetch('/api/version' + (force ? '?force=1' : ''))
+      .then(r => r.json())
+      .then(applyVersionData)
+      .catch(() => {
+        document.getElementById('status-badge').className = 'status-badge badge-check';
+        document.getElementById('status-badge').textContent = '⚠️ Fehler beim Abrufen';
+        resetSearchBtn();
+      });
+  }
+
+  function applyVersionData(data) {
+    const latestEl = document.getElementById('latest-val');
+    const badge = document.getElementById('status-badge');
+    const form = document.getElementById('apply-form');
+    const note = document.getElementById('apply-note');
+
+    latestEl.textContent = data.latest ? 'v' + data.latest : '—';
+
+    if (data.update_available) {
+      latestEl.style.color = '#f59e0b';
+      badge.className = 'status-badge badge-update';
+      badge.textContent = '🔔 Update verfügbar';
+      form.style.display = 'inline';
+      note.style.display = 'block';
+    } else {
+      latestEl.style.color = 'var(--success)';
+      badge.className = 'status-badge badge-ok';
+      badge.textContent = '✅ Aktuell';
+      form.style.display = 'none';
+      note.style.display = 'none';
+    }
+
+    if (data.checked_at) {
+      document.getElementById('checked-at').textContent = 'Zuletzt geprüft: ' + data.checked_at + ' UTC';
+    }
+    resetSearchBtn();
+  }
+
+  function resetSearchBtn() {
+    setSpinner('search-spin', false);
+    document.getElementById('search-txt').textContent = '🔍 Jetzt suchen';
+    document.getElementById('search-btn').disabled = false;
+  }
+
+  function startApply() {
+    setSpinner('apply-spin', true);
+    document.getElementById('apply-txt').textContent = 'Update wird geladen…';
+    document.getElementById('apply-btn').disabled = true;
+  }
+
+  // Hook into base.html update poller
+  window._onVersionData = applyVersionData;
+
+  // Initial check on page open
+  doCheck(false);
 </script>
 {% endblock %}

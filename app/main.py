@@ -357,10 +357,10 @@ def _ver_tuple(v: str):
         return (0,)
 
 
-async def check_latest_version() -> str | None:
+async def check_latest_version(force: bool = False) -> str | None:
     now = datetime.datetime.utcnow()
     cached_at = _UPDATE_CACHE["at"]
-    if cached_at and (now - cached_at).total_seconds() < 3600:
+    if not force and cached_at and (now - cached_at).total_seconds() < 300:
         return _UPDATE_CACHE["latest"]
     try:
         def _fetch():
@@ -375,12 +375,18 @@ async def check_latest_version() -> str | None:
 
 
 @web.get("/api/version")
-async def api_version(request: Request):
+async def api_version(request: Request, force: int = 0):
     if not session(request).get("username"):
         return JSONResponse({"current": VERSION, "latest": None, "update_available": False})
-    latest = await check_latest_version()
+    latest = await check_latest_version(force=bool(force))
     update_available = bool(latest and _ver_tuple(latest) > _ver_tuple(VERSION))
-    return JSONResponse({"current": VERSION, "latest": latest, "update_available": update_available})
+    checked_at = _UPDATE_CACHE["at"].strftime("%H:%M:%S") if _UPDATE_CACHE["at"] else None
+    return JSONResponse({
+        "current": VERSION,
+        "latest": latest,
+        "update_available": update_available,
+        "checked_at": checked_at,
+    })
 
 
 @web.get("/bot/update", response_class=HTMLResponse)
