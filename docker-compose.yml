@@ -2,14 +2,12 @@ services:
   bot:
     build: ./bot
     restart: unless-stopped
-    env_file: .env
     volumes:
       - ./data:/app/data
 
   web:
     build: ./web
     restart: unless-stopped
-    env_file: .env
     ports:
       - "8080:8080"
     volumes:
