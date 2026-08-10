@@ -173,11 +173,19 @@ async def init_db():
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        await db.executescript("""
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                token TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                expires_at DATETIME NOT NULL
+            );
+        """)
         # Column migrations for existing installs
         for col in [
             "ALTER TABLE freestuff_channels ADD COLUMN deal_max_price REAL",
             "ALTER TABLE freestuff_channels ADD COLUMN deal_min_discount INTEGER DEFAULT 75",
             "ALTER TABLE freestuff_channels ADD COLUMN deal_channel_id TEXT",
+            "ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

@@ -312,7 +312,7 @@
       <span class="label">Dashboard</span>
     </a>
 
-    <div class="nav-group {% if active in ['settings','users','bot_design','bot_info','bot_update','notif_settings','servers'] %}open{% endif %}" id="nav-group-settings">
+    <div class="nav-group {% if active in ['settings','users','bot_design','bot_info','bot_update','notif_settings','smtp','servers'] %}open{% endif %}" id="nav-group-settings">
       <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn-header{% endif %}"
            onclick="toggleNavGroup('settings')" title="Einstellungen">
         <span class="icon">⚙️</span>
@@ -346,6 +346,10 @@
         <a href="/settings/notifications" class="nav-item nav-sub {% if active == 'notif_settings' %}active{% endif %}">
           <span class="icon">📡</span>
           <span class="label">Benachrichtigungs-API</span>
+        </a>
+        <a href="/settings/smtp" class="nav-item nav-sub {% if active == 'smtp' %}active{% endif %}">
+          <span class="icon">📧</span>
+          <span class="label">E-Mail / SMTP</span>
         </a>
         <a href="/bot/update" class="nav-item nav-sub {% if active == 'bot_update' %}active{% endif %}" id="nav-update-link">
           <span class="icon">🔄</span>

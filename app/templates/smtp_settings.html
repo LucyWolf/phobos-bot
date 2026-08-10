@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Phobos Bot – E-Mail / SMTP{% endblock %}
+{% block page_title %}📧 E-Mail / SMTP{% endblock %}
+
+{% block content %}
+{% if saved %}<div class="alert alert-success">✅ Gespeichert.</div>{% endif %}
+{% if test_ok %}<div class="alert alert-success">✅ Test-E-Mail erfolgreich gesendet.</div>{% endif %}
+{% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
+
+<div class="card" style="max-width:560px;">
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.3rem;">SMTP-Konfiguration</div>
+  <p class="hint" style="margin-bottom:1.25rem;">
+    Wird für das Passwort-Reset-System verwendet. Funktioniert mit Gmail, Outlook, oder eigenem Mailserver.
+  </p>
+  <form method="post" action="/settings/smtp">
+    <div class="grid-2">
+      <div>
+        <label>SMTP Host</label>
+        <input type="text" name="smtp_host" value="{{ smtp_host }}" placeholder="smtp.gmail.com">
+      </div>
+      <div>
+        <label>Port</label>
+        <input type="number" name="smtp_port" value="{{ smtp_port }}" placeholder="587">
+      </div>
+    </div>
+    <label>Benutzername (E-Mail)</label>
+    <input type="email" name="smtp_user" value="{{ smtp_user }}" placeholder="bot@gmail.com">
+    <label>Passwort / App-Passwort <span style="color:var(--muted);font-size:0.72rem">(leer lassen = nicht ändern)</span></label>
+    <input type="password" name="smtp_pass" placeholder="••••••••">
+    <label>Absender-Adresse <span style="color:var(--muted);font-size:0.72rem">(leer = gleich wie Benutzername)</span></label>
+    <input type="email" name="smtp_from" value="{{ smtp_from }}" placeholder="noreply@example.com">
+    <label>Dashboard-URL <span style="color:var(--muted);font-size:0.72rem">(für Reset-Links, z.B. https://bot.example.com)</span></label>
+    <input type="url" name="base_url" value="{{ base_url }}" placeholder="https://bot.example.com">
+    <button type="submit" class="btn btn-primary">💾 Speichern</button>
+  </form>
+</div>
+
+<div class="card" style="max-width:560px; margin-top:1rem;">
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.85rem;">🧪 Test-E-Mail senden</div>
+  <form method="post" action="/settings/smtp/test" style="display:flex;gap:0.75rem;align-items:flex-end;">
+    <div style="flex:1;">
+      <label>Empfänger</label>
+      <input type="email" name="test_email" placeholder="test@example.com" style="margin-bottom:0;">
+    </div>
+    <button type="submit" class="btn btn-secondary">Senden</button>
+  </form>
+</div>
+
+<div class="card" style="max-width:560px; margin-top:1rem; background:rgba(124,58,237,0.05); border-color:rgba(124,58,237,0.2);">
+  <div style="font-weight:700;font-size:0.88rem;margin-bottom:0.6rem;">Gmail einrichten</div>
+  <p class="hint">
+    1. Google-Konto → Sicherheit → 2-Faktor-Authentifizierung aktivieren<br>
+    2. Google-Konto → Sicherheit → App-Passwörter → neues App-Passwort erstellen<br>
+    3. Host: <code>smtp.gmail.com</code> · Port: <code>587</code><br>
+    4. Benutzername: deine Gmail-Adresse · Passwort: das generierte App-Passwort
+  </p>
+</div>
+{% endblock %}

@@ -1,9 +1,11 @@
 import asyncio
 import datetime
+import email.mime.text
 import os
 import platform
 import secrets
 import shutil
+import smtplib
 import sys
 import tarfile
 import tempfile
@@ -168,6 +170,99 @@ async def login_submit(request: Request, username: str = Form(...), password: st
 async def logout(request: Request):
     request.session.clear()
     return RedirectResponse("/login", status_code=302)
+
+
+# ── Password Reset ─────────────────────────────────────────────────────────────
+
+async def _send_reset_email(to_addr: str, reset_url: str):
+    host = await get_config("smtp_host") or ""
+    port = int(await get_config("smtp_port") or 587)
+    user = await get_config("smtp_user") or ""
+    pw   = await get_config("smtp_pass") or ""
+    frm  = await get_config("smtp_from") or user
+    if not host or not user:
+        raise ValueError("SMTP nicht konfiguriert")
+
+    def _send():
+        msg = email.mime.text.MIMEText(
+            f"Hallo,\n\nKlicke diesen Link um dein Passwort zurückzusetzen:\n{reset_url}\n\n"
+            f"Der Link ist 1 Stunde gültig.\n\nPhobos Bot",
+            "plain", "utf-8",
+        )
+        msg["Subject"] = "Phobos Bot – Passwort zurücksetzen"
+        msg["From"] = frm
+        msg["To"] = to_addr
+        with smtplib.SMTP(host, port, timeout=10) as s:
+            s.ehlo()
+            s.starttls()
+            s.login(user, pw)
+            s.sendmail(frm, [to_addr], msg.as_string())
+
+    await asyncio.to_thread(_send)
+
+
+@web.get("/forgot-password", response_class=HTMLResponse)
+async def forgot_pw_page(request: Request, error: str = "", success: str = ""):
+    if request.session.get("user_id"):
+        return RedirectResponse("/", status_code=302)
+    return templates.TemplateResponse("forgot_password.html", {
+        "request": request, "error": error, "success": success, "version": VERSION,
+    })
+
+
+@web.post("/forgot-password")
+async def forgot_pw_submit(request: Request, email_addr: str = Form(...)):
+    user = await db_one("SELECT id, email FROM users WHERE email=?", (email_addr.strip(),))
+    if user and user.get("email"):
+        token = secrets.token_urlsafe(32)
+        expires = (datetime.datetime.utcnow() + datetime.timedelta(hours=1)).isoformat()
+        await db_exec(
+            "INSERT OR REPLACE INTO password_reset_tokens (token,user_id,expires_at) VALUES (?,?,?)",
+            (token, user["id"], expires),
+        )
+        base = await get_config("base_url") or ""
+        reset_url = f"{base.rstrip('/')}/reset-password?token={token}"
+        try:
+            await _send_reset_email(email_addr.strip(), reset_url)
+        except Exception as e:
+            return RedirectResponse(f"/forgot-password?error={urllib.parse.quote(str(e))}", status_code=302)
+    # always show success to prevent user enumeration
+    return RedirectResponse(
+        "/forgot-password?success=Falls+diese+E-Mail+registriert+ist+wurde+ein+Link+gesendet",
+        status_code=302,
+    )
+
+
+@web.get("/reset-password", response_class=HTMLResponse)
+async def reset_pw_page(request: Request, token: str = "", error: str = ""):
+    if not token:
+        return RedirectResponse("/login", status_code=302)
+    row = await db_one(
+        "SELECT user_id FROM password_reset_tokens WHERE token=? AND expires_at > ?",
+        (token, datetime.datetime.utcnow().isoformat()),
+    )
+    if not row:
+        return RedirectResponse("/login?error=Link+ungültig+oder+abgelaufen", status_code=302)
+    return templates.TemplateResponse("reset_password.html", {
+        "request": request, "token": token, "error": error, "version": VERSION,
+    })
+
+
+@web.post("/reset-password")
+async def reset_pw_submit(request: Request, token: str = Form(...), password: str = Form(...), password2: str = Form(...)):
+    if password != password2:
+        return RedirectResponse(f"/reset-password?token={token}&error=Passwörter+stimmen+nicht+überein", status_code=302)
+    if len(password) < 6:
+        return RedirectResponse(f"/reset-password?token={token}&error=Mindestens+6+Zeichen", status_code=302)
+    row = await db_one(
+        "SELECT user_id FROM password_reset_tokens WHERE token=? AND expires_at > ?",
+        (token, datetime.datetime.utcnow().isoformat()),
+    )
+    if not row:
+        return RedirectResponse("/login?error=Link+ungültig+oder+abgelaufen", status_code=302)
+    await db_exec("UPDATE users SET password_hash=? WHERE id=?", (hash_pw(password), row["user_id"]))
+    await db_exec("DELETE FROM password_reset_tokens WHERE token=?", (token,))
+    return RedirectResponse("/login?success=Passwort+erfolgreich+geändert", status_code=302)
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -660,6 +755,62 @@ async def notif_settings_save(
     if twitch_client_secret.strip():
         await set_config("twitch_client_secret", twitch_client_secret.strip())
     return RedirectResponse("/settings/notifications?saved=1", status_code=302)
+
+
+# ── SMTP Settings ─────────────────────────────────────────────────────────────
+
+@web.get("/settings/smtp", response_class=HTMLResponse)
+async def smtp_settings_page(request: Request, saved: bool = False, error: str = "", test_ok: bool = False):
+    if r := admin_redirect(request): return r
+    token_set = bool(await get_config("discord_token"))
+    return templates.TemplateResponse("smtp_settings.html", {
+        **session(request), "request": request,
+        "guilds": _guild_list(request), "token_set": token_set, "active": "smtp",
+        "smtp_host":  await get_config("smtp_host") or "",
+        "smtp_port":  await get_config("smtp_port") or "587",
+        "smtp_user":  await get_config("smtp_user") or "",
+        "smtp_from":  await get_config("smtp_from") or "",
+        "base_url":   await get_config("base_url") or "",
+        "saved": saved, "error": error, "test_ok": test_ok,
+    })
+
+
+@web.post("/settings/smtp")
+async def smtp_settings_save(
+    request: Request,
+    smtp_host: str = Form(""), smtp_port: str = Form("587"),
+    smtp_user: str = Form(""), smtp_pass: str = Form(""),
+    smtp_from: str = Form(""), base_url: str = Form(""),
+):
+    if r := admin_redirect(request): return r
+    for key, val in [
+        ("smtp_host", smtp_host), ("smtp_port", smtp_port),
+        ("smtp_user", smtp_user), ("smtp_from", smtp_from),
+        ("base_url", base_url),
+    ]:
+        await set_config(key, val.strip())
+    if smtp_pass.strip():
+        await set_config("smtp_pass", smtp_pass.strip())
+    return RedirectResponse("/settings/smtp?saved=1", status_code=302)
+
+
+@web.post("/settings/smtp/test")
+async def smtp_test(request: Request, test_email: str = Form(...)):
+    if r := admin_redirect(request): return r
+    try:
+        await _send_reset_email(test_email.strip(), "https://example.com/test-link")
+        return RedirectResponse("/settings/smtp?test_ok=1", status_code=302)
+    except Exception as e:
+        return RedirectResponse(f"/settings/smtp?error={urllib.parse.quote(str(e))}", status_code=302)
+
+
+# ── User Email ─────────────────────────────────────────────────────────────────
+
+@web.post("/users/email/{user_id}")
+async def users_set_email(request: Request, user_id: int, email_addr: str = Form(...)):
+    if r := admin_redirect(request): return r
+    await db_exec("UPDATE users SET email=? WHERE id=?", (email_addr.strip(), user_id))
+    return RedirectResponse("/users?success=E-Mail+gespeichert", status_code=302)
 
 
 # ── Servers List ──────────────────────────────────────────────────────────────
