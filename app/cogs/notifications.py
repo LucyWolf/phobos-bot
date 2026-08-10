@@ -1,9 +1,8 @@
 import asyncio
+import datetime
 import json
 import urllib.parse
 import urllib.request
-import xml.etree.ElementTree as ET
-import datetime
 
 import discord
 from discord.ext import commands, tasks
@@ -17,13 +16,9 @@ class Notifications(commands.Cog):
         self._twitch_token: str | None = None
         self._twitch_expires: datetime.datetime | None = None
         self.twitch_loop.start()
-        self.youtube_loop.start()
 
     def cog_unload(self):
         self.twitch_loop.cancel()
-        self.youtube_loop.cancel()
-
-    # ── Twitch ────────────────────────────────────────────────────────────────
 
     async def _twitch_auth(self) -> tuple[str | None, str | None]:
         client_id = await get_config("twitch_client_id")
@@ -34,7 +29,7 @@ class Notifications(commands.Cog):
         if self._twitch_token and self._twitch_expires and now < self._twitch_expires:
             return self._twitch_token, client_id
 
-        def _fetch_token():
+        def _fetch():
             data = urllib.parse.urlencode({
                 "client_id": client_id,
                 "client_secret": client_secret,
@@ -44,7 +39,7 @@ class Notifications(commands.Cog):
             with urllib.request.urlopen(req, timeout=10) as r:
                 return json.loads(r.read())
 
-        resp = await asyncio.to_thread(_fetch_token)
+        resp = await asyncio.to_thread(_fetch)
         self._twitch_token = resp["access_token"]
         self._twitch_expires = now + datetime.timedelta(seconds=resp.get("expires_in", 3600) - 60)
         return self._twitch_token, client_id
@@ -77,7 +72,7 @@ class Notifications(commands.Cog):
 
                 for row in rows:
                     uname = row["target"].lower()
-                    if uname not in [b.lower() for b in batch]:
+                    if uname not in batch:
                         continue
                     is_live = uname in live_map
                     was_live = bool(row["live"])
@@ -85,7 +80,7 @@ class Notifications(commands.Cog):
                     if is_live and not was_live:
                         ch = self.bot.get_channel(int(row["discord_channel_id"]))
                         if ch:
-                            await self._send_twitch(ch, live_map[uname], row["custom_message"])
+                            await self._send_embed(ch, live_map[uname], row["custom_message"])
                         await db_exec(
                             "UPDATE notifications SET live=1, last_id=? WHERE id=?",
                             (live_map[uname]["id"], row["id"]),
@@ -96,10 +91,10 @@ class Notifications(commands.Cog):
             print(f"[Notifications] Twitch error: {e}")
 
     @twitch_loop.before_loop
-    async def _before_twitch(self):
+    async def _before_loop(self):
         await self.bot.wait_until_ready()
 
-    async def _send_twitch(self, channel: discord.TextChannel, stream: dict, custom_msg: str):
+    async def _send_embed(self, channel: discord.TextChannel, stream: dict, custom_msg: str):
         name = stream.get("user_name", stream.get("user_login", ""))
         embed = discord.Embed(
             title=f"🔴 {name} ist jetzt live!",
@@ -113,69 +108,6 @@ class Notifications(commands.Cog):
         if thumb:
             embed.set_image(url=thumb)
         embed.set_footer(text="Twitch • Live-Benachrichtigung")
-        await channel.send(content=custom_msg or None, embed=embed)
-
-    # ── YouTube ───────────────────────────────────────────────────────────────
-
-    @tasks.loop(minutes=15)
-    async def youtube_loop(self):
-        try:
-            rows = await db_rows("SELECT * FROM notifications WHERE platform='youtube'")
-            for row in rows:
-                try:
-                    feed_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={row['target']}"
-
-                    def _fetch(u=feed_url):
-                        req = urllib.request.Request(u, headers={"User-Agent": "PhobosBot/1.0"})
-                        with urllib.request.urlopen(req, timeout=10) as r:
-                            return r.read()
-
-                    xml_bytes = await asyncio.to_thread(_fetch)
-                    root = ET.fromstring(xml_bytes)
-                    ns = {
-                        "atom": "http://www.w3.org/2005/Atom",
-                        "yt": "http://www.youtube.com/xml/schemas/2015",
-                    }
-                    entries = root.findall("atom:entry", ns)
-                    if not entries:
-                        continue
-
-                    latest = entries[0]
-                    vid_el = latest.find("yt:videoId", ns)
-                    if vid_el is None:
-                        continue
-                    video_id = vid_el.text
-                    if video_id == row["last_id"]:
-                        continue
-
-                    title = (latest.find("atom:title", ns) or type("", (), {"text": "Neues Video"})()).text
-                    link = (latest.find("atom:link", ns) or type("", (), {})())
-                    url = getattr(link, "attrib", {}).get("href", f"https://youtu.be/{video_id}")
-                    author_el = root.find("atom:author/atom:name", ns)
-                    author = author_el.text if author_el is not None else (row["target_name"] or row["target"])
-
-                    ch = self.bot.get_channel(int(row["discord_channel_id"]))
-                    if ch:
-                        await self._send_youtube(ch, author, title, url, video_id, row["custom_message"])
-                    await db_exec("UPDATE notifications SET last_id=? WHERE id=?", (video_id, row["id"]))
-                except Exception as e:
-                    print(f"[Notifications] YouTube error for {row['target']}: {e}")
-        except Exception as e:
-            print(f"[Notifications] YouTube loop error: {e}")
-
-    @youtube_loop.before_loop
-    async def _before_youtube(self):
-        await self.bot.wait_until_ready()
-
-    async def _send_youtube(self, channel, author, title, url, video_id, custom_msg):
-        embed = discord.Embed(
-            title=f"📹 {author} – Neues Video!",
-            description=title,
-            url=url,
-            color=0xFF0000,
-        )
-        embed.set_image(url=f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg")
-        embed.set_footer(text="YouTube • Video-Benachrichtigung")
         await channel.send(content=custom_msg or None, embed=embed)
 
 
