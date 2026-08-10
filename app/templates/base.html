@@ -9,7 +9,6 @@
   :root {
     --bg: #0f1117;
     --surface: #1a1d27;
-    --surface2: #20243180;
     --border: #2a2d3a;
     --text: #e2e8f0;
     --muted: #64748b;
@@ -18,7 +17,7 @@
     --success: #22c55e;
     --danger: #ef4444;
     --sidebar-w: 220px;
-    --sidebar-collapsed: 60px;
+    --sidebar-col: 58px;
   }
 
   body {
@@ -29,7 +28,7 @@
     display: flex;
   }
 
-  /* ── Sidebar ── */
+  /* ── Sidebar ────────────────────────────────────────── */
   #sidebar {
     width: var(--sidebar-w);
     min-height: 100vh;
@@ -37,226 +36,248 @@
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    transition: width 0.2s ease;
+    transition: width 0.22s ease;
     flex-shrink: 0;
     position: fixed;
     top: 0; left: 0; bottom: 0;
     z-index: 100;
     overflow: hidden;
   }
+  body.collapsed #sidebar { width: var(--sidebar-col); }
 
-  body.collapsed #sidebar { width: var(--sidebar-collapsed); }
-
+  /* Header */
   .sidebar-header {
-    padding: 1.1rem 1rem;
+    height: 58px;
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    padding: 0 0.75rem;
+    gap: 0.6rem;
     border-bottom: 1px solid var(--border);
-    min-height: 60px;
+    flex-shrink: 0;
   }
-
-  .sidebar-logo { font-size: 1.4rem; flex-shrink: 0; }
-
+  .sidebar-logo { font-size: 1.3rem; flex-shrink: 0; line-height: 1; }
   .sidebar-title {
-    font-size: 0.95rem;
+    font-size: 0.92rem;
     font-weight: 700;
     white-space: nowrap;
+    flex: 1;
     overflow: hidden;
-    opacity: 1;
-    transition: opacity 0.15s;
   }
-  body.collapsed .sidebar-title { opacity: 0; }
-
+  /* Toggle button – always last, always visible */
   .toggle-btn {
-    margin-left: auto;
+    flex-shrink: 0;
     background: none;
     border: none;
     color: var(--muted);
     cursor: pointer;
-    padding: 0.25rem;
-    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
-    font-size: 1.1rem;
-    transition: color 0.15s;
+    justify-content: center;
+    border-radius: 0.35rem;
+    font-size: 1rem;
+    transition: background 0.15s, color 0.15s;
   }
-  .toggle-btn:hover { color: var(--text); }
+  .toggle-btn:hover { background: var(--accent-light); color: var(--text); }
 
+  /* When collapsed: hide title and logo, only keep toggle button */
+  body.collapsed .sidebar-logo  { display: none; }
+  body.collapsed .sidebar-title { display: none; }
+  body.collapsed .sidebar-header { justify-content: center; padding: 0; }
+
+  /* Nav */
   nav.sidebar-nav {
     flex: 1;
-    padding: 0.75rem 0;
+    padding: 0.6rem 0;
     display: flex;
     flex-direction: column;
-    gap: 0.15rem;
+    gap: 0.1rem;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .nav-item {
     display: flex;
     align-items: center;
-    gap: 0.8rem;
-    padding: 0.65rem 1rem;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem;
     color: var(--muted);
     text-decoration: none;
-    font-size: 0.875rem;
+    font-size: 0.85rem;
     border-radius: 0.5rem;
-    margin: 0 0.5rem;
+    margin: 0 0.4rem;
     white-space: nowrap;
     transition: background 0.15s, color 0.15s;
     min-width: 0;
   }
-  .nav-item:hover { background: var(--accent-light); color: var(--text); }
+  .nav-item:hover  { background: var(--accent-light); color: var(--text); }
   .nav-item.active { background: var(--accent-light); color: #a78bfa; }
-  .nav-item .icon { font-size: 1.1rem; flex-shrink: 0; }
-  .nav-item .label {
-    overflow: hidden;
-    opacity: 1;
-    transition: opacity 0.15s;
-  }
-  body.collapsed .nav-item .label { opacity: 0; }
-
+  .nav-item .icon  { font-size: 1.05rem; flex-shrink: 0; width: 20px; text-align: center; }
+  .nav-item .label { overflow: hidden; text-overflow: ellipsis; }
   .nav-warn { color: var(--danger) !important; }
-  .nav-warn:hover { background: rgba(239,68,68,0.1) !important; }
+  .nav-warn:hover { background: rgba(239,68,68,0.12) !important; }
 
+  /* Nav section label */
+  .nav-section-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 0.7rem 1.4rem 0.2rem;
+    white-space: nowrap;
+  }
+
+  /* Collapsed nav: center icons, hide text */
+  body.collapsed .nav-item         { justify-content: center; padding: 0.6rem 0; margin: 0 0.4rem; gap: 0; }
+  body.collapsed .nav-item .label  { display: none; }
+  body.collapsed .nav-section-label { display: none; }
+
+  /* Server icon in nav */
+  .server-icon {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.8rem; font-weight: 700;
+    flex-shrink: 0;
+    background: var(--accent);
+    color: #fff;
+    overflow: hidden;
+  }
+  .server-icon img { width: 22px; height: 22px; object-fit: cover; }
+
+  /* Footer */
   .sidebar-footer {
     border-top: 1px solid var(--border);
-    padding: 0.75rem;
+    padding: 0.6rem;
+    flex-shrink: 0;
   }
-
   .user-info {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
-    padding: 0.5rem;
-    overflow: hidden;
+    gap: 0.55rem;
+    padding: 0.4rem 0.3rem;
   }
-
   .user-avatar {
-    width: 32px; height: 32px;
+    width: 30px; height: 30px;
     background: var(--accent);
     border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.8rem;
-    font-weight: 700;
-    flex-shrink: 0;
-    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; font-weight: 700;
+    flex-shrink: 0; color: #fff;
   }
-
-  .user-details {
-    min-width: 0;
-    opacity: 1;
-    transition: opacity 0.15s;
-  }
-  body.collapsed .user-details { opacity: 0; }
-
-  .user-name { font-size: 0.8rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .user-role { font-size: 0.7rem; color: var(--muted); white-space: nowrap; }
+  .user-details { min-width: 0; }
+  .user-name { font-size: 0.78rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .user-role { font-size: 0.68rem; color: var(--muted); }
 
   .logout-btn {
     display: flex;
     align-items: center;
-    gap: 0.8rem;
-    padding: 0.55rem 0.5rem;
+    gap: 0.75rem;
+    padding: 0.5rem 0.3rem;
     color: var(--muted);
     text-decoration: none;
     font-size: 0.8rem;
     border-radius: 0.4rem;
-    margin-top: 0.4rem;
+    margin-top: 0.25rem;
     transition: background 0.15s, color 0.15s;
     white-space: nowrap;
   }
   .logout-btn:hover { background: rgba(239,68,68,0.1); color: var(--danger); }
-  .logout-btn .label { opacity: 1; transition: opacity 0.15s; }
-  body.collapsed .logout-btn .label { opacity: 0; }
 
-  /* ── Main ── */
+  /* Collapsed footer: center avatar, hide everything else */
+  body.collapsed .user-details   { display: none; }
+  body.collapsed .user-info      { justify-content: center; }
+  body.collapsed .logout-btn     { justify-content: center; }
+  body.collapsed .logout-btn .label { display: none; }
+
+  /* ── Main ────────────────────────────────────────────── */
   #main {
     margin-left: var(--sidebar-w);
     flex: 1;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
-    transition: margin-left 0.2s ease;
+    transition: margin-left 0.22s ease;
   }
-  body.collapsed #main { margin-left: var(--sidebar-collapsed); }
+  body.collapsed #main { margin-left: var(--sidebar-col); }
 
   .page-header {
-    padding: 1.25rem 2rem;
+    padding: 1.1rem 2rem;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
-    font-size: 1.1rem;
+    font-size: 1.05rem;
     font-weight: 600;
+    display: flex;
+    align-items: center;
   }
 
-  .page-content {
-    padding: 2rem;
-    flex: 1;
-  }
+  .page-content { padding: 2rem; flex: 1; }
 
   footer {
     text-align: center;
-    padding: 1.5rem;
-    font-size: 0.75rem;
+    padding: 1.25rem;
+    font-size: 0.72rem;
     color: #475569;
     border-top: 1px solid var(--border);
   }
 
-  /* ── Shared components ── */
+  /* ── Shared components ──────────────────────────────── */
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 1.5rem; }
-  .section-label { font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.6rem; }
-  label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.35rem; }
-  input, select { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.6rem 0.875rem; color: var(--text); font-size: 0.875rem; outline: none; margin-bottom: 1rem; }
+  .section-label { font-size: 0.72rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.6rem; }
+  label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.3rem; }
+  input, select { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.55rem 0.8rem; color: var(--text); font-size: 0.875rem; outline: none; margin-bottom: 0.9rem; }
   input:focus, select:focus { border-color: var(--accent); }
   select option { background: var(--surface); }
-  .btn { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.6rem 1.25rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; border: none; cursor: pointer; }
+  .btn { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.55rem 1.2rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; border: none; cursor: pointer; transition: opacity 0.15s; }
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-primary:hover { opacity: 0.85; }
-  .btn-danger { background: rgba(239,68,68,0.12); color: var(--danger); border: 1px solid rgba(239,68,68,0.3); padding: 0.35rem 0.85rem; font-size: 0.8rem; }
-  .btn-danger:hover { background: rgba(239,68,68,0.22); }
-  .alert { border-radius: 0.5rem; padding: 0.65rem 1rem; font-size: 0.85rem; margin-bottom: 1.25rem; }
+  .btn-danger { background: rgba(239,68,68,0.1); color: var(--danger); border: 1px solid rgba(239,68,68,0.3); padding: 0.3rem 0.75rem; font-size: 0.8rem; }
+  .btn-danger:hover { background: rgba(239,68,68,0.2); }
+  .alert { border-radius: 0.5rem; padding: 0.6rem 1rem; font-size: 0.85rem; margin-bottom: 1.25rem; }
   .alert-success { background: rgba(34,197,94,0.1); border: 1px solid var(--success); color: var(--success); }
   .alert-error { background: rgba(239,68,68,0.1); border: 1px solid var(--danger); color: var(--danger); }
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; padding: 0.75rem 1rem; font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); }
-  td { padding: 0.75rem 1rem; font-size: 0.875rem; border-bottom: 1px solid var(--border); }
+  th { text-align: left; padding: 0.7rem 1rem; font-size: 0.72rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); }
+  td { padding: 0.7rem 1rem; font-size: 0.875rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
   tr:last-child td { border-bottom: none; }
-  .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+  .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 600; }
   .badge-admin { background: rgba(124,58,237,0.2); color: #a78bfa; }
   .badge-moderator { background: rgba(59,130,246,0.2); color: #60a5fa; }
   .table-wrap { overflow-x: auto; }
-  .hint { font-size: 0.78rem; color: var(--muted); margin-top: 0.75rem; line-height: 1.5; }
-  .current-val { font-family: monospace; font-size: 0.8rem; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.5rem 0.875rem; margin-bottom: 1rem; word-break: break-all; }
-  .nav-section-label { font-size: 0.68rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; padding: 0.6rem 1.5rem 0.25rem; white-space: nowrap; overflow: hidden; }
-  body.collapsed .nav-section-label { opacity: 0; }
-  .nav-server .icon.server-icon { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; font-size: 0.8rem; flex-shrink: 0; }
+  .hint { font-size: 0.77rem; color: var(--muted); margin-top: 0.6rem; line-height: 1.55; }
+  .current-val { font-family: monospace; font-size: 0.8rem; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.45rem 0.8rem; margin-bottom: 0.9rem; word-break: break-all; }
+  code { background: var(--bg); border: 1px solid var(--border); border-radius: 0.3rem; padding: 0.1rem 0.4rem; font-size: 0.8rem; font-family: monospace; }
 </style>
 </head>
-<body class="{{ 'collapsed' if sidebar_collapsed else '' }}" id="body">
+<body id="body">
 
 <div id="sidebar">
   <div class="sidebar-header">
     <span class="sidebar-logo">🛡️</span>
     <span class="sidebar-title">Phobos Bot</span>
-    <button class="toggle-btn" onclick="toggleSidebar()" title="Sidebar ein-/ausklappen">&#9776;</button>
+    <button class="toggle-btn" id="toggle-btn" onclick="toggleSidebar()" title="Sidebar ein-/ausklappen">&#9776;</button>
   </div>
 
   <nav class="sidebar-nav">
-    <a href="/" class="nav-item {% if active == 'dashboard' %}active{% endif %}">
+    <a href="/" class="nav-item {% if active == 'dashboard' %}active{% endif %}" title="Dashboard">
       <span class="icon">📊</span>
       <span class="label">Dashboard</span>
     </a>
-    <a href="/settings" class="nav-item {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn{% endif %}">
+    <a href="/settings" class="nav-item {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn{% endif %}" title="Einstellungen">
       <span class="icon">⚙️</span>
       <span class="label">{% if not token_set %}⚠ Einstellungen{% else %}Einstellungen{% endif %}</span>
     </a>
+
     {% if guilds %}
     <div class="nav-section-label">Server</div>
     {% for g in guilds %}
-    <a href="/servers/{{ g.id }}" class="nav-item nav-server {% if active == 'server_' + g.id %}active{% endif %}" title="{{ g.name }}">
-      <span class="icon server-icon">{% if g.icon %}<img src="{{ g.icon }}" alt="{{ g.name[0] }}" style="width:22px;height:22px;border-radius:50%;object-fit:cover;">{% else %}{{ g.name[0] }}{% endif %}</span>
+    <a href="/servers/{{ g.id }}" class="nav-item {% if active == 'server_' + g.id %}active{% endif %}" title="{{ g.name }}">
+      <span class="icon" style="width:auto;">
+        <span class="server-icon">{% if g.icon %}<img src="{{ g.icon }}" alt="">{% else %}{{ g.name[0] }}{% endif %}</span>
+      </span>
       <span class="label">{{ g.name }}</span>
     </a>
     {% endfor %}
@@ -271,8 +292,8 @@
         <div class="user-role">{{ role }}</div>
       </div>
     </div>
-    <a href="/logout" class="logout-btn">
-      <span class="icon" style="font-size:1rem;flex-shrink:0">🚪</span>
+    <a href="/logout" class="logout-btn" title="Abmelden">
+      <span style="font-size:1rem;flex-shrink:0">🚪</span>
       <span class="label">Abmelden</span>
     </a>
   </div>
@@ -288,10 +309,12 @@
 
 <script>
   function toggleSidebar() {
-    const collapsed = document.getElementById('body').classList.toggle('collapsed');
-    localStorage.setItem('sidebar', collapsed ? '1' : '0');
+    const body = document.getElementById('body');
+    const collapsed = body.classList.toggle('collapsed');
+    localStorage.setItem('phobos_sidebar', collapsed ? '1' : '0');
   }
-  if (localStorage.getItem('sidebar') === '1') {
+  // Restore state immediately to avoid flash
+  if (localStorage.getItem('phobos_sidebar') === '1') {
     document.getElementById('body').classList.add('collapsed');
   }
 </script>
