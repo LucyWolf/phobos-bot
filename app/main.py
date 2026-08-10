@@ -174,6 +174,7 @@ async def dashboard(request: Request):
         **session(request), "request": request,
         "actions": actions, "stats": stats, "colors": ACTION_COLORS,
         "token_set": token_set, "guilds": guilds, "active": "dashboard",
+        "bot_online": bot.is_ready(),
     })
 
 

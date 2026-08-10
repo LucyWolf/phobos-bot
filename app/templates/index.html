@@ -6,31 +6,66 @@
 {% block content %}
 {% set ACTION_COLORS = {"ban": "#ef4444", "kick": "#f97316", "timeout": "#eab308", "warn": "#3b82f6", "unban": "#22c55e", "clear": "#8b5cf6"} %}
 
-<div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:2rem;">
-  {% for action, count in stats.items() %}
-  <div class="card" style="padding:1rem 1.5rem; min-width:130px; margin-bottom:0;">
-    <div class="section-label">{{ action }}</div>
-    <div style="font-size:1.75rem; font-weight:700; color:{{ colors.get(action, '#94a3b8') }}">{{ count }}</div>
-  </div>
-  {% endfor %}
-  {% if not stats %}
-  <div class="card" style="padding:1rem 1.5rem; margin-bottom:0;">
-    <div class="section-label">Aktionen gesamt</div>
-    <div style="font-size:1.75rem; font-weight:700;">0</div>
-  </div>
+<style>
+  .status-bar { display:flex; align-items:center; gap:0.75rem; padding:0.75rem 1.25rem; border-radius:0.65rem; margin-bottom:1.5rem; font-size:0.875rem; font-weight:600; }
+  .status-online  { background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); color:#22c55e; }
+  .status-offline { background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#ef4444; }
+  .dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .dot-green { background:#22c55e; box-shadow:0 0 6px #22c55e; }
+  .dot-red   { background:#ef4444; box-shadow:0 0 6px #ef4444; }
+  .feature-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:1rem; margin-bottom:2rem; }
+  .feature-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.1rem 1.25rem; text-decoration:none; color:var(--text); transition:border-color 0.15s, transform 0.15s; display:block; }
+  .feature-card:hover { border-color:var(--accent); transform:translateY(-1px); }
+  .feature-card .fc-icon { font-size:1.6rem; margin-bottom:0.5rem; }
+  .feature-card .fc-name { font-weight:700; font-size:0.9rem; margin-bottom:0.25rem; }
+  .feature-card .fc-desc { font-size:0.75rem; color:var(--muted); line-height:1.4; }
+  .feature-card .fc-cmds { margin-top:0.5rem; display:flex; flex-wrap:wrap; gap:0.25rem; }
+  .feature-card .fc-cmds code { font-size:0.68rem; }
+</style>
+
+<!-- Bot Status -->
+{% if bot_online %}
+<div class="status-bar status-online">
+  <span class="dot dot-green"></span>
+  Bot ist online · {{ guilds|length }} Server verbunden
+  {% if guilds %} — klicke einen Server an um ihn zu konfigurieren{% endif %}
+</div>
+{% else %}
+<div class="status-bar status-offline">
+  <span class="dot dot-red"></span>
+  Bot ist offline —
+  {% if not token_set %}
+    <a href="/settings" style="color:inherit">Token in den Einstellungen eintragen</a>
+  {% else %}
+    Bot verbindet sich… oder den Bot erst zu einem Server einladen
   {% endif %}
 </div>
+{% endif %}
 
+<!-- Stats -->
+{% if stats %}
+<div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:1.5rem;">
+  {% for action, count in stats.items() %}
+  <div class="card" style="padding:0.85rem 1.25rem; min-width:110px; margin-bottom:0;">
+    <div class="section-label">{{ action }}</div>
+    <div style="font-size:1.6rem; font-weight:700; color:{{ ACTION_COLORS.get(action, '#94a3b8') }}">{{ count }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Connected Servers -->
 {% if guilds %}
 <div class="section-label" style="margin-bottom:0.6rem;">Verbundene Server</div>
-<div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:2rem;">
+<div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:2rem;">
   {% for g in guilds %}
   <a href="/servers/{{ g.id }}" style="text-decoration:none;">
-    <div class="card" style="padding:1rem 1.25rem; display:flex; align-items:center; gap:0.75rem; margin-bottom:0; cursor:pointer; transition:border-color 0.15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-      {% if g.icon %}<img src="{{ g.icon }}" style="width:36px;height:36px;border-radius:50%;">{% else %}<div style="width:36px;height:36px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;">{{ g.name[0] }}</div>{% endif %}
+    <div class="card" style="padding:0.85rem 1.1rem; display:flex; align-items:center; gap:0.7rem; margin-bottom:0; cursor:pointer; transition:border-color 0.15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+      {% if g.icon %}<img src="{{ g.icon }}" style="width:34px;height:34px;border-radius:50%;">
+      {% else %}<div style="width:34px;height:34px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.9rem;">{{ g.name[0] }}</div>{% endif %}
       <div>
-        <div style="font-weight:600;font-size:0.9rem;">{{ g.name }}</div>
-        <div style="font-size:0.75rem;color:var(--muted);">{{ g.members }} Mitglieder</div>
+        <div style="font-weight:600;font-size:0.875rem;">{{ g.name }}</div>
+        <div style="font-size:0.72rem;color:var(--muted);">{{ g.members }} Mitglieder</div>
       </div>
     </div>
   </a>
@@ -38,33 +73,93 @@
 </div>
 {% endif %}
 
-<div class="section-label">Letzte Moderations-Aktionen</div>
+<!-- Feature Overview – immer sichtbar -->
+<div class="section-label" style="margin-bottom:0.75rem;">Verfügbare Features</div>
+<div class="feature-grid">
 
+  {% set first_guild = guilds[0].id if guilds else '' %}
+  {% macro flink(tab) %}{% if guilds %}/servers/{{ first_guild }}?tab={{ tab }}{% else %}#{% endif %}{% endmacro %}
+
+  <a href="{{ flink('config') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
+    <div class="fc-icon">🛡️</div>
+    <div class="fc-name">Moderation</div>
+    <div class="fc-desc">Kick, Ban, Timeout, Verwarnungen, Nachrichten löschen</div>
+    <div class="fc-cmds"><code>/kick</code><code>/ban</code><code>/warn</code><code>/timeout</code><code>/clear</code></div>
+  </a>
+
+  <a href="{{ flink('leveling') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
+    <div class="fc-icon">⭐</div>
+    <div class="fc-name">Leveling &amp; XP</div>
+    <div class="fc-desc">Automatisches XP-System, Rangliste, Level-Up-Nachrichten</div>
+    <div class="fc-cmds"><code>/rank</code><code>/leaderboard</code><code>/setxp</code></div>
+  </a>
+
+  <a href="{{ flink('config') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
+    <div class="fc-icon">👋</div>
+    <div class="fc-name">Willkommen</div>
+    <div class="fc-desc">Beitrittsnachrichten, Verlassensnachrichten, Auto-Rolle</div>
+    <div class="fc-cmds"><code>→ Konfiguration</code></div>
+  </a>
+
+  <a href="{{ flink('config') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
+    <div class="fc-icon">🤖</div>
+    <div class="fc-name">Auto-Moderation</div>
+    <div class="fc-desc">Spam-Schutz, Link-Filter, Wortfilter, automatische Aktionen</div>
+    <div class="fc-cmds"><code>→ Konfiguration</code></div>
+  </a>
+
+  <a href="{{ flink('rr') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
+    <div class="fc-icon">🎭</div>
+    <div class="fc-name">Reaction Roles</div>
+    <div class="fc-desc">Rollen per Emoji-Reaktion zuweisen und entfernen</div>
+    <div class="fc-cmds"><code>/reactionrole-add</code><code>/reactionrole-list</code></div>
+  </a>
+
+  <a href="{{ flink('config') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
+    <div class="fc-icon">📋</div>
+    <div class="fc-name">Event-Logging</div>
+    <div class="fc-desc">Logs für Beitritte, Bans, Nachrichten, Rollenänderungen</div>
+    <div class="fc-cmds"><code>→ Konfiguration</code></div>
+  </a>
+
+  <a href="{{ flink('commands') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
+    <div class="fc-icon">📢</div>
+    <div class="fc-name">Eigene Commands</div>
+    <div class="fc-desc">Eigene !commands mit individueller Antwort erstellen</div>
+    <div class="fc-cmds"><code>/addcommand</code><code>/delcommand</code></div>
+  </a>
+
+  <a href="{{ flink('tickets') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
+    <div class="fc-icon">🎫</div>
+    <div class="fc-name">Ticket-System</div>
+    <div class="fc-desc">Button-basiertes Ticket-System mit privatem Kanal</div>
+    <div class="fc-cmds"><code>/ticket-panel</code><code>/ticket-close</code></div>
+  </a>
+
+  <a href="{{ flink('giveaways') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
+    <div class="fc-icon">🎉</div>
+    <div class="fc-name">Giveaways</div>
+    <div class="fc-desc">Giveaways starten, automatisch auslosen, rerolln</div>
+    <div class="fc-cmds"><code>/giveaway-start</code><code>/giveaway-end</code><code>/giveaway-reroll</code></div>
+  </a>
+
+</div>
+
+<!-- Recent Actions -->
+<div class="section-label" style="margin-bottom:0.6rem;">Letzte Moderations-Aktionen</div>
 {% if actions %}
 <div class="card" style="padding:0; overflow:hidden;">
   <div class="table-wrap">
     <table>
-      <thead>
-        <tr>
-          <th>Aktion</th>
-          <th>Nutzer</th>
-          <th>Moderator</th>
-          <th>Grund</th>
-          <th>Zeitpunkt</th>
-        </tr>
-      </thead>
+      <thead><tr><th>Aktion</th><th>Nutzer</th><th>Moderator</th><th>Grund</th><th>Zeitpunkt</th></tr></thead>
       <tbody>
         {% for a in actions %}
         <tr>
-          <td>
-            <span class="badge" style="background:{{ colors.get(a.action, '#64748b') }}20; color:{{ colors.get(a.action, '#94a3b8') }}; border:1px solid {{ colors.get(a.action, '#64748b') }}40">
-              {{ a.action }}
-            </span>
-          </td>
+          <td><span class="badge" style="background:{{ ACTION_COLORS.get(a.action, '#64748b') }}20;color:{{ ACTION_COLORS.get(a.action,'#94a3b8') }};border:1px solid {{ ACTION_COLORS.get(a.action,'#64748b') }}40">{{ a.action }}</span></td>
           <td>{{ a.target_name }}</td>
           <td>{{ a.moderator_name }}</td>
           <td style="color:#94a3b8">{{ a.reason or '—' }}</td>
-          <td style="color:#64748b; font-size:0.8rem">{{ a.timestamp }}</td>
+          <td style="color:#64748b;font-size:0.8rem">{{ a.timestamp }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -72,8 +167,13 @@
   </div>
 </div>
 {% else %}
-<div class="card" style="text-align:center; padding:3rem; color:var(--muted);">
-  Noch keine Moderations-Aktionen vorhanden.
-</div>
+<div class="card" style="text-align:center;padding:2.5rem;color:var(--muted);">Noch keine Moderations-Aktionen vorhanden.</div>
 {% endif %}
+
+<script>
+function noGuild() {
+  alert('Bot ist noch mit keinem Server verbunden.\nBot erst zu einem Discord-Server einladen!');
+  return false;
+}
+</script>
 {% endblock %}
