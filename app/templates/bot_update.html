@@ -42,7 +42,7 @@
       <div class="version-label">Installiert</div>
       <div class="version-val" style="color:var(--text);">v{{ current_version }}</div>
     </div>
-    <div class="version-arrow">→</div>
+    <div class="version-arrow" id="version-arrow">→</div>
     <div class="version-box">
       <div class="version-label">Verfügbar auf GitHub</div>
       <div class="version-val" id="latest-val" style="color:var(--muted);">…</div>
@@ -104,22 +104,40 @@
       });
   }
 
+  function versionTuple(v) {
+    return (v || '0').split('.').map(Number);
+  }
+  function versionGt(a, b) {
+    const ta = versionTuple(a), tb = versionTuple(b);
+    for (let i = 0; i < Math.max(ta.length, tb.length); i++) {
+      if ((ta[i]||0) > (tb[i]||0)) return true;
+      if ((ta[i]||0) < (tb[i]||0)) return false;
+    }
+    return false;
+  }
+
   function applyVersionData(data) {
     const latestEl = document.getElementById('latest-val');
     const badge = document.getElementById('status-badge');
     const form = document.getElementById('apply-form');
     const note = document.getElementById('apply-note');
+    const arrow = document.getElementById('version-arrow');
 
-    latestEl.textContent = data.latest ? 'v' + data.latest : '—';
+    const hasUpdate = data.update_available || versionGt(data.latest, data.current);
 
-    if (data.update_available) {
+    if (hasUpdate) {
+      latestEl.textContent = data.latest ? 'v' + data.latest : '—';
       latestEl.style.color = '#f59e0b';
+      if (arrow) arrow.style.display = '';
       badge.className = 'status-badge badge-update';
       badge.textContent = '🔔 Update verfügbar';
       form.style.display = 'inline';
       note.style.display = 'block';
     } else {
+      // running >= github — just show "up to date", no confusing version arrow
+      latestEl.textContent = data.latest ? 'v' + data.latest : '—';
       latestEl.style.color = 'var(--success)';
+      if (arrow) arrow.style.display = 'none';
       badge.className = 'status-badge badge-ok';
       badge.textContent = '✅ Aktuell';
       form.style.display = 'none';
@@ -147,7 +165,7 @@
   // Hook into base.html update poller
   window._onVersionData = applyVersionData;
 
-  // Initial check on page open
-  doCheck(false);
+  // Always force-refresh on page open so cache can't show stale data
+  doCheck(true);
 </script>
 {% endblock %}
