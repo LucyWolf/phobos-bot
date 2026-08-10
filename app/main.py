@@ -243,6 +243,43 @@ async def users_delete(request: Request, user_id: int, next: str = "/users"):
     return RedirectResponse(f"{dest}?success=Benutzer+gelöscht", status_code=302)
 
 
+# ── Leaderboard ───────────────────────────────────────────────────────────────
+
+@web.get("/leaderboard", response_class=HTMLResponse)
+async def leaderboard_page(request: Request, guild_id: str = ""):
+    if r := auth_redirect(request): return r
+    guilds = _guild_list(request)
+    token_set = bool(await get_config("discord_token"))
+
+    if not guild_id and guilds:
+        guild_id = guilds[0]["id"]
+
+    selected_guild = None
+    leaderboard = []
+
+    if guild_id:
+        guild = bot.get_guild(int(guild_id))
+        if guild:
+            selected_guild = {"id": str(guild.id), "name": guild.name,
+                              "icon": str(guild.icon.url) if guild.icon else None}
+            lb = await db_rows(
+                "SELECT * FROM levels WHERE guild_id=? ORDER BY xp DESC LIMIT 50", (int(guild_id),)
+            )
+            for i, e in enumerate(lb, 1):
+                m = guild.get_member(e["user_id"])
+                e["username"] = str(m) if m else f"#{e['user_id']}"
+                e["avatar"] = str(m.display_avatar.url) if m else None
+                e["rank"] = i
+            leaderboard = lb
+
+    return templates.TemplateResponse("leaderboard.html", {
+        **session(request), "request": request,
+        "guilds": guilds, "token_set": token_set, "active": "leaderboard",
+        "selected_guild": selected_guild, "selected_guild_id": guild_id,
+        "leaderboard": leaderboard, "bot_online": bot.is_ready(),
+    })
+
+
 # ── Server Config ─────────────────────────────────────────────────────────────
 
 @web.get("/servers/{guild_id}", response_class=HTMLResponse)

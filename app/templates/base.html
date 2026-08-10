@@ -309,7 +309,12 @@
       <span class="icon">📊</span>
       <span class="label">Dashboard</span>
     </a>
-    <div class="nav-group {% if active == 'settings' %}open{% endif %}" id="nav-group-settings">
+    <a href="/leaderboard" class="nav-item {% if active == 'leaderboard' %}active{% endif %}" title="Rangsystem">
+      <span class="icon">🏆</span>
+      <span class="label">Rangsystem</span>
+    </a>
+
+    <div class="nav-group {% if active == 'settings' or active == 'users' %}open{% endif %}" id="nav-group-settings">
       <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn-header{% endif %}"
            onclick="toggleNavGroup('settings')" title="Einstellungen">
         <span class="icon">⚙️</span>
