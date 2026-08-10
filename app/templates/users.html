@@ -45,13 +45,31 @@
           <td style="font-weight:500">{{ u.username }}</td>
           <td><span class="badge badge-{{ u.role }}">{{ u.role }}</span></td>
           <td style="color:var(--muted); font-size:0.8rem">{{ u.created_at }}</td>
-          <td>
-            {% if u.username != username %}
-            <form method="post" action="/users/delete/{{ u.id }}?next=/users" onsubmit="return confirm('Benutzer {{ u.username }} wirklich löschen?')">
+          <td style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+            {% if u.username == username %}
+            <span style="font-size:0.78rem; color:var(--muted);">Du</span>
+            {% if admin_count > 1 %}
+            <form method="post" action="/users/delete/{{ u.id }}?next=/users" onsubmit="return confirm('Eigenes Konto \"{{ u.username }}\" wirklich löschen? Du wirst danach ausgeloggt.')" style="display:inline">
               <button type="submit" class="btn btn-danger">✕ Löschen</button>
             </form>
+            {% endif %}
             {% else %}
-            <span style="font-size:0.78rem; color:var(--muted)">Du</span>
+            {% if u.role == 'moderator' %}
+            <form method="post" action="/users/role/{{ u.id }}" style="display:inline">
+              <input type="hidden" name="role" value="admin">
+              <button type="submit" class="btn btn-secondary" style="font-size:0.78rem; padding:0.25rem 0.6rem;">↑ Admin</button>
+            </form>
+            {% else %}
+            {% if admin_count > 1 %}
+            <form method="post" action="/users/role/{{ u.id }}" style="display:inline">
+              <input type="hidden" name="role" value="moderator">
+              <button type="submit" class="btn btn-secondary" style="font-size:0.78rem; padding:0.25rem 0.6rem;">↓ Mod</button>
+            </form>
+            {% endif %}
+            {% endif %}
+            <form method="post" action="/users/delete/{{ u.id }}?next=/users" onsubmit="return confirm('Benutzer {{ u.username }} wirklich löschen?')" style="display:inline">
+              <button type="submit" class="btn btn-danger">✕ Löschen</button>
+            </form>
             {% endif %}
           </td>
         </tr>

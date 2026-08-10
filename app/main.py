@@ -148,10 +148,8 @@ def _guild_list(request: Request) -> list:
 async def login_page(request: Request, error: str = ""):
     if request.session.get("user_id"):
         return RedirectResponse("/", status_code=302)
-    count = (await db_one("SELECT COUNT(*) as c FROM users") or {}).get("c", 0)
     return templates.TemplateResponse("login.html", {
-        "request": request, "error": error,
-        "default_creds": count == 1, "version": VERSION,
+        "request": request, "error": error, "version": VERSION,
     })
 
 
@@ -223,10 +221,12 @@ async def users_page(request: Request, error: str = "", success: str = ""):
     if r := admin_redirect(request): return r
     all_users = await db_rows("SELECT id, username, role, created_at FROM users ORDER BY created_at")
     token_set = bool(await get_config("discord_token"))
+    admin_count = sum(1 for u in all_users if u["role"] == "admin")
     return templates.TemplateResponse("users.html", {
         **session(request), "request": request,
         "users": all_users, "error": error, "success": success,
         "guilds": _guild_list(request), "token_set": token_set, "active": "users",
+        "admin_count": admin_count,
     })
 
 
@@ -246,13 +246,37 @@ async def users_create(request: Request, username: str = Form(...), password: st
     return RedirectResponse(f"{dest}?success=Benutzer+erstellt", status_code=302)
 
 
+@web.post("/users/role/{user_id}")
+async def users_role(request: Request, user_id: int, role: str = Form(...)):
+    if r := admin_redirect(request): return r
+    if role not in ("admin", "moderator"):
+        return RedirectResponse("/users?error=Ungültige+Rolle", status_code=302)
+    if role == "moderator":
+        other_admins = await db_one(
+            "SELECT COUNT(*) FROM users WHERE role='admin' AND id!=?", (user_id,)
+        )
+        if not other_admins or other_admins[0] == 0:
+            return RedirectResponse("/users?error=Letzter+Admin+kann+nicht+herabgestuft+werden", status_code=302)
+    await db_exec("UPDATE users SET role=? WHERE id=?", (role, user_id))
+    return RedirectResponse("/users?success=Rolle+geändert", status_code=302)
+
+
 @web.post("/users/delete/{user_id}")
 async def users_delete(request: Request, user_id: int, next: str = "/users"):
     if r := admin_redirect(request): return r
     dest = next if next in ("/users", "/settings") else "/users"
-    if user_id == request.session.get("user_id"):
-        return RedirectResponse(f"{dest}?error=Du+kannst+dich+nicht+selbst+löschen", status_code=302)
+    is_self = user_id == request.session.get("user_id")
+    if is_self:
+        # allow self-deletion only if another admin still exists
+        other_admins = await db_one(
+            "SELECT COUNT(*) FROM users WHERE role='admin' AND id!=?", (user_id,)
+        )
+        if not other_admins or other_admins[0] == 0:
+            return RedirectResponse(f"{dest}?error=Letzter+Admin+kann+nicht+gelöscht+werden", status_code=302)
     await db_exec("DELETE FROM users WHERE id=?", (user_id,))
+    if is_self:
+        request.session.clear()
+        return RedirectResponse("/login?success=Konto+gelöscht", status_code=302)
     return RedirectResponse(f"{dest}?success=Benutzer+gelöscht", status_code=302)
 
 
@@ -641,7 +665,7 @@ async def notif_settings_save(
 # ── Servers List ──────────────────────────────────────────────────────────────
 
 @web.get("/servers", response_class=HTMLResponse)
-async def servers_list(request: Request):
+async def servers_list(request: Request, success: str = ""):
     if r := auth_redirect(request): return r
     guilds = _guild_list(request)
     token_set = bool(await get_config("discord_token"))
@@ -650,8 +674,17 @@ async def servers_list(request: Request):
         **session(request), "request": request,
         "guilds": guilds, "token_set": token_set,
         "invite_url": invite_url, "bot_online": bot.is_ready(),
-        "active": "servers",
+        "active": "servers", "success": success,
     })
+
+
+@web.post("/servers/{guild_id}/leave")
+async def server_leave(request: Request, guild_id: int):
+    if r := admin_redirect(request): return r
+    guild = bot.get_guild(guild_id)
+    if guild:
+        await guild.leave()
+    return RedirectResponse("/servers?success=Server+verlassen", status_code=302)
 
 
 # ── Leaderboard ───────────────────────────────────────────────────────────────

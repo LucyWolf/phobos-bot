@@ -23,13 +23,7 @@
 <div class="card">
   <div class="logo">🛡️</div>
   <h1>Phobos Bot</h1>
-  {% if default_creds %}
-  <div style="background:rgba(124,58,237,0.1);border:1px solid #7c3aed;border-radius:0.5rem;padding:0.65rem 1rem;font-size:0.82rem;margin-bottom:1rem;color:#a78bfa;line-height:1.5;">
-    Standard-Zugangsdaten:<br>
-    <strong>admin</strong> / <strong>admin</strong><br>
-    <span style="font-size:0.75rem;opacity:0.75;">Bitte nach dem Login ein neues Passwort vergeben.</span>
-  </div>
-  {% endif %}
+
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   <form method="post" action="/login">
     <label>Benutzername</label>

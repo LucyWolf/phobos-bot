@@ -6,3 +6,5 @@ services:
       - "8080:8080"
     volumes:
       - ./data:/app/data
+    mem_limit: ${MEM_LIMIT:-1g}
+    memswap_limit: ${MEM_LIMIT:-1g}

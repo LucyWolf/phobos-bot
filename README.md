@@ -2,7 +2,7 @@
 
 Ein selbst-hostbarer Discord-Bot – ähnlich wie MEE6 – mit Web-Dashboard. Open Source, kostenlos, für immer.
 
-**Aktuelle Version: 1.2.7**
+**Aktuelle Version: 1.2.10**
 
 ---
 
@@ -95,6 +95,16 @@ docker compose up -d --build
 ```
 
 > Manueller Rebuild ist nötig wenn sich `requirements.txt` geändert hat (neue Python-Pakete).
+
+### RAM-Anzeige konfigurieren
+
+Die `docker-compose.yml` enthält standardmäßig `mem_limit: 1g`. Das begrenzt den Container auf 1 GB RAM und sorgt dafür, dass Bot-Info den korrekten Wert anzeigt. Wert nach Bedarf anpassen:
+
+```yaml
+mem_limit: 2g   # oder 512m, 4g, etc.
+```
+
+Danach Container neu starten: `docker compose up -d`
 
 ---
 
