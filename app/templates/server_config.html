@@ -69,19 +69,6 @@
   </div>
 
   <div class="card">
-    <div class="feat-header">⭐ Leveling &amp; XP</div>
-    <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
-      <input type="checkbox" name="leveling_enabled" value="1" {% if cfg.get('leveling_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> Leveling aktivieren
-    </label>
-    <label>Level-Up-Kanal <span style="color:var(--muted);font-size:0.75rem">(leer = aktueller Kanal)</span></label>
-    <select name="level_channel">
-      <option value="">— Aktueller Kanal —</option>
-      {% for ch in channels %}<option value="{{ ch.id }}" {% if cfg.get('level_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
-    </select>
-    <p class="hint">15–25 XP pro Nachricht · 60s Cooldown · Formel: 5n² + 50n + 100 · Commands: /rank /leaderboard /setxp</p>
-  </div>
-
-  <div class="card">
     <div class="feat-header">🛡️ Auto-Moderation</div>
     <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
       <input type="checkbox" name="automod_enabled" value="1" {% if cfg.get('automod_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> Auto-Mod aktivieren
@@ -137,6 +124,22 @@
 <!-- TAB: Leveling                                                       -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-leveling">
+<form method="post" action="/servers/{{ guild.id }}">
+<div class="card">
+  <div class="feat-header">⭐ Leveling &amp; XP</div>
+  <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
+    <input type="checkbox" name="leveling_enabled" value="1" {% if cfg.get('leveling_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> Leveling aktivieren
+  </label>
+  <label>Level-Up-Kanal <span style="color:var(--muted);font-size:0.75rem">(leer = aktueller Kanal)</span></label>
+  <select name="level_channel">
+    <option value="">— Aktueller Kanal —</option>
+    {% for ch in channels %}<option value="{{ ch.id }}" {% if cfg.get('level_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
+  </select>
+  <p class="hint">15–25 XP pro Nachricht · 60s Cooldown · Formel: 5n² + 50n + 100 · Commands: /rank /leaderboard /setxp</p>
+  <button type="submit" class="btn btn-primary">💾 Speichern</button>
+</div>
+</form>
+
 <div class="card" style="padding:0;overflow:hidden;">
   {% if leaderboard %}
   <div class="table-wrap">
