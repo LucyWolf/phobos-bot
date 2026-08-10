@@ -28,6 +28,7 @@
 {% endif %}
 
 <form method="post" action="/bot/design" enctype="multipart/form-data">
+  <input type="hidden" name="guild_id" value="{{ guild_id }}">
   <div class="design-card">
     <div class="section-label" style="margin-bottom:1rem;">Bot-Profilbild</div>
     <div class="avatar-row">
@@ -40,9 +41,9 @@
       </div>
       <div>
         <label class="file-input-label" for="avatar-file">📁 Bild auswählen</label>
-        <input type="file" id="avatar-file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp">
+        <input type="file" id="avatar-file" name="avatar">
         <div id="file-name">Kein Bild ausgewählt</div>
-        <div class="avatar-meta" style="margin-top:0.5rem;">PNG, JPG, GIF, WebP · max. 8 MB<br>Discord ändert Avatare max. 2× / Stunde.</div>
+        <div class="avatar-meta" style="margin-top:0.5rem;">Discord ändert Avatare max. 2× / Stunde.</div>
       </div>
     </div>
   </div>

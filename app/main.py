@@ -574,17 +574,23 @@ def get_invite_url() -> str:
 # ── Bot Design ────────────────────────────────────────────────────────────────
 
 @web.get("/bot/design", response_class=HTMLResponse)
-async def bot_design_page(request: Request, success: str = "", error: str = ""):
+async def bot_design_page(request: Request, guild_id: str = "", success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
     token_set = await _token_configured()
-    current_name = bot.user.name if bot.user else None
-    current_avatar = str(bot.user.display_avatar.url) if bot.user else None
+    target = bot._bot_for_guild(int(guild_id)) if guild_id else None
+    if target is None:
+        ready = bot._ready_bots()
+        target = ready[0] if ready else None
+    current_name = target.user.name if target and target.user else None
+    current_avatar = str(target.user.display_avatar.url) if target and target.user else None
+    bot_online = target is not None and target.is_ready()
     return templates.TemplateResponse("bot_design.html", {
         **session(request), "request": request,
         "guilds": await _guild_list(request), "token_set": token_set,
-        "active": "bot_design", "success": success, "error": error,
+        "active": "bot_design_" + guild_id if guild_id else "bot_design",
+        "success": success, "error": error,
         "current_name": current_name, "current_avatar": current_avatar,
-        "bot_online": bot.is_ready(),
+        "bot_online": bot_online, "guild_id": guild_id,
     })
 
 
@@ -592,27 +598,33 @@ async def bot_design_page(request: Request, success: str = "", error: str = ""):
 async def bot_design_save(
     request: Request,
     bot_name: str = Form(""),
+    guild_id: str = Form(""),
     avatar: UploadFile = File(None),
 ):
     if r := auth_redirect(request): return r
-    if not bot.is_ready():
-        return RedirectResponse("/bot/design?error=Bot+ist+offline", status_code=302)
+    target = bot._bot_for_guild(int(guild_id)) if guild_id else None
+    if target is None:
+        ready = bot._ready_bots()
+        target = ready[0] if ready else None
+    redirect_base = f"/bot/design?guild_id={guild_id}" if guild_id else "/bot/design"
+    if not target or not target.is_ready():
+        return RedirectResponse(f"{redirect_base}&error=Bot+ist+offline", status_code=302)
     try:
         kwargs = {}
-        if bot_name.strip() and bot_name.strip() != bot.user.name:
+        if bot_name.strip() and bot_name.strip() != target.user.name:
             kwargs["username"] = bot_name.strip()
         if avatar and avatar.filename:
             content = await avatar.read()
             if content:
                 kwargs["avatar"] = content
         if kwargs:
-            await bot.user.edit(**kwargs)
+            await target.user.edit(**kwargs)
         else:
-            return RedirectResponse("/bot/design?error=Keine+Änderungen", status_code=302)
+            return RedirectResponse(f"{redirect_base}&error=Keine+Änderungen", status_code=302)
     except discord.HTTPException as e:
         msg = str(e)[:80].replace(" ", "+")
-        return RedirectResponse(f"/bot/design?error={msg}", status_code=302)
-    return RedirectResponse("/bot/design?success=Gespeichert", status_code=302)
+        return RedirectResponse(f"{redirect_base}&error={msg}", status_code=302)
+    return RedirectResponse(f"{redirect_base}&success=Gespeichert", status_code=302)
 
 
 # ── Bot Info ──────────────────────────────────────────────────────────────────
