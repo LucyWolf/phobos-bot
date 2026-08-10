@@ -12,7 +12,7 @@ from discord.ext import commands
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from passlib.context import CryptContext
+import bcrypt
 from starlette.middleware.sessions import SessionMiddleware
 
 DB_PATH = Path("/app/data/phobos.db")
@@ -29,7 +29,12 @@ def load_secret_key() -> str:
     return key
 
 SECRET_KEY = load_secret_key()
-pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def hash_pw(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+def verify_pw(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode(), hashed.encode())
 
 # ── Database ──────────────────────────────────────────────────────────────────
 
@@ -72,7 +77,7 @@ async def init_db():
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute(
                 "INSERT INTO users (username, password_hash, role) VALUES (?,?,?)",
-                ("admin", pwd.hash("admin"), "admin"),
+                ("admin", hash_pw("admin"), "admin"),
             )
             await db.commit()
         print("Standard-Admin erstellt: admin / admin")
@@ -267,7 +272,7 @@ async def setup_submit(username: str = Form(...), password: str = Form(...), pas
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT INTO users (username, password_hash, role) VALUES (?,?,?)",
-            (username.strip(), pwd.hash(password), "admin"),
+            (username.strip(), hash_pw(password), "admin"),
         )
         await db.commit()
     return RedirectResponse("/login", status_code=302)
@@ -284,7 +289,7 @@ async def login_page(request: Request, error: str = ""):
 @web.post("/login")
 async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     user = await db_one("SELECT * FROM users WHERE username = ?", (username.strip(),))
-    if not user or not pwd.verify(password, user["password_hash"]):
+    if not user or not verify_pw(password, user["password_hash"]):
         return RedirectResponse("/login?error=Ungültige+Zugangsdaten", status_code=302)
     request.session["user_id"] = user["id"]
     request.session["username"] = user["username"]
@@ -357,7 +362,7 @@ async def users_create(request: Request, username: str = Form(...), password: st
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute(
                 "INSERT INTO users (username, password_hash, role) VALUES (?,?,?)",
-                (username.strip(), pwd.hash(password), role),
+                (username.strip(), hash_pw(password), role),
             )
             await db.commit()
     except Exception:
