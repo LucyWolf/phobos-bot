@@ -634,7 +634,8 @@ async def freestuff_save(
     deal_channel_id: str = Form(""),
 ):
     if r := auth_redirect(request): return r
-    plat_str = ",".join(p for p in platforms if p in ("epic", "steam", "gog", "humble"))
+    valid = {"epic", "steam", "gog", "humble", "ea", "ubisoft", "battlenet", "itchio"}
+    plat_str = ",".join(p for p in platforms if p in valid)
     if not plat_str:
         plat_str = "epic"
     try:
