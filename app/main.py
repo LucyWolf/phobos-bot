@@ -17,6 +17,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 DB_PATH = Path("/app/data/phobos.db")
 SECRET_KEY_PATH = Path("/app/data/secret.key")
+VERSION = (Path(__file__).parent / "VERSION").read_text().strip()
 
 # ── Secret key ────────────────────────────────────────────────────────────────
 
@@ -303,6 +304,7 @@ async def dashboard(request: Request):
         "colors": ACTION_COLORS, "token_set": token_set,
         "username": request.session.get("username"),
         "role": request.session.get("role"),
+        "version": VERSION,
     })
 
 
@@ -315,6 +317,7 @@ async def settings_page(request: Request, saved: bool = False):
         "request": request, "masked": masked, "saved": saved,
         "username": request.session.get("username"),
         "role": request.session.get("role"),
+        "version": VERSION,
     })
 
 
@@ -334,6 +337,7 @@ async def users_page(request: Request, error: str = "", success: str = ""):
         "request": request, "users": all_users, "error": error, "success": success,
         "username": request.session.get("username"),
         "role": request.session.get("role"),
+        "version": VERSION,
     })
 
 
