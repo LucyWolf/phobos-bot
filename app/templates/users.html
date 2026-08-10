@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phobos Bot – Benutzerverwaltung</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a; --text: #e2e8f0; --muted: #64748b; --accent: #7c3aed; --danger: #ef4444; --success: #22c55e; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; }
+  header h1 { font-size: 1.25rem; font-weight: 600; }
+  nav { margin-left: auto; display: flex; align-items: center; gap: 1.25rem; }
+  nav a { color: var(--muted); text-decoration: none; font-size: 0.875rem; }
+  nav a:hover { color: var(--text); }
+  .user-chip { font-size: 0.8rem; color: var(--muted); }
+  main { padding: 2rem; max-width: 900px; margin: 0 auto; }
+  .section-title { font-size: 0.875rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 2rem; }
+  .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1.25rem; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.35rem; }
+  input, select { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.6rem 0.875rem; color: var(--text); font-size: 0.875rem; outline: none; }
+  input:focus, select:focus { border-color: var(--accent); }
+  select option { background: var(--surface); }
+  .btn { display: inline-block; padding: 0.6rem 1.25rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; border: none; cursor: pointer; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-danger { background: rgba(239,68,68,0.15); color: var(--danger); border: 1px solid rgba(239,68,68,0.3); }
+  .btn-danger:hover { background: rgba(239,68,68,0.25); }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; padding: 0.75rem 1rem; font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); }
+  td { padding: 0.75rem 1rem; font-size: 0.875rem; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+  .badge-admin { background: rgba(124,58,237,0.2); color: #a78bfa; }
+  .badge-moderator { background: rgba(59,130,246,0.2); color: #60a5fa; }
+  .alert { border-radius: 0.5rem; padding: 0.65rem 1rem; font-size: 0.85rem; margin-bottom: 1.25rem; }
+  .alert-error { background: rgba(239,68,68,0.1); border: 1px solid var(--danger); color: var(--danger); }
+  .alert-success { background: rgba(34,197,94,0.1); border: 1px solid var(--success); color: var(--success); }
+  .form-row { margin-top: 1rem; }
+</style>
+</head>
+<body>
+<header>
+  <span>🛡️</span>
+  <h1>Phobos Bot</h1>
+  <nav>
+    <a href="/">Dashboard</a>
+    <a href="/settings">Einstellungen</a>
+    <span class="user-chip">{{ username }} ({{ role }})</span>
+    <a href="/logout">Abmelden</a>
+  </nav>
+</header>
+
+<main>
+  {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+  {% if success %}<div class="alert alert-success">{{ success }}</div>{% endif %}
+
+  <div class="card">
+    <h2>👤 Neuen Benutzer erstellen</h2>
+    <form method="post" action="/users/create">
+      <div class="grid">
+        <div>
+          <label>Benutzername</label>
+          <input type="text" name="username" required>
+        </div>
+        <div>
+          <label>Rolle</label>
+          <select name="role">
+            <option value="moderator">Moderator</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div>
+          <label>Passwort</label>
+          <input type="password" name="password" required>
+        </div>
+      </div>
+      <div class="form-row">
+        <button type="submit" class="btn btn-primary">Benutzer erstellen</button>
+      </div>
+    </form>
+  </div>
+
+  <p class="section-title">Alle Benutzer</p>
+  <div class="card" style="padding: 0; overflow: hidden;">
+    <table>
+      <thead>
+        <tr>
+          <th>Benutzername</th>
+          <th>Rolle</th>
+          <th>Erstellt</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.username }}</td>
+          <td><span class="badge badge-{{ u.role }}">{{ u.role }}</span></td>
+          <td style="color: var(--muted); font-size: 0.8rem">{{ u.created_at }}</td>
+          <td>
+            {% if u.username != username %}
+            <form method="post" action="/users/delete/{{ u.id }}" onsubmit="return confirm('Benutzer {{ u.username }} löschen?')">
+              <button type="submit" class="btn btn-danger">Löschen</button>
+            </form>
+            {% else %}
+            <span style="font-size:0.78rem; color: var(--muted)">Du</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</main>
+</body>
+</html>

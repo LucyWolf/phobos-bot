@@ -125,12 +125,15 @@
 <header>
   <span>🛡️</span>
   <h1>Phobos Bot Dashboard</h1>
-  <nav style="margin-left:auto">
+  <nav style="margin-left:auto; display:flex; align-items:center; gap:1.25rem;">
+    {% if role == 'admin' %}<a href="/users">Benutzer</a>{% endif %}
     {% if not token_set %}
     <a href="/settings" style="color:#ef4444">⚠ Token eintragen</a>
     {% else %}
-    <a href="/settings">⚙ Einstellungen</a>
+    <a href="/settings">Einstellungen</a>
     {% endif %}
+    <span style="font-size:0.8rem; color:var(--muted)">{{ username }}</span>
+    <a href="/logout">Abmelden</a>
   </nav>
 </header>
 

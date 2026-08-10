@@ -105,7 +105,12 @@
 <header>
   <span>🛡️</span>
   <h1>Phobos Bot</h1>
-  <nav style="margin-left:auto"><a href="/">← Dashboard</a></nav>
+  <nav style="margin-left:auto; display:flex; align-items:center; gap:1.25rem;">
+    <a href="/">Dashboard</a>
+    {% if role == 'admin' %}<a href="/users">Benutzer</a>{% endif %}
+    <span style="font-size:0.8rem; color:var(--muted)">{{ username }}</span>
+    <a href="/logout">Abmelden</a>
+  </nav>
 </header>
 
 <main>
