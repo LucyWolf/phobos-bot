@@ -1,12 +1,6 @@
 services:
-  bot:
-    build: ./bot
-    restart: unless-stopped
-    volumes:
-      - ./data:/app/data
-
-  web:
-    build: ./web
+  phobos:
+    build: ./app
     restart: unless-stopped
     ports:
       - "8080:8080"
