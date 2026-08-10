@@ -310,7 +310,7 @@
       <span class="label">Dashboard</span>
     </a>
 
-    <div class="nav-group {% if active in ['settings','users','bot_design','bot_info','servers'] %}open{% endif %}" id="nav-group-settings">
+    <div class="nav-group {% if active in ['settings','users','bot_design','bot_info','bot_update','servers'] %}open{% endif %}" id="nav-group-settings">
       <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn-header{% endif %}"
            onclick="toggleNavGroup('settings')" title="Einstellungen">
         <span class="icon">⚙️</span>
@@ -340,6 +340,12 @@
           <span class="icon">🖥️</span>
           <span class="label">Server</span>
         </a>
+        {% if role == 'admin' %}
+        <a href="/bot/update" class="nav-item nav-sub {% if active == 'bot_update' %}active{% endif %}" id="nav-update-link">
+          <span class="icon">🔄</span>
+          <span class="label">Updates <span id="nav-update-badge" style="display:none;background:#f59e0b;color:#000;font-size:0.6rem;font-weight:700;border-radius:999px;padding:0.1rem 0.4rem;margin-left:0.3rem;">NEU</span></span>
+        </a>
+        {% endif %}
       </div>
     </div>
 
@@ -401,7 +407,12 @@
   <div class="page-content">
     {% block content %}{% endblock %}
   </div>
-  <footer>Phobos Bot v{{ version }}</footer>
+  <footer>
+    <span id="footer-version">Phobos Bot v{{ version }}</span>
+    <span id="footer-update" style="display:none;margin-left:0.75rem;">
+      · <a href="/bot/update" id="footer-update-link" style="color:#f59e0b;font-weight:700;text-decoration:none;">🔔 Update verfügbar</a>
+    </span>
+  </footer>
 </div>
 
 <script>
@@ -427,6 +438,19 @@
       grp.classList.add('open');
     }
   });
+
+  // Update check (non-blocking, cached server-side for 1h)
+  fetch('/api/version').then(r => r.json()).then(data => {
+    if (!data.update_available) return;
+    const fu = document.getElementById('footer-update');
+    if (fu) fu.style.display = 'inline';
+    const badge = document.getElementById('nav-update-badge');
+    if (badge) badge.style.display = 'inline';
+    if (data.latest) {
+      const link = document.getElementById('footer-update-link');
+      if (link) link.textContent = '🔔 Update v' + data.latest + ' verfügbar';
+    }
+  }).catch(() => {});
 </script>
 </body>
 </html>

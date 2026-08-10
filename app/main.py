@@ -1,7 +1,12 @@
 import asyncio
 import datetime
+import os
 import platform
 import secrets
+import subprocess
+import sys
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Optional
 
@@ -12,7 +17,7 @@ import psutil
 import uvicorn
 from discord.ext import commands
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -335,6 +340,88 @@ async def bot_info_page(request: Request):
         "bot_name": bot.user.name if bot.user else "—",
         "bot_id": str(bot.user.id) if bot.user else "—",
     })
+
+
+# ── Update Check ──────────────────────────────────────────────────────────────
+
+_UPDATE_CACHE: dict = {"latest": None, "at": None}
+_GITHUB_VERSION_URL = "https://raw.githubusercontent.com/LucyWolf/phobos-bot/main/app/VERSION"
+
+
+def _ver_tuple(v: str):
+    try:
+        return tuple(int(x) for x in v.strip().split("."))
+    except Exception:
+        return (0,)
+
+
+async def check_latest_version() -> str | None:
+    now = datetime.datetime.utcnow()
+    cached_at = _UPDATE_CACHE["at"]
+    if cached_at and (now - cached_at).total_seconds() < 3600:
+        return _UPDATE_CACHE["latest"]
+    try:
+        def _fetch():
+            with urllib.request.urlopen(_GITHUB_VERSION_URL, timeout=5) as r:
+                return r.read().decode().strip()
+        latest = await asyncio.get_event_loop().run_in_executor(None, _fetch)
+        _UPDATE_CACHE["latest"] = latest
+        _UPDATE_CACHE["at"] = now
+        return latest
+    except Exception:
+        return _UPDATE_CACHE.get("latest")
+
+
+@web.get("/api/version")
+async def api_version(request: Request):
+    if not session(request).get("username"):
+        return JSONResponse({"current": VERSION, "latest": None, "update_available": False})
+    latest = await check_latest_version()
+    update_available = bool(latest and _ver_tuple(latest) > _ver_tuple(VERSION))
+    return JSONResponse({"current": VERSION, "latest": latest, "update_available": update_available})
+
+
+@web.get("/bot/update", response_class=HTMLResponse)
+async def bot_update_page(request: Request, success: str = "", error: str = ""):
+    if r := auth_redirect(request): return r
+    if session(request).get("role") != "admin":
+        return RedirectResponse("/", status_code=302)
+    token_set = bool(await get_config("discord_token"))
+    latest = await check_latest_version()
+    update_available = bool(latest and _ver_tuple(latest) > _ver_tuple(VERSION))
+    return templates.TemplateResponse("bot_update.html", {
+        **session(request), "request": request,
+        "guilds": _guild_list(request), "token_set": token_set,
+        "active": "bot_update",
+        "current_version": VERSION, "latest_version": latest,
+        "update_available": update_available,
+        "success": success, "error": error,
+    })
+
+
+@web.post("/bot/update/apply")
+async def bot_update_apply(request: Request):
+    if r := auth_redirect(request): return r
+    if session(request).get("role") != "admin":
+        return RedirectResponse("/", status_code=302)
+    try:
+        result = subprocess.run(
+            ["git", "pull", "origin", "main"],
+            capture_output=True, text=True, timeout=60,
+            cwd="/app",
+        )
+        output = (result.stdout + result.stderr).strip()
+        if result.returncode != 0:
+            msg = urllib.parse.quote(output[:120])
+            return RedirectResponse(f"/bot/update?error={msg}", status_code=302)
+        # Trigger process restart — Docker will restart the container automatically
+        asyncio.get_event_loop().call_later(1.5, lambda: os._exit(0))
+        return RedirectResponse("/bot/update?success=1", status_code=302)
+    except FileNotFoundError:
+        return RedirectResponse("/bot/update?error=git+nicht+verfügbar+%28manuelles+Update+nötig%29", status_code=302)
+    except Exception as e:
+        msg = urllib.parse.quote(str(e)[:120])
+        return RedirectResponse(f"/bot/update?error={msg}", status_code=302)
 
 
 # ── Servers List ──────────────────────────────────────────────────────────────

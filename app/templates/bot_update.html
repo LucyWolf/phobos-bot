@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Phobos Bot – Updates{% endblock %}
+{% block page_title %}🔄 Updates{% endblock %}
+
+{% block content %}
+<style>
+  .update-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.5rem; margin-bottom:1.25rem; max-width:560px; }
+  .version-row { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
+  .version-box { flex:1; min-width:120px; }
+  .version-label { font-size:0.68rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.07em; margin-bottom:0.3rem; }
+  .version-val { font-size:1.6rem; font-weight:700; font-family:monospace; }
+  .version-arrow { font-size:1.4rem; color:var(--muted); }
+  .badge-update { display:inline-flex; align-items:center; gap:0.4rem; background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.4); border-radius:999px; padding:0.3rem 0.85rem; font-size:0.8rem; font-weight:700; margin-bottom:1rem; }
+  .badge-ok { display:inline-flex; align-items:center; gap:0.4rem; background:rgba(34,197,94,0.1); color:var(--success); border:1px solid rgba(34,197,94,0.3); border-radius:999px; padding:0.3rem 0.85rem; font-size:0.8rem; font-weight:700; margin-bottom:1rem; }
+  .manual-steps { background:var(--bg); border:1px solid var(--border); border-radius:0.5rem; padding:1rem 1.25rem; font-family:monospace; font-size:0.8rem; line-height:2; color:var(--muted); }
+  .manual-steps span { color:var(--text); }
+  .restart-note { font-size:0.78rem; color:var(--muted); margin-top:0.75rem; line-height:1.6; }
+  .spinner { display:none; width:16px; height:16px; border:2px solid #fff4; border-top-color:#fff; border-radius:50%; animation:spin 0.7s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+</style>
+
+{% if success %}
+<div class="alert alert-success">✅ Update heruntergeladen! Bot wird neu gestartet — Seite in 10 Sekunden neu laden…</div>
+<script>setTimeout(()=>location.reload(), 10000);</script>
+{% endif %}
+{% if error %}
+<div class="alert alert-error">❌ {{ error }}</div>
+{% endif %}
+
+<div class="update-card">
+  {% if update_available %}
+  <div class="badge-update">🔔 Update verfügbar</div>
+  {% else %}
+  <div class="badge-ok">✅ Aktuell</div>
+  {% endif %}
+
+  <div class="version-row" style="margin-bottom:1.25rem;">
+    <div class="version-box">
+      <div class="version-label">Installiert</div>
+      <div class="version-val" style="color:var(--text);">v{{ current_version }}</div>
+    </div>
+    {% if latest_version %}
+    <div class="version-arrow">→</div>
+    <div class="version-box">
+      <div class="version-label">Verfügbar</div>
+      <div class="version-val" style="color:{% if update_available %}#f59e0b{% else %}var(--success){% endif %};">v{{ latest_version }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if update_available %}
+  <form method="post" action="/bot/update/apply" onsubmit="startUpdate(this)">
+    <button type="submit" class="btn btn-primary" id="update-btn">
+      <span id="btn-text">⬇️ Jetzt updaten</span>
+      <span class="spinner" id="btn-spin"></span>
+    </button>
+  </form>
+  <p class="restart-note" style="margin-top:0.75rem;">
+    Der Bot wird automatisch neu gestartet. Das dauert ca. 10–30 Sekunden.<br>
+    <strong>Voraussetzung:</strong> <code>git</code> muss im Container verfügbar sein und <code>restart: unless-stopped</code> muss in der docker-compose.yml gesetzt sein.
+  </p>
+  {% else %}
+  <p style="font-size:0.85rem; color:var(--muted);">Kein Update nötig — du hast die neueste Version.</p>
+  {% endif %}
+
+  <a href="https://github.com/LucyWolf/phobos-bot/commits/main" target="_blank"
+     style="display:inline-flex;align-items:center;gap:0.4rem;margin-top:1rem;font-size:0.8rem;color:var(--muted);text-decoration:none;">
+    📋 Changelog auf GitHub ansehen →
+  </a>
+</div>
+
+<div class="update-card">
+  <div class="section-label" style="margin-bottom:0.75rem;">Manuelles Update (immer möglich)</div>
+  <div class="manual-steps">
+    <span>cd /path/to/phobos-bot</span><br>
+    <span>git pull origin main</span><br>
+    <span>docker compose up -d --build</span>
+  </div>
+  <p class="restart-note">Auf dem Server ausführen — funktioniert unabhängig davon ob git im Container verfügbar ist.</p>
+</div>
+
+<script>
+function startUpdate(form) {
+  document.getElementById('btn-text').textContent = 'Update wird geladen…';
+  document.getElementById('btn-spin').style.display = 'inline-block';
+  document.getElementById('update-btn').disabled = true;
+}
+</script>
+{% endblock %}
