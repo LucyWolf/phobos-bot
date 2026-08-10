@@ -68,6 +68,14 @@ async def init_db():
             );
         """)
         await db.commit()
+    if await user_count() == 0:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "INSERT INTO users (username, password_hash, role) VALUES (?,?,?)",
+                ("admin", pwd.hash("admin"), "admin"),
+            )
+            await db.commit()
+        print("Standard-Admin erstellt: admin / admin")
 
 
 async def db_rows(query: str, params: tuple = ()):
@@ -267,11 +275,10 @@ async def setup_submit(username: str = Form(...), password: str = Form(...), pas
 
 @web.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, error: str = ""):
-    if await user_count() == 0:
-        return RedirectResponse("/setup", status_code=302)
     if request.session.get("user_id"):
         return RedirectResponse("/", status_code=302)
-    return templates.TemplateResponse("login.html", {"request": request, "error": error})
+    only_default = await user_count() == 1 and bool(await db_one("SELECT id FROM users WHERE username='admin'"))
+    return templates.TemplateResponse("login.html", {"request": request, "error": error, "default_creds": only_default})
 
 
 @web.post("/login")
