@@ -7,6 +7,7 @@
 <style>
   .fs-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.4rem; margin-bottom:1.25rem; max-width:640px; }
   .platform-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.6rem; margin-bottom:1.1rem; }
+  .plat-group-label { font-size:0.72rem; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:0.05em; margin:0.6rem 0 0.3rem; }
   .plat-label {
     display:flex; align-items:center; gap:0.6rem;
     padding:0.65rem 1rem; border:1px solid var(--border); border-radius:0.6rem;
@@ -55,6 +56,8 @@
   <div style="font-weight:700;font-size:0.95rem;margin-bottom:1.1rem;">🎮 Gratis-Spiele</div>
 
   <label style="margin-bottom:0.35rem;">Plattformen überwachen</label>
+
+  <div class="plat-group-label">Bekannte Stores</div>
   <div class="platform-grid">
     <label class="plat-label">
       <input type="checkbox" name="platforms" value="epic"
@@ -79,6 +82,34 @@
              {% if cfg and 'humble' in cfg.platforms %}checked{% endif %}>
       <span class="plat-icon">🙏</span>
       <span>Humble Bundle<span class="plat-desc">Gratis-Promotions</span></span>
+    </label>
+  </div>
+
+  <div class="plat-group-label">Weitere Plattformen</div>
+  <div class="platform-grid">
+    <label class="plat-label">
+      <input type="checkbox" name="platforms" value="ea"
+             {% if cfg and 'ea' in cfg.platforms %}checked{% endif %}>
+      <span class="plat-icon">🟡</span>
+      <span>EA App<span class="plat-desc">EA Free-to-Play & Aktionen</span></span>
+    </label>
+    <label class="plat-label">
+      <input type="checkbox" name="platforms" value="ubisoft"
+             {% if cfg and 'ubisoft' in cfg.platforms %}checked{% endif %}>
+      <span class="plat-icon">🔷</span>
+      <span>Ubisoft Connect<span class="plat-desc">Ubisoft Gratis-Aktionen</span></span>
+    </label>
+    <label class="plat-label">
+      <input type="checkbox" name="platforms" value="battlenet"
+             {% if cfg and 'battlenet' in cfg.platforms %}checked{% endif %}>
+      <span class="plat-icon">⚔️</span>
+      <span>Battle.net<span class="plat-desc">Blizzard Free-to-Play</span></span>
+    </label>
+    <label class="plat-label">
+      <input type="checkbox" name="platforms" value="itchio"
+             {% if cfg and 'itchio' in cfg.platforms %}checked{% endif %}>
+      <span class="plat-icon">🍓</span>
+      <span>itch.io<span class="plat-desc">Indie-Spiele kostenlos</span></span>
     </label>
   </div>
 

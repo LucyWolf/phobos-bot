@@ -14,11 +14,17 @@ EPIC_URL = (
     "freeGamesPromotions?locale=de&country=DE&allowCountries=DE"
 )
 
+GAMERPOWER_URL = "https://www.gamerpower.com/api/giveaways"
+
 PLATFORMS = {
-    "epic":   {"name": "Epic Games",    "icon": "🎮", "color": 0x313131, "cs_id": None},
-    "steam":  {"name": "Steam",         "icon": "🖥️", "color": 0x1B2838, "cs_id": "1"},
-    "gog":    {"name": "GOG",           "icon": "🟣", "color": 0x86328A, "cs_id": "7"},
-    "humble": {"name": "Humble Bundle", "icon": "🙏", "color": 0xCC2929, "cs_id": "11"},
+    "epic":      {"name": "Epic Games",      "icon": "🎮", "color": 0x313131, "cs_id": None,  "gp": None},
+    "steam":     {"name": "Steam",           "icon": "🖥️", "color": 0x1B2838, "cs_id": "1",   "gp": None},
+    "gog":       {"name": "GOG",             "icon": "🟣", "color": 0x86328A, "cs_id": "7",   "gp": None},
+    "humble":    {"name": "Humble Bundle",   "icon": "🙏", "color": 0xCC2929, "cs_id": "11",  "gp": None},
+    "ea":        {"name": "EA App",          "icon": "🟡", "color": 0xFF4747, "cs_id": None,  "gp": "ea-app"},
+    "ubisoft":   {"name": "Ubisoft Connect", "icon": "🔷", "color": 0x0070D1, "cs_id": None,  "gp": "ubisoft-connect"},
+    "battlenet": {"name": "Battle.net",      "icon": "⚔️", "color": 0x148EFF, "cs_id": None,  "gp": "battle.net"},
+    "itchio":    {"name": "itch.io",         "icon": "🍓", "color": 0xFA5C5C, "cs_id": None,  "gp": "itch.io"},
 }
 
 
@@ -146,13 +152,17 @@ class FreeStuff(commands.Cog):
     # ── Fetchers ──────────────────────────────────────────────────────────────
 
     async def _fetch_free(self, platforms: set) -> list:
-        tasks = []
+        fetch_tasks = []
         if "epic" in platforms:
-            tasks.append(self._fetch_epic())
+            fetch_tasks.append(self._fetch_epic())
         for key, info in PLATFORMS.items():
-            if key != "epic" and key in platforms and info["cs_id"]:
-                tasks.append(self._fetch_cheapshark(info["cs_id"], key, upper=0, lower=0, min_disc=100))
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+            if key not in platforms:
+                continue
+            if info["cs_id"]:
+                fetch_tasks.append(self._fetch_cheapshark(info["cs_id"], key, upper=0, lower=0, min_disc=100))
+            elif info["gp"]:
+                fetch_tasks.append(self._fetch_gamerpower(key, info["gp"]))
+        results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
         out = []
         for r in results:
             if isinstance(r, list):
@@ -160,15 +170,15 @@ class FreeStuff(commands.Cog):
         return out
 
     async def _fetch_deals(self, platforms: set, max_price: float, min_disc: int) -> list:
-        tasks = []
+        fetch_tasks = []
         for key, info in PLATFORMS.items():
             if key in platforms and info["cs_id"]:
-                tasks.append(self._fetch_cheapshark(
+                fetch_tasks.append(self._fetch_cheapshark(
                     info["cs_id"], key,
                     upper=max_price, lower=0.01,
                     min_disc=min_disc,
                 ))
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
         out = []
         for r in results:
             if isinstance(r, list):
@@ -187,6 +197,48 @@ class FreeStuff(commands.Cog):
             return _epic_extract(elements)
         except Exception as e:
             print(f"[FreeStuff] Epic error: {e}")
+            return []
+
+    async def _fetch_gamerpower(self, platform_key: str, gp_platform: str) -> list:
+        try:
+            params = urllib.parse.urlencode({"platform": gp_platform, "type": "game"})
+            url = f"{GAMERPOWER_URL}?{params}"
+
+            def _get():
+                req = urllib.request.Request(url, headers={"User-Agent": "PhobosBot/1.0"})
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    data = json.loads(r.read())
+                    return data if isinstance(data, list) else []
+
+            items = await asyncio.to_thread(_get)
+            out = []
+            for item in items:
+                try:
+                    if item.get("status", "").lower() != "active":
+                        continue
+                    worth = item.get("worth", "$0")
+                    # skip always-free items (worth = "N/A" or "$0.00")
+                    if worth in ("N/A", "$0.00", "$0"):
+                        continue
+                    end_raw = item.get("end_date", "")
+                    end = end_raw[:10] if end_raw and end_raw.lower() != "n/a" else ""
+                    out.append({
+                        "id": f"gp_{item['id']}",
+                        "title": item.get("title", ""),
+                        "description": (item.get("description") or "")[:180],
+                        "url": item.get("open_giveaway_url") or item.get("gamerpower_url", ""),
+                        "image": item.get("image") or item.get("thumbnail", ""),
+                        "end_date": end,
+                        "original_price": None,
+                        "sale_price": 0.0,
+                        "discount": 100,
+                        "platform": platform_key,
+                    })
+                except Exception:
+                    continue
+            return out
+        except Exception as e:
+            print(f"[FreeStuff] GamerPower ({platform_key}) error: {e}")
             return []
 
     async def _fetch_cheapshark(
@@ -217,7 +269,7 @@ class FreeStuff(commands.Cog):
                     sale = float(d.get("salePrice") or 0)
                     savings = float(d.get("savings") or 0)
                     if normal <= 0:
-                        continue  # always free
+                        continue
                     if savings < min_disc:
                         continue
                     title = d.get("title", "")
