@@ -299,11 +299,9 @@
 
   /* ── Server sub-nav (horizontal pill bar) ───────────────── */
   .server-subnav {
-    display: flex; gap: 0.3rem; overflow-x: auto; padding-bottom: 1.25rem;
-    flex-wrap: nowrap; scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+    display: flex; gap: 0.3rem; padding-bottom: 1.25rem;
+    flex-wrap: wrap; row-gap: 0.35rem;
   }
-  .server-subnav::-webkit-scrollbar { height: 3px; }
-  .server-subnav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
   .ssnav-item {
     display: flex; align-items: center; gap: 0.35rem;
     padding: 0.38rem 0.85rem; border-radius: 999px;
