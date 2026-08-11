@@ -272,9 +272,11 @@ async def init_db():
                 await db.execute(col)
             except Exception:
                 pass
-        # Seed default "Normal User" role
+        # Seed default "Normal User" role — upsert so existing installs get new defaults
         await db.execute(
-            "INSERT OR IGNORE INTO roles (name, color, perm_tokens) VALUES (?, ?, 1)",
+            """INSERT INTO roles (name, color, perm_tokens, perm_server)
+               VALUES (?, ?, 1, 1)
+               ON CONFLICT(name) DO UPDATE SET perm_tokens=1, perm_server=1""",
             ("Normal User", "#6366f1"),
         )
         await db.commit()
