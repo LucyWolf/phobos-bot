@@ -30,9 +30,7 @@
   </form>
   <p class="hint" style="margin-top:0.5rem;">Wie Zeitangaben im Dashboard angezeigt werden. Aktuell: <strong>{{ current_tz }}</strong></p>
 </div>
-{% endif %}
-
-{% elif not perm_settings %}
+{% else %}
 <div class="card">
   <p style="color:var(--muted);font-size:0.9rem;">Du hast keinen Zugriff auf globale Einstellungen.</p>
 </div>
