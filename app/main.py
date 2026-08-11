@@ -323,7 +323,20 @@ async def has_perm(request: Request, perm: str) -> bool:
         return True
     if perm not in PERM_COLS:
         return False
-    return bool(request.session.get(perm, False))
+    if request.session.get(perm, False):
+        return True
+    # Session may be stale (role updated after login) — re-check from DB
+    uid = request.session.get("user_id")
+    if uid:
+        row = await db_one(
+            "SELECT r.* FROM users u JOIN roles r ON r.id=u.custom_role_id WHERE u.id=?",
+            (uid,),
+        )
+        if row:
+            for p in PERM_COLS:
+                request.session[p] = bool(row.get(p, 0))
+            return bool(row.get(perm, 0))
+    return False
 
 
 async def perm_redirect(request: Request, perm: str) -> Optional[RedirectResponse]:
