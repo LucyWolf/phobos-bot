@@ -1799,6 +1799,26 @@ async def tokens_delete(request: Request, token_id: int):
     )
 
 
+@web.post("/settings/tokens/rename/{token_id}")
+async def tokens_rename(request: Request, token_id: int):
+    if r := auth_redirect(request): return r
+    form = await request.form()
+    label = (form.get("label") or "").strip()
+    if not label:
+        return RedirectResponse("/settings/tokens?error=Bezeichnung+darf+nicht+leer+sein", status_code=302)
+    is_admin = request.session.get("role") == "admin"
+    uid = request.session.get("user_id")
+    if is_admin:
+        await db_exec("UPDATE bot_tokens SET label=? WHERE id=?", (label, token_id))
+    else:
+        assigned = await db_one(
+            "SELECT 1 FROM bot_token_users WHERE token_id=? AND user_id=?", (token_id, uid)
+        )
+        if assigned:
+            await db_exec("UPDATE bot_tokens SET label=? WHERE id=?", (label, token_id))
+    return RedirectResponse("/settings/tokens?success=Bezeichnung+gespeichert", status_code=302)
+
+
 @web.post("/settings/tokens/toggle/{token_id}")
 async def tokens_toggle(request: Request, token_id: int):
     if r := auth_redirect(request): return r

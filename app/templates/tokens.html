@@ -39,8 +39,12 @@
 {% for t in tokens %}
 <div class="tok-card">
   <div class="tok-row">
-    <span class="tok-label">{{ t.label }}</span>
-    <span class="badge {% if t.running %}badge-green{% elif t.enabled %}badge-yellow{% else %}badge-gray{% endif %}">
+    <form method="post" action="/settings/tokens/rename/{{ t.id }}" style="margin:0;flex:1;min-width:0;display:flex;gap:0.4rem;align-items:center;">
+      <input type="text" name="label" value="{{ t.label }}"
+             style="margin:0;padding:0.25rem 0.5rem;font-size:0.9rem;font-weight:700;flex:1;min-width:0;">
+      <button type="submit" class="btn btn-secondary" style="padding:0.25rem 0.55rem;font-size:0.78rem;flex-shrink:0;" title="Bezeichnung speichern">✏️</button>
+    </form>
+    <span class="badge {% if t.running %}badge-green{% elif t.enabled %}badge-yellow{% else %}badge-gray{% endif %}" style="flex-shrink:0;">
       {% if t.running %}🟢 Online{% elif t.enabled %}⚙️ Aktiviert{% else %}⏸ Deaktiviert{% endif %}
     </span>
     <div class="tok-actions">
