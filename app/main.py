@@ -213,6 +213,10 @@ async def _run_single_bot(token_id: int, token: str):
                 except Exception as e:
                     print(f"[Token-ID {token_id}] Fehler beim Laden von {cog}: {e}")
             await instance.start(token)
+    except discord.errors.LoginFailure:
+        print(f"[Token-ID {token_id}] ❌ Ungültiger Token – Bot wird übersprungen.")
+    except Exception as e:
+        print(f"[Token-ID {token_id}] ❌ Bot-Fehler: {e}")
     finally:
         bot._bots.pop(token_id, None)
 
@@ -2435,7 +2439,9 @@ async def main():
         print("Standard-Admin erstellt: admin / admin")
 
     server = uvicorn.Server(uvicorn.Config(web, host="0.0.0.0", port=8080, log_level="warning"))
-    await asyncio.gather(server.serve(), run_bot())
+    # Bot runs as independent background task — crashes there never kill the web server
+    asyncio.create_task(run_bot())
+    await server.serve()
 
 
 asyncio.run(main())
