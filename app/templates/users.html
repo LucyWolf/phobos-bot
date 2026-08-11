@@ -200,6 +200,9 @@
       <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
         <input type="checkbox" name="perm_updates" value="1"> Updates
       </label>
+      <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
+        <input type="checkbox" name="perm_server" value="1"> Server
+      </label>
     </div>
     <button type="submit" class="btn btn-primary" style="font-size:0.82rem;">➕ Erstellen</button>
   </form>
@@ -271,6 +274,9 @@
         </label>
         <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
           <input type="checkbox" name="perm_updates" value="1" {% if r.perm_updates %}checked{% endif %}> Updates
+        </label>
+        <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
+          <input type="checkbox" name="perm_server" value="1" {% if r.perm_server %}checked{% endif %}> Server
         </label>
       </div>
       <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">💾 Speichern</button>

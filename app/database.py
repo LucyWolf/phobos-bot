@@ -266,6 +266,7 @@ async def init_db():
             "ALTER TABLE roles ADD COLUMN perm_streaming INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE roles ADD COLUMN perm_smtp INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE roles ADD COLUMN perm_updates INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE roles ADD COLUMN perm_server INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await db.execute(col)

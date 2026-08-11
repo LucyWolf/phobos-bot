@@ -300,7 +300,7 @@ def session(request: Request) -> dict:
 
 
 PERM_COLS = ["perm_settings", "perm_tokens", "perm_users", "perm_bots",
-             "perm_streaming", "perm_smtp", "perm_updates"]
+             "perm_streaming", "perm_smtp", "perm_updates", "perm_server"]
 
 
 def auth_redirect(request: Request) -> Optional[RedirectResponse]:
@@ -1728,14 +1728,15 @@ async def roles_create(request: Request,
     perm_settings: int = Form(0), perm_tokens: int = Form(0),
     perm_users: int = Form(0), perm_bots: int = Form(0),
     perm_streaming: int = Form(0), perm_smtp: int = Form(0), perm_updates: int = Form(0),
+    perm_server: int = Form(0),
 ):
     if r := admin_redirect(request): return r
     try:
         await db_exec(
             "INSERT INTO roles (name,color,perm_settings,perm_tokens,perm_users,perm_bots,"
-            "perm_streaming,perm_smtp,perm_updates) VALUES (?,?,?,?,?,?,?,?,?)",
+            "perm_streaming,perm_smtp,perm_updates,perm_server) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (name.strip(), color, perm_settings, perm_tokens, perm_users, perm_bots,
-             perm_streaming, perm_smtp, perm_updates),
+             perm_streaming, perm_smtp, perm_updates, perm_server),
         )
     except Exception:
         return RedirectResponse("/users?error=Rollenname+bereits+vergeben", status_code=302)
@@ -1748,14 +1749,15 @@ async def roles_edit(request: Request, role_id: int,
     perm_settings: int = Form(0), perm_tokens: int = Form(0),
     perm_users: int = Form(0), perm_bots: int = Form(0),
     perm_streaming: int = Form(0), perm_smtp: int = Form(0), perm_updates: int = Form(0),
+    perm_server: int = Form(0),
 ):
     if r := admin_redirect(request): return r
     try:
         await db_exec(
             "UPDATE roles SET name=?,color=?,perm_settings=?,perm_tokens=?,perm_users=?,perm_bots=?,"
-            "perm_streaming=?,perm_smtp=?,perm_updates=? WHERE id=?",
+            "perm_streaming=?,perm_smtp=?,perm_updates=?,perm_server=? WHERE id=?",
             (name.strip(), color, perm_settings, perm_tokens, perm_users, perm_bots,
-             perm_streaming, perm_smtp, perm_updates, role_id),
+             perm_streaming, perm_smtp, perm_updates, perm_server, role_id),
         )
     except Exception:
         return RedirectResponse("/users?error=Rollenname+bereits+vergeben", status_code=302)
@@ -1882,7 +1884,7 @@ async def server_config(
     request: Request, guild_id: int,
     saved: bool = False, tab: str = "config", error: str = "", success: str = "",
 ):
-    if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_server"): return r
     guild = bot.get_guild(guild_id)
     if not guild:
         return RedirectResponse("/", status_code=302)
@@ -1990,7 +1992,7 @@ async def server_config(
 
 @web.post("/servers/{guild_id}")
 async def server_config_save(request: Request, guild_id: int):
-    if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_server"): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
     form = await request.form()

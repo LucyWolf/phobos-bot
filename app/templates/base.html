@@ -341,10 +341,12 @@
           <span class="label">{{ tr.nav_bot_info }}</span>
         </a>
         {% endif %}
+        {% if role == 'admin' or perm_server %}
         <a href="/servers" class="nav-item nav-sub {% if active == 'servers' %}active{% endif %}">
           <span class="icon">🖥️</span>
           <span class="label">{{ tr.nav_servers }}</span>
         </a>
+        {% endif %}
         {% if role == 'admin' or perm_streaming %}
         <a href="/settings/notifications" class="nav-item nav-sub {% if active == 'notif_settings' %}active{% endif %}">
           <span class="icon">🟣</span>
