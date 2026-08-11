@@ -26,7 +26,7 @@
   {% if bot_online %} · ID: <code style="font-size:0.78rem;">{{ bot_id }}</code>{% endif %}
 </div>
 
-<div class="section-title">Bot</div>
+<div class="section-title">System</div>
 <div class="info-grid">
   <div class="info-card">
     <div class="info-card-icon">🏷️</div>
@@ -48,12 +48,6 @@
     {% else %}
     <div class="info-card-value" style="color:var(--muted);">—</div>
     {% endif %}
-  </div>
-  <div class="info-card">
-    <div class="info-card-icon">🖥️</div>
-    <div class="info-card-label">Server</div>
-    <div class="info-card-value">{{ stats.guild_count }}</div>
-    <div class="info-card-sub">{{ stats.member_count }} Mitglieder gesamt</div>
   </div>
 </div>
 
