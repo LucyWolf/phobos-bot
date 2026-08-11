@@ -323,12 +323,10 @@
         <span class="nav-chevron">▼</span>
       </div>
       <div class="nav-group-items">
-        {% if role == 'admin' or perm_tokens %}
         <a href="/settings/tokens" class="nav-item nav-sub {% if active == 'tokens' %}active{% endif %}">
           <span class="icon">🔑</span>
           <span class="label">{{ tr.nav_tokens }}</span>
         </a>
-        {% endif %}
         {% if role == 'admin' %}
         <a href="/users" class="nav-item nav-sub {% if active == 'users' %}active{% endif %}">
           <span class="icon">👥</span>

@@ -1666,7 +1666,6 @@ async def smtp_test(request: Request, test_email: str = Form(...)):
 @web.get("/settings/tokens", response_class=HTMLResponse)
 async def tokens_page(request: Request, success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
-    if r := await perm_redirect(request, "perm_tokens"): return r
     is_admin = request.session.get("role") == "admin"
     uid = request.session.get("user_id")
     if is_admin:
@@ -1707,7 +1706,6 @@ async def tokens_page(request: Request, success: str = "", error: str = ""):
 @web.post("/settings/tokens/add")
 async def tokens_add(request: Request):
     if r := auth_redirect(request): return r
-    if r := await perm_redirect(request, "perm_tokens"): return r
     form = await request.form()
     label = (form.get("label") or "Bot").strip()
     token = (form.get("token") or "").strip()
@@ -1758,7 +1756,6 @@ async def tokens_set_users(request: Request, token_id: int):
 @web.post("/settings/tokens/delete/{token_id}")
 async def tokens_delete(request: Request, token_id: int):
     if r := auth_redirect(request): return r
-    if r := await perm_redirect(request, "perm_tokens"): return r
     is_admin = request.session.get("role") == "admin"
     uid = request.session.get("user_id")
     if is_admin:
@@ -1780,7 +1777,6 @@ async def tokens_delete(request: Request, token_id: int):
 @web.post("/settings/tokens/toggle/{token_id}")
 async def tokens_toggle(request: Request, token_id: int):
     if r := auth_redirect(request): return r
-    if r := await perm_redirect(request, "perm_tokens"): return r
     is_admin = request.session.get("role") == "admin"
     uid = request.session.get("user_id")
     if is_admin:
