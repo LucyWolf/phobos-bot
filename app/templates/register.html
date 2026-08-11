@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phobos Bot – Registrieren</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a; --text: #e2e8f0; --muted: #64748b; --accent: #7c3aed; --danger: #ef4444; --success: #22c55e; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 1rem; padding: 2rem; width: 100%; max-width: 400px; }
+  .logo { text-align: center; font-size: 2.5rem; margin-bottom: 0.5rem; }
+  h1 { text-align: center; font-size: 1.2rem; margin-bottom: 0.35rem; }
+  .sub { text-align: center; font-size: 0.78rem; color: var(--muted); margin-bottom: 1.75rem; }
+  label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.35rem; }
+  input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.65rem 0.875rem; color: var(--text); font-size: 0.875rem; outline: none; margin-bottom: 1rem; }
+  input:focus { border-color: var(--accent); }
+  button { width: 100%; background: var(--accent); color: #fff; border: none; border-radius: 0.5rem; padding: 0.7rem; font-size: 0.9rem; font-weight: 600; cursor: pointer; margin-top: 0.25rem; }
+  button:hover { opacity: 0.85; }
+  .error   { background: rgba(239,68,68,0.1); border: 1px solid var(--danger); color: var(--danger); border-radius: 0.5rem; padding: 0.65rem 1rem; font-size: 0.85rem; margin-bottom: 1rem; }
+  .expired { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.4); border-radius: 0.75rem; padding: 1.5rem; text-align: center; }
+  .expired .icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+  .expired p { font-size: 0.85rem; color: var(--muted); margin-top: 0.4rem; }
+  a.back { display: block; text-align: center; margin-top: 1.25rem; font-size: 0.8rem; color: var(--muted); text-decoration: none; }
+  a.back:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🛡️</div>
+  <h1>Phobos Bot</h1>
+  <div class="sub">Neues Konto erstellen</div>
+
+  {% if not valid %}
+  <div class="expired">
+    <div class="icon">⏱</div>
+    <strong>{{ error }}</strong>
+    <p>Bitte einen neuen Einladungslink beim Administrator anfordern.</p>
+  </div>
+  <a href="/login" class="back">← Zurück zum Login</a>
+
+  {% else %}
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form method="post" action="/register">
+    <input type="hidden" name="code" value="{{ code }}">
+    <label>Benutzername</label>
+    <input type="text" name="username" required autofocus autocomplete="username" minlength="3">
+    <label>Passwort <span style="color:var(--muted);font-size:0.72rem">(min. 6 Zeichen)</span></label>
+    <input type="password" name="password" required autocomplete="new-password" minlength="6">
+    <label>Passwort bestätigen</label>
+    <input type="password" name="pw_confirm" required autocomplete="new-password" minlength="6">
+    <button type="submit">✅ Registrieren</button>
+  </form>
+  <a href="/login" class="back">← Zurück zum Login</a>
+  {% endif %}
+</div>
+</body>
+</html>

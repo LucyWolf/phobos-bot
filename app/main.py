@@ -325,11 +325,11 @@ async def _guild_access(request: Request, guild_id) -> bool:
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 @web.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request, error: str = ""):
+async def login_page(request: Request, error: str = "", success: str = ""):
     if request.session.get("user_id"):
         return RedirectResponse("/", status_code=302)
     return templates.TemplateResponse("login.html", {
-        "request": request, "error": error, "version": VERSION,
+        "request": request, "error": error, "success": success, "version": VERSION,
     })
 
 
@@ -939,6 +939,85 @@ async def api_version(request: Request, force: int = 0):
 @web.get("/ping")
 async def ping():
     return JSONResponse({"ok": True})
+
+
+# ── Invite / Self-Registration ─────────────────────────────────────────────────
+
+@web.get("/admin/invite/generate")
+async def admin_invite_generate(request: Request):
+    if r := admin_redirect(request): return r
+    code = secrets.token_urlsafe(16)
+    expires_at = (datetime.datetime.utcnow() + datetime.timedelta(minutes=5)).isoformat()
+    await db_exec("DELETE FROM invite_codes")
+    await db_exec("INSERT INTO invite_codes (code, expires_at) VALUES (?, ?)", (code, expires_at))
+    return JSONResponse({"code": code, "expires_at": expires_at})
+
+
+@web.get("/register", response_class=HTMLResponse)
+async def register_page(request: Request, code: str = "", error: str = ""):
+    if not code:
+        return RedirectResponse("/login", status_code=302)
+    inv = await db_one("SELECT * FROM invite_codes WHERE code=? AND used=0", (code,))
+    if not inv:
+        return templates.TemplateResponse("register.html", {
+            "request": request, "code": code,
+            "error": "Ungültiger oder bereits verwendeter Einladungscode.",
+            "valid": False,
+        })
+    if datetime.datetime.utcnow() > datetime.datetime.fromisoformat(inv["expires_at"]):
+        return templates.TemplateResponse("register.html", {
+            "request": request, "code": code,
+            "error": "Einladungscode ist abgelaufen (5 Minuten).",
+            "valid": False,
+        })
+    return templates.TemplateResponse("register.html", {
+        "request": request, "code": code, "error": error, "valid": True,
+    })
+
+
+@web.post("/register")
+async def register_submit(
+    request: Request,
+    code: str = Form(...),
+    username: str = Form(...),
+    password: str = Form(...),
+    pw_confirm: str = Form(...),
+):
+    inv = await db_one("SELECT * FROM invite_codes WHERE code=? AND used=0", (code,))
+    if not inv or datetime.datetime.utcnow() > datetime.datetime.fromisoformat(inv["expires_at"]):
+        return templates.TemplateResponse("register.html", {
+            "request": request, "code": code,
+            "error": "Code ungültig oder abgelaufen.", "valid": False,
+        })
+    if len(username.strip()) < 3:
+        return templates.TemplateResponse("register.html", {
+            "request": request, "code": code, "valid": True,
+            "error": "Benutzername muss mindestens 3 Zeichen lang sein.",
+        })
+    if len(password) < 6:
+        return templates.TemplateResponse("register.html", {
+            "request": request, "code": code, "valid": True,
+            "error": "Passwort muss mindestens 6 Zeichen lang sein.",
+        })
+    if password != pw_confirm:
+        return templates.TemplateResponse("register.html", {
+            "request": request, "code": code, "valid": True,
+            "error": "Passwörter stimmen nicht überein.",
+        })
+    try:
+        await db_exec(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+            (username.strip(), hash_pw(password), "moderator"),
+        )
+    except Exception:
+        return templates.TemplateResponse("register.html", {
+            "request": request, "code": code, "valid": True,
+            "error": "Benutzername bereits vergeben.",
+        })
+    await db_exec("UPDATE invite_codes SET used=1 WHERE code=?", (code,))
+    return RedirectResponse(
+        "/login?success=Registrierung+erfolgreich+–+bitte+einloggen", status_code=302
+    )
 
 
 @web.get("/bot/update", response_class=HTMLResponse)

@@ -7,6 +7,25 @@
 {% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
 {% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
 
+<!-- ── Einladungslink ── -->
+<div class="card" style="margin-bottom:1.25rem;">
+  <div style="font-size:0.95rem;font-weight:700;margin-bottom:0.5rem;">🔗 Einladungslink</div>
+  <p style="font-size:0.82rem;color:var(--muted);margin-bottom:1rem;">
+    Generiere einen einmaligen Link (5 Minuten gültig) damit jemand sich selbst ein Konto erstellen kann.
+  </p>
+  <button class="btn btn-primary" onclick="genInvite()" id="gen-btn">🔗 Link generieren</button>
+
+  <div id="invite-result" style="display:none;margin-top:1rem;">
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;
+                padding:0.65rem 0.9rem;font-family:monospace;font-size:0.8rem;
+                word-break:break-all;color:#a78bfa;" id="invite-url"></div>
+    <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.6rem;flex-wrap:wrap;">
+      <button class="btn btn-secondary" onclick="copyInvite(this)" style="font-size:0.78rem;padding:0.28rem 0.7rem;">📋 Kopieren</button>
+      <span id="invite-timer" style="font-size:0.82rem;font-family:monospace;color:var(--muted);"></span>
+    </div>
+  </div>
+</div>
+
 <div class="card">
   <div style="font-size:0.95rem; font-weight:700; margin-bottom:1.25rem;">➕ Neuen Benutzer erstellen</div>
   <form method="post" action="/users/create?next=/users">
@@ -147,6 +166,51 @@ function toggleServers(uid) {
 function toggleRole(uid) {
   const row = document.getElementById('role-row-' + uid);
   if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+
+let _invTimer = null;
+
+async function genInvite() {
+  const btn = document.getElementById('gen-btn');
+  btn.disabled = true;
+  btn.textContent = 'Generiere…';
+  try {
+    const r = await fetch('/admin/invite/generate', {cache:'no-store'});
+    const d = await r.json();
+    const url = window.location.origin + '/register?code=' + d.code;
+    document.getElementById('invite-url').textContent = url;
+    document.getElementById('invite-result').style.display = '';
+    btn.textContent = '🔗 Neuen Link generieren';
+    btn.disabled = false;
+    if (_invTimer) clearInterval(_invTimer);
+    const expiresAt = new Date(d.expires_at + 'Z').getTime();
+    function tick() {
+      const rem = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
+      const el = document.getElementById('invite-timer');
+      if (rem <= 0) {
+        el.textContent = '⏱ Abgelaufen';
+        el.style.color = '#ef4444';
+        clearInterval(_invTimer);
+      } else {
+        const m = Math.floor(rem / 60), s = rem % 60;
+        el.textContent = '⏱ Noch ' + m + ':' + String(s).padStart(2,'0');
+        el.style.color = rem < 60 ? '#eab308' : 'var(--muted)';
+      }
+    }
+    tick();
+    _invTimer = setInterval(tick, 1000);
+  } catch(e) {
+    btn.textContent = '🔗 Link generieren';
+    btn.disabled = false;
+  }
+}
+
+function copyInvite(btn) {
+  const url = document.getElementById('invite-url').textContent;
+  navigator.clipboard.writeText(url).then(() => {
+    btn.textContent = '✅ Kopiert!';
+    setTimeout(() => btn.textContent = '📋 Kopieren', 2000);
+  });
 }
 </script>
 {% endblock %}
