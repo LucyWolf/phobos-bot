@@ -20,9 +20,6 @@
 {% if success %}<div class="alert alert-success" style="max-width:680px;">✅ {{ success }}</div>{% endif %}
 {% if error %}<div class="alert alert-danger"  style="max-width:680px;">❌ {{ error }}</div>{% endif %}
 
-<div class="info-box">
-  ℹ️ Jeder Token startet einen eigenen Bot-Account in Discord. Bots starten und stoppen sofort ohne Container-Neustart.
-</div>
 
 {% if legacy_token and not tokens %}
 <div class="tok-card">
