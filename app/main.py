@@ -393,6 +393,8 @@ async def login_submit(request: Request, username: str = Form(...), password: st
     user = await db_one("SELECT * FROM users WHERE username=?", (username.strip(),))
     if not user or not verify_pw(password, user["password_hash"]):
         return RedirectResponse("/login?error=Ungültige+Zugangsdaten", status_code=302)
+    if not user.get("active", 1):
+        return RedirectResponse("/login?error=Dein+Konto+ist+deaktiviert", status_code=302)
     request.session["user_id"] = user["id"]
     request.session["username"] = user["username"]
     request.session["display_name"] = user.get("display_name") or ""
@@ -751,7 +753,7 @@ async def settings_timezone_save(request: Request, timezone: str = Form(...)):
 @web.get("/users", response_class=HTMLResponse)
 async def users_page(request: Request, error: str = "", success: str = ""):
     if r := admin_redirect(request): return r
-    all_users = await db_rows("SELECT id, username, role, email, created_at, custom_role_id FROM users ORDER BY created_at")
+    all_users = await db_rows("SELECT id, username, role, email, created_at, custom_role_id, active FROM users ORDER BY created_at")
     token_set = await _token_configured()
     admin_count = sum(1 for u in all_users if u["role"] == "admin")
     all_guilds = [{"id": str(g.id), "name": g.name} for g in bot.guilds]
@@ -834,6 +836,28 @@ async def users_guilds_save(request: Request, user_id: int):
                 (user_id, gid),
             )
     return RedirectResponse("/users?success=Serverrechte+gespeichert", status_code=302)
+
+
+@web.post("/users/{user_id}/set-password")
+async def users_set_password(request: Request, user_id: int, new_pw: str = Form(...)):
+    if r := admin_redirect(request): return r
+    if len(new_pw) < 6:
+        return RedirectResponse("/users?error=Passwort+mindestens+6+Zeichen", status_code=302)
+    await db_exec("UPDATE users SET password_hash=? WHERE id=?", (hash_pw(new_pw), user_id))
+    return RedirectResponse("/users?success=Passwort+geändert", status_code=302)
+
+
+@web.post("/users/{user_id}/toggle-active")
+async def users_toggle_active(request: Request, user_id: int):
+    if r := admin_redirect(request): return r
+    if user_id == request.session.get("user_id"):
+        return RedirectResponse("/users?error=Eigenes+Konto+kann+nicht+deaktiviert+werden", status_code=302)
+    user = await db_one("SELECT active FROM users WHERE id=?", (user_id,))
+    if not user:
+        return RedirectResponse("/users?error=Benutzer+nicht+gefunden", status_code=302)
+    new_active = 0 if user.get("active", 1) else 1
+    await db_exec("UPDATE users SET active=? WHERE id=?", (new_active, user_id))
+    return RedirectResponse(f"/users?success={'Konto+aktiviert' if new_active else 'Konto+deaktiviert'}", status_code=302)
 
 
 def _cgroup_ram() -> tuple[int, int] | None:
@@ -1645,13 +1669,14 @@ async def tokens_page(request: Request, success: str = "", error: str = ""):
     if r := await perm_redirect(request, "perm_tokens"): return r
     is_admin = request.session.get("role") == "admin"
     uid = request.session.get("user_id")
+    _sel = ("SELECT t.id, t.label, t.token, t.enabled, t.created_at, t.owner_id, "
+            "u.username as owner_name FROM bot_tokens t LEFT JOIN users u ON u.id=t.owner_id")
     if is_admin:
-        token_rows = await db_rows("SELECT id, label, token, enabled, created_at FROM bot_tokens ORDER BY id")
+        token_rows = await db_rows(_sel + " ORDER BY t.id")
+        all_users = await db_rows("SELECT id, username FROM users ORDER BY username")
     else:
-        token_rows = await db_rows(
-            "SELECT id, label, token, enabled, created_at FROM bot_tokens WHERE owner_id=? ORDER BY id",
-            (uid,),
-        )
+        token_rows = await db_rows(_sel + " WHERE t.owner_id=? ORDER BY t.id", (uid,))
+        all_users = []
     for t in token_rows:
         tok = t["token"]
         t["masked"] = ("•" * 40 + tok[-6:]) if len(tok) > 6 else "•" * len(tok)
@@ -1665,25 +1690,44 @@ async def tokens_page(request: Request, success: str = "", error: str = ""):
         "legacy_token": bool(legacy_token),
         "legacy_running": 0 in bot._bots,
         "success": success, "error": error,
+        "all_users": all_users,
     })
 
 
 @web.post("/settings/tokens/add")
-async def tokens_add(request: Request, label: str = Form("Bot"), token: str = Form(...)):
+async def tokens_add(request: Request, label: str = Form("Bot"), token: str = Form(...), owner_id: str = Form("")):
     if r := auth_redirect(request): return r
     if r := await perm_redirect(request, "perm_tokens"): return r
     token = token.strip()
     if not token:
         return RedirectResponse("/settings/tokens?error=Token+darf+nicht+leer+sein", status_code=302)
     uid = request.session.get("user_id")
+    is_admin = request.session.get("role") == "admin"
+    oid = uid
+    if is_admin and owner_id:
+        try:
+            oid = int(owner_id)
+        except ValueError:
+            pass
     await db_exec(
         "INSERT INTO bot_tokens (label, token, owner_id) VALUES (?, ?, ?)",
-        (label.strip() or "Bot", token, uid),
+        (label.strip() or "Bot", token, oid),
     )
     return RedirectResponse(
         "/settings/tokens?success=Token+hinzugefügt.+Neustart+erforderlich+um+ihn+zu+aktivieren.",
         status_code=302,
     )
+
+
+@web.post("/settings/tokens/owner/{token_id}")
+async def tokens_set_owner(request: Request, token_id: int, owner_id: str = Form("")):
+    if r := admin_redirect(request): return r
+    try:
+        oid = int(owner_id) if owner_id else None
+    except ValueError:
+        oid = None
+    await db_exec("UPDATE bot_tokens SET owner_id=? WHERE id=?", (oid, token_id))
+    return RedirectResponse("/settings/tokens?success=Besitzer+geändert", status_code=302)
 
 
 @web.post("/settings/tokens/delete/{token_id}")
