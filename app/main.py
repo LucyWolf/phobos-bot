@@ -290,6 +290,23 @@ web.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="pho
 templates = Jinja2Templates(directory="templates")
 templates.env.filters["dt"] = _fmt_dt
 
+def _log_bar_class(icon: str) -> str:
+    _map = {
+        "📥": "bar-green", "✅": "bar-green", "🔊": "bar-green", "📁": "bar-green",
+        "📤": "bar-red",   "🔨": "bar-red",   "🔇": "bar-red",   "🗑️": "bar-red",
+        "✏️": "bar-yellow", "🔀": "bar-amber",
+        "⏱️": "bar-amber",
+        "🏷️": "bar-blue",
+        "✏": "bar-purple", "🔑": "bar-purple",
+        "💎": "bar-pink",
+    }
+    for k, v in _map.items():
+        if icon and k in icon:
+            return v
+    return "bar-gray"
+
+templates.env.filters["log_bar_class"] = _log_bar_class
+
 _app_name: str = "Phobos Bot"
 
 def _set_app_name(name: str):
@@ -2069,6 +2086,8 @@ async def server_log_page(request: Request, guild_id: str, success: str = ""):
         return RedirectResponse("/servers", status_code=302)
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
     log_channel = await get_guild_config(int(guild_id), "log_channel") or ""
+    exclude_raw = await get_guild_config(int(guild_id), "log_exclude_channels") or ""
+    log_exclude_channels = [c.strip() for c in exclude_raw.split(",") if c.strip()]
     logs = await db_rows(
         "SELECT icon, title, description, created_at FROM server_logs WHERE guild_id=? ORDER BY id DESC LIMIT 200",
         (guild_id,),
@@ -2079,17 +2098,22 @@ async def server_log_page(request: Request, guild_id: str, success: str = ""):
         "active": f"server_{guild_id}",
         "guild_id": guild_id, "guild_name": guild.name,
         "channels": channels, "log_channel": log_channel,
+        "log_exclude_channels": log_exclude_channels,
         "logs": logs, "success": success,
     })
 
 
 @web.post("/servers/{guild_id}/log/save")
-async def server_log_save(request: Request, guild_id: str, log_channel: str = Form("")):
+async def server_log_save(request: Request, guild_id: str):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    log_channel = form.get("log_channel", "")
+    exclude_channels = ",".join(form.getlist("log_exclude_channels"))
     from database import set_guild_config
     await set_guild_config(int(guild_id), "log_channel", log_channel)
+    await set_guild_config(int(guild_id), "log_exclude_channels", exclude_channels)
     return RedirectResponse(f"/servers/{guild_id}/log?success=1", status_code=302)
 
 

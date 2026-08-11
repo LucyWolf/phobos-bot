@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import discord
 from discord.ext import commands
@@ -7,6 +8,12 @@ from database import get_guild_config, db_exec
 class Logging(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    async def _is_excluded(self, guild_id: int, channel_id: int) -> bool:
+        raw = await get_guild_config(guild_id, "log_exclude_channels") or ""
+        if not raw:
+            return False
+        return str(channel_id) in [c.strip() for c in raw.split(",") if c.strip()]
 
     async def _log(self, guild_id: int, embed: discord.Embed, plain: str = ""):
         embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
@@ -33,7 +40,22 @@ class Logging(commands.Cog):
             return
         channel = self.bot.get_channel(int(channel_id))
         if channel:
-            await channel.send(embed=embed)
+            try:
+                await channel.send(embed=embed)
+            except Exception:
+                pass
+
+    async def _find_deleter(self, guild: discord.Guild, channel_id: int, author_id: int):
+        """Checks audit log to find who deleted the message (None if self-deleted)."""
+        try:
+            await asyncio.sleep(1)
+            async for entry in guild.audit_logs(limit=10, action=discord.AuditLogAction.message_delete):
+                age = (datetime.datetime.now(datetime.timezone.utc) - entry.created_at).total_seconds()
+                if age < 15 and entry.extra.channel.id == channel_id and entry.target.id == author_id:
+                    return entry.user
+        except Exception:
+            pass
+        return None
 
     # ── Mitglieder ────────────────────────────────────────────────────────────
 
@@ -127,21 +149,18 @@ class Logging(commands.Cog):
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
         if before.channel == after.channel:
             return
-
         if before.channel is None and after.channel is not None:
             embed = discord.Embed(title="🔊 Voice beigetreten", color=0x22c55e)
             embed.set_author(name=str(member), icon_url=member.display_avatar.url)
             embed.add_field(name="Nutzer", value=member.mention)
             embed.add_field(name="Kanal", value=after.channel.mention)
             plain = f"{member.display_name} · #{after.channel.name}"
-
         elif before.channel is not None and after.channel is None:
             embed = discord.Embed(title="🔇 Voice verlassen", color=0xef4444)
             embed.set_author(name=str(member), icon_url=member.display_avatar.url)
             embed.add_field(name="Nutzer", value=member.mention)
             embed.add_field(name="Kanal", value=before.channel.mention)
             plain = f"{member.display_name} · #{before.channel.name}"
-
         else:
             embed = discord.Embed(title="🔀 Voice gewechselt", color=0xf59e0b)
             embed.set_author(name=str(member), icon_url=member.display_avatar.url)
@@ -149,7 +168,6 @@ class Logging(commands.Cog):
             embed.add_field(name="Von", value=before.channel.mention)
             embed.add_field(name="Nach", value=after.channel.mention)
             plain = f"{member.display_name} · #{before.channel.name} → #{after.channel.name}"
-
         await self._log(member.guild.id, embed, plain=plain)
 
     # ── Nachrichten ───────────────────────────────────────────────────────────
@@ -158,21 +176,59 @@ class Logging(commands.Cog):
     async def on_message_delete(self, message: discord.Message):
         if message.author.bot or not message.guild:
             return
+        if await self._is_excluded(message.guild.id, message.channel.id):
+            return
+
         embed = discord.Embed(title="🗑️ Nachricht gelöscht", color=0xf97316)
         embed.set_author(name=str(message.author), icon_url=message.author.display_avatar.url)
-        embed.add_field(name="Nutzer", value=message.author.mention)
+        embed.add_field(name="Autor", value=message.author.mention)
         embed.add_field(name="Kanal", value=message.channel.mention)
         if message.content:
             embed.add_field(name="Inhalt", value=message.content[:1000], inline=False)
+
+        # Check audit log: was it deleted by someone else?
+        deleter = await self._find_deleter(message.guild, message.channel.id, message.author.id)
+        if deleter and deleter.id != message.author.id:
+            embed.add_field(name="Gelöscht von", value=deleter.mention)
+
         plain = f"{message.author.display_name} · #{message.channel.name}"
         if message.content:
             plain += f" · {message.content[:80]}"
         await self._log(message.guild.id, embed, plain=plain)
 
     @commands.Cog.listener()
+    async def on_bulk_message_delete(self, messages: list):
+        if not messages:
+            return
+        msg = messages[0]
+        if not msg.guild:
+            return
+        if await self._is_excluded(msg.guild.id, msg.channel.id):
+            return
+
+        embed = discord.Embed(title="🗑️ Massenlöschung", color=0xef4444)
+        embed.add_field(name="Kanal", value=msg.channel.mention)
+        embed.add_field(name="Nachrichten", value=str(len(messages)))
+
+        try:
+            await asyncio.sleep(1)
+            async for entry in msg.guild.audit_logs(limit=5, action=discord.AuditLogAction.message_bulk_delete):
+                age = (datetime.datetime.now(datetime.timezone.utc) - entry.created_at).total_seconds()
+                if age < 15:
+                    embed.add_field(name="Gelöscht von", value=entry.user.mention)
+                    break
+        except Exception:
+            pass
+
+        await self._log(msg.guild.id, embed, plain=f"#{msg.channel.name} · {len(messages)} Nachrichten")
+
+    @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
         if before.author.bot or not before.guild or before.content == after.content:
             return
+        if await self._is_excluded(before.guild.id, before.channel.id):
+            return
+
         embed = discord.Embed(title="✏️ Nachricht bearbeitet", color=0xeab308)
         embed.set_author(name=str(before.author), icon_url=before.author.display_avatar.url)
         embed.add_field(name="Nutzer", value=before.author.mention)
