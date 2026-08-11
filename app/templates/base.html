@@ -320,10 +320,12 @@
         <span class="nav-chevron">▼</span>
       </div>
       <div class="nav-group-items">
+        {% if role == 'admin' or perm_tokens %}
         <a href="/settings/tokens" class="nav-item nav-sub {% if active == 'tokens' %}active{% endif %}">
           <span class="icon">🔑</span>
           <span class="label">Tokens</span>
         </a>
+        {% endif %}
         {% if role == 'admin' %}
         <a href="/users" class="nav-item nav-sub {% if active == 'users' %}active{% endif %}">
           <span class="icon">👥</span>
@@ -334,15 +336,17 @@
           <span class="label">Rollen</span>
         </a>
         {% endif %}
+        {% if role == 'admin' or perm_bots %}
         <a href="/bot/info" class="nav-item nav-sub {% if active == 'bot_info' %}active{% endif %}">
           <span class="icon">📊</span>
           <span class="label">Bot-Info</span>
         </a>
+        {% endif %}
         <a href="/servers" class="nav-item nav-sub {% if active == 'servers' %}active{% endif %}">
           <span class="icon">🖥️</span>
           <span class="label">Server</span>
         </a>
-        {% if role == 'admin' %}
+        {% if role == 'admin' or perm_settings %}
         <a href="/settings/notifications" class="nav-item nav-sub {% if active == 'notif_settings' %}active{% endif %}">
           <span class="icon">🟣</span>
           <span class="label">Twitch-API</span>
@@ -351,6 +355,8 @@
           <span class="icon">📧</span>
           <span class="label">E-Mail / SMTP</span>
         </a>
+        {% endif %}
+        {% if role == 'admin' %}
         <a href="/bot/update" class="nav-item nav-sub {% if active == 'bot_update' %}active{% endif %}" id="nav-update-link">
           <span class="icon">🔄</span>
           <span class="label">Updates <span id="nav-update-badge" style="display:none;background:#f59e0b;color:#000;font-size:0.6rem;font-weight:700;border-radius:999px;padding:0.1rem 0.4rem;margin-left:0.3rem;">NEU</span></span>
