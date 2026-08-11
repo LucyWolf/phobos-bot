@@ -896,46 +896,143 @@ async def bot_update_page(request: Request, success: str = "", error: str = ""):
     })
 
 
+_update_status: dict = {"step": "", "done": False, "error": ""}
+
+_UPDATE_IN_PROGRESS_HTML = """<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Phobos Bot – Update</title>
+<style>
+  body { margin:0; background:#0f1117; color:#e2e8f0; font-family:system-ui,sans-serif;
+         display:flex; align-items:center; justify-content:center; min-height:100vh; }
+  .box { max-width:480px; width:100%; padding:2rem; }
+  .spinner { width:48px; height:48px; border:4px solid rgba(124,58,237,.3);
+             border-top-color:#7c3aed; border-radius:50%; animation:spin 1s linear infinite;
+             margin:0 auto 1.5rem; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  h2 { font-size:1.25rem; margin:0 0 1.25rem; text-align:center; }
+  .log { background:#1a1d27; border:1px solid #2a2d3a; border-radius:0.6rem;
+         padding:1rem; font-size:0.82rem; font-family:monospace; min-height:120px;
+         display:flex; flex-direction:column; gap:0.35rem; }
+  .log-line { color:#94a3b8; }
+  .log-line.active { color:#a78bfa; font-weight:700; }
+  .log-line.ok  { color:#22c55e; }
+  .log-line.err { color:#ef4444; }
+  .hint { text-align:center; color:#64748b; font-size:0.78rem; margin-top:1rem; }
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="spinner" id="spin"></div>
+  <h2>🔄 Update wird durchgeführt</h2>
+  <div class="log" id="log"></div>
+  <p class="hint" id="hint">Bitte warten – der Server startet automatisch neu.</p>
+</div>
+<script>
+const log = document.getElementById('log');
+const spin = document.getElementById('spin');
+const hint = document.getElementById('hint');
+const seen = new Set();
+let restarting = false;
+let waitTries = 0;
+
+function addLine(text, cls) {
+  if (seen.has(text)) return;
+  seen.add(text);
+  const d = document.createElement('div');
+  d.className = 'log-line ' + (cls || '');
+  d.textContent = text;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+}
+
+function waitForServer() {
+  fetch('/bot/update', {method:'HEAD', cache:'no-store'})
+    .then(r => { if(r.ok) { addLine('✅ Server wieder online – weiterleiten…','ok'); setTimeout(()=>{ window.location='/bot/update?success=Update+erfolgreich'; },1000); } else retry(); })
+    .catch(() => retry());
+}
+function retry() { waitTries++; hint.textContent='Warte auf Neustart… ('+waitTries+')'; if(waitTries<90) setTimeout(waitForServer,2000); else window.location='/bot/update'; }
+
+function poll() {
+  fetch('/bot/update/status', {cache:'no-store'})
+    .then(r => r.json())
+    .then(d => {
+      if (d.step) addLine('⚙ ' + d.step, 'active');
+      if (d.error) { addLine('❌ ' + d.error, 'err'); spin.style.display='none'; hint.textContent='Update fehlgeschlagen.'; return; }
+      if (d.done) {
+        addLine('🚀 Server wird neu gestartet…', 'active');
+        spin.style.display='none';
+        restarting = true;
+        setTimeout(waitForServer, 5000);
+      } else {
+        setTimeout(poll, 800);
+      }
+    })
+    .catch(() => { if(!restarting){ restarting=true; addLine('🚀 Server wird neu gestartet…','active'); setTimeout(waitForServer,5000); } });
+}
+setTimeout(poll, 500);
+</script>
+</body>
+</html>"""
+
+
+@web.get("/bot/update/status")
+async def bot_update_status(request: Request):
+    if r := auth_redirect(request): return r
+    from fastapi.responses import JSONResponse
+    return JSONResponse(_update_status)
+
+
 @web.post("/bot/update/apply")
 async def bot_update_apply(request: Request):
     if r := auth_redirect(request): return r
     if session(request).get("role") != "admin":
         return RedirectResponse("/", status_code=302)
-    try:
+
+    async def _do_update():
+        global _update_status
+        _update_status = {"step": "", "done": False, "error": ""}
         tar_url = "https://github.com/LucyWolf/phobos-bot/archive/refs/heads/main.tar.gz"
+        try:
+            def _download_and_apply():
+                _update_status["step"] = "GitHub wird kontaktiert…"
+                with tempfile.TemporaryDirectory() as tmp:
+                    tar_path = os.path.join(tmp, "update.tar.gz")
+                    _update_status["step"] = "Code wird heruntergeladen…"
+                    urllib.request.urlretrieve(tar_url, tar_path)
+                    _update_status["step"] = "Archiv wird entpackt…"
+                    with tarfile.open(tar_path, "r:gz") as tf:
+                        tf.extractall(tmp)
+                    dirs = [d for d in os.listdir(tmp) if os.path.isdir(os.path.join(tmp, d))]
+                    if not dirs:
+                        raise RuntimeError("Archiv leer")
+                    src_app = os.path.join(tmp, dirs[0], "app")
+                    dst = "/app"
+                    skip = {"data"}
+                    _update_status["step"] = "Dateien werden aktualisiert…"
+                    for item in os.listdir(src_app):
+                        if item in skip:
+                            continue
+                        s = os.path.join(src_app, item)
+                        d = os.path.join(dst, item)
+                        if os.path.isfile(s):
+                            shutil.copy2(s, d)
+                        elif os.path.isdir(s):
+                            if os.path.exists(d):
+                                shutil.rmtree(d)
+                            shutil.copytree(s, d)
+                    _update_status["step"] = "Fertig – Server wird neu gestartet…"
 
-        def _download_and_apply():
-            with tempfile.TemporaryDirectory() as tmp:
-                tar_path = os.path.join(tmp, "update.tar.gz")
-                urllib.request.urlretrieve(tar_url, tar_path)
-                with tarfile.open(tar_path, "r:gz") as tf:
-                    tf.extractall(tmp)
-                # Find extracted root dir (e.g. phobos-bot-main)
-                dirs = [d for d in os.listdir(tmp) if os.path.isdir(os.path.join(tmp, d))]
-                if not dirs:
-                    raise RuntimeError("Archiv leer")
-                src_app = os.path.join(tmp, dirs[0], "app")
-                dst = "/app"
-                skip = {"data"}  # never overwrite database / persistent data
-                for item in os.listdir(src_app):
-                    if item in skip:
-                        continue
-                    s = os.path.join(src_app, item)
-                    d = os.path.join(dst, item)
-                    if os.path.isfile(s):
-                        shutil.copy2(s, d)
-                    elif os.path.isdir(s):
-                        if os.path.exists(d):
-                            shutil.rmtree(d)
-                        shutil.copytree(s, d)
+            await asyncio.get_event_loop().run_in_executor(None, _download_and_apply)
+            _update_status["done"] = True
+            await asyncio.sleep(1)
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+        except Exception as e:
+            _update_status["error"] = str(e)[:200]
 
-        await asyncio.get_event_loop().run_in_executor(None, _download_and_apply)
-        # Restart Python process in-place (works in Docker without rebuild)
-        asyncio.get_event_loop().call_later(1.5, lambda: os.execv(sys.executable, [sys.executable] + sys.argv))
-        return RedirectResponse("/bot/update?success=1", status_code=302)
-    except Exception as e:
-        msg = urllib.parse.quote(str(e)[:120])
-        return RedirectResponse(f"/bot/update?error={msg}", status_code=302)
+    asyncio.create_task(_do_update())
+    return HTMLResponse(_UPDATE_IN_PROGRESS_HTML)
 
 
 # ── Free Stuff ────────────────────────────────────────────────────────────────
