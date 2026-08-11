@@ -285,6 +285,33 @@ async def init_db():
                 owner_id TEXT NOT NULL
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS scheduled_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                message TEXT NOT NULL,
+                send_at TEXT NOT NULL,
+                sent INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS birthdays (
+                user_id TEXT NOT NULL,
+                guild_id TEXT NOT NULL,
+                birthday TEXT NOT NULL,
+                PRIMARY KEY (user_id, guild_id)
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS birthday_sent (
+                user_id TEXT NOT NULL,
+                guild_id TEXT NOT NULL,
+                year INTEGER NOT NULL,
+                PRIMARY KEY (user_id, guild_id, year)
+            )
+        """)
         for col in [
             "ALTER TABLE tickets ADD COLUMN panel_id INTEGER",
             "ALTER TABLE freestuff_channels ADD COLUMN deal_max_price REAL",

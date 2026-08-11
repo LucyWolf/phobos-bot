@@ -656,6 +656,114 @@ function togglePanelEdit(id) {
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Geplante Nachrichten                                            -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-scheduled">
+<div class="card">
+  <div class="feat-header">📅 Geplante Nachrichten</div>
+  <p class="hint" style="margin-bottom:1rem;">Nachrichten werden automatisch zum gewählten Zeitpunkt in den Kanal gesendet.</p>
+
+  {% if scheduled_messages %}
+  <table style="width:100%;border-collapse:collapse;margin-bottom:1.25rem;">
+    <thead>
+      <tr style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;">
+        <th style="text-align:left;padding:0.4rem 0.5rem;">Zeitpunkt</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">Kanal</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">Nachricht</th>
+        <th style="padding:0.4rem 0.5rem;"></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for sm in scheduled_messages %}
+    {% set ch_name = channels | selectattr('id','equalto',sm.channel_id) | map(attribute='name') | first | default(sm.channel_id) %}
+    <tr style="border-top:1px solid var(--border);font-size:0.85rem;">
+      <td style="padding:0.5rem;white-space:nowrap;">{{ sm.send_at | replace("T"," ") }}</td>
+      <td style="padding:0.5rem;">#{{ ch_name }}</td>
+      <td style="padding:0.5rem;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ sm.message }}</td>
+      <td style="padding:0.5rem;text-align:right;">
+        <form method="post" action="/servers/{{ guild.id }}/scheduled/delete/{{ sm.id }}" style="margin:0;">
+          <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <form method="post" action="/servers/{{ guild.id }}/scheduled/add">
+    <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
+      <div>
+        <label style="font-size:0.82rem;">Kanal</label>
+        <select name="channel_id" required>
+          <option value="">— Kanal wählen —</option>
+          {% for c in channels %}<option value="{{ c.id }}">#{{ c.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:0.82rem;">Zeitpunkt</label>
+        <input type="datetime-local" name="send_at" required>
+      </div>
+    </div>
+    <label style="font-size:0.82rem;">Nachricht</label>
+    <textarea name="message" rows="3" placeholder="Nachrichtentext…" required style="margin-bottom:0.75rem;"></textarea>
+    <button type="submit" class="btn btn-primary">📅 Planen</button>
+  </form>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Geburtstage                                                     -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-birthday">
+<form method="post" action="/servers/{{ guild.id }}">
+<div class="card">
+  <div class="feat-header">🎂 Geburtstags-System</div>
+  <p class="hint" style="margin-bottom:1rem;">
+    Mitglieder tragen ihren Geburtstag mit <code>!geburtstag TT.MM</code> ein.
+    Um 8:00 Uhr schickt der Bot automatisch eine Glückwunschnachricht.
+  </p>
+  <div class="grid-2" style="gap:1rem;margin-bottom:1rem;">
+    <div>
+      <label>Geburtstags-Kanal</label>
+      <select name="birthday_channel">
+        <option value="">— Deaktiviert —</option>
+        {% for c in channels %}<option value="{{ c.id }}" {% if cfg.get('birthday_channel') == c.id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Glückwunsch-Nachricht <span style="color:var(--muted);font-size:0.75rem">{user}</span></label>
+      <input type="text" name="birthday_message" value="{{ cfg.get('birthday_message', '🎂 Alles Gute zum Geburtstag, {user}! 🎉') }}">
+    </div>
+  </div>
+  <button type="submit" class="btn btn-primary">💾 Speichern</button>
+</div>
+</form>
+
+{% if birthdays %}
+<div class="card" style="margin-top:1rem;">
+  <div class="feat-header" style="margin-bottom:0.75rem;">🎂 Eingetragene Geburtstage</div>
+  <table style="width:100%;border-collapse:collapse;">
+    <thead>
+      <tr style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;">
+        <th style="text-align:left;padding:0.4rem 0.5rem;">Nutzer-ID</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">Datum</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for b in birthdays %}
+    <tr style="border-top:1px solid var(--border);font-size:0.85rem;">
+      <td style="padding:0.5rem;color:var(--muted);">{{ b.user_id }}</td>
+      <td style="padding:0.5rem;">{{ b.birthday[3:] }}.{{ b.birthday[:2] }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <!-- TAB: Auto-Delete                                                     -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-autodelete">
@@ -727,7 +835,7 @@ function togglePanelEdit(id) {
 </div>
 
 <script>
-const TABS = ['config','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','autodelete'];
+const TABS = ['config','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','birthday','autodelete'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {
