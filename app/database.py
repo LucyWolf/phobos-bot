@@ -234,7 +234,25 @@ async def init_db():
                 used INTEGER DEFAULT 0
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS ticket_panels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT DEFAULT 'Klicke unten um ein Ticket zu öffnen.',
+                button_label TEXT DEFAULT 'Ticket öffnen',
+                emoji TEXT DEFAULT '🎫',
+                support_role_id TEXT DEFAULT '',
+                category_id TEXT DEFAULT '',
+                log_channel_id TEXT DEFAULT '',
+                channel_id TEXT DEFAULT '',
+                message_id TEXT DEFAULT '',
+                status TEXT DEFAULT 'draft',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         for col in [
+            "ALTER TABLE tickets ADD COLUMN panel_id INTEGER",
             "ALTER TABLE freestuff_channels ADD COLUMN deal_max_price REAL",
             "ALTER TABLE freestuff_channels ADD COLUMN deal_min_discount INTEGER DEFAULT 75",
             "ALTER TABLE freestuff_channels ADD COLUMN deal_channel_id TEXT",

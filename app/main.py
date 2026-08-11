@@ -2,7 +2,9 @@ import asyncio
 import datetime
 import email.mime.text
 import io
+import json as _djson
 import os
+import socket as _dsock
 from contextvars import ContextVar
 from zoneinfo import ZoneInfo
 import platform
@@ -23,6 +25,7 @@ import aiosqlite
 import bcrypt
 import discord
 import psutil
+from cogs.tickets import OpenTicketView as _TicketView
 from i18n import get_tr
 import uvicorn
 from discord.ext import commands
@@ -54,6 +57,44 @@ def load_secret_key() -> str:
 
 
 SECRET_KEY = load_secret_key()
+
+
+def _docker_api(method: str, path: str) -> tuple[int, bytes]:
+    """Minimal Docker Engine API client over Unix socket."""
+    try:
+        sock = _dsock.socket(_dsock.AF_UNIX, _dsock.SOCK_STREAM)
+        sock.settimeout(5)
+        sock.connect("/var/run/docker.sock")
+        req = f"{method} {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+        sock.sendall(req.encode())
+        data = b""
+        while True:
+            chunk = sock.recv(32768)
+            if not chunk:
+                break
+            data += chunk
+        sock.close()
+        idx = data.find(b"\r\n\r\n")
+        code = int(data.split(b" ", 2)[1]) if b" " in data else 0
+        return code, data[idx + 4:] if idx != -1 else b""
+    except Exception:
+        return 0, b""
+
+
+def _get_compose_dir() -> str | None:
+    """Return docker-compose project working dir from own container labels, or None."""
+    if not os.path.exists("/var/run/docker.sock"):
+        return None
+    try:
+        hostname = os.environ.get("HOSTNAME", "")
+        code, body = _docker_api("GET", f"/v1.43/containers/{hostname}/json")
+        if code == 200:
+            info = _djson.loads(body)
+            labels = (info.get("Config") or {}).get("Labels") or {}
+            return labels.get("com.docker.compose.project.working_dir")
+    except Exception:
+        pass
+    return None
 
 
 def hash_pw(password: str) -> str:
@@ -953,6 +994,13 @@ async def admin_invite_generate(request: Request):
     return JSONResponse({"code": code, "expires_at": expires_at})
 
 
+@web.post("/admin/invite/revoke")
+async def admin_invite_revoke(request: Request):
+    if r := admin_redirect(request): return r
+    await db_exec("DELETE FROM invite_codes WHERE used=0")
+    return JSONResponse({"ok": True})
+
+
 @web.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request, code: str = "", error: str = ""):
     if not code:
@@ -980,6 +1028,7 @@ async def register_submit(
     request: Request,
     code: str = Form(...),
     username: str = Form(...),
+    email_addr: str = Form(...),
     password: str = Form(...),
     pw_confirm: str = Form(...),
 ):
@@ -994,6 +1043,11 @@ async def register_submit(
             "request": request, "code": code, "valid": True,
             "error": "Benutzername muss mindestens 3 Zeichen lang sein.",
         })
+    if not email_addr.strip() or "@" not in email_addr:
+        return templates.TemplateResponse("register.html", {
+            "request": request, "code": code, "valid": True,
+            "error": "Bitte eine gültige E-Mail-Adresse eingeben.",
+        })
     if len(password) < 6:
         return templates.TemplateResponse("register.html", {
             "request": request, "code": code, "valid": True,
@@ -1006,8 +1060,8 @@ async def register_submit(
         })
     try:
         await db_exec(
-            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-            (username.strip(), hash_pw(password), "moderator"),
+            "INSERT INTO users (username, password_hash, role, email) VALUES (?, ?, ?, ?)",
+            (username.strip(), hash_pw(password), "moderator", email_addr.strip()),
         )
     except Exception:
         return templates.TemplateResponse("register.html", {
@@ -1142,6 +1196,8 @@ function waitForServer() {
     .then(r => r.json())
     .then(d => {
       if (d.ok) {
+        addLine('[+] Running 1/1', 'ok');
+        addLine(' ✔ Container phobos-bot-phobos  Started', 'ok');
         addLine('✅  Server wieder online – weiterleiten…', 'ok');
         setTimeout(() => { window.location = '/'; }, 1500);
       } else retry();
@@ -1291,9 +1347,31 @@ async def bot_update_apply(request: Request):
                     _ulog("  🚀  Server wird neu gestartet…", "restart")
 
             await asyncio.get_event_loop().run_in_executor(None, _download_and_apply)
-            _update_status["done"] = True
-            await asyncio.sleep(1)
-            os.execv(sys.executable, [sys.executable] + sys.argv)
+
+            compose_dir = await asyncio.get_event_loop().run_in_executor(None, _get_compose_dir)
+            if compose_dir:
+                _ulog("$ docker-compose up --build -d", "cmd")
+                proc = await asyncio.create_subprocess_exec(
+                    "docker-compose", "up", "--build", "-d",
+                    cwd=compose_dir,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                )
+                try:
+                    async for raw in proc.stdout:
+                        line = raw.decode("utf-8", errors="replace").rstrip()
+                        if line:
+                            _ulog(line, "info")
+                    await proc.wait()
+                except Exception:
+                    pass
+                _update_status["done"] = True
+            else:
+                _ulog("$ exec python " + " ".join(sys.argv), "cmd")
+                _ulog("  🚀  Server wird neu gestartet…", "restart")
+                _update_status["done"] = True
+                await asyncio.sleep(1)
+                os.execv(sys.executable, [sys.executable] + sys.argv)
 
         except Exception as e:
             _ulog(f"❌  Fehler: {e}", "err")
@@ -1827,6 +1905,18 @@ async def server_config(
         m = guild.get_member(wg["user_id"])
         wg["username"] = str(m) if m else f"#{wg['user_id']}"
 
+    # Ticket panels
+    ticket_panels = await db_rows(
+        "SELECT * FROM ticket_panels WHERE guild_id=? ORDER BY created_at DESC", (guild_id,)
+    )
+    for p in ticket_panels:
+        if p.get("channel_id"):
+            try:
+                ch = guild.get_channel(int(p["channel_id"]))
+                p["channel_name"] = ch.name if ch else None
+            except (ValueError, TypeError):
+                p["channel_name"] = None
+
     # Open tickets
     ticket_list = await db_rows(
         "SELECT * FROM tickets WHERE guild_id=? AND status='open' ORDER BY created_at DESC",
@@ -1870,7 +1960,7 @@ async def server_config(
         "tab": tab, "error": error, "success": success,
         "rr_list": rr_list, "cmd_list": cmd_list,
         "leaderboard": lb, "warn_groups": warn_groups,
-        "ticket_list": ticket_list, "ga_list": ga_list,
+        "ticket_panels": ticket_panels, "ticket_list": ticket_list, "ga_list": ga_list,
         "subs": subs, "twitch_configured": twitch_configured,
         "all_users": all_users, "server_perms": server_perms,
     })
@@ -1894,6 +1984,121 @@ async def server_config_save(request: Request, guild_id: int):
     for key in checkbox_keys:
         await set_guild_config(guild_id, key, "1" if form.get(key) else "0")
     return RedirectResponse(f"/servers/{guild_id}?tab=config&saved=true", status_code=303)
+
+
+# ── Ticket Panels ────────────────────────────────────────────────────────────
+
+@web.post("/servers/{guild_id}/tickets/panels/create")
+async def tickets_panel_create(request: Request, guild_id: int, name: str = Form(...)):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    name = name.strip()
+    if not name:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Name+erforderlich", status_code=302)
+    await db_exec(
+        "INSERT INTO ticket_panels (guild_id, name, button_label, description, emoji) VALUES (?,?,?,?,?)",
+        (guild_id, name, "Ticket öffnen", "Klicke unten um ein Ticket zu öffnen.", "🎫"),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Panel+erstellt", status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/update")
+async def tickets_panel_update(
+    request: Request, guild_id: int, panel_id: int,
+    name: str = Form(""), button_label: str = Form("Ticket öffnen"),
+    description: str = Form(""), emoji: str = Form("🎫"),
+    support_role_id: str = Form(""), category_id: str = Form(""),
+):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    await db_exec(
+        "UPDATE ticket_panels SET name=?, button_label=?, description=?, emoji=?, "
+        "support_role_id=?, category_id=? WHERE id=? AND guild_id=?",
+        (name.strip(), button_label.strip() or "Ticket öffnen",
+         description.strip(), emoji.strip() or "🎫",
+         support_role_id, category_id, panel_id, guild_id),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Panel+gespeichert", status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/delete")
+async def tickets_panel_delete(request: Request, guild_id: int, panel_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    panel = await db_one("SELECT * FROM ticket_panels WHERE id=? AND guild_id=?", (panel_id, guild_id))
+    if panel and panel.get("message_id") and panel.get("channel_id"):
+        try:
+            b = bot._bot_for_guild(guild_id)
+            if b:
+                ch = b.get_channel(int(panel["channel_id"]))
+                if ch:
+                    msg = await ch.fetch_message(int(panel["message_id"]))
+                    await msg.delete()
+        except Exception:
+            pass
+    await db_exec("DELETE FROM ticket_panels WHERE id=? AND guild_id=?", (panel_id, guild_id))
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Panel+gelöscht", status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/publish")
+async def tickets_panel_publish(
+    request: Request, guild_id: int, panel_id: int,
+    channel_id: str = Form(...),
+):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    panel = await db_one("SELECT * FROM ticket_panels WHERE id=? AND guild_id=?", (panel_id, guild_id))
+    if not panel:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Panel+nicht+gefunden", status_code=302)
+    b = bot._bot_for_guild(guild_id)
+    if not b:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Bot+nicht+verbunden", status_code=302)
+    try:
+        ch = b.get_channel(int(channel_id))
+    except (ValueError, TypeError):
+        ch = None
+    if not ch:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Kanal+nicht+gefunden", status_code=302)
+    # Remove old panel message if any
+    if panel.get("message_id") and panel.get("channel_id"):
+        try:
+            old_ch = b.get_channel(int(panel["channel_id"]))
+            if old_ch:
+                old_msg = await old_ch.fetch_message(int(panel["message_id"]))
+                await old_msg.delete()
+        except Exception:
+            pass
+    label = panel.get("button_label") or "Ticket öffnen"
+    emoji = panel.get("emoji") or "🎫"
+    embed = discord.Embed(
+        title=f"{emoji} {panel['name']}",
+        description=panel.get("description") or "Klicke unten um ein Ticket zu öffnen.",
+        color=0x7C3AED,
+    )
+    view = _TicketView(panel_id, label, emoji)
+    msg = await ch.send(embed=embed, view=view)
+    b.add_view(view)
+    await db_exec(
+        "UPDATE ticket_panels SET status='published', channel_id=?, message_id=? WHERE id=?",
+        (str(channel_id), str(msg.id), panel_id),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Panel+veröffentlicht", status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/unpublish")
+async def tickets_panel_unpublish(request: Request, guild_id: int, panel_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    await db_exec(
+        "UPDATE ticket_panels SET status='draft', message_id='' WHERE id=? AND guild_id=?",
+        (panel_id, guild_id),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Panel+deaktiviert", status_code=302)
 
 
 # ── Server User Access ────────────────────────────────────────────────────────

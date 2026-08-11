@@ -13,7 +13,10 @@
   <p style="font-size:0.82rem;color:var(--muted);margin-bottom:1rem;">
     Generiere einen einmaligen Link (5 Minuten gültig) damit jemand sich selbst ein Konto erstellen kann.
   </p>
-  <button class="btn btn-primary" onclick="genInvite()" id="gen-btn">🔗 Link generieren</button>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+    <button class="btn btn-primary" onclick="genInvite()" id="gen-btn">🔗 Link generieren</button>
+    <button class="btn btn-danger" onclick="revokeInvite(this)" id="revoke-btn" style="display:none;font-size:0.82rem;padding:0.38rem 0.8rem;">⛔ Stopp</button>
+  </div>
 
   <div id="invite-result" style="display:none;margin-top:1rem;">
     <div style="background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;
@@ -170,6 +173,21 @@ function toggleRole(uid) {
 
 let _invTimer = null;
 
+function _hideInvite() {
+  document.getElementById('invite-result').style.display = 'none';
+  document.getElementById('revoke-btn').style.display = 'none';
+  if (_invTimer) { clearInterval(_invTimer); _invTimer = null; }
+}
+
+async function revokeInvite(btn) {
+  btn.disabled = true;
+  try { await fetch('/admin/invite/revoke', {method:'POST', cache:'no-store'}); } catch(e) {}
+  _hideInvite();
+  document.getElementById('invite-url').textContent = '';
+  document.getElementById('invite-timer').textContent = '';
+  btn.disabled = false;
+}
+
 async function genInvite() {
   const btn = document.getElementById('gen-btn');
   btn.disabled = true;
@@ -180,6 +198,7 @@ async function genInvite() {
     const url = window.location.origin + '/register?code=' + d.code;
     document.getElementById('invite-url').textContent = url;
     document.getElementById('invite-result').style.display = '';
+    document.getElementById('revoke-btn').style.display = '';
     btn.textContent = '🔗 Neuen Link generieren';
     btn.disabled = false;
     if (_invTimer) clearInterval(_invTimer);
@@ -191,6 +210,7 @@ async function genInvite() {
         el.textContent = '⏱ Abgelaufen';
         el.style.color = '#ef4444';
         clearInterval(_invTimer);
+        _hideInvite();
       } else {
         const m = Math.floor(rem / 60), s = rem % 60;
         el.textContent = '⏱ Noch ' + m + ':' + String(s).padStart(2,'0');

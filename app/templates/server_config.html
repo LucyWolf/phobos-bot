@@ -257,51 +257,158 @@
 <!-- TAB: Tickets                                                        -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-tickets">
-<form method="post" action="/servers/{{ guild.id }}">
-<div class="card">
-  <div class="feat-header">🎫 Ticket-System</div>
-  <div class="grid-2">
-    <div>
-      <label>Support-Rolle</label>
-      <select name="ticket_support_role">
-        <option value="">— Keine —</option>
-        {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('ticket_support_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
-      </select>
-    </div>
-    <div>
-      <label>Ticket-Kategorie</label>
-      <select name="ticket_category">
-        <option value="">— Keine —</option>
-        {% for c in categories %}<option value="{{ c.id }}" {% if cfg.get('ticket_category') == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
-      </select>
-    </div>
-  </div>
-  <p class="hint">Ticket-Panel im Discord posten: <code>/ticket-panel</code></p>
-  <button type="submit" class="btn btn-primary">💾 Speichern</button>
-</div>
-</form>
+<style>
+  .panel-status-pub  { background:rgba(34,197,94,.12); color:#22c55e; border:1px solid rgba(34,197,94,.3); }
+  .panel-status-draft{ background:rgba(100,116,139,.12); color:#94a3b8; border:1px solid rgba(100,116,139,.3); }
+  .panel-badge { display:inline-flex; align-items:center; gap:0.3rem; padding:0.18rem 0.6rem; border-radius:999px; font-size:0.7rem; font-weight:700; }
+  .panel-edit-row { background:var(--bg); }
+</style>
 
-<div class="card" style="padding:0;overflow:hidden;">
-  {% if ticket_list %}
+<!-- Panel-Liste -->
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:1.25rem;">
+  <div style="padding:0.85rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-weight:700;font-size:0.95rem;">🎫 Ticket-Panels <span style="font-weight:400;color:var(--muted);font-size:0.8rem;">{{ ticket_panels|length }} gesamt</span></div>
+    <button class="btn btn-primary" style="font-size:0.78rem;padding:0.3rem 0.75rem;" onclick="document.getElementById('create-panel-box').style.display=document.getElementById('create-panel-box').style.display?'':'block';this.textContent=this.textContent.startsWith('+')?'✕ Schließen':'+ Neues Panel'">+ Neues Panel</button>
+  </div>
+
+  <!-- Neues Panel erstellen (inline) -->
+  <div id="create-panel-box" style="display:none;padding:1rem 1.25rem;border-bottom:1px solid var(--border);background:var(--bg);">
+    <form method="post" action="/servers/{{ guild.id }}/tickets/panels/create" style="display:flex;gap:0.6rem;align-items:flex-end;flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;">
+        <label>Panel-Name</label>
+        <input type="text" name="name" placeholder="z.B. Support Ticket" required style="margin-bottom:0;">
+      </div>
+      <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">Erstellen</button>
+    </form>
+  </div>
+
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Nutzer</th><th>Kanal</th><th>Erstellt</th></tr></thead>
+      <thead><tr><th>Panel</th><th>Status</th><th>Kanal</th><th>Erstellt</th><th></th></tr></thead>
+      <tbody>
+        {% for p in ticket_panels %}
+        <tr>
+          <td>
+            <div style="font-weight:600;font-size:0.88rem;">{{ p.emoji or '🎫' }} {{ p.name }}</div>
+            <div style="font-size:0.72rem;color:var(--muted);">{{ p.button_label or 'Ticket öffnen' }}</div>
+          </td>
+          <td>
+            <span class="panel-badge {% if p.status == 'published' %}panel-status-pub{% else %}panel-status-draft{% endif %}">
+              {% if p.status == 'published' %}● Published{% else %}◌ Draft{% endif %}
+            </span>
+          </td>
+          <td style="color:var(--muted);font-size:0.8rem;">
+            {% if p.channel_id %}#{{ p.channel_name or p.channel_id }}{% else %}—{% endif %}
+          </td>
+          <td style="color:var(--muted);font-size:0.78rem;white-space:nowrap;">{{ p.created_at | dt }}</td>
+          <td>
+            <div style="display:flex;gap:0.3rem;justify-content:flex-end;">
+              <button class="btn btn-secondary" onclick="togglePanelEdit({{ p.id }})" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="Einstellungen">⚙</button>
+              {% if p.status == 'published' %}
+              <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/unpublish" style="display:inline;">
+                <button class="btn btn-secondary" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="Deaktivieren">⏸</button>
+              </form>
+              {% endif %}
+              <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/delete" style="display:inline;" onsubmit="return confirm('Panel «{{ p.name }}» wirklich löschen?')">
+                <button class="btn btn-danger" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="Löschen">✕</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+
+        <!-- Edit-Zeile -->
+        <tr id="panel-edit-{{ p.id }}" style="display:none;" class="panel-edit-row">
+          <td colspan="5" style="padding:1.1rem 1.25rem;">
+            <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/update">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
+                <div>
+                  <label>Name</label>
+                  <input type="text" name="name" value="{{ p.name }}" required style="margin-bottom:0;">
+                </div>
+                <div>
+                  <label>Button-Text</label>
+                  <input type="text" name="button_label" value="{{ p.button_label or 'Ticket öffnen' }}" style="margin-bottom:0;">
+                </div>
+                <div>
+                  <label>Emoji</label>
+                  <input type="text" name="emoji" value="{{ p.emoji or '🎫' }}" style="margin-bottom:0;">
+                </div>
+                <div>
+                  <label>Support-Rolle</label>
+                  <select name="support_role_id" style="margin-bottom:0;">
+                    <option value="">— Keine —</option>
+                    {% for r in roles %}<option value="{{ r.id }}" {% if p.support_role_id == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div style="grid-column:1/-1;">
+                  <label>Ticket-Kategorie (Discord-Kategorie)</label>
+                  <select name="category_id" style="margin-bottom:0;">
+                    <option value="">— Keine —</option>
+                    {% for c in categories %}<option value="{{ c.id }}" {% if p.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div style="grid-column:1/-1;">
+                  <label>Beschreibung (Embed-Text)</label>
+                  <input type="text" name="description" value="{{ p.description or '' }}" placeholder="Klicke unten um ein Ticket zu öffnen." style="margin-bottom:0;">
+                </div>
+              </div>
+              <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">💾 Speichern</button>
+            </form>
+
+            {% if p.status != 'published' %}
+            <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);">
+              <div style="font-size:0.8rem;font-weight:700;margin-bottom:0.5rem;color:var(--muted);">🚀 Im Discord veröffentlichen</div>
+              <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/publish" style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                <select name="channel_id" required style="flex:1;min-width:160px;margin:0;">
+                  <option value="">— Kanal wählen —</option>
+                  {% for ch in channels %}<option value="{{ ch.id }}">{{ ch.name }}</option>{% endfor %}
+                </select>
+                <button class="btn btn-primary" style="font-size:0.8rem;padding:0.4rem 0.8rem;">🚀 Veröffentlichen</button>
+              </form>
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+
+        {% if not ticket_panels %}
+        <tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--muted);">Noch kein Panel erstellt. Klicke „+ Neues Panel".</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Offene Tickets -->
+{% if ticket_list %}
+<div class="section-label" style="margin-bottom:0.5rem;">Offene Tickets</div>
+<div class="card" style="padding:0;overflow:hidden;">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Nutzer</th><th>Kanal</th><th>Panel</th><th>Erstellt</th></tr></thead>
       <tbody>
         {% for t in ticket_list %}
         <tr>
           <td style="font-weight:500">{{ t.username }}</td>
           <td style="color:#a78bfa">{{ t.channel_name }}</td>
+          <td style="color:var(--muted);font-size:0.8rem;">{{ t.panel_id or '—' }}</td>
           <td style="color:var(--muted);font-size:0.8rem">{{ t.created_at | dt }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-  {% else %}
-  <div class="empty-state">🎫 Keine offenen Tickets.</div>
-  {% endif %}
 </div>
-<p class="hint" style="margin-top:1rem;">Ticket-Panel im Discord posten: <code>/ticket-panel</code> · Schließen: Button im Ticket-Kanal oder <code>/ticket-close</code></p>
+{% endif %}
+
+<p class="hint" style="margin-top:1rem;">Ticket schließen: Button im Ticket-Kanal oder <code>/ticket-close</code></p>
+
+<script>
+function togglePanelEdit(id) {
+  const row = document.getElementById('panel-edit-' + id);
+  if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+</script>
 </div>
 
 
