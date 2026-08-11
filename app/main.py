@@ -936,6 +936,11 @@ async def api_version(request: Request, force: int = 0):
     })
 
 
+@web.get("/ping")
+async def ping():
+    return JSONResponse({"ok": True})
+
+
 @web.get("/bot/update", response_class=HTMLResponse)
 async def bot_update_page(request: Request, success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
@@ -1054,11 +1059,12 @@ function addLine(msg, t) {
 }
 
 function waitForServer() {
-  fetch('/bot/update', {method:'HEAD', cache:'no-store'})
-    .then(r => {
-      if (r.ok) {
+  fetch('/ping', {cache:'no-store'})
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
         addLine('✅  Server wieder online – weiterleiten…', 'ok');
-        setTimeout(() => { window.location = '/bot/update?success=Update+erfolgreich'; }, 1200);
+        setTimeout(() => { window.location = '/'; }, 1500);
       } else retry();
     })
     .catch(() => retry());
@@ -1066,8 +1072,11 @@ function waitForServer() {
 function retry() {
   waitTries++;
   hint.textContent = 'Warte auf Neustart… (' + waitTries + ')';
-  if (waitTries < 90) setTimeout(waitForServer, 2000);
-  else window.location = '/bot/update';
+  if (waitTries === 5)  addLine('  ⏳  Neustart dauert länger – bitte warten…', 'info');
+  if (waitTries === 15) addLine('  ⏳  Server verbindet sich mit Discord…', 'info');
+  if (waitTries === 30) addLine('  ⚠   Startet noch – falls nötig: docker compose restart', 'warn');
+  if (waitTries < 120) setTimeout(waitForServer, 2500);
+  else { addLine('❌  Timeout – bitte Container manuell neu starten.', 'err'); spin.style.display='none'; }
 }
 
 function poll() {
@@ -1090,7 +1099,7 @@ function poll() {
         restarting = true;
         const cursor = log.querySelector('.cursor');
         if (cursor) cursor.remove();
-        setTimeout(waitForServer, 4000);
+        setTimeout(waitForServer, 8000);
       } else {
         setTimeout(poll, 600);
       }
@@ -1098,8 +1107,10 @@ function poll() {
     .catch(() => {
       if (!restarting) {
         restarting = true;
+        const cursor = log.querySelector('.cursor');
+        if (cursor) cursor.remove();
         addLine('🚀  Verbindung unterbrochen – Server startet neu…', 'restart');
-        setTimeout(waitForServer, 5000);
+        setTimeout(waitForServer, 8000);
       }
     });
 }
