@@ -19,6 +19,7 @@ import aiosqlite
 import bcrypt
 import discord
 import psutil
+from i18n import get_tr
 import uvicorn
 from discord.ext import commands
 from fastapi import FastAPI, File, Form, Request, UploadFile
@@ -226,11 +227,14 @@ ACTION_COLORS = {
 
 
 def session(request: Request) -> dict:
+    lang = request.session.get("lang", "de")
     return {
         "username": request.session.get("username"),
         "role": request.session.get("role"),
         "user_id": request.session.get("user_id"),
         "version": VERSION,
+        "lang": lang,
+        "tr": get_tr(lang),
         **{p: request.session.get(p, False) for p in PERM_COLS},
     }
 
@@ -335,6 +339,15 @@ async def login_submit(request: Request, username: str = Form(...), password: st
 async def logout(request: Request):
     request.session.clear()
     return RedirectResponse("/login", status_code=302)
+
+
+@web.post("/settings/language")
+async def set_language(request: Request, lang: str = Form("de")):
+    if lang not in ("de", "en"):
+        lang = "de"
+    request.session["lang"] = lang
+    referer = request.headers.get("referer", "/")
+    return RedirectResponse(referer, status_code=302)
 
 
 # ── Password Reset ─────────────────────────────────────────────────────────────

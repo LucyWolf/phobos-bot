@@ -307,63 +307,63 @@
   </div>
 
   <nav class="sidebar-nav">
-    <a href="/" class="nav-item {% if active == 'dashboard' %}active{% endif %}" title="Dashboard">
+    <a href="/" class="nav-item {% if active == 'dashboard' %}active{% endif %}" title="{{ tr.nav_dashboard }}">
       <span class="icon">📊</span>
-      <span class="label">Dashboard</span>
+      <span class="label">{{ tr.nav_dashboard }}</span>
     </a>
 
     <div class="nav-group {% if active in ['settings','users','roles','bot_update','bot_info','notif_settings','smtp','servers','tokens'] %}open{% endif %}" id="nav-group-settings">
       <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn-header{% endif %}"
-           onclick="toggleNavGroup('settings')" title="Einstellungen">
+           onclick="toggleNavGroup('settings')" title="{{ tr.nav_settings }}">
         <span class="icon">⚙️</span>
-        <span class="label">{% if not token_set %}⚠ Einstellungen{% else %}Einstellungen{% endif %}</span>
+        <span class="label">{% if not token_set %}⚠ {{ tr.nav_settings }}{% else %}{{ tr.nav_settings }}{% endif %}</span>
         <span class="nav-chevron">▼</span>
       </div>
       <div class="nav-group-items">
         {% if role == 'admin' or perm_tokens %}
         <a href="/settings/tokens" class="nav-item nav-sub {% if active == 'tokens' %}active{% endif %}">
           <span class="icon">🔑</span>
-          <span class="label">Tokens</span>
+          <span class="label">{{ tr.nav_tokens }}</span>
         </a>
         {% endif %}
         {% if role == 'admin' %}
         <a href="/users" class="nav-item nav-sub {% if active == 'users' %}active{% endif %}">
           <span class="icon">👥</span>
-          <span class="label">Benutzer</span>
+          <span class="label">{{ tr.nav_users }}</span>
         </a>
         <a href="/roles" class="nav-item nav-sub {% if active == 'roles' %}active{% endif %}">
           <span class="icon">🎭</span>
-          <span class="label">Rollen</span>
+          <span class="label">{{ tr.nav_roles }}</span>
         </a>
         {% endif %}
         {% if role == 'admin' or perm_bots %}
         <a href="/bot/info" class="nav-item nav-sub {% if active == 'bot_info' %}active{% endif %}">
           <span class="icon">📊</span>
-          <span class="label">Bot-Info</span>
+          <span class="label">{{ tr.nav_bot_info }}</span>
         </a>
         {% endif %}
         <a href="/servers" class="nav-item nav-sub {% if active == 'servers' %}active{% endif %}">
           <span class="icon">🖥️</span>
-          <span class="label">Server</span>
+          <span class="label">{{ tr.nav_servers }}</span>
         </a>
         {% if role == 'admin' or perm_settings %}
         <a href="/settings" class="nav-item nav-sub {% if active == 'settings' %}active{% endif %}">
           <span class="icon">🕐</span>
-          <span class="label">Zeitzone</span>
+          <span class="label">{{ tr.nav_timezone }}</span>
         </a>
         <a href="/settings/notifications" class="nav-item nav-sub {% if active == 'notif_settings' %}active{% endif %}">
           <span class="icon">🟣</span>
-          <span class="label">Twitch-API</span>
+          <span class="label">{{ tr.nav_twitch_api }}</span>
         </a>
         <a href="/settings/smtp" class="nav-item nav-sub {% if active == 'smtp' %}active{% endif %}">
           <span class="icon">📧</span>
-          <span class="label">E-Mail / SMTP</span>
+          <span class="label">{{ tr.nav_smtp }}</span>
         </a>
         {% endif %}
         {% if role == 'admin' %}
         <a href="/bot/update" class="nav-item nav-sub {% if active == 'bot_update' %}active{% endif %}" id="nav-update-link">
           <span class="icon">🔄</span>
-          <span class="label">Updates <span id="nav-update-badge" style="display:none;background:#f59e0b;color:#000;font-size:0.6rem;font-weight:700;border-radius:999px;padding:0.1rem 0.4rem;margin-left:0.3rem;">NEU</span></span>
+          <span class="label">{{ tr.nav_updates }} <span id="nav-update-badge" style="display:none;background:#f59e0b;color:#000;font-size:0.6rem;font-weight:700;border-radius:999px;padding:0.1rem 0.4rem;margin-left:0.3rem;">NEU</span></span>
         </a>
         {% endif %}
       </div>
@@ -382,37 +382,37 @@
       </div>
       <div class="nav-group-items">
         <a href="/servers/{{ g.id }}?tab=config" class="nav-item nav-sub {% if is_server and cur_tab == 'config' %}active{% endif %}">
-          <span class="icon">⚙️</span><span class="label">Konfiguration</span>
+          <span class="icon">⚙️</span><span class="label">{{ tr.nav_config }}</span>
         </a>
         <a href="/servers/{{ g.id }}?tab=leveling" class="nav-item nav-sub {% if is_server and cur_tab == 'leveling' %}active{% endif %}">
-          <span class="icon">🏆</span><span class="label">Leveling</span>
+          <span class="icon">🏆</span><span class="label">{{ tr.nav_leveling }}</span>
         </a>
         <a href="/servers/{{ g.id }}?tab=rr" class="nav-item nav-sub {% if is_server and cur_tab == 'rr' %}active{% endif %}">
-          <span class="icon">🎭</span><span class="label">Reaction Roles</span>
+          <span class="icon">🎭</span><span class="label">{{ tr.nav_rr }}</span>
         </a>
         <a href="/servers/{{ g.id }}?tab=commands" class="nav-item nav-sub {% if is_server and cur_tab == 'commands' %}active{% endif %}">
-          <span class="icon">📢</span><span class="label">Commands</span>
+          <span class="icon">📢</span><span class="label">{{ tr.nav_commands }}</span>
         </a>
         <a href="/servers/{{ g.id }}?tab=tickets" class="nav-item nav-sub {% if is_server and cur_tab == 'tickets' %}active{% endif %}">
-          <span class="icon">🎫</span><span class="label">Tickets</span>
+          <span class="icon">🎫</span><span class="label">{{ tr.nav_tickets }}</span>
         </a>
         <a href="/servers/{{ g.id }}?tab=giveaways" class="nav-item nav-sub {% if is_server and cur_tab == 'giveaways' %}active{% endif %}">
-          <span class="icon">🎉</span><span class="label">Giveaways</span>
+          <span class="icon">🎉</span><span class="label">{{ tr.nav_giveaways }}</span>
         </a>
         <a href="/servers/{{ g.id }}?tab=warnings" class="nav-item nav-sub {% if is_server and cur_tab == 'warnings' %}active{% endif %}">
-          <span class="icon">⚠️</span><span class="label">Warnungen</span>
+          <span class="icon">⚠️</span><span class="label">{{ tr.nav_warnings }}</span>
         </a>
         <a href="/servers/{{ g.id }}/notifications" class="nav-item nav-sub {% if request.url.path == '/servers/' + g.id + '/notifications' %}active{% endif %}">
-          <span class="icon">🟣</span><span class="label">Twitch</span>
+          <span class="icon">🟣</span><span class="label">{{ tr.nav_twitch }}</span>
         </a>
         <a href="/servers/{{ g.id }}/freestuff" class="nav-item nav-sub {% if request.url.path == '/servers/' + g.id + '/freestuff' %}active{% endif %}">
-          <span class="icon">🎁</span><span class="label">Free Stuff</span>
+          <span class="icon">🎁</span><span class="label">{{ tr.nav_freestuff }}</span>
         </a>
         <a href="/servers/{{ g.id }}/log" class="nav-item nav-sub {% if request.url.path == '/servers/' + g.id + '/log' %}active{% endif %}">
-          <span class="icon">📋</span><span class="label">Log</span>
+          <span class="icon">📋</span><span class="label">{{ tr.nav_log }}</span>
         </a>
         <a href="/bot/design?guild_id={{ g.id }}" class="nav-item nav-sub {% if active == 'bot_design_' + g.id %}active{% endif %}">
-          <span class="icon">🤖</span><span class="label">Bot-Design</span>
+          <span class="icon">🤖</span><span class="label">{{ tr.nav_bot_design }}</span>
         </a>
       </div>
     </div>
@@ -427,10 +427,18 @@
         <div class="user-role">{{ role }}</div>
       </div>
     </div>
-    <a href="/logout" class="logout-btn" title="Abmelden">
-      <span style="font-size:1rem;flex-shrink:0">🚪</span>
-      <span class="label">Abmelden</span>
-    </a>
+    <div style="display:flex;gap:0.4rem;align-items:center;">
+      <form method="post" action="/settings/language" style="margin:0;">
+        <input type="hidden" name="lang" value="{{ 'en' if lang == 'de' else 'de' }}">
+        <button type="submit" class="logout-btn" title="Sprache wechseln" style="width:auto;padding:0 0.6rem;font-size:0.75rem;font-weight:700;">
+          {{ tr.lang_switch }}
+        </button>
+      </form>
+      <a href="/logout" class="logout-btn" title="{% if lang == 'en' %}Sign out{% else %}Abmelden{% endif %}">
+        <span style="font-size:1rem;flex-shrink:0">🚪</span>
+        <span class="label">{% if lang == 'en' %}Sign out{% else %}Abmelden{% endif %}</span>
+      </a>
+    </div>
   </div>
 </div>
 
