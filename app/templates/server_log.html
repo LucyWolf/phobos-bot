@@ -4,32 +4,57 @@
 
 {% block content %}
 <style>
-  .log-settings { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.25rem; max-width:560px; margin-bottom:1.5rem; }
+  .log-settings { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.25rem; max-width:660px; margin-bottom:1.5rem; }
   .log-table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; overflow:hidden; }
   .log-table-head { padding:0.75rem 1.25rem; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
-  .log-entry { display:grid; grid-template-columns:2rem 1fr auto; gap:0.5rem 0.75rem; align-items:start; padding:0.6rem 1.25rem; border-bottom:1px solid var(--border); font-size:0.83rem; }
+  .log-entry { display:grid; grid-template-columns:0.25rem 2rem 1fr auto; gap:0 0.75rem; align-items:start; padding:0.55rem 1rem 0.55rem 0; border-bottom:1px solid var(--border); font-size:0.83rem; }
   .log-entry:last-child { border-bottom:none; }
   .log-entry:hover { background:var(--bg); }
-  .log-icon { font-size:1rem; text-align:center; margin-top:0.1rem; }
+  .log-bar  { align-self:stretch; border-radius:0; }
+  .log-icon { font-size:1rem; text-align:center; margin-top:0.1rem; padding-top:0.1rem; }
   .log-title { font-weight:600; }
   .log-desc { color:var(--muted); font-size:0.77rem; margin-top:0.1rem; }
   .log-time { color:var(--muted); font-size:0.72rem; white-space:nowrap; margin-top:0.15rem; }
   .empty { text-align:center; padding:3rem 1rem; color:var(--muted); font-size:0.9rem; }
+
+  /* Color bars per icon */
+  .bar-green  { background:#22c55e; }
+  .bar-red    { background:#ef4444; }
+  .bar-orange { background:#f97316; }
+  .bar-yellow { background:#eab308; }
+  .bar-blue   { background:#3b82f6; }
+  .bar-purple { background:#a78bfa; }
+  .bar-pink   { background:#ff73fa; }
+  .bar-amber  { background:#f59e0b; }
+  .bar-gray   { background:#64748b; }
+
+  .multi-select-wrap { position:relative; }
+  .multi-select-wrap select[multiple] { height:7rem; }
 </style>
 
-{% if success %}<div class="alert alert-success" style="max-width:560px;">✅ Gespeichert.</div>{% endif %}
+{% if success %}<div class="alert alert-success" style="max-width:660px;">✅ Gespeichert.</div>{% endif %}
 
 <div class="log-settings">
-  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.85rem;">⚙️ Log-Kanal</div>
-  <form method="post" action="/servers/{{ guild_id }}/log/save" style="display:flex;gap:0.75rem;align-items:flex-end;">
-    <div style="flex:1;">
-      <label>Log-Kanal <span style="color:var(--muted);font-size:0.72rem">(leer = nur Dashboard)</span></label>
-      <select name="log_channel" style="margin-bottom:0;">
-        <option value="">— Nur Dashboard —</option>
-        {% for c in channels %}
-        <option value="{{ c.id }}" {% if log_channel == c.id %}selected{% endif %}>#{{ c.name }}</option>
-        {% endfor %}
-      </select>
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.85rem;">⚙️ Log-Einstellungen</div>
+  <form method="post" action="/servers/{{ guild_id }}/log/save">
+    <div class="grid-2" style="gap:1rem;margin-bottom:1rem;">
+      <div>
+        <label>Log-Kanal <span style="color:var(--muted);font-size:0.72rem">(leer = nur Dashboard)</span></label>
+        <select name="log_channel" style="margin-bottom:0;">
+          <option value="">— Nur Dashboard —</option>
+          {% for c in channels %}
+          <option value="{{ c.id }}" {% if log_channel == c.id %}selected{% endif %}>#{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Kanäle ausschließen <span style="color:var(--muted);font-size:0.72rem">(Strg/Cmd für mehrere)</span></label>
+        <select name="log_exclude_channels" multiple style="margin-bottom:0;height:7rem;">
+          {% for c in channels %}
+          <option value="{{ c.id }}" {% if c.id in log_exclude_channels %}selected{% endif %}>#{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
     </div>
     <button type="submit" class="btn btn-primary">💾 Speichern</button>
   </form>
@@ -43,6 +68,7 @@
   {% if logs %}
   {% for e in logs %}
   <div class="log-entry">
+    <div class="log-bar {{ e.icon | log_bar_class }}"></div>
     <div class="log-icon">{{ e.icon }}</div>
     <div>
       <div class="log-title">{{ e.title }}</div>
