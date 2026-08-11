@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{% block title %}Phobos Bot{% endblock %}</title>
+<title>{% block title %}{{ app_name }}{% endblock %}</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -305,7 +305,7 @@
 <div id="sidebar">
   <div class="sidebar-header">
     <span class="sidebar-logo">🛡️</span>
-    <span class="sidebar-title">Phobos Bot</span>
+    <span class="sidebar-title">{{ app_name }}</span>
     <button class="toggle-btn" id="toggle-btn" onclick="toggleSidebar()" title="Sidebar ein-/ausklappen">&#9776;</button>
   </div>
 
@@ -437,7 +437,7 @@
     {% block content %}{% endblock %}
   </div>
   <footer>
-    <span id="footer-version">Phobos Bot v{{ version }}</span>
+    <span id="footer-version">{{ app_name }} v{{ version }}</span>
     <span id="footer-update" style="display:none;margin-left:0.75rem;">
       · <a href="/bot/update" id="footer-update-link" style="color:#f59e0b;font-weight:700;text-decoration:none;">🔔 Update verfügbar</a>
     </span>

@@ -1,11 +1,24 @@
 {% extends "base.html" %}
-{% block title %}Phobos Bot – Einstellungen{% endblock %}
+{% block title %}{{ app_name }} – Einstellungen{% endblock %}
 {% block page_title %}⚙️ Einstellungen{% endblock %}
 
 {% block content %}
 {% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
 {% if saved %}<div class="alert alert-success">✅ Gespeichert.</div>{% endif %}
 {% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
+
+{% if role == 'admin' %}
+<!-- ── App-Name ── -->
+<div class="card">
+  <div class="feat-header">🏷️ App-Name</div>
+  <form method="post" action="/settings/app-name" style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+    <input type="text" name="app_name" value="{{ app_name }}" maxlength="64"
+           placeholder="z.B. Mein Bot" style="margin:0;width:auto;min-width:240px;">
+    <button type="submit" class="btn btn-primary">💾 Speichern</button>
+  </form>
+  <p class="hint" style="margin-top:0.5rem;">Wird überall im Dashboard und in E-Mails verwendet statt „{{ app_name }}".</p>
+</div>
+{% endif %}
 
 {% if role == 'admin' or perm_settings %}
 <!-- ── Zeitzone ── -->

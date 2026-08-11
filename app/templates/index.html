@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Phobos Bot – Dashboard{% endblock %}
+{% block title %}{{ app_name }} – Dashboard{% endblock %}
 {% block page_title %}📊 Dashboard{% endblock %}
 
 {% block content %}
@@ -169,7 +169,7 @@
       {% else %}{{ tr.dash_evening }}{% endif %},
       {{ display_name or username }}! 👋
     </h1>
-    <div class="sub">Phobos Bot Dashboard · v{{ version }}</div>
+    <div class="sub">{{ app_name }} Dashboard · v{{ version }}</div>
   </div>
   {% if bot_online %}
   <span class="status-chip chip-online"><span class="dot dot-green"></span>{{ tr.dash_bot_online }}</span>

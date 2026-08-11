@@ -289,6 +289,15 @@ web.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="pho
 templates = Jinja2Templates(directory="templates")
 templates.env.filters["dt"] = _fmt_dt
 
+_app_name: str = "Phobos Bot"
+
+def _set_app_name(name: str):
+    global _app_name
+    _app_name = name or "Phobos Bot"
+    templates.env.globals["app_name"] = _app_name
+
+_set_app_name("Phobos Bot")
+
 
 ACTION_COLORS = {
     "ban": "#ef4444", "kick": "#f97316", "timeout": "#eab308",
@@ -630,10 +639,10 @@ async def _send_reset_email(to_addr: str, reset_url: str):
     def _send():
         msg = email.mime.text.MIMEText(
             f"Hallo,\n\nKlicke diesen Link um dein Passwort zurückzusetzen:\n{reset_url}\n\n"
-            f"Der Link ist 1 Stunde gültig.\n\nPhobos Bot",
+            f"Der Link ist 1 Stunde gültig.\n\n{_app_name}",
             "plain", "utf-8",
         )
-        msg["Subject"] = "Phobos Bot – Passwort zurücksetzen"
+        msg["Subject"] = f"{_app_name} – Passwort zurücksetzen"
         msg["From"] = frm
         msg["To"] = to_addr
         with smtplib.SMTP(host, port, timeout=10) as s:
@@ -799,6 +808,15 @@ async def settings_timezone_save(request: Request, timezone: str = Form(...)):
         return RedirectResponse("/settings?error=Ungültige+Zeitzone", status_code=302)
     await set_config("timezone", timezone)
     return RedirectResponse("/settings?success=Zeitzone+gespeichert", status_code=302)
+
+
+@web.post("/settings/app-name")
+async def settings_app_name_save(request: Request, app_name: str = Form(...)):
+    if r := admin_redirect(request): return r
+    name = app_name.strip()[:64] or "Phobos Bot"
+    await set_config("app_name", name)
+    _set_app_name(name)
+    return RedirectResponse("/settings?success=App-Name+gespeichert", status_code=302)
 
 
 @web.get("/users", response_class=HTMLResponse)
@@ -2525,6 +2543,9 @@ async def api_guilds():
 
 async def main():
     await init_db()
+    stored_name = await get_config("app_name")
+    if stored_name:
+        _set_app_name(stored_name)
 
     user_count = (await db_one("SELECT COUNT(*) as c FROM users") or {}).get("c", 0)
     if user_count == 0:
