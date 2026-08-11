@@ -130,28 +130,6 @@
   .empty-cta h2 { font-size: 1.1rem; margin-bottom: 0.5rem; }
   .empty-cta p { font-size: 0.85rem; color: var(--muted); margin-bottom: 1.25rem; }
 
-  /* ── Feature cards ──────────────────────────────────── */
-  .feature-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-    gap: 0.75rem;
-  }
-  .feat-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 0.65rem;
-    padding: 0.85rem 1rem;
-    text-decoration: none;
-    color: var(--text);
-    transition: border-color 0.15s, transform 0.12s;
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-  }
-  .feat-card:hover { border-color: var(--accent); transform: translateY(-1px); }
-  .feat-card-icon { font-size: 1.25rem; flex-shrink: 0; }
-  .feat-card-name { font-size: 0.82rem; font-weight: 700; }
-  .feat-card-desc { font-size: 0.7rem; color: var(--muted); margin-top: 0.1rem; line-height: 1.35; }
 
   /* ── Greeting ───────────────────────────────────────── */
   .dash-greeting {
@@ -334,49 +312,6 @@
 </div>
 
 {% endif %}
-
-<!-- ── Feature overview ───────────────────────────────── -->
-<div class="section-label" style="margin-bottom:0.65rem;">{{ tr.dash_features }}</div>
-{% set first_guild = guilds[0].id if guilds else '' %}
-{% macro fl(tab) %}{% if guilds %}/servers/{{ first_guild }}?tab={{ tab }}{% else %}javascript:noGuild(){% endif %}{% endmacro %}
-<div class="feature-row">
-  <a href="{{ fl('config') }}" class="feat-card">
-    <span class="feat-card-icon">🛡️</span>
-    <div><div class="feat-card-name">Moderation</div><div class="feat-card-desc">Kick, Ban, Timeout, Warn</div></div>
-  </a>
-  <a href="{{ fl('leveling') }}" class="feat-card">
-    <span class="feat-card-icon">⭐</span>
-    <div><div class="feat-card-name">Leveling & XP</div><div class="feat-card-desc">XP-System, Rangliste</div></div>
-  </a>
-  <a href="{{ fl('config') }}" class="feat-card">
-    <span class="feat-card-icon">👋</span>
-    <div><div class="feat-card-name">Willkommen</div><div class="feat-card-desc">Beitritts- & Abschiedsnachrichten</div></div>
-  </a>
-  <a href="{{ fl('config') }}" class="feat-card">
-    <span class="feat-card-icon">🤖</span>
-    <div><div class="feat-card-name">Auto-Moderation</div><div class="feat-card-desc">Spam, Link- & Wortfilter</div></div>
-  </a>
-  <a href="{{ fl('rr') }}" class="feat-card">
-    <span class="feat-card-icon">🎭</span>
-    <div><div class="feat-card-name">Reaction Roles</div><div class="feat-card-desc">Rollen per Reaktion</div></div>
-  </a>
-  <a href="{{ fl('commands') }}" class="feat-card">
-    <span class="feat-card-icon">📢</span>
-    <div><div class="feat-card-name">Eigene Commands</div><div class="feat-card-desc">!commands konfigurieren</div></div>
-  </a>
-  <a href="{{ fl('tickets') }}" class="feat-card">
-    <span class="feat-card-icon">🎫</span>
-    <div><div class="feat-card-name">Ticket-System</div><div class="feat-card-desc">Support-Tickets per Button</div></div>
-  </a>
-  <a href="{{ fl('giveaways') }}" class="feat-card">
-    <span class="feat-card-icon">🎉</span>
-    <div><div class="feat-card-name">Giveaways</div><div class="feat-card-desc">Starten, auslosen, rerolln</div></div>
-  </a>
-  <a href="{{ fl('warnings') }}" class="feat-card">
-    <span class="feat-card-icon">⚠️</span>
-    <div><div class="feat-card-name">Verwarnungen</div><div class="feat-card-desc">Warn-Verlauf pro User</div></div>
-  </a>
-</div>
 
 <script>
 function noGuild() {
