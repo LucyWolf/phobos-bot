@@ -56,6 +56,42 @@
       <option value="">— Keine —</option>
       {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('autorole') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
     </select>
+
+    <!-- Welcome Card -->
+    <div style="margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--border);">
+      <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
+        <input type="checkbox" name="welcome_card_enabled" value="1" {% if cfg.get('welcome_card_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;" id="wc-toggle">
+        <span>Willkommenskarte als Bild senden</span>
+      </label>
+      <div id="wc-colors" style="{% if cfg.get('welcome_card_enabled') != '1' %}display:none;{% endif %}">
+        <div class="grid-2" style="gap:1rem;">
+          <div>
+            <label style="font-size:0.82rem;">Kreis-Farbe (Avatar-Rand)</label>
+            <div style="display:flex;align-items:center;gap:0.5rem;">
+              <input type="color" name="welcome_card_circle_color" value="{{ cfg.get('welcome_card_circle_color','#5865F2') }}" style="width:42px;height:36px;padding:2px;border-radius:6px;cursor:pointer;">
+              <input type="text" name="_welcome_card_circle_color_hex" value="{{ cfg.get('welcome_card_circle_color','#5865F2') }}" style="width:90px;font-size:0.82rem;" oninput="syncColor(this,'welcome_card_circle_color')">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:0.82rem;">Text-Farbe (WELCOME)</label>
+            <div style="display:flex;align-items:center;gap:0.5rem;">
+              <input type="color" name="welcome_card_text_color" value="{{ cfg.get('welcome_card_text_color','#FFFFFF') }}" style="width:42px;height:36px;padding:2px;border-radius:6px;cursor:pointer;">
+              <input type="text" name="_welcome_card_text_color_hex" value="{{ cfg.get('welcome_card_text_color','#FFFFFF') }}" style="width:90px;font-size:0.82rem;" oninput="syncColor(this,'welcome_card_text_color')">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:0.82rem;">Username-Farbe</label>
+            <div style="display:flex;align-items:center;gap:0.5rem;">
+              <input type="color" name="welcome_card_username_color" value="{{ cfg.get('welcome_card_username_color','#FFDA85') }}" style="width:42px;height:36px;padding:2px;border-radius:6px;cursor:pointer;">
+              <input type="text" name="_welcome_card_username_color_hex" value="{{ cfg.get('welcome_card_username_color','#FFDA85') }}" style="width:90px;font-size:0.82rem;" oninput="syncColor(this,'welcome_card_username_color')">
+            </div>
+          </div>
+        </div>
+        <p style="font-size:0.75rem;color:var(--muted);margin-top:0.75rem;">
+          Das Bild zeigt: Avatar des Mitglieds, WELCOME-Text, Username und Mitglieder-Nummer.
+        </p>
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -632,5 +668,30 @@ function showTab(name) {
 }
 const init = new URLSearchParams(location.search).get('tab') || '{{ tab }}' || 'config';
 showTab(init);
+
+// Welcome card toggle
+const wcToggle = document.getElementById('wc-toggle');
+const wcColors = document.getElementById('wc-colors');
+if (wcToggle) {
+  wcToggle.addEventListener('change', () => {
+    wcColors.style.display = wcToggle.checked ? '' : 'none';
+  });
+}
+
+// Sync color picker <-> hex text input
+function syncColor(hexInput, colorName) {
+  const v = hexInput.value;
+  if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+    const picker = document.querySelector('input[type=color][name="' + colorName + '"]');
+    if (picker) picker.value = v;
+  }
+}
+document.querySelectorAll('input[type=color]').forEach(picker => {
+  picker.addEventListener('input', () => {
+    const hexInput = document.querySelector('input[name="_' + picker.name + '_hex"]');
+    if (hexInput) hexInput.value = picker.value;
+    picker.form && (picker.form.querySelector('input[name="' + picker.name + '"]').value = picker.value);
+  });
+});
 </script>
 {% endblock %}
