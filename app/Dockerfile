@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 # Install docker-compose for in-container update
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && apt-get install -y --no-install-recommends curl ca-certificates fonts-dejavu-core \
     && ARCH=$(uname -m) \
     && curl -fsSL "https://github.com/docker/compose/releases/download/v2.27.1/docker-compose-linux-${ARCH}" \
        -o /usr/local/bin/docker-compose \

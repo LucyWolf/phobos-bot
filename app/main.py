@@ -2267,11 +2267,12 @@ async def server_config_save(request: Request, guild_id: int):
     form = await request.form()
     text_keys = [
         "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
+        "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",
         "log_channel", "level_channel",
         "automod_spam_threshold", "automod_banned_words", "automod_action",
         "ticket_support_role", "ticket_category",
     ]
-    checkbox_keys = ["leveling_enabled", "automod_enabled", "automod_links"]
+    checkbox_keys = ["leveling_enabled", "automod_enabled", "automod_links", "welcome_card_enabled"]
     for key in text_keys:
         await set_guild_config(guild_id, key, str(form.get(key, "")))
     for key in checkbox_keys:
