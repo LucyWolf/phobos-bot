@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}Phobos Bot – Twitch-Benachrichtigungen{% endblock %}
-{% block page_title %}📡 Twitch-Benachrichtigungen – {{ guild_name }}{% endblock %}
+{% block title %}Phobos Bot – Streaming{% endblock %}
+{% block page_title %}📡 Streaming – {{ guild_name }}{% endblock %}
 
 {% block content %}
 <style>
@@ -22,14 +22,14 @@
 
 {% if not twitch_configured %}
 <div class="alert alert-error">
-  ⚠️ Twitch-API noch nicht konfiguriert.
+  ⚠️ Streaming-API noch nicht konfiguriert.
   <a href="/settings/notifications" style="color:var(--danger);font-weight:700;">Jetzt einrichten →</a>
 </div>
 {% endif %}
 
 <div class="notif-card">
   <div style="display:flex;align-items:center;gap:0.6rem;font-weight:700;font-size:0.95rem;margin-bottom:1rem;">
-    <span style="font-size:1.3rem;">🟣</span> Eingetragene Streamer
+    <span style="font-size:1.3rem;">📡</span> Eingetragene Streamer
   </div>
 
   {% set twitch_subs = subs | selectattr('platform', 'equalto', 'twitch') | list %}

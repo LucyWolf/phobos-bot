@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}Phobos Bot – API-Zugänge{% endblock %}
-{% block page_title %}📡 Benachrichtigungen – API-Zugänge{% endblock %}
+{% block title %}Phobos Bot – Streaming-API{% endblock %}
+{% block page_title %}📡 Streaming-API{% endblock %}
 
 {% block content %}
 {% if saved %}<div class="alert alert-success">✅ Gespeichert.</div>{% endif %}
@@ -9,7 +9,7 @@
 
 <div class="card">
   <div class="platform-header" style="display:flex;align-items:center;gap:0.6rem;font-weight:700;font-size:0.95rem;margin-bottom:1.1rem;">
-    <span style="font-size:1.3rem;">🟣</span> Twitch API
+    <span style="font-size:1.3rem;">🟣</span> Twitch
   </div>
   <form method="post" action="/settings/notifications">
     <label>Client-ID</label>
