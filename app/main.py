@@ -221,6 +221,18 @@ async def _run_single_bot(token_id: int, token: str):
         bot._bots.pop(token_id, None)
 
 
+async def _stop_bot(token_id: int):
+    instance = bot._bots.get(token_id)
+    if instance:
+        await instance.close()
+
+
+async def _start_bot_by_id(token_id: int):
+    row = await db_one("SELECT id, token FROM bot_tokens WHERE id=? AND enabled=1", (token_id,))
+    if row:
+        await _run_single_bot(row["id"], row["token"])
+
+
 async def run_bot():
     print("Warte auf Discord Tokens...")
     while True:
@@ -1756,8 +1768,9 @@ async def tokens_add(request: Request):
             "INSERT OR IGNORE INTO bot_token_users (token_id, user_id) VALUES (?,?)",
             (token_id, uid),
         )
+    asyncio.create_task(_start_bot_by_id(token_id))
     return RedirectResponse(
-        "/settings/tokens?success=Token+hinzugefügt.+Neustart+erforderlich+um+ihn+zu+aktivieren.",
+        "/settings/tokens?success=Token+hinzugefügt+und+Bot+wird+gestartet.",
         status_code=302,
     )
 
@@ -1783,20 +1796,16 @@ async def tokens_delete(request: Request, token_id: int):
     if r := auth_redirect(request): return r
     is_admin = request.session.get("role") == "admin"
     uid = request.session.get("user_id")
-    if is_admin:
+    allowed = is_admin
+    if not is_admin:
+        allowed = bool(await db_one(
+            "SELECT 1 FROM bot_token_users WHERE token_id=? AND user_id=?", (token_id, uid)
+        ))
+    if allowed:
+        await _stop_bot(token_id)
         await db_exec("DELETE FROM bot_tokens WHERE id=?", (token_id,))
         await db_exec("DELETE FROM bot_token_users WHERE token_id=?", (token_id,))
-    else:
-        assigned = await db_one(
-            "SELECT 1 FROM bot_token_users WHERE token_id=? AND user_id=?", (token_id, uid)
-        )
-        if assigned:
-            await db_exec("DELETE FROM bot_tokens WHERE id=?", (token_id,))
-            await db_exec("DELETE FROM bot_token_users WHERE token_id=?", (token_id,))
-    return RedirectResponse(
-        "/settings/tokens?success=Token+gelöscht.+Neustart+erforderlich.",
-        status_code=302,
-    )
+    return RedirectResponse("/settings/tokens?success=Token+gelöscht.", status_code=302)
 
 
 @web.post("/settings/tokens/rename/{token_id}")
@@ -1824,18 +1833,21 @@ async def tokens_toggle(request: Request, token_id: int):
     if r := auth_redirect(request): return r
     is_admin = request.session.get("role") == "admin"
     uid = request.session.get("user_id")
-    if is_admin:
-        await db_exec("UPDATE bot_tokens SET enabled = NOT enabled WHERE id=?", (token_id,))
-    else:
-        assigned = await db_one(
+    allowed = is_admin
+    if not is_admin:
+        allowed = bool(await db_one(
             "SELECT 1 FROM bot_token_users WHERE token_id=? AND user_id=?", (token_id, uid)
-        )
-        if assigned:
-            await db_exec("UPDATE bot_tokens SET enabled = NOT enabled WHERE id=?", (token_id,))
-    return RedirectResponse(
-        "/settings/tokens?success=Status+geändert.+Neustart+erforderlich.",
-        status_code=302,
-    )
+        ))
+    if allowed:
+        row = await db_one("SELECT enabled FROM bot_tokens WHERE id=?", (token_id,))
+        if row:
+            new_enabled = 0 if row["enabled"] else 1
+            await db_exec("UPDATE bot_tokens SET enabled=? WHERE id=?", (new_enabled, token_id))
+            if new_enabled:
+                asyncio.create_task(_start_bot_by_id(token_id))
+            else:
+                await _stop_bot(token_id)
+    return RedirectResponse("/settings/tokens?success=Status+geändert.", status_code=302)
 
 
 # ── User Email ─────────────────────────────────────────────────────────────────
