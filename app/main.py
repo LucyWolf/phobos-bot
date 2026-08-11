@@ -954,7 +954,12 @@ async def bot_update_page(request: Request, success: str = "", error: str = ""):
     })
 
 
-_update_status: dict = {"step": "", "done": False, "error": ""}
+_update_status: dict = {"logs": [], "done": False, "error": ""}
+
+
+def _ulog(msg: str, t: str = "info"):
+    _update_status["logs"].append({"t": t, "msg": msg})
+
 
 _UPDATE_IN_PROGRESS_HTML = """<!DOCTYPE html>
 <html lang="de">
@@ -962,84 +967,158 @@ _UPDATE_IN_PROGRESS_HTML = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <title>Phobos Bot – Update</title>
 <style>
-  body { margin:0; background:#0f1117; color:#e2e8f0; font-family:system-ui,sans-serif;
-         display:flex; align-items:center; justify-content:center; min-height:100vh; }
-  .box { max-width:480px; width:100%; padding:2rem; }
-  .spinner { width:48px; height:48px; border:4px solid rgba(124,58,237,.3);
-             border-top-color:#7c3aed; border-radius:50%; animation:spin 1s linear infinite;
-             margin:0 auto 1.5rem; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:#0f1117; color:#e2e8f0; font-family:system-ui,sans-serif;
+         display:flex; align-items:center; justify-content:center;
+         min-height:100vh; padding:1rem; }
+  .box { max-width:660px; width:100%; }
+  .title-row { display:flex; align-items:center; gap:0.75rem; margin-bottom:1.25rem; }
+  .spinner { width:24px; height:24px; border:3px solid rgba(124,58,237,.3);
+             border-top-color:#7c3aed; border-radius:50%;
+             animation:spin 0.9s linear infinite; flex-shrink:0; }
   @keyframes spin { to { transform:rotate(360deg); } }
-  h2 { font-size:1.25rem; margin:0 0 1.25rem; text-align:center; }
-  .log { background:#1a1d27; border:1px solid #2a2d3a; border-radius:0.6rem;
-         padding:1rem; font-size:0.82rem; font-family:monospace; min-height:120px;
-         display:flex; flex-direction:column; gap:0.35rem; }
-  .log-line { color:#94a3b8; }
-  .log-line.active { color:#a78bfa; font-weight:700; }
-  .log-line.ok  { color:#22c55e; }
-  .log-line.err { color:#ef4444; }
-  .hint { text-align:center; color:#64748b; font-size:0.78rem; margin-top:1rem; }
+  h2 { font-size:1.15rem; font-weight:700; }
+  /* terminal */
+  .term {
+    background:#000; border:1px solid #1e2030; border-radius:0.5rem;
+    overflow:hidden;
+  }
+  .term-bar {
+    background:#1a1d27; padding:0.45rem 0.9rem;
+    display:flex; align-items:center; gap:0.45rem;
+    border-bottom:1px solid #1e2030;
+  }
+  .tb { width:10px; height:10px; border-radius:50%; }
+  .tb-r { background:#ef4444; } .tb-y { background:#eab308; } .tb-g { background:#22c55e; }
+  .term-title { font-size:0.72rem; color:#64748b; margin-left:0.5rem; font-family:monospace; }
+  .term-body {
+    padding:0.85rem 1rem; font-size:0.8rem; font-family:'Courier New',Courier,monospace;
+    line-height:1.6; min-height:280px; max-height:520px; overflow-y:auto;
+    display:flex; flex-direction:column; gap:0;
+    white-space:pre-wrap; word-break:break-all;
+  }
+  .t-cmd      { color:#a78bfa; font-weight:700; margin-top:0.5rem; }
+  .t-cmd:first-child { margin-top:0; }
+  .t-info     { color:#94a3b8; }
+  .t-progress { color:#38bdf8; }
+  .t-file     { color:#4b5563; }
+  .t-ok       { color:#22c55e; font-weight:600; }
+  .t-warn     { color:#eab308; }
+  .t-err      { color:#ef4444; font-weight:700; }
+  .t-restart  { color:#f97316; font-weight:700; }
+  .cursor { display:inline-block; width:8px; height:14px; background:#a78bfa;
+            animation:blink 1s step-end infinite; vertical-align:text-bottom; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+  .hint { text-align:center; color:#475569; font-size:0.75rem; margin-top:0.9rem; }
+  #status-bar { font-size:0.75rem; color:#64748b; text-align:right; margin-top:0.4rem; font-family:monospace; }
 </style>
 </head>
 <body>
 <div class="box">
-  <div class="spinner" id="spin"></div>
-  <h2>🔄 Update wird durchgeführt</h2>
-  <div class="log" id="log"></div>
+  <div class="title-row">
+    <div class="spinner" id="spin"></div>
+    <h2>🔄 Update wird durchgeführt</h2>
+  </div>
+  <div class="term">
+    <div class="term-bar">
+      <span class="tb tb-r"></span><span class="tb tb-y"></span><span class="tb tb-g"></span>
+      <span class="term-title">phobos-bot — update</span>
+    </div>
+    <div class="term-body" id="log"><span class="cursor"></span></div>
+  </div>
+  <div id="status-bar"></div>
   <p class="hint" id="hint">Bitte warten – der Server startet automatisch neu.</p>
 </div>
 <script>
-const log = document.getElementById('log');
-const spin = document.getElementById('spin');
-const hint = document.getElementById('hint');
-const seen = new Set();
+const log    = document.getElementById('log');
+const spin   = document.getElementById('spin');
+const hint   = document.getElementById('hint');
+const sbar   = document.getElementById('status-bar');
+let offset   = 0;
 let restarting = false;
-let waitTries = 0;
+let waitTries  = 0;
 
-function addLine(text, cls) {
-  if (seen.has(text)) return;
-  seen.add(text);
+function addLine(msg, t) {
+  const cursor = log.querySelector('.cursor');
+  if (cursor) cursor.remove();
   const d = document.createElement('div');
-  d.className = 'log-line ' + (cls || '');
-  d.textContent = text;
+  d.className = 't-' + t;
+  d.textContent = msg;
   log.appendChild(d);
+  if (!restarting) {
+    const c = document.createElement('span');
+    c.className = 'cursor';
+    log.appendChild(c);
+  }
   log.scrollTop = log.scrollHeight;
 }
 
 function waitForServer() {
   fetch('/bot/update', {method:'HEAD', cache:'no-store'})
-    .then(r => { if(r.ok) { addLine('✅ Server wieder online – weiterleiten…','ok'); setTimeout(()=>{ window.location='/bot/update?success=Update+erfolgreich'; },1000); } else retry(); })
+    .then(r => {
+      if (r.ok) {
+        addLine('✅  Server wieder online – weiterleiten…', 'ok');
+        setTimeout(() => { window.location = '/bot/update?success=Update+erfolgreich'; }, 1200);
+      } else retry();
+    })
     .catch(() => retry());
 }
-function retry() { waitTries++; hint.textContent='Warte auf Neustart… ('+waitTries+')'; if(waitTries<90) setTimeout(waitForServer,2000); else window.location='/bot/update'; }
+function retry() {
+  waitTries++;
+  hint.textContent = 'Warte auf Neustart… (' + waitTries + ')';
+  if (waitTries < 90) setTimeout(waitForServer, 2000);
+  else window.location = '/bot/update';
+}
 
 function poll() {
-  fetch('/bot/update/status', {cache:'no-store'})
+  fetch('/bot/update/status?offset=' + offset, {cache:'no-store'})
     .then(r => r.json())
     .then(d => {
-      if (d.step) addLine('⚙ ' + d.step, 'active');
-      if (d.error) { addLine('❌ ' + d.error, 'err'); spin.style.display='none'; hint.textContent='Update fehlgeschlagen.'; return; }
+      d.logs.forEach(l => addLine(l.msg, l.t));
+      offset += d.logs.length;
+      sbar.textContent = offset + ' Zeilen';
+
+      if (d.error) {
+        spin.style.display = 'none';
+        hint.textContent = 'Update fehlgeschlagen.';
+        const cursor = log.querySelector('.cursor');
+        if (cursor) cursor.remove();
+        return;
+      }
       if (d.done) {
-        addLine('🚀 Server wird neu gestartet…', 'active');
-        spin.style.display='none';
+        spin.style.display = 'none';
         restarting = true;
-        setTimeout(waitForServer, 5000);
+        const cursor = log.querySelector('.cursor');
+        if (cursor) cursor.remove();
+        setTimeout(waitForServer, 4000);
       } else {
-        setTimeout(poll, 800);
+        setTimeout(poll, 600);
       }
     })
-    .catch(() => { if(!restarting){ restarting=true; addLine('🚀 Server wird neu gestartet…','active'); setTimeout(waitForServer,5000); } });
+    .catch(() => {
+      if (!restarting) {
+        restarting = true;
+        addLine('🚀  Verbindung unterbrochen – Server startet neu…', 'restart');
+        setTimeout(waitForServer, 5000);
+      }
+    });
 }
-setTimeout(poll, 500);
+setTimeout(poll, 400);
 </script>
 </body>
 </html>"""
 
 
 @web.get("/bot/update/status")
-async def bot_update_status(request: Request):
+async def bot_update_status(request: Request, offset: int = 0):
     if r := auth_redirect(request): return r
-    from fastapi.responses import JSONResponse
-    return JSONResponse(_update_status)
+    logs = _update_status.get("logs", [])
+    return JSONResponse({
+        "logs": logs[offset:],
+        "total": len(logs),
+        "done": _update_status.get("done", False),
+        "error": _update_status.get("error", ""),
+    })
 
 
 @web.post("/bot/update/apply")
@@ -1050,44 +1129,85 @@ async def bot_update_apply(request: Request):
 
     async def _do_update():
         global _update_status
-        _update_status = {"step": "", "done": False, "error": ""}
+        _update_status = {"logs": [], "done": False, "error": ""}
         tar_url = "https://github.com/LucyWolf/phobos-bot/archive/refs/heads/main.tar.gz"
+
         try:
             def _download_and_apply():
-                _update_status["step"] = "GitHub wird kontaktiert…"
+                _ulog("$ phobos-bot update — " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "cmd")
+
                 with tempfile.TemporaryDirectory() as tmp:
                     tar_path = os.path.join(tmp, "update.tar.gz")
-                    _update_status["step"] = "Code wird heruntergeladen…"
-                    urllib.request.urlretrieve(tar_url, tar_path)
-                    _update_status["step"] = "Archiv wird entpackt…"
+
+                    # Download
+                    _ulog("$ curl -L https://github.com/LucyWolf/phobos-bot/archive/main.tar.gz", "cmd")
+                    last_pct = [-1]
+                    def reporthook(block, bsize, total):
+                        if total <= 0:
+                            return
+                        pct = min(100, block * bsize * 100 // total)
+                        if pct // 10 != last_pct[0] // 10 or pct == 100:
+                            last_pct[0] = pct
+                            mb = min(block * bsize, total) / 1048576
+                            tmb = total / 1048576
+                            _ulog(f"  Herunterladen… {mb:.1f} MB / {tmb:.1f} MB ({pct}%)", "progress")
+                    urllib.request.urlretrieve(tar_url, tar_path, reporthook)
+                    size_mb = os.path.getsize(tar_path) / 1048576
+                    _ulog(f"  ✓  {size_mb:.2f} MB empfangen", "ok")
+
+                    # Extract
+                    _ulog("$ tar xzf update.tar.gz", "cmd")
                     with tarfile.open(tar_path, "r:gz") as tf:
+                        members = tf.getmembers()
+                        _ulog(f"  Entpacke {len(members)} Einträge…", "info")
                         tf.extractall(tmp)
-                    dirs = [d for d in os.listdir(tmp) if os.path.isdir(os.path.join(tmp, d))]
+                    _ulog(f"  ✓  Archiv entpackt", "ok")
+
+                    dirs = [d for d in os.listdir(tmp)
+                            if os.path.isdir(os.path.join(tmp, d)) and d != "__pycache__"]
                     if not dirs:
-                        raise RuntimeError("Archiv leer")
+                        raise RuntimeError("Archiv enthält kein Verzeichnis")
+
                     src_app = os.path.join(tmp, dirs[0], "app")
                     dst = "/app"
                     skip = {"data"}
-                    _update_status["step"] = "Dateien werden aktualisiert…"
-                    for item in os.listdir(src_app):
-                        if item in skip:
-                            continue
-                        s = os.path.join(src_app, item)
-                        d = os.path.join(dst, item)
-                        if os.path.isfile(s):
-                            shutil.copy2(s, d)
-                        elif os.path.isdir(s):
-                            if os.path.exists(d):
-                                shutil.rmtree(d)
-                            shutil.copytree(s, d)
-                    _update_status["step"] = "Fertig – Server wird neu gestartet…"
+
+                    # Copy files
+                    _ulog("$ cp -r ./app/* /app/   (data/ wird übersprungen)", "cmd")
+                    count = [0]
+
+                    def copy_logged(src_dir, dst_dir, prefix=""):
+                        for item in sorted(os.listdir(src_dir)):
+                            if item in skip and prefix == "":
+                                _ulog(f"  skip  {item}/", "file")
+                                continue
+                            s = os.path.join(src_dir, item)
+                            d = os.path.join(dst_dir, item)
+                            rel = prefix + item
+                            if os.path.isfile(s):
+                                shutil.copy2(s, d)
+                                _ulog(f"  → {rel}", "file")
+                                count[0] += 1
+                            elif os.path.isdir(s):
+                                if not os.path.exists(d):
+                                    os.makedirs(d, exist_ok=True)
+                                copy_logged(s, d, rel + "/")
+
+                    copy_logged(src_app, dst)
+                    _ulog(f"  ✓  {count[0]} Dateien aktualisiert", "ok")
+
+                    # Done
+                    _ulog("$ exec python " + " ".join(sys.argv), "cmd")
+                    _ulog("  🚀  Server wird neu gestartet…", "restart")
 
             await asyncio.get_event_loop().run_in_executor(None, _download_and_apply)
             _update_status["done"] = True
             await asyncio.sleep(1)
             os.execv(sys.executable, [sys.executable] + sys.argv)
+
         except Exception as e:
-            _update_status["error"] = str(e)[:200]
+            _ulog(f"❌  Fehler: {e}", "err")
+            _update_status["error"] = str(e)[:300]
 
     asyncio.create_task(_do_update())
     return HTMLResponse(_UPDATE_IN_PROGRESS_HTML)
