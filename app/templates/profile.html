@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Phobos Bot – {{ tr.nav_profile }}{% endblock %}
+{% block page_title %}👤 {{ tr.nav_profile }}{% endblock %}
+
+{% block content %}
+<style>
+  .prof-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; }
+  @media(max-width:720px){ .prof-grid { grid-template-columns:1fr; } }
+  .feat-header { font-size:1rem; font-weight:700; margin-bottom:1rem; }
+  .lang-radio { display:flex; gap:1rem; align-items:center; }
+  .lang-radio label { display:flex; align-items:center; gap:0.4rem; cursor:pointer; font-size:0.9rem; }
+</style>
+
+{% if success %}<div class="alert alert-success" style="max-width:780px;">✅ {{ success }}</div>{% endif %}
+{% if error %}<div class="alert alert-error" style="max-width:780px;">❌ {{ error }}</div>{% endif %}
+
+<div class="prof-grid" style="max-width:780px;">
+
+  <!-- ── Profil-Info ── -->
+  <div class="card" style="grid-column:1/-1;">
+    <div class="feat-header">🪪 {{ tr.profile_info }}</div>
+    <form method="post" action="/profile/info">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
+        <div>
+          <label>{{ tr.profile_display_name }}</label>
+          <input type="text" name="display_name" value="{{ user.display_name or '' }}" placeholder="{{ user.username }}">
+        </div>
+        <div>
+          <label>{{ tr.label_email }}</label>
+          <input type="email" name="email" value="{{ user.email or '' }}" placeholder="deine@email.de">
+        </div>
+      </div>
+      <div>
+        <label>{{ tr.profile_position }}</label>
+        <input type="text" name="position" value="{{ user.position or '' }}" placeholder="z.B. Server-Admin, Moderator ...">
+      </div>
+      <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
+    </form>
+  </div>
+
+  <!-- ── Sprache & Zeitzone ── -->
+  <div class="card">
+    <div class="feat-header">🌐 {{ tr.profile_prefs }}</div>
+    <form method="post" action="/profile/preferences">
+      <label>Sprache / Language</label>
+      <div class="lang-radio" style="margin-bottom:1rem;">
+        <label><input type="radio" name="lang" value="de" {% if lang == 'de' %}checked{% endif %}> 🇩🇪 Deutsch</label>
+        <label><input type="radio" name="lang" value="en" {% if lang == 'en' %}checked{% endif %}> 🇬🇧 English</label>
+      </div>
+      <label>Zeitzone</label>
+      <select name="timezone" style="margin-bottom:1rem;">
+        {% for tz in tzones %}
+        <option value="{{ tz }}" {% if user_tz == tz %}selected{% endif %}>{{ tz }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
+    </form>
+  </div>
+
+  <!-- ── Passwort ── -->
+  <div class="card">
+    <div class="feat-header">🔒 {{ tr.profile_password }}</div>
+    <form method="post" action="/profile/password">
+      <label>{{ tr.profile_pw_current }}</label>
+      <input type="password" name="pw_current" required autocomplete="current-password">
+      <label>{{ tr.profile_pw_new }}</label>
+      <input type="password" name="pw_new" required autocomplete="new-password" minlength="6">
+      <label>{{ tr.profile_pw_confirm }}</label>
+      <input type="password" name="pw_confirm" required autocomplete="new-password" minlength="6">
+      <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

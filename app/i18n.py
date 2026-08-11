@@ -57,6 +57,16 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "roles_create":       "Rolle erstellen",
         "roles_color":        "Farbe",
         "roles_perms":        "Berechtigungen",
+        # Profile
+        "nav_profile":        "Mein Profil",
+        "profile_info":       "Profil-Informationen",
+        "profile_display_name": "Anzeigename",
+        "profile_position":   "Position / Info",
+        "profile_prefs":      "Sprache & Zeitzone",
+        "profile_password":   "Passwort ändern",
+        "profile_pw_current": "Aktuelles Passwort",
+        "profile_pw_new":     "Neues Passwort",
+        "profile_pw_confirm": "Passwort bestätigen",
         # Lang toggle label (shows the OTHER language to switch to)
         "lang_switch":        "🇬🇧 EN",
     },
@@ -118,6 +128,16 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "roles_create":       "Create role",
         "roles_color":        "Color",
         "roles_perms":        "Permissions",
+        # Profile
+        "nav_profile":        "My Profile",
+        "profile_info":       "Profile Information",
+        "profile_display_name": "Display Name",
+        "profile_position":   "Position / Info",
+        "profile_prefs":      "Language & Timezone",
+        "profile_password":   "Change Password",
+        "profile_pw_current": "Current Password",
+        "profile_pw_new":     "New Password",
+        "profile_pw_confirm": "Confirm Password",
         # Lang toggle label
         "lang_switch":        "🇩🇪 DE",
     },

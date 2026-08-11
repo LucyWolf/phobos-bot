@@ -347,10 +347,6 @@
           <span class="label">{{ tr.nav_servers }}</span>
         </a>
         {% if role == 'admin' or perm_settings %}
-        <a href="/settings" class="nav-item nav-sub {% if active == 'settings' %}active{% endif %}">
-          <span class="icon">🕐</span>
-          <span class="label">{{ tr.nav_timezone }}</span>
-        </a>
         <a href="/settings/notifications" class="nav-item nav-sub {% if active == 'notif_settings' %}active{% endif %}">
           <span class="icon">🟣</span>
           <span class="label">{{ tr.nav_twitch_api }}</span>
@@ -420,13 +416,13 @@
   </nav>
 
   <div class="sidebar-footer">
-    <div class="user-info">
-      <div class="user-avatar">{{ username[0].upper() if username else '?' }}</div>
+    <a href="/profile" class="user-info" style="text-decoration:none;color:inherit;" title="{{ tr.nav_profile }}">
+      <div class="user-avatar">{{ (display_name or username or '?')[0].upper() }}</div>
       <div class="user-details">
-        <div class="user-name">{{ username }}</div>
+        <div class="user-name">{{ display_name or username }}</div>
         <div class="user-role">{{ role }}</div>
       </div>
-    </div>
+    </a>
     <div style="display:flex;gap:0.4rem;align-items:center;">
       <form method="post" action="/settings/language" style="margin:0;">
         <input type="hidden" name="lang" value="{{ 'en' if lang == 'de' else 'de' }}">

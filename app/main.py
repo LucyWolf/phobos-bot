@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import email.mime.text
 import os
+from contextvars import ContextVar
 from zoneinfo import ZoneInfo
 import platform
 import secrets
@@ -188,16 +189,7 @@ async def run_bot():
 
 # ── Web UI ────────────────────────────────────────────────────────────────────
 
-_CURRENT_TZ: ZoneInfo = ZoneInfo("Europe/Berlin")
-
-
-async def _load_tz():
-    global _CURRENT_TZ
-    tz_name = await get_config("timezone") or "Europe/Berlin"
-    try:
-        _CURRENT_TZ = ZoneInfo(tz_name)
-    except Exception:
-        _CURRENT_TZ = ZoneInfo("Europe/Berlin")
+_request_tz: ContextVar[ZoneInfo] = ContextVar("request_tz", default=ZoneInfo("Europe/Berlin"))
 
 
 def _fmt_dt(value) -> str:
@@ -208,7 +200,7 @@ def _fmt_dt(value) -> str:
         dt = datetime.datetime.fromisoformat(s)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=datetime.timezone.utc)
-        return dt.astimezone(_CURRENT_TZ).strftime("%d.%m.%Y %H:%M")
+        return dt.astimezone(_request_tz.get()).strftime("%d.%m.%Y %H:%M")
     except Exception:
         return str(value)[:16]
 
@@ -217,6 +209,19 @@ web = FastAPI()
 web.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="phobos_session")
 templates = Jinja2Templates(directory="templates")
 templates.env.filters["dt"] = _fmt_dt
+
+
+@web.middleware("http")
+async def _tz_middleware(request: Request, call_next):
+    tz_str = request.session.get("user_tz", "Europe/Berlin")
+    try:
+        token = _request_tz.set(ZoneInfo(tz_str))
+    except Exception:
+        token = _request_tz.set(ZoneInfo("Europe/Berlin"))
+    response = await call_next(request)
+    _request_tz.reset(token)
+    return response
+
 
 ACTION_COLORS = {
     "ban": "#ef4444", "kick": "#f97316", "timeout": "#eab308",
@@ -230,10 +235,12 @@ def session(request: Request) -> dict:
     lang = request.session.get("lang", "de")
     return {
         "username": request.session.get("username"),
+        "display_name": request.session.get("display_name") or request.session.get("username"),
         "role": request.session.get("role"),
         "user_id": request.session.get("user_id"),
         "version": VERSION,
         "lang": lang,
+        "user_tz": request.session.get("user_tz", "Europe/Berlin"),
         "tr": get_tr(lang),
         **{p: request.session.get(p, False) for p in PERM_COLS},
     }
@@ -321,7 +328,11 @@ async def login_submit(request: Request, username: str = Form(...), password: st
         return RedirectResponse("/login?error=Ungültige+Zugangsdaten", status_code=302)
     request.session["user_id"] = user["id"]
     request.session["username"] = user["username"]
+    request.session["display_name"] = user.get("display_name") or ""
     request.session["role"] = user["role"]
+    request.session["lang"] = user.get("language") or "de"
+    user_tz = user.get("timezone") or await get_config("timezone") or "Europe/Berlin"
+    request.session["user_tz"] = user_tz
     if user["role"] == "admin":
         for p in PERM_COLS:
             request.session[p] = True
@@ -346,8 +357,95 @@ async def set_language(request: Request, lang: str = Form("de")):
     if lang not in ("de", "en"):
         lang = "de"
     request.session["lang"] = lang
+    uid = request.session.get("user_id")
+    if uid:
+        await db_exec("UPDATE users SET language=? WHERE id=?", (lang, uid))
     referer = request.headers.get("referer", "/")
     return RedirectResponse(referer, status_code=302)
+
+
+# ── Profile ───────────────────────────────────────────────────────────────────
+
+TZONES = [
+    "Europe/Berlin", "Europe/Vienna", "Europe/Zurich", "Europe/London",
+    "Europe/Paris", "Europe/Amsterdam", "Europe/Brussels", "Europe/Warsaw",
+    "Europe/Bucharest", "Europe/Helsinki", "Europe/Moscow",
+    "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+    "America/Toronto", "America/Sao_Paulo",
+    "Asia/Tokyo", "Asia/Shanghai", "Asia/Kolkata", "Asia/Dubai",
+    "Australia/Sydney", "Pacific/Auckland", "UTC",
+]
+
+
+@web.get("/profile", response_class=HTMLResponse)
+async def profile_page(request: Request, success: str = "", error: str = ""):
+    if r := auth_redirect(request): return r
+    uid = request.session.get("user_id")
+    user = await db_one("SELECT * FROM users WHERE id=?", (uid,))
+    token_set = await _token_configured()
+    return templates.TemplateResponse("profile.html", {
+        **session(request), "request": request,
+        "guilds": await _guild_list(request), "token_set": token_set,
+        "active": "profile", "user": user, "tzones": TZONES,
+        "success": success, "error": error,
+    })
+
+
+@web.post("/profile/info")
+async def profile_info_save(
+    request: Request,
+    display_name: str = Form(""),
+    position: str = Form(""),
+    email: str = Form(""),
+):
+    if r := auth_redirect(request): return r
+    uid = request.session.get("user_id")
+    await db_exec(
+        "UPDATE users SET display_name=?, position=?, email=? WHERE id=?",
+        (display_name.strip(), position.strip(), email.strip(), uid),
+    )
+    request.session["display_name"] = display_name.strip()
+    return RedirectResponse("/profile?success=Profil+gespeichert", status_code=302)
+
+
+@web.post("/profile/preferences")
+async def profile_prefs_save(
+    request: Request,
+    lang: str = Form("de"),
+    timezone: str = Form("Europe/Berlin"),
+):
+    if r := auth_redirect(request): return r
+    if lang not in ("de", "en"):
+        lang = "de"
+    try:
+        ZoneInfo(timezone)
+    except Exception:
+        timezone = "Europe/Berlin"
+    uid = request.session.get("user_id")
+    await db_exec("UPDATE users SET language=?, timezone=? WHERE id=?", (lang, timezone, uid))
+    request.session["lang"] = lang
+    request.session["user_tz"] = timezone
+    return RedirectResponse("/profile?success=Einstellungen+gespeichert", status_code=302)
+
+
+@web.post("/profile/password")
+async def profile_password_save(
+    request: Request,
+    pw_current: str = Form(...),
+    pw_new: str = Form(...),
+    pw_confirm: str = Form(...),
+):
+    if r := auth_redirect(request): return r
+    uid = request.session.get("user_id")
+    user = await db_one("SELECT * FROM users WHERE id=?", (uid,))
+    if not user or not verify_pw(pw_current, user["password_hash"]):
+        return RedirectResponse("/profile?error=Aktuelles+Passwort+falsch", status_code=302)
+    if pw_new != pw_confirm:
+        return RedirectResponse("/profile?error=Passwörter+stimmen+nicht+überein", status_code=302)
+    if len(pw_new) < 6:
+        return RedirectResponse("/profile?error=Passwort+zu+kurz+(min.+6+Zeichen)", status_code=302)
+    await db_exec("UPDATE users SET password_hash=? WHERE id=?", (hash_pw(pw_new), uid))
+    return RedirectResponse("/profile?success=Passwort+geändert", status_code=302)
 
 
 # ── Password Reset ─────────────────────────────────────────────────────────────
@@ -509,7 +607,6 @@ async def settings_timezone_save(request: Request, timezone: str = Form(...)):
     except Exception:
         return RedirectResponse("/settings?error=Ungültige+Zeitzone", status_code=302)
     await set_config("timezone", timezone)
-    await _load_tz()
     return RedirectResponse("/settings?success=Zeitzone+gespeichert", status_code=302)
 
 
@@ -1621,7 +1718,6 @@ async def api_guilds():
 
 async def main():
     await init_db()
-    await _load_tz()
 
     user_count = (await db_one("SELECT COUNT(*) as c FROM users") or {}).get("c", 0)
     if user_count == 0:
