@@ -714,13 +714,27 @@ async def reset_pw_submit(request: Request, token: str = Form(...), password: st
 @web.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, error: str = ""):
     if r := auth_redirect(request): return r
-    actions = await db_rows("SELECT * FROM mod_actions ORDER BY timestamp DESC LIMIT 15")
-    stats = {r["action"]: r["count"] for r in await db_rows(
-        "SELECT action, COUNT(*) as count FROM mod_actions GROUP BY action"
-    )}
-    token_set = await _token_configured()
+    is_admin = request.session.get("role") == "admin"
     guilds = await _guild_list(request)
     total_members = sum((g["members"] or 0) for g in guilds)
+    if is_admin:
+        actions = await db_rows("SELECT * FROM mod_actions ORDER BY timestamp DESC LIMIT 15")
+        stats = {r["action"]: r["count"] for r in await db_rows(
+            "SELECT action, COUNT(*) as count FROM mod_actions GROUP BY action"
+        )}
+    else:
+        gids = tuple(int(g["id"]) for g in guilds)
+        if gids:
+            ph = ",".join("?" * len(gids))
+            actions = await db_rows(
+                f"SELECT * FROM mod_actions WHERE guild_id IN ({ph}) ORDER BY timestamp DESC LIMIT 15", gids
+            )
+            stats = {r["action"]: r["count"] for r in await db_rows(
+                f"SELECT action, COUNT(*) as count FROM mod_actions WHERE guild_id IN ({ph}) GROUP BY action", gids
+            )}
+        else:
+            actions, stats = [], {}
+    token_set = await _token_configured()
     delta = datetime.datetime.utcnow() - PROCESS_START
     h, rem = divmod(int(delta.total_seconds()), 3600)
     uptime_str = f"{h}h {rem // 60}m" if h else f"{rem // 60}m"
