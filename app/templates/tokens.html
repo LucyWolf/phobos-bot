@@ -66,7 +66,7 @@
       {% for u in all_users %}
       <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.82rem;cursor:pointer;white-space:nowrap;">
         <input type="checkbox" name="user_ids" value="{{ u.id }}"
-               {% if u.id in token_users.get(t.id, set()) %}checked{% endif %}>
+               {% if t.id in token_users and u.id in token_users[t.id] %}checked{% endif %}>
         {{ u.username }}
       </label>
       {% endfor %}
