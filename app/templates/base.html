@@ -425,18 +425,10 @@
         <div class="user-role">{{ role }}</div>
       </div>
     </a>
-    <div style="display:flex;gap:0.4rem;align-items:center;">
-      <form method="post" action="/settings/language" style="margin:0;">
-        <input type="hidden" name="lang" value="{{ 'en' if lang == 'de' else 'de' }}">
-        <button type="submit" class="logout-btn" title="Sprache wechseln" style="width:auto;padding:0 0.6rem;font-size:0.75rem;font-weight:700;">
-          {{ tr.lang_switch }}
-        </button>
-      </form>
-      <a href="/logout" class="logout-btn" title="{% if lang == 'en' %}Sign out{% else %}Abmelden{% endif %}">
-        <span style="font-size:1rem;flex-shrink:0">🚪</span>
-        <span class="label">{% if lang == 'en' %}Sign out{% else %}Abmelden{% endif %}</span>
-      </a>
-    </div>
+    <a href="/logout" class="logout-btn" title="{% if lang == 'en' %}Sign out{% else %}Abmelden{% endif %}">
+      <span style="font-size:1rem;flex-shrink:0">🚪</span>
+      <span class="label">{% if lang == 'en' %}Sign out{% else %}Abmelden{% endif %}</span>
+    </a>
   </div>
 </div>
 
