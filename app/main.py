@@ -461,12 +461,21 @@ async def settings_page(request: Request, saved: bool = False, error: str = "", 
         if request.session.get("role") == "admin" else []
     )
     current_tz = await get_config("timezone") or "Europe/Berlin"
+    smtp_host = await get_config("smtp_host") or ""
+    smtp_port = await get_config("smtp_port") or "587"
+    smtp_user = await get_config("smtp_user") or ""
+    smtp_from = await get_config("smtp_from") or ""
+    base_url  = await get_config("base_url") or ""
+    twitch_client_id = await get_config("twitch_client_id") or ""
     return templates.TemplateResponse("settings.html", {
         **session(request), "request": request,
         "masked": masked, "saved": saved, "token_set": bool(token),
         "users": all_users, "error": error, "success": success,
         "guilds": await _guild_list(request), "active": "settings",
         "current_tz": current_tz,
+        "smtp_host": smtp_host, "smtp_port": smtp_port,
+        "smtp_user": smtp_user, "smtp_from": smtp_from, "base_url": base_url,
+        "twitch_client_id": twitch_client_id,
     })
 
 
@@ -986,7 +995,7 @@ async def notif_settings_save(
         await set_config("twitch_client_id", twitch_client_id.strip())
     if twitch_client_secret.strip():
         await set_config("twitch_client_secret", twitch_client_secret.strip())
-    return RedirectResponse("/settings/notifications?saved=1", status_code=302)
+    return RedirectResponse("/settings?success=Twitch-API+gespeichert", status_code=302)
 
 
 # ── SMTP Settings ─────────────────────────────────────────────────────────────
@@ -1023,7 +1032,7 @@ async def smtp_settings_save(
         await set_config(key, val.strip())
     if smtp_pass.strip():
         await set_config("smtp_pass", smtp_pass.strip())
-    return RedirectResponse("/settings/smtp?saved=1", status_code=302)
+    return RedirectResponse("/settings?success=SMTP+gespeichert", status_code=302)
 
 
 @web.post("/settings/smtp/test")
@@ -1031,9 +1040,9 @@ async def smtp_test(request: Request, test_email: str = Form(...)):
     if r := admin_redirect(request): return r
     try:
         await _send_reset_email(test_email.strip(), "https://example.com/test-link")
-        return RedirectResponse("/settings/smtp?test_ok=1", status_code=302)
+        return RedirectResponse("/settings?success=Test-E-Mail+gesendet", status_code=302)
     except Exception as e:
-        return RedirectResponse(f"/settings/smtp?error={urllib.parse.quote(str(e))}", status_code=302)
+        return RedirectResponse(f"/settings?error={urllib.parse.quote(str(e))}", status_code=302)
 
 
 # ── Token Management ──────────────────────────────────────────────────────────
