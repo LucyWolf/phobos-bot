@@ -501,6 +501,31 @@ async def profile_password_save(
     return RedirectResponse("/profile?success=Passwort+geändert", status_code=302)
 
 
+@web.post("/profile/delete")
+async def profile_delete(
+    request: Request,
+    pw1: str = Form(...),
+    pw2: str = Form(...),
+):
+    if r := auth_redirect(request): return r
+    uid = request.session.get("user_id")
+    user = await db_one("SELECT * FROM users WHERE id=?", (uid,))
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if pw1 != pw2:
+        return RedirectResponse("/profile?error=Passwörter+stimmen+nicht+überein", status_code=302)
+    if not verify_pw(pw1, user["password_hash"]):
+        return RedirectResponse("/profile?error=Passwort+falsch", status_code=302)
+    # Prevent deleting last admin
+    if user["role"] == "admin":
+        admin_count = await db_one("SELECT COUNT(*) as c FROM users WHERE role='admin'")
+        if (admin_count or {}).get("c", 0) <= 1:
+            return RedirectResponse("/profile?error=Du+bist+der+letzte+Admin+–+Konto+kann+nicht+gelöscht+werden", status_code=302)
+    await db_exec("DELETE FROM users WHERE id=?", (uid,))
+    request.session.clear()
+    return RedirectResponse("/login", status_code=302)
+
+
 @web.get("/avatar/{user_id}")
 async def avatar_serve(user_id: int):
     path = AVATARS_DIR / f"{user_id}.jpg"
@@ -720,7 +745,7 @@ async def users_page(request: Request, error: str = "", success: str = ""):
     user_perms: dict[int, set] = {}
     for p in perm_rows:
         user_perms.setdefault(p["user_id"], set()).add(str(p["guild_id"]))
-    all_roles = await db_rows("SELECT id, name, color FROM roles ORDER BY name")
+    all_roles = await db_rows("SELECT * FROM roles ORDER BY name")
     return templates.TemplateResponse("users.html", {
         **session(request), "request": request,
         "users": all_users, "error": error, "success": success,
@@ -1695,15 +1720,7 @@ async def users_set_email(request: Request, user_id: int, email_addr: str = Form
 @web.get("/roles", response_class=HTMLResponse)
 async def roles_page(request: Request, success: str = "", error: str = ""):
     if r := admin_redirect(request): return r
-    token_set = await _token_configured()
-    all_roles = await db_rows("SELECT * FROM roles ORDER BY name")
-    all_users = await db_rows("SELECT id, username, role, custom_role_id FROM users ORDER BY username")
-    return templates.TemplateResponse("roles.html", {
-        **session(request), "request": request,
-        "guilds": await _guild_list(request), "token_set": token_set,
-        "active": "roles", "success": success, "error": error,
-        "all_roles": all_roles, "all_users": all_users,
-    })
+    return RedirectResponse(f"/users{'?success=' + success if success else ''}{'?error=' + error if error else ''}", status_code=302)
 
 
 @web.post("/roles/create")

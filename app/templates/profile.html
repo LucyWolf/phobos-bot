@@ -95,5 +95,20 @@
     </form>
   </div>
 
+  <!-- ── Konto löschen ── -->
+  <div class="card" style="border-color:rgba(239,68,68,0.3);">
+    <div class="feat-header" style="color:#ef4444;">🗑 Konto löschen</div>
+    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:1rem;">
+      Dein Konto wird dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.
+    </p>
+    <form method="post" action="/profile/delete" onsubmit="return confirm('Konto wirklich permanent löschen?')">
+      <label>Passwort eingeben</label>
+      <input type="password" name="pw1" required autocomplete="current-password" placeholder="Passwort">
+      <label>Passwort bestätigen</label>
+      <input type="password" name="pw2" required autocomplete="current-password" placeholder="Passwort wiederholen">
+      <button type="submit" class="btn btn-danger" style="margin-top:0.25rem;">🗑 Konto endgültig löschen</button>
+    </form>
+  </div>
+
 </div>
 {% endblock %}

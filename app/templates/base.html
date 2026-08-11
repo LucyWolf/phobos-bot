@@ -333,10 +333,6 @@
           <span class="icon">👥</span>
           <span class="label">{{ tr.nav_users }}</span>
         </a>
-        <a href="/roles" class="nav-item nav-sub {% if active == 'roles' %}active{% endif %}">
-          <span class="icon">🎭</span>
-          <span class="label">{{ tr.nav_roles }}</span>
-        </a>
         {% endif %}
         {% if role == 'admin' or perm_bots %}
         <a href="/bot/info" class="nav-item nav-sub {% if active == 'bot_info' %}active{% endif %}">
