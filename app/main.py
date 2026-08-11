@@ -121,6 +121,8 @@ COGS = [
     "cogs.freestuff",
     "cogs.auto_delete",
     "cogs.temp_voice",
+    "cogs.scheduler",
+    "cogs.birthday",
 ]
 
 
@@ -1683,6 +1685,31 @@ async def auto_delete_remove(request: Request, guild_id: str, entry_id: int):
     return RedirectResponse(f"/servers/{guild_id}?tab=autodelete&success=Gelöscht", status_code=302)
 
 
+# ── Scheduled Messages ────────────────────────────────────────────────────────
+
+@web.post("/servers/{guild_id}/scheduled/add")
+async def scheduled_add(request: Request, guild_id: str):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    channel_id = form.get("channel_id", "")
+    message = form.get("message", "").strip()
+    send_at = form.get("send_at", "")
+    if channel_id and message and send_at:
+        await db_exec(
+            "INSERT INTO scheduled_messages (guild_id, channel_id, message, send_at) VALUES (?,?,?,?)",
+            (guild_id, channel_id, message, send_at),
+        )
+    return RedirectResponse(f"/servers/{guild_id}?tab=scheduled&success=Geplant", status_code=302)
+
+@web.post("/servers/{guild_id}/scheduled/delete/{msg_id}")
+async def scheduled_delete(request: Request, guild_id: str, msg_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
+    await db_exec("DELETE FROM scheduled_messages WHERE id=? AND guild_id=?", (msg_id, guild_id))
+    return RedirectResponse(f"/servers/{guild_id}?tab=scheduled&success=Gelöscht", status_code=302)
+
+
 # ── Temp Voice ────────────────────────────────────────────────────────────────
 
 @web.post("/servers/{guild_id}/tempvoice/add")
@@ -2310,6 +2337,12 @@ async def server_config(
         "tempvoice_configs": await db_rows(
             "SELECT * FROM temp_voice_config WHERE guild_id=?", (str(guild_id),)
         ),
+        "scheduled_messages": await db_rows(
+            "SELECT * FROM scheduled_messages WHERE guild_id=? AND sent=0 ORDER BY send_at", (str(guild_id),)
+        ),
+        "birthdays": await db_rows(
+            "SELECT * FROM birthdays WHERE guild_id=? ORDER BY birthday", (str(guild_id),)
+        ),
     })
 
 
@@ -2324,6 +2357,7 @@ async def server_config_save(request: Request, guild_id: int):
     text_keys = [
         "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
         "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",
+        "birthday_channel", "birthday_message",
         "log_channel", "level_channel",
         "automod_spam_threshold", "automod_banned_words", "automod_action",
         "ticket_support_role", "ticket_category",

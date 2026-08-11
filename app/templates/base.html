@@ -411,6 +411,12 @@
         <a href="/servers/{{ g.id }}?tab=tempvoice" class="nav-item nav-sub {% if is_server and cur_tab == 'tempvoice' %}active{% endif %}">
           <span class="icon">🔊</span><span class="label">{{ tr.nav_tempvoice }}</span>
         </a>
+        <a href="/servers/{{ g.id }}?tab=scheduled" class="nav-item nav-sub {% if is_server and cur_tab == 'scheduled' %}active{% endif %}">
+          <span class="icon">📅</span><span class="label">{{ tr.nav_scheduled }}</span>
+        </a>
+        <a href="/servers/{{ g.id }}?tab=birthday" class="nav-item nav-sub {% if is_server and cur_tab == 'birthday' %}active{% endif %}">
+          <span class="icon">🎂</span><span class="label">{{ tr.nav_birthday }}</span>
+        </a>
         <a href="/servers/{{ g.id }}?tab=autodelete" class="nav-item nav-sub {% if is_server and cur_tab == 'autodelete' %}active{% endif %}">
           <span class="icon">🗑️</span><span class="label">{{ tr.nav_autodelete }}</span>
         </a>
