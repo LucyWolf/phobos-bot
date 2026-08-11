@@ -233,11 +233,17 @@ async def init_db():
             "ALTER TABLE freestuff_channels ADD COLUMN deal_channel_id TEXT",
             "ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''",
             "ALTER TABLE users ADD COLUMN custom_role_id INTEGER",
+            "ALTER TABLE bot_tokens ADD COLUMN owner_id INTEGER",
         ]:
             try:
                 await db.execute(col)
             except Exception:
                 pass
+        # Seed default "Normal User" role
+        await db.execute(
+            "INSERT OR IGNORE INTO roles (name, color, perm_tokens) VALUES (?, ?, 1)",
+            ("Normal User", "#6366f1"),
+        )
         await db.commit()
 
 

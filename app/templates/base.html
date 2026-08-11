@@ -347,6 +347,10 @@
           <span class="label">Server</span>
         </a>
         {% if role == 'admin' or perm_settings %}
+        <a href="/settings" class="nav-item nav-sub {% if active == 'settings' %}active{% endif %}">
+          <span class="icon">🕐</span>
+          <span class="label">Zeitzone</span>
+        </a>
         <a href="/settings/notifications" class="nav-item nav-sub {% if active == 'notif_settings' %}active{% endif %}">
           <span class="icon">🟣</span>
           <span class="label">Twitch-API</span>

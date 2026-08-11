@@ -1053,7 +1053,15 @@ async def smtp_test(request: Request, test_email: str = Form(...)):
 async def tokens_page(request: Request, success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
     if r := await perm_redirect(request, "perm_tokens"): return r
-    token_rows = await db_rows("SELECT id, label, token, enabled, created_at FROM bot_tokens ORDER BY id")
+    is_admin = request.session.get("role") == "admin"
+    uid = request.session.get("user_id")
+    if is_admin:
+        token_rows = await db_rows("SELECT id, label, token, enabled, created_at FROM bot_tokens ORDER BY id")
+    else:
+        token_rows = await db_rows(
+            "SELECT id, label, token, enabled, created_at FROM bot_tokens WHERE owner_id=? ORDER BY id",
+            (uid,),
+        )
     for t in token_rows:
         tok = t["token"]
         t["masked"] = ("•" * 40 + tok[-6:]) if len(tok) > 6 else "•" * len(tok)
@@ -1077,9 +1085,10 @@ async def tokens_add(request: Request, label: str = Form("Bot"), token: str = Fo
     token = token.strip()
     if not token:
         return RedirectResponse("/settings/tokens?error=Token+darf+nicht+leer+sein", status_code=302)
+    uid = request.session.get("user_id")
     await db_exec(
-        "INSERT INTO bot_tokens (label, token) VALUES (?, ?)",
-        (label.strip() or "Bot", token),
+        "INSERT INTO bot_tokens (label, token, owner_id) VALUES (?, ?, ?)",
+        (label.strip() or "Bot", token, uid),
     )
     return RedirectResponse(
         "/settings/tokens?success=Token+hinzugefügt.+Neustart+erforderlich+um+ihn+zu+aktivieren.",
@@ -1091,7 +1100,12 @@ async def tokens_add(request: Request, label: str = Form("Bot"), token: str = Fo
 async def tokens_delete(request: Request, token_id: int):
     if r := auth_redirect(request): return r
     if r := await perm_redirect(request, "perm_tokens"): return r
-    await db_exec("DELETE FROM bot_tokens WHERE id=?", (token_id,))
+    is_admin = request.session.get("role") == "admin"
+    uid = request.session.get("user_id")
+    if is_admin:
+        await db_exec("DELETE FROM bot_tokens WHERE id=?", (token_id,))
+    else:
+        await db_exec("DELETE FROM bot_tokens WHERE id=? AND owner_id=?", (token_id, uid))
     return RedirectResponse(
         "/settings/tokens?success=Token+gelöscht.+Neustart+erforderlich.",
         status_code=302,
@@ -1102,7 +1116,12 @@ async def tokens_delete(request: Request, token_id: int):
 async def tokens_toggle(request: Request, token_id: int):
     if r := auth_redirect(request): return r
     if r := await perm_redirect(request, "perm_tokens"): return r
-    await db_exec("UPDATE bot_tokens SET enabled = NOT enabled WHERE id=?", (token_id,))
+    is_admin = request.session.get("role") == "admin"
+    uid = request.session.get("user_id")
+    if is_admin:
+        await db_exec("UPDATE bot_tokens SET enabled = NOT enabled WHERE id=?", (token_id,))
+    else:
+        await db_exec("UPDATE bot_tokens SET enabled = NOT enabled WHERE id=? AND owner_id=?", (token_id, uid))
     return RedirectResponse(
         "/settings/tokens?success=Status+geändert.+Neustart+erforderlich.",
         status_code=302,
