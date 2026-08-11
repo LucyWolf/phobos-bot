@@ -4,6 +4,8 @@
 {% block page_title %}🎁 Free Stuff & Deals – {{ guild_name }}{% endblock %}
 
 {% block content %}
+{% from '_server_subnav.html' import server_subnav %}
+{{ server_subnav(guild_id, 'freestuff') }}
 <style>
   .fs-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.4rem; margin-bottom:1.25rem; max-width:640px; }
   .platform-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.6rem; margin-bottom:1.1rem; }

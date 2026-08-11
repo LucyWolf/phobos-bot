@@ -17,6 +17,9 @@
   code { background:var(--bg); border:1px solid var(--border); border-radius:0.3rem; padding:0.1rem 0.4rem; font-size:0.8rem; font-family:monospace; }
 </style>
 
+{% from '_server_subnav.html' import server_subnav %}
+{{ server_subnav(guild.id, request.query_params.get('tab', 'config')) }}
+
 {% if saved %}<div class="alert alert-success">✅ Einstellungen gespeichert.</div>{% endif %}
 {% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
 {% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
