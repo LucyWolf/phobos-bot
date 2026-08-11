@@ -258,6 +258,15 @@ async def init_db():
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS auto_delete_channels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                delay_seconds INTEGER NOT NULL,
+                UNIQUE(guild_id, channel_id)
+            )
+        """)
         for col in [
             "ALTER TABLE tickets ADD COLUMN panel_id INTEGER",
             "ALTER TABLE freestuff_channels ADD COLUMN deal_max_price REAL",
