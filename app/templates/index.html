@@ -1,179 +1,386 @@
 {% extends "base.html" %}
-
 {% block title %}Phobos Bot – Dashboard{% endblock %}
-{% block page_title %}Dashboard{% endblock %}
+{% block page_title %}📊 Dashboard{% endblock %}
 
 {% block content %}
-{% set ACTION_COLORS = {"ban": "#ef4444", "kick": "#f97316", "timeout": "#eab308", "warn": "#3b82f6", "unban": "#22c55e", "clear": "#8b5cf6"} %}
-
 <style>
-  .status-bar { display:flex; align-items:center; gap:0.75rem; padding:0.75rem 1.25rem; border-radius:0.65rem; margin-bottom:1.5rem; font-size:0.875rem; font-weight:600; }
-  .status-online  { background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); color:#22c55e; }
-  .status-offline { background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#ef4444; }
-  .dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-  .dot-green { background:#22c55e; box-shadow:0 0 6px #22c55e; }
-  .dot-red   { background:#ef4444; box-shadow:0 0 6px #ef4444; }
-  .feature-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:1rem; margin-bottom:2rem; }
-  .feature-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.1rem 1.25rem; text-decoration:none; color:var(--text); transition:border-color 0.15s, transform 0.15s; display:block; }
-  .feature-card:hover { border-color:var(--accent); transform:translateY(-1px); }
-  .feature-card .fc-icon { font-size:1.6rem; margin-bottom:0.5rem; }
-  .feature-card .fc-name { font-weight:700; font-size:0.9rem; margin-bottom:0.25rem; }
-  .feature-card .fc-desc { font-size:0.75rem; color:var(--muted); line-height:1.4; }
-  .feature-card .fc-cmds { margin-top:0.5rem; display:flex; flex-wrap:wrap; gap:0.25rem; }
-  .feature-card .fc-cmds code { font-size:0.68rem; }
+  /* ── Stat cards ─────────────────────────────────────── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+  }
+  @media (max-width: 900px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 500px) { .stat-grid { grid-template-columns: 1fr; } }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 1.1rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .stat-icon {
+    width: 42px; height: 42px;
+    border-radius: 0.6rem;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+  }
+  .stat-value { font-size: 1.45rem; font-weight: 800; line-height: 1; }
+  .stat-label { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; }
+
+  /* ── Main grid ──────────────────────────────────────── */
+  .dash-grid {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 1.5rem;
+    margin-bottom: 1.75rem;
+    align-items: start;
+  }
+  @media (max-width: 1000px) { .dash-grid { grid-template-columns: 1fr; } }
+
+  /* ── Server cards ───────────────────────────────────── */
+  .server-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.75rem;
+  }
+  .srv-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 0.65rem;
+    padding: 1rem;
+    text-decoration: none;
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    transition: border-color 0.15s, transform 0.15s;
+  }
+  .srv-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .srv-icon {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.1rem; font-weight: 700; color: #fff;
+    overflow: hidden; flex-shrink: 0;
+  }
+  .srv-icon img { width: 44px; height: 44px; object-fit: cover; }
+  .srv-name { font-weight: 700; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .srv-meta { font-size: 0.72rem; color: var(--muted); }
+  .srv-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.15rem; }
+  .srv-tag {
+    font-size: 0.65rem; font-weight: 600;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: var(--accent-light);
+    color: #a78bfa;
+    text-decoration: none;
+  }
+  .srv-tag:hover { background: rgba(124,58,237,0.25); }
+
+  /* ── Activity feed ──────────────────────────────────── */
+  .activity-feed { display: flex; flex-direction: column; gap: 0.5rem; }
+  .act-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.65rem 0.85rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 0.6rem;
+    font-size: 0.8rem;
+  }
+  .act-badge {
+    font-size: 0.65rem; font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    flex-shrink: 0;
+    margin-top: 0.05rem;
+  }
+  .act-body { flex: 1; min-width: 0; }
+  .act-target { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .act-by { color: var(--muted); font-size: 0.72rem; }
+  .act-time { font-size: 0.68rem; color: var(--muted); flex-shrink: 0; white-space: nowrap; }
+
+  /* ── Mod stat pills ─────────────────────────────────── */
+  .mod-stat-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+  .mod-pill {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.75rem; font-weight: 700;
+    border: 1px solid;
+  }
+  .mod-pill-count { font-size: 1rem; font-weight: 800; }
+
+  /* ── No server CTA ──────────────────────────────────── */
+  .empty-cta {
+    text-align: center;
+    padding: 3rem 2rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+  }
+  .empty-cta-icon { font-size: 3rem; margin-bottom: 1rem; }
+  .empty-cta h2 { font-size: 1.1rem; margin-bottom: 0.5rem; }
+  .empty-cta p { font-size: 0.85rem; color: var(--muted); margin-bottom: 1.25rem; }
+
+  /* ── Feature cards ──────────────────────────────────── */
+  .feature-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 0.75rem;
+  }
+  .feat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.65rem;
+    padding: 0.85rem 1rem;
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color 0.15s, transform 0.12s;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+  }
+  .feat-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .feat-card-icon { font-size: 1.25rem; flex-shrink: 0; }
+  .feat-card-name { font-size: 0.82rem; font-weight: 700; }
+  .feat-card-desc { font-size: 0.7rem; color: var(--muted); margin-top: 0.1rem; line-height: 1.35; }
+
+  /* ── Greeting ───────────────────────────────────────── */
+  .dash-greeting {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .dash-greeting h1 { font-size: 1.4rem; font-weight: 800; }
+  .dash-greeting .sub { font-size: 0.82rem; color: var(--muted); margin-top: 0.15rem; }
+  .status-chip {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    padding: 0.35rem 0.9rem;
+    border-radius: 999px;
+    font-size: 0.8rem; font-weight: 700;
+  }
+  .chip-online  { background: rgba(34,197,94,0.12);  border: 1px solid rgba(34,197,94,0.35);  color: #22c55e; }
+  .chip-offline { background: rgba(239,68,68,0.12);  border: 1px solid rgba(239,68,68,0.35);  color: #ef4444; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .dot-green { background: #22c55e; box-shadow: 0 0 5px #22c55e; animation: pulse 2s infinite; }
+  .dot-red   { background: #ef4444; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
 </style>
 
-<!-- Bot Status -->
-{% if bot_online %}
-<div class="status-bar status-online">
-  <span class="dot dot-green"></span>
-  Bot ist online · {{ guilds|length }} Server verbunden
-  {% if guilds %} — klicke einen Server an um ihn zu konfigurieren{% endif %}
-</div>
-{% else %}
-<div class="status-bar status-offline">
-  <span class="dot dot-red"></span>
-  Bot ist offline —
-  {% if not token_set %}
-    <a href="/settings" style="color:inherit">Token in den Einstellungen eintragen</a>
+{% if error %}
+<div class="alert alert-error" style="margin-bottom:1.25rem;">❌ {{ error }}</div>
+{% endif %}
+
+<!-- ── Greeting ───────────────────────────────────────── -->
+<div class="dash-greeting">
+  <div>
+    <h1>
+      {% if local_hour < 12 %}{{ tr.dash_morning }}
+      {% elif local_hour < 18 %}{{ tr.dash_day }}
+      {% else %}{{ tr.dash_evening }}{% endif %},
+      {{ display_name or username }}! 👋
+    </h1>
+    <div class="sub">Phobos Bot Dashboard · v{{ version }}</div>
+  </div>
+  {% if bot_online %}
+  <span class="status-chip chip-online"><span class="dot dot-green"></span>{{ tr.dash_bot_online }}</span>
   {% else %}
-    Bot verbindet sich… oder den Bot erst zu einem Server einladen
+  <span class="status-chip chip-offline"><span class="dot dot-red"></span>{{ tr.dash_bot_offline }}</span>
   {% endif %}
 </div>
-{% endif %}
 
-<!-- Stats -->
-{% if stats %}
-<div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:1.5rem;">
-  {% for action, count in stats.items() %}
-  <div class="card" style="padding:0.85rem 1.25rem; min-width:110px; margin-bottom:0;">
-    <div class="section-label">{{ action }}</div>
-    <div style="font-size:1.6rem; font-weight:700; color:{{ ACTION_COLORS.get(action, '#94a3b8') }}">{{ count }}</div>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-<!-- Connected Servers -->
-{% if guilds %}
-<div class="section-label" style="margin-bottom:0.6rem;">Verbundene Server</div>
-<div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:2rem;">
-  {% for g in guilds %}
-  <a href="/servers/{{ g.id }}" style="text-decoration:none;">
-    <div class="card" style="padding:0.85rem 1.1rem; display:flex; align-items:center; gap:0.7rem; margin-bottom:0; cursor:pointer; transition:border-color 0.15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-      {% if g.icon %}<img src="{{ g.icon }}" style="width:34px;height:34px;border-radius:50%;">
-      {% else %}<div style="width:34px;height:34px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.9rem;">{{ g.name[0] }}</div>{% endif %}
-      <div>
-        <div style="font-weight:600;font-size:0.875rem;">{{ g.name }}</div>
-        <div style="font-size:0.72rem;color:var(--muted);">{{ g.members }} Mitglieder</div>
-      </div>
+<!-- ── Stat cards ─────────────────────────────────────── -->
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-icon" style="background:{% if bot_online %}rgba(34,197,94,0.15){% else %}rgba(239,68,68,0.15){% endif %};">
+      {% if bot_online %}🟢{% else %}🔴{% endif %}
     </div>
-  </a>
-  {% endfor %}
-</div>
-{% endif %}
-
-<!-- Feature Overview – immer sichtbar -->
-<div class="section-label" style="margin-bottom:0.75rem;">Verfügbare Features</div>
-<div class="feature-grid">
-
-  {% set first_guild = guilds[0].id if guilds else '' %}
-  {% macro flink(tab) %}{% if guilds %}/servers/{{ first_guild }}?tab={{ tab }}{% else %}#{% endif %}{% endmacro %}
-
-  <a href="{{ flink('config') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
-    <div class="fc-icon">🛡️</div>
-    <div class="fc-name">Moderation</div>
-    <div class="fc-desc">Kick, Ban, Timeout, Verwarnungen, Nachrichten löschen</div>
-    <div class="fc-cmds"><code>/kick</code><code>/ban</code><code>/warn</code><code>/timeout</code><code>/clear</code></div>
-  </a>
-
-  <a href="{{ flink('leveling') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
-    <div class="fc-icon">⭐</div>
-    <div class="fc-name">Leveling &amp; XP</div>
-    <div class="fc-desc">Automatisches XP-System, Rangliste, Level-Up-Nachrichten</div>
-    <div class="fc-cmds"><code>/rank</code><code>/leaderboard</code><code>/setxp</code></div>
-  </a>
-
-  <a href="{{ flink('config') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
-    <div class="fc-icon">👋</div>
-    <div class="fc-name">Willkommen</div>
-    <div class="fc-desc">Beitrittsnachrichten, Verlassensnachrichten, Auto-Rolle</div>
-    <div class="fc-cmds"><code>→ Konfiguration</code></div>
-  </a>
-
-  <a href="{{ flink('config') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
-    <div class="fc-icon">🤖</div>
-    <div class="fc-name">Auto-Moderation</div>
-    <div class="fc-desc">Spam-Schutz, Link-Filter, Wortfilter, automatische Aktionen</div>
-    <div class="fc-cmds"><code>→ Konfiguration</code></div>
-  </a>
-
-  <a href="{{ flink('rr') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
-    <div class="fc-icon">🎭</div>
-    <div class="fc-name">Reaction Roles</div>
-    <div class="fc-desc">Rollen per Emoji-Reaktion zuweisen und entfernen</div>
-    <div class="fc-cmds"><code>/reactionrole-add</code><code>/reactionrole-list</code></div>
-  </a>
-
-  <a href="{{ flink('config') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
-    <div class="fc-icon">📋</div>
-    <div class="fc-name">Event-Logging</div>
-    <div class="fc-desc">Logs für Beitritte, Bans, Nachrichten, Rollenänderungen</div>
-    <div class="fc-cmds"><code>→ Konfiguration</code></div>
-  </a>
-
-  <a href="{{ flink('commands') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
-    <div class="fc-icon">📢</div>
-    <div class="fc-name">Eigene Commands</div>
-    <div class="fc-desc">Eigene !commands mit individueller Antwort erstellen</div>
-    <div class="fc-cmds"><code>/addcommand</code><code>/delcommand</code></div>
-  </a>
-
-  <a href="{{ flink('tickets') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
-    <div class="fc-icon">🎫</div>
-    <div class="fc-name">Ticket-System</div>
-    <div class="fc-desc">Button-basiertes Ticket-System mit privatem Kanal</div>
-    <div class="fc-cmds"><code>/ticket-panel</code><code>/ticket-close</code></div>
-  </a>
-
-  <a href="{{ flink('giveaways') }}" class="feature-card" {% if not guilds %}onclick="return noGuild()"{% endif %}>
-    <div class="fc-icon">🎉</div>
-    <div class="fc-name">Giveaways</div>
-    <div class="fc-desc">Giveaways starten, automatisch auslosen, rerolln</div>
-    <div class="fc-cmds"><code>/giveaway-start</code><code>/giveaway-end</code><code>/giveaway-reroll</code></div>
-  </a>
-
-</div>
-
-<!-- Recent Actions -->
-<div class="section-label" style="margin-bottom:0.6rem;">Letzte Moderations-Aktionen</div>
-{% if actions %}
-<div class="card" style="padding:0; overflow:hidden;">
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Aktion</th><th>Nutzer</th><th>Moderator</th><th>Grund</th><th>Zeitpunkt</th></tr></thead>
-      <tbody>
-        {% for a in actions %}
-        <tr>
-          <td><span class="badge" style="background:{{ ACTION_COLORS.get(a.action, '#64748b') }}20;color:{{ ACTION_COLORS.get(a.action,'#94a3b8') }};border:1px solid {{ ACTION_COLORS.get(a.action,'#64748b') }}40">{{ a.action }}</span></td>
-          <td>{{ a.target_name }}</td>
-          <td>{{ a.moderator_name }}</td>
-          <td style="color:#94a3b8">{{ a.reason or '—' }}</td>
-          <td style="color:#64748b;font-size:0.8rem">{{ a.timestamp | dt }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div>
+      <div class="stat-value" style="color:{% if bot_online %}#22c55e{% else %}#ef4444{% endif %}">
+        {% if bot_online %}Online{% else %}Offline{% endif %}
+      </div>
+      <div class="stat-label">Bot-Status</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon" style="background:rgba(124,58,237,0.15);">🖥️</div>
+    <div>
+      <div class="stat-value">{{ guilds|length }}</div>
+      <div class="stat-label">{{ tr.dash_servers }}</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon" style="background:rgba(59,130,246,0.15);">👥</div>
+    <div>
+      <div class="stat-value">{{ "{:,}".format(total_members).replace(",", ".") }}</div>
+      <div class="stat-label">{{ tr.dash_members }}</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon" style="background:rgba(234,179,8,0.15);">⏱</div>
+    <div>
+      <div class="stat-value">{{ uptime_str }}</div>
+      <div class="stat-label">{{ tr.dash_uptime }}</div>
+    </div>
   </div>
 </div>
+
+<!-- ── Main content ───────────────────────────────────── -->
+{% if guilds %}
+<div class="dash-grid">
+
+  <!-- Left: Servers + Mod stats -->
+  <div>
+    <div class="section-label" style="margin-bottom:0.65rem;">{{ tr.dash_all_servers }}</div>
+    <div class="server-grid">
+      {% for g in guilds %}
+      <a href="/servers/{{ g.id }}" class="srv-card">
+        <div style="display:flex;align-items:center;gap:0.7rem;">
+          <div class="srv-icon">
+            {% if g.icon %}<img src="{{ g.icon }}" alt="">{% else %}{{ g.name[0] }}{% endif %}
+          </div>
+          <div style="min-width:0;">
+            <div class="srv-name">{{ g.name }}</div>
+            <div class="srv-meta">{{ "{:,}".format(g.members or 0).replace(",", ".") }} {{ tr.dash_members }}</div>
+          </div>
+        </div>
+        <div class="srv-tags">
+          <span class="srv-tag">⚙️ Config</span>
+          <span class="srv-tag">🏆 XP</span>
+          <span class="srv-tag">📋 Log</span>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+
+    {% if stats %}
+    <div class="section-label" style="margin:1.25rem 0 0.5rem;">{{ tr.dash_mod_stats }}</div>
+    <div class="mod-stat-row">
+      {% set stat_styles = {
+        "ban":     ("#ef4444", "rgba(239,68,68,0.12)",  "rgba(239,68,68,0.3)"),
+        "kick":    ("#f97316", "rgba(249,115,22,0.12)", "rgba(249,115,22,0.3)"),
+        "timeout": ("#eab308", "rgba(234,179,8,0.12)",  "rgba(234,179,8,0.3)"),
+        "warn":    ("#3b82f6", "rgba(59,130,246,0.12)", "rgba(59,130,246,0.3)"),
+        "unban":   ("#22c55e", "rgba(34,197,94,0.12)",  "rgba(34,197,94,0.3)"),
+        "clear":   ("#8b5cf6", "rgba(139,92,246,0.12)", "rgba(139,92,246,0.3)"),
+      } %}
+      {% for action, count in stats.items() %}
+      {% set s = stat_styles.get(action, ("#94a3b8", "rgba(148,163,184,0.12)", "rgba(148,163,184,0.3)")) %}
+      <div class="mod-pill" style="color:{{ s[0] }};background:{{ s[1] }};border-color:{{ s[2] }};">
+        <span class="mod-pill-count">{{ count }}</span>
+        <span>{{ action }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Right: Activity feed -->
+  <div>
+    <div class="section-label" style="margin-bottom:0.65rem;">{{ tr.dash_activity }}</div>
+    {% if actions %}
+    <div class="activity-feed">
+      {% set act_colors = {
+        "ban":     ("#ef4444", "rgba(239,68,68,0.15)",  "rgba(239,68,68,0.4)"),
+        "kick":    ("#f97316", "rgba(249,115,22,0.15)", "rgba(249,115,22,0.4)"),
+        "timeout": ("#eab308", "rgba(234,179,8,0.15)",  "rgba(234,179,8,0.4)"),
+        "warn":    ("#3b82f6", "rgba(59,130,246,0.15)", "rgba(59,130,246,0.4)"),
+        "unban":   ("#22c55e", "rgba(34,197,94,0.15)",  "rgba(34,197,94,0.4)"),
+        "clear":   ("#8b5cf6", "rgba(139,92,246,0.15)", "rgba(139,92,246,0.4)"),
+      } %}
+      {% for a in actions %}
+      {% set c = act_colors.get(a.action, ("#94a3b8", "rgba(148,163,184,0.15)", "rgba(148,163,184,0.4)")) %}
+      <div class="act-item">
+        <span class="act-badge" style="color:{{ c[0] }};background:{{ c[1] }};border:1px solid {{ c[2] }}">{{ a.action }}</span>
+        <div class="act-body">
+          <div class="act-target">{{ a.target_name }}</div>
+          <div class="act-by">von {{ a.moderator_name }}{% if a.reason %} · {{ a.reason[:40] }}{% if a.reason|length > 40 %}…{% endif %}{% endif %}</div>
+        </div>
+        <div class="act-time">{{ a.timestamp | dt }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="card" style="text-align:center;padding:2rem;color:var(--muted);">
+      <div style="font-size:2rem;margin-bottom:0.5rem;">📋</div>
+      {{ tr.dash_no_activity }}
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
 {% else %}
-<div class="card" style="text-align:center;padding:2.5rem;color:var(--muted);">Noch keine Moderations-Aktionen vorhanden.</div>
+
+<!-- No server connected -->
+<div class="empty-cta" style="margin-bottom:1.75rem;">
+  <div class="empty-cta-icon">🤖</div>
+  <h2>{{ tr.dash_no_server }}</h2>
+  <p>{{ tr.dash_no_server_hint }}</p>
+  {% if not token_set %}
+  <a href="/settings" class="btn btn-primary">⚙️ Token einrichten</a>
+  {% endif %}
+</div>
+
 {% endif %}
+
+<!-- ── Feature overview ───────────────────────────────── -->
+<div class="section-label" style="margin-bottom:0.65rem;">{{ tr.dash_features }}</div>
+{% set first_guild = guilds[0].id if guilds else '' %}
+{% macro fl(tab) %}{% if guilds %}/servers/{{ first_guild }}?tab={{ tab }}{% else %}javascript:noGuild(){% endif %}{% endmacro %}
+<div class="feature-row">
+  <a href="{{ fl('config') }}" class="feat-card">
+    <span class="feat-card-icon">🛡️</span>
+    <div><div class="feat-card-name">Moderation</div><div class="feat-card-desc">Kick, Ban, Timeout, Warn</div></div>
+  </a>
+  <a href="{{ fl('leveling') }}" class="feat-card">
+    <span class="feat-card-icon">⭐</span>
+    <div><div class="feat-card-name">Leveling & XP</div><div class="feat-card-desc">XP-System, Rangliste</div></div>
+  </a>
+  <a href="{{ fl('config') }}" class="feat-card">
+    <span class="feat-card-icon">👋</span>
+    <div><div class="feat-card-name">Willkommen</div><div class="feat-card-desc">Beitritts- & Abschiedsnachrichten</div></div>
+  </a>
+  <a href="{{ fl('config') }}" class="feat-card">
+    <span class="feat-card-icon">🤖</span>
+    <div><div class="feat-card-name">Auto-Moderation</div><div class="feat-card-desc">Spam, Link- & Wortfilter</div></div>
+  </a>
+  <a href="{{ fl('rr') }}" class="feat-card">
+    <span class="feat-card-icon">🎭</span>
+    <div><div class="feat-card-name">Reaction Roles</div><div class="feat-card-desc">Rollen per Reaktion</div></div>
+  </a>
+  <a href="{{ fl('commands') }}" class="feat-card">
+    <span class="feat-card-icon">📢</span>
+    <div><div class="feat-card-name">Eigene Commands</div><div class="feat-card-desc">!commands konfigurieren</div></div>
+  </a>
+  <a href="{{ fl('tickets') }}" class="feat-card">
+    <span class="feat-card-icon">🎫</span>
+    <div><div class="feat-card-name">Ticket-System</div><div class="feat-card-desc">Support-Tickets per Button</div></div>
+  </a>
+  <a href="{{ fl('giveaways') }}" class="feat-card">
+    <span class="feat-card-icon">🎉</span>
+    <div><div class="feat-card-name">Giveaways</div><div class="feat-card-desc">Starten, auslosen, rerolln</div></div>
+  </a>
+  <a href="{{ fl('warnings') }}" class="feat-card">
+    <span class="feat-card-icon">⚠️</span>
+    <div><div class="feat-card-name">Verwarnungen</div><div class="feat-card-desc">Warn-Verlauf pro User</div></div>
+  </a>
+</div>
 
 <script>
 function noGuild() {
-  alert('Bot ist noch mit keinem Server verbunden.\nBot erst zu einem Discord-Server einladen!');
-  return false;
+  alert('{% if lang == "en" %}Bot is not connected to any server yet. Invite the bot first!{% else %}Bot ist noch mit keinem Server verbunden. Bot erst einladen!{% endif %}');
 }
 </script>
 {% endblock %}
