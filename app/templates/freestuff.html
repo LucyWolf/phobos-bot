@@ -177,6 +177,16 @@
 </form>
 <form id="dis-form" method="post" action="/servers/{{ guild_id }}/freestuff/disable" style="display:none;"></form>
 
+{% if cfg %}
+<div style="margin-top:1.25rem;max-width:640px;">
+  <form method="post" action="/servers/{{ guild_id }}/freestuff/test"
+        onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='⏳ Wird gesendet…'">
+    <button type="submit" class="btn btn-secondary">🧪 Jetzt testen – aktuelle Spiele in Kanal senden</button>
+  </form>
+  <p class="hint" style="margin-top:0.4rem;">Sendet die aktuellen Gratis-Spiele sofort in den konfigurierten Kanal — unabhängig davon ob sie schon einmal gepostet wurden.</p>
+</div>
+{% endif %}
+
 <script>
 function toggleDeals(on) {
   document.getElementById('deal-fields').classList.toggle('active', on);

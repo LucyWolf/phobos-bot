@@ -1562,6 +1562,56 @@ async def freestuff_disable(request: Request, guild_id: str):
     return RedirectResponse(f"/servers/{guild_id}/freestuff?success=1", status_code=302)
 
 
+@web.post("/servers/{guild_id}/freestuff/test")
+async def freestuff_test(request: Request, guild_id: str):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    cfg = await db_one("SELECT * FROM freestuff_channels WHERE guild_id=?", (guild_id,))
+    if not cfg:
+        return RedirectResponse(
+            f"/servers/{guild_id}/freestuff?error=Noch+nicht+konfiguriert", status_code=302
+        )
+    # Find the bot that is connected to this guild
+    target_bot = None
+    for b in bot._bots.values():
+        if b.get_guild(int(guild_id)):
+            target_bot = b
+            break
+    if not target_bot:
+        return RedirectResponse(
+            f"/servers/{guild_id}/freestuff?error=Bot+nicht+mit+diesem+Server+verbunden", status_code=302
+        )
+    cog = target_bot.cogs.get("FreeStuff")
+    if not cog:
+        return RedirectResponse(
+            f"/servers/{guild_id}/freestuff?error=FreeStuff-Modul+nicht+geladen", status_code=302
+        )
+    ch = target_bot.get_channel(int(cfg["channel_id"]))
+    if not ch:
+        return RedirectResponse(
+            f"/servers/{guild_id}/freestuff?error=Kanal+nicht+gefunden", status_code=302
+        )
+    try:
+        platforms = set((cfg["platforms"] or "epic").split(","))
+        games = await cog._fetch_free(platforms)
+        games = [g for g in games if g["platform"] in platforms]
+        if not games:
+            return RedirectResponse(
+                f"/servers/{guild_id}/freestuff?error=Aktuell+keine+Gratis-Spiele+gefunden", status_code=302
+            )
+        for game in games:
+            await cog._send_embed(ch, game, is_deal=False)
+        return RedirectResponse(
+            f"/servers/{guild_id}/freestuff?success={len(games)}+Spiel(e)+in+den+Kanal+gesendet",
+            status_code=302,
+        )
+    except Exception as e:
+        return RedirectResponse(
+            f"/servers/{guild_id}/freestuff?error={urllib.parse.quote(str(e)[:120])}", status_code=302
+        )
+
+
 # ── Notifications ─────────────────────────────────────────────────────────────
 
 @web.get("/servers/{guild_id}/notifications", response_class=HTMLResponse)
