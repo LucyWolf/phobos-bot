@@ -130,10 +130,10 @@ docker compose up -d --build
 
 ### RAM-Anzeige konfigurieren
 
-Die `docker-compose.yml` enthält standardmäßig `mem_limit: 1g`. Das begrenzt den Container auf 1 GB RAM und sorgt dafür, dass Bot-Info den korrekten Wert anzeigt. Wert nach Bedarf anpassen:
+Der Container ist standardmäßig auf **1 GB RAM** begrenzt (sorgt für korrekte Anzeige in Bot-Info). Per `.env`-Datei anpassbar:
 
-```yaml
-mem_limit: 2g   # oder 512m, 4g, etc.
+```env
+MEM_LIMIT=2g
 ```
 
 Danach Container neu starten: `docker compose up -d`
