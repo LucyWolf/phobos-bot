@@ -1,0 +1,20 @@
+{% macro server_subnav(guild_id, active_page='') %}
+<div class="server-subnav">
+  <a href="/servers/{{ guild_id }}?tab=config"     class="ssnav-item {% if active_page == 'config' %}active{% endif %}">⚙️ Config</a>
+  <a href="/servers/{{ guild_id }}?tab=leveling"   class="ssnav-item {% if active_page == 'leveling' %}active{% endif %}">🏆 Leveling</a>
+  <a href="/servers/{{ guild_id }}?tab=rr"         class="ssnav-item {% if active_page == 'rr' %}active{% endif %}">🎭 Reaction Roles</a>
+  <a href="/servers/{{ guild_id }}?tab=commands"   class="ssnav-item {% if active_page == 'commands' %}active{% endif %}">📢 Commands</a>
+  <a href="/servers/{{ guild_id }}?tab=tickets"    class="ssnav-item {% if active_page == 'tickets' %}active{% endif %}">🎫 Tickets</a>
+  <a href="/servers/{{ guild_id }}?tab=giveaways"  class="ssnav-item {% if active_page == 'giveaways' %}active{% endif %}">🎉 Giveaways</a>
+  <a href="/servers/{{ guild_id }}?tab=warnings"   class="ssnav-item {% if active_page == 'warnings' %}active{% endif %}">⚠️ Warnungen</a>
+  <a href="/servers/{{ guild_id }}?tab=users"      class="ssnav-item {% if active_page == 'users' %}active{% endif %}">👥 Nutzer</a>
+  <a href="/servers/{{ guild_id }}?tab=tempvoice"  class="ssnav-item {% if active_page == 'tempvoice' %}active{% endif %}">🔊 Temp-Voice</a>
+  <a href="/servers/{{ guild_id }}?tab=scheduled"  class="ssnav-item {% if active_page == 'scheduled' %}active{% endif %}">📅 Geplant</a>
+  <a href="/servers/{{ guild_id }}?tab=birthday"   class="ssnav-item {% if active_page == 'birthday' %}active{% endif %}">🎂 Geburtstage</a>
+  <a href="/servers/{{ guild_id }}?tab=autodelete" class="ssnav-item {% if active_page == 'autodelete' %}active{% endif %}">🗑️ Auto-Delete</a>
+  <a href="/servers/{{ guild_id }}/notifications"  class="ssnav-item {% if active_page == 'notifications' %}active{% endif %}">🟣 Streaming</a>
+  <a href="/servers/{{ guild_id }}/freestuff"      class="ssnav-item {% if active_page == 'freestuff' %}active{% endif %}">🎁 Free Stuff</a>
+  <a href="/servers/{{ guild_id }}/log"            class="ssnav-item {% if active_page == 'log' %}active{% endif %}">📋 Log</a>
+  <a href="/bot/design?guild_id={{ guild_id }}"    class="ssnav-item {% if active_page == 'botdesign' %}active{% endif %}">🤖 Bot-Design</a>
+</div>
+{% endmacro %}
