@@ -8,7 +8,6 @@
 {% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
 
 {% if role == 'admin' or perm_settings %}
-
 <!-- ── Zeitzone ── -->
 <div class="card">
   <div class="feat-header">🕐 Zeitzone</div>
@@ -31,88 +30,7 @@
   </form>
   <p class="hint" style="margin-top:0.5rem;">Wie Zeitangaben im Dashboard angezeigt werden. Aktuell: <strong>{{ current_tz }}</strong></p>
 </div>
-
-<!-- ── Twitch API ── -->
-<div class="card">
-  <div class="feat-header">🟣 Twitch-API</div>
-  <form method="post" action="/settings/notifications">
-    <div class="grid-2">
-      <div>
-        <label>Client-ID</label>
-        <input type="text" name="twitch_client_id" value="{{ twitch_client_id }}" placeholder="Twitch Client-ID" autocomplete="off">
-      </div>
-      <div>
-        <label>Client-Secret <span style="color:var(--muted);font-size:0.72rem">(leer = nicht ändern)</span></label>
-        <input type="password" name="twitch_client_secret" placeholder="••••••••••••••••" autocomplete="off">
-      </div>
-    </div>
-    <button type="submit" class="btn btn-primary">💾 Speichern</button>
-  </form>
-  <p class="hint" style="margin-top:0.5rem;">
-    App erstellen auf <a href="https://dev.twitch.tv/console/apps/create" target="_blank" style="color:var(--accent)">dev.twitch.tv</a>
-    → OAuth Redirect URL: <code>http://localhost</code> → Kategorie: Chat Bot.
-  </p>
-</div>
-
-<!-- ── E-Mail / SMTP ── -->
-<div class="card">
-  <div class="feat-header">📧 E-Mail / SMTP</div>
-  <p class="hint" style="margin-bottom:1rem;">Für das Passwort-Reset-System. Funktioniert mit Gmail, Outlook oder eigenem Mailserver.</p>
-  <form method="post" action="/settings/smtp">
-    <div class="grid-2">
-      <div>
-        <label>SMTP Host</label>
-        <input type="text" name="smtp_host" value="{{ smtp_host }}" placeholder="smtp.gmail.com">
-      </div>
-      <div>
-        <label>Port</label>
-        <input type="number" name="smtp_port" value="{{ smtp_port }}" placeholder="587">
-      </div>
-    </div>
-    <div class="grid-2">
-      <div>
-        <label>Benutzername (E-Mail)</label>
-        <input type="email" name="smtp_user" value="{{ smtp_user }}" placeholder="bot@gmail.com">
-      </div>
-      <div>
-        <label>Passwort / App-Passwort <span style="color:var(--muted);font-size:0.72rem">(leer = nicht ändern)</span></label>
-        <input type="password" name="smtp_pass" placeholder="••••••••">
-      </div>
-    </div>
-    <div class="grid-2">
-      <div>
-        <label>Absender-Adresse <span style="color:var(--muted);font-size:0.72rem">(leer = gleich wie Benutzername)</span></label>
-        <input type="email" name="smtp_from" value="{{ smtp_from }}" placeholder="noreply@example.com">
-      </div>
-      <div>
-        <label>Dashboard-URL <span style="color:var(--muted);font-size:0.72rem">(für Passwort-Reset-Links)</span></label>
-        <input type="url" name="base_url" value="{{ base_url }}" placeholder="https://bot.example.com">
-      </div>
-    </div>
-    <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
-      <button type="submit" class="btn btn-primary">💾 Speichern</button>
-    </div>
-  </form>
-  <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);">
-    <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.5rem;">🧪 Test-E-Mail</div>
-    <form method="post" action="/settings/smtp/test" style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap;">
-      <div style="flex:1;min-width:200px;">
-        <label>Empfänger</label>
-        <input type="email" name="test_email" placeholder="test@example.com" value="{{ username_email or '' }}" style="margin:0;">
-      </div>
-      <button type="submit" class="btn btn-secondary">📤 Senden</button>
-    </form>
-  </div>
-  <details style="margin-top:1rem;">
-    <summary style="cursor:pointer;color:var(--muted);font-size:0.82rem;font-weight:600;">Gmail einrichten ▶</summary>
-    <p class="hint" style="margin-top:0.5rem;">
-      1. Google-Konto → Sicherheit → 2FA aktivieren<br>
-      2. Sicherheit → App-Passwörter → neues Passwort erstellen<br>
-      3. Host: <code>smtp.gmail.com</code> · Port: <code>587</code><br>
-      4. Benutzername: Gmail-Adresse · Passwort: App-Passwort
-    </p>
-  </details>
-</div>
+{% endif %}
 
 {% if role == 'admin' %}
 <!-- ── Legacy Token ── -->
@@ -131,9 +49,8 @@
     Token findest du im <a href="https://discord.com/developers/applications" target="_blank" style="color:var(--accent)">Discord Developer Portal</a>.
   </p>
 </div>
-{% endif %}
 
-{% else %}
+{% elif not perm_settings %}
 <div class="card">
   <p style="color:var(--muted);font-size:0.9rem;">Du hast keinen Zugriff auf globale Einstellungen.</p>
 </div>
