@@ -489,7 +489,8 @@ async def settings_save(request: Request, token: str = Form(...)):
 
 @web.post("/settings/timezone")
 async def settings_timezone_save(request: Request, timezone: str = Form(...)):
-    if r := admin_redirect(request): return r
+    if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_settings"): return r
     try:
         ZoneInfo(timezone)
     except Exception:
@@ -970,8 +971,7 @@ async def notifications_delete(request: Request, guild_id: str, nid: int, next_u
 @web.get("/settings/notifications", response_class=HTMLResponse)
 async def notif_settings_page(request: Request, saved: bool = False, error: str = ""):
     if r := auth_redirect(request): return r
-    if session(request).get("role") != "admin":
-        return RedirectResponse("/", status_code=302)
+    if r := await perm_redirect(request, "perm_settings"): return r
     token_set = await _token_configured()
     return templates.TemplateResponse("notif_settings.html", {
         **session(request), "request": request,
@@ -989,8 +989,7 @@ async def notif_settings_save(
     twitch_client_secret: str = Form(""),
 ):
     if r := auth_redirect(request): return r
-    if session(request).get("role") != "admin":
-        return RedirectResponse("/", status_code=302)
+    if r := await perm_redirect(request, "perm_settings"): return r
     if twitch_client_id.strip():
         await set_config("twitch_client_id", twitch_client_id.strip())
     if twitch_client_secret.strip():
@@ -1002,7 +1001,8 @@ async def notif_settings_save(
 
 @web.get("/settings/smtp", response_class=HTMLResponse)
 async def smtp_settings_page(request: Request, saved: bool = False, error: str = "", test_ok: bool = False):
-    if r := admin_redirect(request): return r
+    if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_settings"): return r
     token_set = await _token_configured()
     return templates.TemplateResponse("smtp_settings.html", {
         **session(request), "request": request,
@@ -1023,7 +1023,8 @@ async def smtp_settings_save(
     smtp_user: str = Form(""), smtp_pass: str = Form(""),
     smtp_from: str = Form(""), base_url: str = Form(""),
 ):
-    if r := admin_redirect(request): return r
+    if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_settings"): return r
     for key, val in [
         ("smtp_host", smtp_host), ("smtp_port", smtp_port),
         ("smtp_user", smtp_user), ("smtp_from", smtp_from),
@@ -1037,7 +1038,8 @@ async def smtp_settings_save(
 
 @web.post("/settings/smtp/test")
 async def smtp_test(request: Request, test_email: str = Form(...)):
-    if r := admin_redirect(request): return r
+    if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_settings"): return r
     try:
         await _send_reset_email(test_email.strip(), "https://example.com/test-link")
         return RedirectResponse("/settings?success=Test-E-Mail+gesendet", status_code=302)
@@ -1049,7 +1051,8 @@ async def smtp_test(request: Request, test_email: str = Form(...)):
 
 @web.get("/settings/tokens", response_class=HTMLResponse)
 async def tokens_page(request: Request, success: str = "", error: str = ""):
-    if r := admin_redirect(request): return r
+    if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_tokens"): return r
     token_rows = await db_rows("SELECT id, label, token, enabled, created_at FROM bot_tokens ORDER BY id")
     for t in token_rows:
         tok = t["token"]
@@ -1069,7 +1072,8 @@ async def tokens_page(request: Request, success: str = "", error: str = ""):
 
 @web.post("/settings/tokens/add")
 async def tokens_add(request: Request, label: str = Form("Bot"), token: str = Form(...)):
-    if r := admin_redirect(request): return r
+    if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_tokens"): return r
     token = token.strip()
     if not token:
         return RedirectResponse("/settings/tokens?error=Token+darf+nicht+leer+sein", status_code=302)
@@ -1085,7 +1089,8 @@ async def tokens_add(request: Request, label: str = Form("Bot"), token: str = Fo
 
 @web.post("/settings/tokens/delete/{token_id}")
 async def tokens_delete(request: Request, token_id: int):
-    if r := admin_redirect(request): return r
+    if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_tokens"): return r
     await db_exec("DELETE FROM bot_tokens WHERE id=?", (token_id,))
     return RedirectResponse(
         "/settings/tokens?success=Token+gelöscht.+Neustart+erforderlich.",
@@ -1095,7 +1100,8 @@ async def tokens_delete(request: Request, token_id: int):
 
 @web.post("/settings/tokens/toggle/{token_id}")
 async def tokens_toggle(request: Request, token_id: int):
-    if r := admin_redirect(request): return r
+    if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_tokens"): return r
     await db_exec("UPDATE bot_tokens SET enabled = NOT enabled WHERE id=?", (token_id,))
     return RedirectResponse(
         "/settings/tokens?success=Status+geändert.+Neustart+erforderlich.",

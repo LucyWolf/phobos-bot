@@ -7,7 +7,7 @@
 {% if saved %}<div class="alert alert-success">✅ Gespeichert.</div>{% endif %}
 {% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
 
-{% if role == 'admin' %}
+{% if role == 'admin' or perm_settings %}
 
 <!-- ── Zeitzone ── -->
 <div class="card">
@@ -114,6 +114,7 @@
   </details>
 </div>
 
+{% if role == 'admin' %}
 <!-- ── Legacy Token ── -->
 <div class="card">
   <div class="feat-header">🔑 Legacy Bot-Token</div>
@@ -130,6 +131,7 @@
     Token findest du im <a href="https://discord.com/developers/applications" target="_blank" style="color:var(--accent)">Discord Developer Portal</a>.
   </p>
 </div>
+{% endif %}
 
 {% else %}
 <div class="card">
