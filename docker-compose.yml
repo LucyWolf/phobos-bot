@@ -1,13 +1,17 @@
+version: "3.8"
+
 services:
-  phobos:
+  bot:
     build: ./app
+    container_name: discord-bot
     restart: unless-stopped
-    container_name: phobos-bot-phobos
     ports:
       - "8080:8080"
     volumes:
       - ./app:/app
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=Europe/Berlin
     mem_limit: ${MEM_LIMIT:-1g}
     memswap_limit: ${MEM_LIMIT:-1g}
