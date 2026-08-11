@@ -180,16 +180,25 @@
     <div style="font-size:0.75rem;font-weight:700;color:var(--muted);margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em;">Berechtigungen</div>
     <div class="grid-2" style="margin-bottom:1rem;">
       <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
-        <input type="checkbox" name="perm_settings" value="1" style="width:auto;margin:0;"> Einstellungen verwalten
+        <input type="checkbox" name="perm_settings" value="1"> Einstellungen
       </label>
       <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
-        <input type="checkbox" name="perm_tokens" value="1" style="width:auto;margin:0;"> Bot-Tokens verwalten
+        <input type="checkbox" name="perm_tokens" value="1"> Tokens
       </label>
       <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
-        <input type="checkbox" name="perm_users" value="1" style="width:auto;margin:0;"> Benutzer verwalten
+        <input type="checkbox" name="perm_users" value="1"> Benutzer
       </label>
       <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
-        <input type="checkbox" name="perm_bots" value="1" style="width:auto;margin:0;"> Bot-Design bearbeiten
+        <input type="checkbox" name="perm_bots" value="1"> Bot-Info
+      </label>
+      <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
+        <input type="checkbox" name="perm_streaming" value="1"> Streaming-API
+      </label>
+      <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
+        <input type="checkbox" name="perm_smtp" value="1"> E-Mail / SMTP
+      </label>
+      <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
+        <input type="checkbox" name="perm_updates" value="1"> Updates
       </label>
     </div>
     <button type="submit" class="btn btn-primary" style="font-size:0.82rem;">➕ Erstellen</button>
@@ -243,16 +252,25 @@
       <div style="font-size:0.75rem;font-weight:700;color:var(--muted);margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em;">Berechtigungen</div>
       <div class="grid-2" style="margin-bottom:1rem;">
         <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
-          <input type="checkbox" name="perm_settings" value="1" {% if r.perm_settings %}checked{% endif %} style="width:auto;margin:0;"> Einstellungen verwalten
+          <input type="checkbox" name="perm_settings" value="1" {% if r.perm_settings %}checked{% endif %}> Einstellungen
         </label>
         <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
-          <input type="checkbox" name="perm_tokens" value="1" {% if r.perm_tokens %}checked{% endif %} style="width:auto;margin:0;"> Bot-Tokens verwalten
+          <input type="checkbox" name="perm_tokens" value="1" {% if r.perm_tokens %}checked{% endif %}> Tokens
         </label>
         <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
-          <input type="checkbox" name="perm_users" value="1" {% if r.perm_users %}checked{% endif %} style="width:auto;margin:0;"> Benutzer verwalten
+          <input type="checkbox" name="perm_users" value="1" {% if r.perm_users %}checked{% endif %}> Benutzer
         </label>
         <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
-          <input type="checkbox" name="perm_bots" value="1" {% if r.perm_bots %}checked{% endif %} style="width:auto;margin:0;"> Bot-Design bearbeiten
+          <input type="checkbox" name="perm_bots" value="1" {% if r.perm_bots %}checked{% endif %}> Bot-Info
+        </label>
+        <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
+          <input type="checkbox" name="perm_streaming" value="1" {% if r.perm_streaming %}checked{% endif %}> Streaming-API
+        </label>
+        <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
+          <input type="checkbox" name="perm_smtp" value="1" {% if r.perm_smtp %}checked{% endif %}> E-Mail / SMTP
+        </label>
+        <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
+          <input type="checkbox" name="perm_updates" value="1" {% if r.perm_updates %}checked{% endif %}> Updates
         </label>
       </div>
       <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">💾 Speichern</button>

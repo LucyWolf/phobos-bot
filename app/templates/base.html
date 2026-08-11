@@ -274,6 +274,7 @@
   label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.3rem; }
   input, select { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.55rem 0.8rem; color: var(--text); font-size: 0.875rem; outline: none; margin-bottom: 0.9rem; }
   input:focus, select:focus { border-color: var(--accent); }
+  input[type="checkbox"], input[type="radio"] { width:auto; height:auto; padding:0; background:transparent; border:none; border-radius:0; margin:0 0.1rem 0 0; cursor:pointer; }
   select option { background: var(--surface); }
   .btn { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.55rem 1.2rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; border: none; cursor: pointer; transition: opacity 0.15s; }
   .btn-primary { background: var(--accent); color: #fff; }
@@ -344,17 +345,19 @@
           <span class="icon">🖥️</span>
           <span class="label">{{ tr.nav_servers }}</span>
         </a>
-        {% if role == 'admin' or perm_settings %}
+        {% if role == 'admin' or perm_streaming %}
         <a href="/settings/notifications" class="nav-item nav-sub {% if active == 'notif_settings' %}active{% endif %}">
           <span class="icon">🟣</span>
           <span class="label">{{ tr.nav_twitch_api }}</span>
         </a>
+        {% endif %}
+        {% if role == 'admin' or perm_smtp %}
         <a href="/settings/smtp" class="nav-item nav-sub {% if active == 'smtp' %}active{% endif %}">
           <span class="icon">📧</span>
           <span class="label">{{ tr.nav_smtp }}</span>
         </a>
         {% endif %}
-        {% if role == 'admin' %}
+        {% if role == 'admin' or perm_updates %}
         <a href="/bot/update" class="nav-item nav-sub {% if active == 'bot_update' %}active{% endif %}" id="nav-update-link">
           <span class="icon">🔄</span>
           <span class="label">{{ tr.nav_updates }} <span id="nav-update-badge" style="display:none;background:#f59e0b;color:#000;font-size:0.6rem;font-weight:700;border-radius:999px;padding:0.1rem 0.4rem;margin-left:0.3rem;">NEU</span></span>

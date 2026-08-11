@@ -263,6 +263,9 @@ async def init_db():
             "ALTER TABLE users ADD COLUMN position TEXT DEFAULT ''",
             "ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'de'",
             "ALTER TABLE users ADD COLUMN timezone TEXT DEFAULT ''",
+            "ALTER TABLE roles ADD COLUMN perm_streaming INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE roles ADD COLUMN perm_smtp INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE roles ADD COLUMN perm_updates INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await db.execute(col)

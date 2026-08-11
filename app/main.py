@@ -299,7 +299,8 @@ def session(request: Request) -> dict:
     }
 
 
-PERM_COLS = ["perm_settings", "perm_tokens", "perm_users", "perm_bots"]
+PERM_COLS = ["perm_settings", "perm_tokens", "perm_users", "perm_bots",
+             "perm_streaming", "perm_smtp", "perm_updates"]
 
 
 def auth_redirect(request: Request) -> Optional[RedirectResponse]:
@@ -1102,8 +1103,7 @@ async def register_submit(
 @web.get("/bot/update", response_class=HTMLResponse)
 async def bot_update_page(request: Request, success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
-    if session(request).get("role") != "admin":
-        return RedirectResponse("/", status_code=302)
+    if r := await perm_redirect(request, "perm_updates"): return r
     token_set = await _token_configured()
     latest = await check_latest_version()
     update_available = bool(latest and _ver_tuple(latest) > _ver_tuple(VERSION))
@@ -1295,8 +1295,7 @@ async def bot_update_status(request: Request, offset: int = 0):
 @web.post("/bot/update/apply")
 async def bot_update_apply(request: Request):
     if r := auth_redirect(request): return r
-    if session(request).get("role") != "admin":
-        return RedirectResponse("/", status_code=302)
+    if r := await perm_redirect(request, "perm_updates"): return r
 
     async def _do_update():
         global _update_status
@@ -1549,7 +1548,7 @@ async def notifications_delete(request: Request, guild_id: str, nid: int, next_u
 @web.get("/settings/notifications", response_class=HTMLResponse)
 async def notif_settings_page(request: Request, saved: bool = False, error: str = ""):
     if r := auth_redirect(request): return r
-    if r := await perm_redirect(request, "perm_settings"): return r
+    if r := await perm_redirect(request, "perm_streaming"): return r
     token_set = await _token_configured()
     return templates.TemplateResponse("notif_settings.html", {
         **session(request), "request": request,
@@ -1567,7 +1566,7 @@ async def notif_settings_save(
     twitch_client_secret: str = Form(""),
 ):
     if r := auth_redirect(request): return r
-    if r := await perm_redirect(request, "perm_settings"): return r
+    if r := await perm_redirect(request, "perm_streaming"): return r
     if twitch_client_id.strip():
         await set_config("twitch_client_id", twitch_client_id.strip())
     if twitch_client_secret.strip():
@@ -1580,7 +1579,7 @@ async def notif_settings_save(
 @web.get("/settings/smtp", response_class=HTMLResponse)
 async def smtp_settings_page(request: Request, saved: bool = False, error: str = "", test_ok: bool = False):
     if r := auth_redirect(request): return r
-    if r := await perm_redirect(request, "perm_settings"): return r
+    if r := await perm_redirect(request, "perm_smtp"): return r
     token_set = await _token_configured()
     return templates.TemplateResponse("smtp_settings.html", {
         **session(request), "request": request,
@@ -1602,7 +1601,7 @@ async def smtp_settings_save(
     smtp_from: str = Form(""), base_url: str = Form(""),
 ):
     if r := auth_redirect(request): return r
-    if r := await perm_redirect(request, "perm_settings"): return r
+    if r := await perm_redirect(request, "perm_smtp"): return r
     for key, val in [
         ("smtp_host", smtp_host), ("smtp_port", smtp_port),
         ("smtp_user", smtp_user), ("smtp_from", smtp_from),
@@ -1617,7 +1616,7 @@ async def smtp_settings_save(
 @web.post("/settings/smtp/test")
 async def smtp_test(request: Request, test_email: str = Form(...)):
     if r := auth_redirect(request): return r
-    if r := await perm_redirect(request, "perm_settings"): return r
+    if r := await perm_redirect(request, "perm_smtp"): return r
     try:
         await _send_reset_email(test_email.strip(), "https://example.com/test-link")
         return RedirectResponse("/settings?success=Test-E-Mail+gesendet", status_code=302)
@@ -1728,12 +1727,15 @@ async def roles_create(request: Request,
     name: str = Form(...), color: str = Form("#6366f1"),
     perm_settings: int = Form(0), perm_tokens: int = Form(0),
     perm_users: int = Form(0), perm_bots: int = Form(0),
+    perm_streaming: int = Form(0), perm_smtp: int = Form(0), perm_updates: int = Form(0),
 ):
     if r := admin_redirect(request): return r
     try:
         await db_exec(
-            "INSERT INTO roles (name,color,perm_settings,perm_tokens,perm_users,perm_bots) VALUES (?,?,?,?,?,?)",
-            (name.strip(), color, perm_settings, perm_tokens, perm_users, perm_bots),
+            "INSERT INTO roles (name,color,perm_settings,perm_tokens,perm_users,perm_bots,"
+            "perm_streaming,perm_smtp,perm_updates) VALUES (?,?,?,?,?,?,?,?,?)",
+            (name.strip(), color, perm_settings, perm_tokens, perm_users, perm_bots,
+             perm_streaming, perm_smtp, perm_updates),
         )
     except Exception:
         return RedirectResponse("/users?error=Rollenname+bereits+vergeben", status_code=302)
@@ -1745,12 +1747,15 @@ async def roles_edit(request: Request, role_id: int,
     name: str = Form(...), color: str = Form("#6366f1"),
     perm_settings: int = Form(0), perm_tokens: int = Form(0),
     perm_users: int = Form(0), perm_bots: int = Form(0),
+    perm_streaming: int = Form(0), perm_smtp: int = Form(0), perm_updates: int = Form(0),
 ):
     if r := admin_redirect(request): return r
     try:
         await db_exec(
-            "UPDATE roles SET name=?,color=?,perm_settings=?,perm_tokens=?,perm_users=?,perm_bots=? WHERE id=?",
-            (name.strip(), color, perm_settings, perm_tokens, perm_users, perm_bots, role_id),
+            "UPDATE roles SET name=?,color=?,perm_settings=?,perm_tokens=?,perm_users=?,perm_bots=?,"
+            "perm_streaming=?,perm_smtp=?,perm_updates=? WHERE id=?",
+            (name.strip(), color, perm_settings, perm_tokens, perm_users, perm_bots,
+             perm_streaming, perm_smtp, perm_updates, role_id),
         )
     except Exception:
         return RedirectResponse("/users?error=Rollenname+bereits+vergeben", status_code=302)
