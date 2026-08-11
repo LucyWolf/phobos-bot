@@ -199,30 +199,64 @@
 {% if all_roles %}
 {% for r in all_roles %}
 {% set users_with_role = users | selectattr('custom_role_id', 'equalto', r.id) | list %}
-<div class="card" style="margin-bottom:0.75rem;">
-  <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem;">
-    <span style="width:12px;height:12px;border-radius:50%;background:{{ r.color }};flex-shrink:0;display:inline-block;"></span>
+<div class="card" style="margin-bottom:0.75rem;padding:0;overflow:hidden;">
+  <!-- Kopfzeile -->
+  <div style="display:flex;align-items:center;gap:0.75rem;padding:0.85rem 1rem;">
+    <span style="width:13px;height:13px;border-radius:50%;background:{{ r.color }};flex-shrink:0;display:inline-block;border:2px solid rgba(255,255,255,0.15);"></span>
     <span style="font-weight:700;font-size:0.9rem;flex:1;">{{ r.name }}</span>
-    <span style="font-size:0.75rem;color:var(--muted);">{{ users_with_role|length }} Nutzer</span>
+    <span style="font-size:0.75rem;color:var(--muted);margin-right:0.5rem;">{{ users_with_role|length }} Nutzer</span>
+    <button class="btn btn-secondary" onclick="toggleRoleEdit({{ r.id }})" style="font-size:0.72rem;padding:0.22rem 0.6rem;" title="Bearbeiten">✏️</button>
     {% if r.name != 'Normal User' %}
-    <form method="post" action="/roles/{{ r.id }}/delete" style="display:inline;" onsubmit="return confirm('Rolle «{{ r.name }}» wirklich löschen?')">
-      <button class="btn btn-danger" style="font-size:0.72rem;padding:0.2rem 0.5rem;">✕</button>
+    <form method="post" action="/roles/delete/{{ r.id }}" style="display:inline;margin:0;" onsubmit="return confirm('Rolle «{{ r.name }}» wirklich löschen?')">
+      <button class="btn btn-danger" style="font-size:0.72rem;padding:0.22rem 0.5rem;" title="Löschen">✕</button>
     </form>
     {% endif %}
   </div>
-  <div class="grid-2" style="gap:0.3rem 1rem;">
-    <div style="font-size:0.8rem;color:{% if r.perm_settings %}#22c55e{% else %}var(--muted){% endif %};">
+  <!-- Berechtigungs-Übersicht -->
+  <div style="padding:0 1rem 0.8rem;display:grid;grid-template-columns:1fr 1fr;gap:0.25rem 1rem;">
+    <div style="font-size:0.78rem;color:{% if r.perm_settings %}#22c55e{% else %}var(--muted){% endif %};">
       {% if r.perm_settings %}✔{% else %}—{% endif %} Einstellungen
     </div>
-    <div style="font-size:0.8rem;color:{% if r.perm_tokens %}#22c55e{% else %}var(--muted){% endif %};">
+    <div style="font-size:0.78rem;color:{% if r.perm_tokens %}#22c55e{% else %}var(--muted){% endif %};">
       {% if r.perm_tokens %}✔{% else %}—{% endif %} Tokens
     </div>
-    <div style="font-size:0.8rem;color:{% if r.perm_users %}#22c55e{% else %}var(--muted){% endif %};">
+    <div style="font-size:0.78rem;color:{% if r.perm_users %}#22c55e{% else %}var(--muted){% endif %};">
       {% if r.perm_users %}✔{% else %}—{% endif %} Benutzer
     </div>
-    <div style="font-size:0.8rem;color:{% if r.perm_bots %}#22c55e{% else %}var(--muted){% endif %};">
+    <div style="font-size:0.78rem;color:{% if r.perm_bots %}#22c55e{% else %}var(--muted){% endif %};">
       {% if r.perm_bots %}✔{% else %}—{% endif %} Bot-Design
     </div>
+  </div>
+  <!-- Edit-Bereich (eingeklappt) -->
+  <div id="role-edit-{{ r.id }}" style="display:none;border-top:1px solid var(--border);padding:1rem;background:var(--bg);">
+    <form method="post" action="/roles/edit/{{ r.id }}">
+      <div class="grid-2" style="margin-bottom:0.75rem;">
+        <div>
+          <label>Rollenname</label>
+          <input type="text" name="name" value="{{ r.name }}" required style="margin:0;">
+        </div>
+        <div>
+          <label>Farbe</label>
+          <input type="color" name="color" value="{{ r.color }}" style="margin:0;height:2.5rem;padding:0.2rem;">
+        </div>
+      </div>
+      <div style="font-size:0.75rem;font-weight:700;color:var(--muted);margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em;">Berechtigungen</div>
+      <div class="grid-2" style="margin-bottom:1rem;">
+        <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
+          <input type="checkbox" name="perm_settings" value="1" {% if r.perm_settings %}checked{% endif %} style="width:auto;margin:0;"> Einstellungen verwalten
+        </label>
+        <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
+          <input type="checkbox" name="perm_tokens" value="1" {% if r.perm_tokens %}checked{% endif %} style="width:auto;margin:0;"> Bot-Tokens verwalten
+        </label>
+        <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
+          <input type="checkbox" name="perm_users" value="1" {% if r.perm_users %}checked{% endif %} style="width:auto;margin:0;"> Benutzer verwalten
+        </label>
+        <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer;">
+          <input type="checkbox" name="perm_bots" value="1" {% if r.perm_bots %}checked{% endif %} style="width:auto;margin:0;"> Bot-Design bearbeiten
+        </label>
+      </div>
+      <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">💾 Speichern</button>
+    </form>
   </div>
 </div>
 {% endfor %}
@@ -238,6 +272,10 @@ function toggleServers(uid) {
 function toggleRole(uid) {
   const row = document.getElementById('role-row-' + uid);
   if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+function toggleRoleEdit(id) {
+  const el = document.getElementById('role-edit-' + id);
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 
 let _invTimer = null;

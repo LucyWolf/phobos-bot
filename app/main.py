@@ -1736,8 +1736,8 @@ async def roles_create(request: Request,
             (name.strip(), color, perm_settings, perm_tokens, perm_users, perm_bots),
         )
     except Exception:
-        return RedirectResponse("/roles?error=Name+bereits+vergeben", status_code=302)
-    return RedirectResponse("/roles?success=Rolle+erstellt", status_code=302)
+        return RedirectResponse("/users?error=Rollenname+bereits+vergeben", status_code=302)
+    return RedirectResponse("/users?success=Rolle+erstellt", status_code=302)
 
 
 @web.post("/roles/edit/{role_id}")
@@ -1753,8 +1753,8 @@ async def roles_edit(request: Request, role_id: int,
             (name.strip(), color, perm_settings, perm_tokens, perm_users, perm_bots, role_id),
         )
     except Exception:
-        return RedirectResponse("/roles?error=Name+bereits+vergeben", status_code=302)
-    return RedirectResponse("/roles?success=Rolle+gespeichert", status_code=302)
+        return RedirectResponse("/users?error=Rollenname+bereits+vergeben", status_code=302)
+    return RedirectResponse("/users?success=Rolle+gespeichert", status_code=302)
 
 
 @web.post("/roles/delete/{role_id}")
@@ -1762,7 +1762,7 @@ async def roles_delete(request: Request, role_id: int):
     if r := admin_redirect(request): return r
     await db_exec("UPDATE users SET custom_role_id=NULL WHERE custom_role_id=?", (role_id,))
     await db_exec("DELETE FROM roles WHERE id=?", (role_id,))
-    return RedirectResponse("/roles?success=Rolle+gelöscht", status_code=302)
+    return RedirectResponse("/users?success=Rolle+gelöscht", status_code=302)
 
 
 @web.post("/users/{user_id}/custom_role")
