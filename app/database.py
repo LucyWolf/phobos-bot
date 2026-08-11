@@ -286,10 +286,13 @@ async def init_db():
             except Exception:
                 pass
         # Migrate legacy owner_id → bot_token_users (idempotent)
-        await db.execute("""
-            INSERT OR IGNORE INTO bot_token_users (token_id, user_id)
-            SELECT id, owner_id FROM bot_tokens WHERE owner_id IS NOT NULL
-        """)
+        try:
+            await db.execute("""
+                INSERT OR IGNORE INTO bot_token_users (token_id, user_id)
+                SELECT id, owner_id FROM bot_tokens WHERE owner_id IS NOT NULL
+            """)
+        except Exception:
+            pass
         await db.commit()
         # Seed default "Normal User" role — upsert so existing installs get new defaults
         await db.execute(
