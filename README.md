@@ -2,7 +2,7 @@
 
 Ein selbst-hostbarer Discord-Bot – ähnlich wie MEE6 – mit Web-Dashboard. Open Source, kostenlos, für immer.
 
-**Aktuelle Version: 1.2.10**
+**Aktuelle Version: 1.2.38**
 
 ---
 
@@ -29,16 +29,46 @@ Ein selbst-hostbarer Discord-Bot – ähnlich wie MEE6 – mit Web-Dashboard. Op
 | Bereich | Funktion |
 |---|---|
 | **Dashboard** | Bot-Status, verbundene Server, Moderations-Statistiken |
-| **Rangsystem** | XP-Leaderboard pro Server mit Avataren und Medaillen |
-| **Server** | Übersicht aller verbundenen Server, Bot einladen |
-| **Server-Konfiguration** | 7 Tabs: Konfiguration, Leveling/Ränge, Reaction Roles, Commands, Tickets, Giveaways, Warnungen |
-| **Twitch-Benachrichtigungen** | Streamer pro Server verwalten, Discord-Kanal und Ping-Nachricht einstellbar |
-| **Free Stuff & Deals** | Plattformen wählen (Epic, Steam, GOG, Humble), Max-Preis und Mindest-Rabatt für Deals |
-| **Einstellungen → Token** | Discord Bot-Token speichern |
-| **Einstellungen → Benutzer** | Dashboard-Nutzer anlegen / löschen (Admin) |
-| **Einstellungen → Bot-Design** | Bot-Name und Profilbild ändern |
-| **Einstellungen → Bot-Info** | Version, Uptime, Latenz, CPU/RAM, Hostname, OS |
-| **Einstellungen → Updates** | Aktuelle Version prüfen, One-Click-Update von GitHub |
+| **Pro Server** | Sidebar-Navigation: Konfiguration, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Twitch, Free Stuff, Log, Bot-Design |
+| **Server-Übersicht** | Alle verbundenen Server, Bot einladen |
+| **🔑 Tokens** | Mehrere Bot-Tokens verwalten – jeder Token startet einen eigenen Bot-Account |
+| **👥 Benutzer** | Dashboard-Nutzer anlegen/löschen, Rolle und Server-Zugriff vergeben |
+| **🎭 Rollen** | Eigene Rollen mit feingranularen Berechtigungen erstellen |
+| **📊 Bot-Info** | Version, Uptime, Latenz, CPU/RAM, Hostname, OS |
+| **🔄 Updates** | Aktuelle Version prüfen, One-Click-Update von GitHub |
+| **🕐 Zeitzone** | Zeitzone für alle Zeitangaben im Dashboard konfigurieren |
+| **🟣 Twitch-API** | Twitch Client-ID und Secret global eintragen |
+| **📧 E-Mail / SMTP** | SMTP für Passwort-Reset konfigurieren |
+
+---
+
+## Multi-Bot
+
+Phobos unterstützt **mehrere Bot-Accounts gleichzeitig**. Unter **Einstellungen → Tokens** können beliebig viele Discord Bot-Tokens eingetragen werden. Jeder Token startet einen eigenen Bot-Account der automatisch dem passenden Server zugewiesen wird.
+
+- Normaler Nutzer mit `perm_tokens`-Berechtigung kann **nur seinen eigenen Token** sehen und verwalten
+- Admins sehen alle Tokens
+
+---
+
+## Berechtigungssystem
+
+| Rolle | Rechte |
+|---|---|
+| **Admin** | Alles: Einstellungen, Benutzerverwaltung, alle Tokens, Bot-Design, Updates |
+| **Moderator** | Basis-Zugriff + zugewiesene Server |
+| **Custom-Rolle** | Frei konfigurierbar über **Einstellungen → Rollen** |
+
+### Custom-Rollen Berechtigungen
+
+| Flag | Zugriff auf |
+|---|---|
+| `Einstellungen` | Zeitzone, Twitch-API, SMTP |
+| `Tokens` | Eigene Bot-Tokens verwalten |
+| `Benutzer` | Benutzerverwaltung |
+| `Bots` | Bot-Info |
+
+Eine vorkonfigurierte **„Normal User"**-Rolle (nur Tokens) wird beim ersten Start automatisch angelegt.
 
 ---
 
@@ -61,7 +91,7 @@ Dashboard ist auf Port `8080` erreichbar.
 
 1. `http://server-ip:8080` aufrufen
 2. Mit `admin` / `admin` einloggen → **Passwort sofort ändern!**
-3. Unter **Einstellungen → Token** den Discord Bot-Token eintragen
+3. Unter **Einstellungen → 🔑 Tokens** den Discord Bot-Token eintragen
 4. Bot verbindet sich automatisch — Server erscheinen in der Sidebar
 
 ### Discord Developer Portal
@@ -84,7 +114,7 @@ Dashboard ist auf Port `8080` erreichbar.
 2. Wenn neue Version verfügbar: **„Jetzt updaten"** klicken
 3. Bot lädt neuen Code von GitHub, startet sich automatisch neu
 
-> Der Bot prüft alle 5 Minuten ob es ein Update gibt. Der Footer zeigt `🔔 Update vX.Y.Z verfügbar` wenn eine neue Version bereitsteht.
+> Der Bot prüft alle 5 Minuten ob ein Update verfügbar ist. Der Footer zeigt `🔔 Update vX.Y.Z verfügbar` wenn eine neue Version bereitsteht.
 
 ### Manuell (auf dem Server)
 
@@ -113,8 +143,8 @@ Danach Container neu starten: `docker compose up -d`
 1. Twitch-App auf [dev.twitch.tv](https://dev.twitch.tv/console/apps/create) erstellen
    - OAuth Redirect URL: `http://localhost`
    - Kategorie: `Chat Bot`
-2. Im Dashboard: **Einstellungen → 📡 Benachrichtigungs-API** → Client-ID + Secret eintragen
-3. Pro Server: **Server → 📡 Benachrichtigungen** → Streamer hinzufügen
+2. Im Dashboard: **Einstellungen → 🟣 Twitch-API** → Client-ID + Secret eintragen
+3. Pro Server: **Server → 🟣 Twitch** → Streamer hinzufügen
 
 Der Bot prüft alle 3 Minuten ob eingetragene Streamer live gehen.
 
@@ -143,17 +173,6 @@ Kein API-Key nötig. Im Dashboard unter **Server → 🎁 Free Stuff**:
 | Forward Port | `8080` |
 
 Optional: SSL-Zertifikat über Let's Encrypt aktivieren.
-
----
-
-## Benutzerverwaltung
-
-| Rolle | Rechte |
-|---|---|
-| **Admin** | Alles: Einstellungen, Benutzerverwaltung, Bot-Design, Updates, Server-Konfiguration |
-| **Moderator** | Dashboard, Server-Konfiguration, Leaderboard |
-
-Standard-Login beim ersten Start: `admin` / `admin` — **bitte sofort ändern.**
 
 ---
 
