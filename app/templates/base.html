@@ -483,8 +483,9 @@
         if (fu) fu.style.display = 'none';
         if (badge) badge.style.display = 'none';
       }
-      // notify update page if open
-      if (typeof window._onVersionData === 'function') window._onVersionData(data);
+      // notify update page if open — only propagate when there's actually an update
+      // so stale cached "no-update" responses don't overwrite a freshly-detected update
+      if (data.update_available && typeof window._onVersionData === 'function') window._onVersionData(data);
     }).catch(() => {});
   }
   runUpdateCheck(false);
