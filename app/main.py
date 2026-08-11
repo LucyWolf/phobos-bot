@@ -351,6 +351,23 @@ async def _token_configured() -> bool:
     return bool(await get_config("discord_token"))
 
 
+async def _token_guild_ids(user_id: int) -> set[str]:
+    """Guild IDs reachable via bot tokens assigned to this user."""
+    token_rows = await db_rows(
+        "SELECT t.id FROM bot_tokens t "
+        "JOIN bot_token_users tu ON tu.token_id=t.id "
+        "WHERE tu.user_id=? AND t.enabled=1",
+        (user_id,),
+    )
+    ids: set[str] = set()
+    for tr in token_rows:
+        token_bot = bot._bots.get(tr["id"])
+        if token_bot:
+            for g in token_bot.guilds:
+                ids.add(str(g.id))
+    return ids
+
+
 async def _guild_list(request: Request) -> list:
     all_guilds = [
         {"id": str(g.id), "name": g.name, "members": g.member_count,
@@ -364,17 +381,21 @@ async def _guild_list(request: Request) -> list:
         "SELECT guild_id FROM user_guild_permissions WHERE user_id=?", (user_id,)
     )
     allowed = {p["guild_id"] for p in perms}
+    allowed |= await _token_guild_ids(user_id)
     return [g for g in all_guilds if g["id"] in allowed]
 
 
 async def _guild_access(request: Request, guild_id) -> bool:
     if request.session.get("role") == "admin":
         return True
+    uid = request.session.get("user_id")
     row = await db_one(
         "SELECT 1 FROM user_guild_permissions WHERE user_id=? AND guild_id=?",
-        (request.session.get("user_id"), str(guild_id)),
+        (uid, str(guild_id)),
     )
-    return bool(row)
+    if row:
+        return True
+    return str(guild_id) in await _token_guild_ids(uid)
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -1972,11 +1993,13 @@ async def server_config(
     request: Request, guild_id: int,
     saved: bool = False, tab: str = "config", error: str = "", success: str = "",
 ):
-    if r := await perm_redirect(request, "perm_server"): return r
+    guild_ok = await _guild_access(request, guild_id)
+    if not guild_ok and not await has_perm(request, "perm_server"):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
     guild = bot.get_guild(guild_id)
     if not guild:
         return RedirectResponse("/", status_code=302)
-    if not await _guild_access(request, guild_id):
+    if not guild_ok:
         return RedirectResponse("/servers", status_code=302)
 
     token_set = await _token_configured()
@@ -2080,8 +2103,10 @@ async def server_config(
 
 @web.post("/servers/{guild_id}")
 async def server_config_save(request: Request, guild_id: int):
-    if r := await perm_redirect(request, "perm_server"): return r
-    if not await _guild_access(request, guild_id):
+    guild_ok = await _guild_access(request, guild_id)
+    if not guild_ok and not await has_perm(request, "perm_server"):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
+    if not guild_ok:
         return RedirectResponse("/servers", status_code=302)
     form = await request.form()
     text_keys = [
