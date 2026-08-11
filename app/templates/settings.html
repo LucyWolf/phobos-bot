@@ -32,24 +32,6 @@
 </div>
 {% endif %}
 
-{% if role == 'admin' %}
-<!-- ── Legacy Token ── -->
-<div class="card">
-  <div class="feat-header">🔑 Legacy Bot-Token</div>
-  {% if masked %}
-  <label>Aktueller Token</label>
-  <div class="current-val" style="margin-bottom:0.9rem;">{{ masked }}</div>
-  {% endif %}
-  <form method="post" action="/settings">
-    <input type="password" name="token" placeholder="Discord Bot Token..." autocomplete="off" required>
-    <button type="submit" class="btn btn-primary">💾 Speichern</button>
-  </form>
-  <p class="hint" style="margin-top:0.5rem;">
-    Für mehrere Tokens nutze die <a href="/settings/tokens" style="color:var(--accent)">Tokens-Seite</a>.
-    Token findest du im <a href="https://discord.com/developers/applications" target="_blank" style="color:var(--accent)">Discord Developer Portal</a>.
-  </p>
-</div>
-
 {% elif not perm_settings %}
 <div class="card">
   <p style="color:var(--muted);font-size:0.9rem;">Du hast keinen Zugriff auf globale Einstellungen.</p>
