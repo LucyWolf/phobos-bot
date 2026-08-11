@@ -378,26 +378,8 @@
         <span class="nav-chevron">▼</span>
       </div>
       <div class="nav-group-items">
-        <a href="/servers/{{ g.id }}?tab=config" class="nav-item nav-sub {% if is_server and cur_tab == 'config' %}active{% endif %}">
+        <a href="/servers/{{ g.id }}" class="nav-item nav-sub {% if is_server %}active{% endif %}">
           <span class="icon">⚙️</span><span class="label">{{ tr.nav_config }}</span>
-        </a>
-        <a href="/servers/{{ g.id }}?tab=leveling" class="nav-item nav-sub {% if is_server and cur_tab == 'leveling' %}active{% endif %}">
-          <span class="icon">🏆</span><span class="label">{{ tr.nav_leveling }}</span>
-        </a>
-        <a href="/servers/{{ g.id }}?tab=rr" class="nav-item nav-sub {% if is_server and cur_tab == 'rr' %}active{% endif %}">
-          <span class="icon">🎭</span><span class="label">{{ tr.nav_rr }}</span>
-        </a>
-        <a href="/servers/{{ g.id }}?tab=commands" class="nav-item nav-sub {% if is_server and cur_tab == 'commands' %}active{% endif %}">
-          <span class="icon">📢</span><span class="label">{{ tr.nav_commands }}</span>
-        </a>
-        <a href="/servers/{{ g.id }}?tab=tickets" class="nav-item nav-sub {% if is_server and cur_tab == 'tickets' %}active{% endif %}">
-          <span class="icon">🎫</span><span class="label">{{ tr.nav_tickets }}</span>
-        </a>
-        <a href="/servers/{{ g.id }}?tab=giveaways" class="nav-item nav-sub {% if is_server and cur_tab == 'giveaways' %}active{% endif %}">
-          <span class="icon">🎉</span><span class="label">{{ tr.nav_giveaways }}</span>
-        </a>
-        <a href="/servers/{{ g.id }}?tab=warnings" class="nav-item nav-sub {% if is_server and cur_tab == 'warnings' %}active{% endif %}">
-          <span class="icon">⚠️</span><span class="label">{{ tr.nav_warnings }}</span>
         </a>
         <a href="/servers/{{ g.id }}/notifications" class="nav-item nav-sub {% if request.url.path == '/servers/' + g.id + '/notifications' %}active{% endif %}">
           <span class="icon">🟣</span><span class="label">{{ tr.nav_twitch }}</span>
@@ -407,18 +389,6 @@
         </a>
         <a href="/servers/{{ g.id }}/log" class="nav-item nav-sub {% if request.url.path == '/servers/' + g.id + '/log' %}active{% endif %}">
           <span class="icon">📋</span><span class="label">{{ tr.nav_log }}</span>
-        </a>
-        <a href="/servers/{{ g.id }}?tab=tempvoice" class="nav-item nav-sub {% if is_server and cur_tab == 'tempvoice' %}active{% endif %}">
-          <span class="icon">🔊</span><span class="label">{{ tr.nav_tempvoice }}</span>
-        </a>
-        <a href="/servers/{{ g.id }}?tab=scheduled" class="nav-item nav-sub {% if is_server and cur_tab == 'scheduled' %}active{% endif %}">
-          <span class="icon">📅</span><span class="label">{{ tr.nav_scheduled }}</span>
-        </a>
-        <a href="/servers/{{ g.id }}?tab=birthday" class="nav-item nav-sub {% if is_server and cur_tab == 'birthday' %}active{% endif %}">
-          <span class="icon">🎂</span><span class="label">{{ tr.nav_birthday }}</span>
-        </a>
-        <a href="/servers/{{ g.id }}?tab=autodelete" class="nav-item nav-sub {% if is_server and cur_tab == 'autodelete' %}active{% endif %}">
-          <span class="icon">🗑️</span><span class="label">{{ tr.nav_autodelete }}</span>
         </a>
         <a href="/bot/design?guild_id={{ g.id }}" class="nav-item nav-sub {% if active == 'bot_design_' + g.id %}active{% endif %}">
           <span class="icon">🤖</span><span class="label">{{ tr.nav_bot_design }}</span>
