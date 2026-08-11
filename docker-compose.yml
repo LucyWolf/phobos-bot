@@ -11,5 +11,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - TZ=Europe/Berlin
+      - PYTHONUNBUFFERED=1
     mem_limit: ${MEM_LIMIT:-1g}
     memswap_limit: ${MEM_LIMIT:-1g}
