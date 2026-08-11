@@ -119,6 +119,7 @@ COGS = [
     "cogs.giveaways",
     "cogs.notifications",
     "cogs.freestuff",
+    "cogs.auto_delete",
 ]
 
 
@@ -1630,6 +1631,40 @@ async def freestuff_test(request: Request, guild_id: str):
         )
 
 
+# ── Auto-Delete ───────────────────────────────────────────────────────────────
+
+async def _reload_auto_delete():
+    for b in bot._bots.values():
+        cog = b.cogs.get("AutoDelete")
+        if cog:
+            await cog.reload()
+
+@web.post("/servers/{guild_id}/auto-delete/save")
+async def auto_delete_save(request: Request, guild_id: str):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    channel_ids = form.getlist("channel_id")
+    delay_values = form.getlist("delay_seconds")
+    await db_exec("DELETE FROM auto_delete_channels WHERE guild_id=?", (guild_id,))
+    for cid, delay in zip(channel_ids, delay_values):
+        if cid and delay and int(delay) > 0:
+            await db_exec(
+                "INSERT OR REPLACE INTO auto_delete_channels (guild_id, channel_id, delay_seconds) VALUES (?,?,?)",
+                (guild_id, cid, int(delay)),
+            )
+    await _reload_auto_delete()
+    return RedirectResponse(f"/servers/{guild_id}?tab=autodelete&success=Gespeichert", status_code=302)
+
+@web.post("/servers/{guild_id}/auto-delete/delete/{entry_id}")
+async def auto_delete_remove(request: Request, guild_id: str, entry_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
+    await db_exec("DELETE FROM auto_delete_channels WHERE id=? AND guild_id=?", (entry_id, guild_id))
+    await _reload_auto_delete()
+    return RedirectResponse(f"/servers/{guild_id}?tab=autodelete&success=Gelöscht", status_code=302)
+
+
 # ── Notifications ─────────────────────────────────────────────────────────────
 
 @web.get("/servers/{guild_id}/notifications", response_class=HTMLResponse)
@@ -2216,6 +2251,9 @@ async def server_config(
         "ticket_panels": ticket_panels, "ticket_list": ticket_list, "ga_list": ga_list,
         "subs": subs, "twitch_configured": twitch_configured,
         "all_users": all_users, "server_perms": server_perms,
+        "auto_delete_entries": await db_rows(
+            "SELECT * FROM auto_delete_channels WHERE guild_id=?", (str(guild_id),)
+        ),
     })
 
 

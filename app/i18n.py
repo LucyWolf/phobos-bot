@@ -22,6 +22,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "nav_twitch":         "Streaming",
         "nav_freestuff":      "Free Stuff",
         "nav_log":            "Log",
+        "nav_autodelete":     "Auto-Delete",
         "nav_bot_design":     "Bot-Design",
         "nav_dashboard":      "Dashboard",
         # Buttons
@@ -113,6 +114,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "nav_twitch":         "Streaming",
         "nav_freestuff":      "Free Stuff",
         "nav_log":            "Log",
+        "nav_autodelete":     "Auto-Delete",
         "nav_bot_design":     "Bot Design",
         "nav_dashboard":      "Dashboard",
         # Buttons

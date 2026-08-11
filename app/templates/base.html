@@ -408,6 +408,9 @@
         <a href="/servers/{{ g.id }}/log" class="nav-item nav-sub {% if request.url.path == '/servers/' + g.id + '/log' %}active{% endif %}">
           <span class="icon">📋</span><span class="label">{{ tr.nav_log }}</span>
         </a>
+        <a href="/servers/{{ g.id }}?tab=autodelete" class="nav-item nav-sub {% if is_server and cur_tab == 'autodelete' %}active{% endif %}">
+          <span class="icon">🗑️</span><span class="label">{{ tr.nav_autodelete }}</span>
+        </a>
         <a href="/bot/design?guild_id={{ g.id }}" class="nav-item nav-sub {% if active == 'bot_design_' + g.id %}active{% endif %}">
           <span class="icon">🤖</span><span class="label">{{ tr.nav_bot_design }}</span>
         </a>
