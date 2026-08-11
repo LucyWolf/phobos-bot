@@ -26,6 +26,7 @@ from discord.ext import commands
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 PROCESS_START = datetime.datetime.utcnow()
@@ -205,22 +206,27 @@ def _fmt_dt(value) -> str:
         return str(value)[:16]
 
 
+class TZMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        try:
+            tz_str = request.session.get("user_tz", "Europe/Berlin")
+        except Exception:
+            tz_str = "Europe/Berlin"
+        try:
+            token = _request_tz.set(ZoneInfo(tz_str))
+        except Exception:
+            token = _request_tz.set(ZoneInfo("Europe/Berlin"))
+        response = await call_next(request)
+        _request_tz.reset(token)
+        return response
+
+
 web = FastAPI()
+# TZMiddleware added first → inner (runs after SessionMiddleware populates session)
+web.add_middleware(TZMiddleware)
 web.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="phobos_session")
 templates = Jinja2Templates(directory="templates")
 templates.env.filters["dt"] = _fmt_dt
-
-
-@web.middleware("http")
-async def _tz_middleware(request: Request, call_next):
-    tz_str = request.session.get("user_tz", "Europe/Berlin")
-    try:
-        token = _request_tz.set(ZoneInfo(tz_str))
-    except Exception:
-        token = _request_tz.set(ZoneInfo("Europe/Berlin"))
-    response = await call_next(request)
-    _request_tz.reset(token)
-    return response
 
 
 ACTION_COLORS = {
