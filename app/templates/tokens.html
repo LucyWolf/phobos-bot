@@ -58,21 +58,21 @@
   <div class="tok-info">
     <span class="tok-masked">{{ t.masked }}</span>
     &nbsp;·&nbsp; Hinzugefügt: {{ t.created_at | dt }}
-    {% if t.owner_name %}&nbsp;·&nbsp; 👤 {{ t.owner_name }}{% endif %}
   </div>
   {% if role == 'admin' and all_users %}
-  <div style="margin-top:0.6rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
-    <form method="post" action="/settings/tokens/owner/{{ t.id }}" style="display:flex;align-items:center;gap:0.5rem;margin:0;">
-      <label style="font-size:0.75rem;color:var(--muted);white-space:nowrap;">Besitzer:</label>
-      <select name="owner_id" style="margin:0;width:auto;font-size:0.78rem;padding:0.2rem 0.5rem;">
-        <option value="">— Keiner —</option>
-        {% for u in all_users %}
-        <option value="{{ u.id }}" {% if t.owner_id == u.id %}selected{% endif %}>{{ u.username }}</option>
-        {% endfor %}
-      </select>
-      <button type="submit" class="btn btn-secondary" style="font-size:0.75rem;padding:0.2rem 0.55rem;">💾</button>
-    </form>
-  </div>
+  <form method="post" action="/settings/tokens/users/{{ t.id }}" style="margin-top:0.75rem;">
+    <div style="font-size:0.75rem;color:var(--muted);margin-bottom:0.35rem;font-weight:600;">👥 Zugewiesene Benutzer:</div>
+    <div style="display:flex;flex-wrap:wrap;gap:0.35rem 1.1rem;margin-bottom:0.55rem;">
+      {% for u in all_users %}
+      <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.82rem;cursor:pointer;white-space:nowrap;">
+        <input type="checkbox" name="user_ids" value="{{ u.id }}"
+               {% if u.id in token_users.get(t.id, set()) %}checked{% endif %}>
+        {{ u.username }}
+      </label>
+      {% endfor %}
+    </div>
+    <button type="submit" class="btn btn-secondary" style="font-size:0.75rem;padding:0.2rem 0.6rem;">💾 Speichern</button>
+  </form>
   {% endif %}
 </div>
 {% endfor %}
@@ -97,13 +97,15 @@
     </div>
     {% if role == 'admin' and all_users %}
     <div style="margin-bottom:0.75rem;">
-      <label>Besitzer (Profil zuweisen)</label>
-      <select name="owner_id" style="width:auto;min-width:200px;">
-        <option value="">— Keiner / Kein Profil —</option>
+      <label>Zugewiesene Benutzer</label>
+      <div style="display:flex;flex-wrap:wrap;gap:0.35rem 1.1rem;">
         {% for u in all_users %}
-        <option value="{{ u.id }}">{{ u.username }}</option>
+        <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.82rem;cursor:pointer;white-space:nowrap;">
+          <input type="checkbox" name="user_ids" value="{{ u.id }}">
+          {{ u.username }}
+        </label>
         {% endfor %}
-      </select>
+      </div>
     </div>
     {% endif %}
     <button type="submit" class="btn btn-primary">💾 Token speichern</button>

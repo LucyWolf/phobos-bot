@@ -32,6 +32,13 @@ async def db_exec(query: str, params: tuple = ()):
         await db.commit()
 
 
+async def db_insert(query: str, params: tuple = ()) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(query, params)
+        await db.commit()
+        return cur.lastrowid
+
+
 async def get_config(key: str) -> Optional[str]:
     row = await db_one("SELECT value FROM config WHERE key = ?", (key,))
     return row["value"] if row else None
@@ -268,11 +275,22 @@ async def init_db():
             "ALTER TABLE roles ADD COLUMN perm_updates INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE roles ADD COLUMN perm_server INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1",
+            """CREATE TABLE IF NOT EXISTS bot_token_users (
+                token_id INTEGER NOT NULL,
+                user_id  INTEGER NOT NULL,
+                PRIMARY KEY (token_id, user_id)
+            )""",
         ]:
             try:
                 await db.execute(col)
             except Exception:
                 pass
+        # Migrate legacy owner_id → bot_token_users (idempotent)
+        await db.execute("""
+            INSERT OR IGNORE INTO bot_token_users (token_id, user_id)
+            SELECT id, owner_id FROM bot_tokens WHERE owner_id IS NOT NULL
+        """)
+        await db.commit()
         # Seed default "Normal User" role — upsert so existing installs get new defaults
         await db.execute(
             """INSERT INTO roles (name, color, perm_tokens, perm_server)

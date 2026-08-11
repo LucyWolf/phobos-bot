@@ -40,7 +40,7 @@ PROCESS_START = datetime.datetime.utcnow()
 from database import (
     DB_PATH, init_db, get_config, set_config,
     get_guild_config, set_guild_config, get_all_guild_config,
-    db_rows, db_one, db_exec, log_mod_action,
+    db_rows, db_one, db_exec, db_insert, log_mod_action,
 )
 
 VERSION = (Path(__file__).parent / "VERSION").read_text().strip()
@@ -1669,14 +1669,23 @@ async def tokens_page(request: Request, success: str = "", error: str = ""):
     if r := await perm_redirect(request, "perm_tokens"): return r
     is_admin = request.session.get("role") == "admin"
     uid = request.session.get("user_id")
-    _sel = ("SELECT t.id, t.label, t.token, t.enabled, t.created_at, t.owner_id, "
-            "u.username as owner_name FROM bot_tokens t LEFT JOIN users u ON u.id=t.owner_id")
     if is_admin:
-        token_rows = await db_rows(_sel + " ORDER BY t.id")
+        token_rows = await db_rows(
+            "SELECT id, label, token, enabled, created_at FROM bot_tokens ORDER BY id"
+        )
         all_users = await db_rows("SELECT id, username FROM users ORDER BY username")
+        tu_rows = await db_rows("SELECT token_id, user_id FROM bot_token_users")
+        token_users: dict[int, set] = {}
+        for r in tu_rows:
+            token_users.setdefault(r["token_id"], set()).add(r["user_id"])
     else:
-        token_rows = await db_rows(_sel + " WHERE t.owner_id=? ORDER BY t.id", (uid,))
+        token_rows = await db_rows(
+            "SELECT t.id, t.label, t.token, t.enabled, t.created_at FROM bot_tokens t "
+            "WHERE EXISTS (SELECT 1 FROM bot_token_users tu WHERE tu.token_id=t.id AND tu.user_id=?) ORDER BY t.id",
+            (uid,),
+        )
         all_users = []
+        token_users = {}
     for t in token_rows:
         tok = t["token"]
         t["masked"] = ("•" * 40 + tok[-6:]) if len(tok) > 6 else "•" * len(tok)
@@ -1691,43 +1700,59 @@ async def tokens_page(request: Request, success: str = "", error: str = ""):
         "legacy_running": 0 in bot._bots,
         "success": success, "error": error,
         "all_users": all_users,
+        "token_users": token_users,
     })
 
 
 @web.post("/settings/tokens/add")
-async def tokens_add(request: Request, label: str = Form("Bot"), token: str = Form(...), owner_id: str = Form("")):
+async def tokens_add(request: Request):
     if r := auth_redirect(request): return r
     if r := await perm_redirect(request, "perm_tokens"): return r
-    token = token.strip()
+    form = await request.form()
+    label = (form.get("label") or "Bot").strip()
+    token = (form.get("token") or "").strip()
     if not token:
         return RedirectResponse("/settings/tokens?error=Token+darf+nicht+leer+sein", status_code=302)
     uid = request.session.get("user_id")
     is_admin = request.session.get("role") == "admin"
-    oid = uid
-    if is_admin and owner_id:
-        try:
-            oid = int(owner_id)
-        except ValueError:
-            pass
-    await db_exec(
+    token_id = await db_insert(
         "INSERT INTO bot_tokens (label, token, owner_id) VALUES (?, ?, ?)",
-        (label.strip() or "Bot", token, oid),
+        (label or "Bot", token, uid),
     )
+    if is_admin:
+        user_ids = form.getlist("user_ids")
+        valid = {str(u["id"]) for u in await db_rows("SELECT id FROM users")}
+        for uid_s in user_ids:
+            if uid_s in valid:
+                await db_exec(
+                    "INSERT OR IGNORE INTO bot_token_users (token_id, user_id) VALUES (?,?)",
+                    (token_id, int(uid_s)),
+                )
+    else:
+        await db_exec(
+            "INSERT OR IGNORE INTO bot_token_users (token_id, user_id) VALUES (?,?)",
+            (token_id, uid),
+        )
     return RedirectResponse(
         "/settings/tokens?success=Token+hinzugefügt.+Neustart+erforderlich+um+ihn+zu+aktivieren.",
         status_code=302,
     )
 
 
-@web.post("/settings/tokens/owner/{token_id}")
-async def tokens_set_owner(request: Request, token_id: int, owner_id: str = Form("")):
+@web.post("/settings/tokens/users/{token_id}")
+async def tokens_set_users(request: Request, token_id: int):
     if r := admin_redirect(request): return r
-    try:
-        oid = int(owner_id) if owner_id else None
-    except ValueError:
-        oid = None
-    await db_exec("UPDATE bot_tokens SET owner_id=? WHERE id=?", (oid, token_id))
-    return RedirectResponse("/settings/tokens?success=Besitzer+geändert", status_code=302)
+    form = await request.form()
+    user_ids = form.getlist("user_ids")
+    valid = {str(u["id"]) for u in await db_rows("SELECT id FROM users")}
+    await db_exec("DELETE FROM bot_token_users WHERE token_id=?", (token_id,))
+    for uid_s in user_ids:
+        if uid_s in valid:
+            await db_exec(
+                "INSERT OR IGNORE INTO bot_token_users (token_id, user_id) VALUES (?,?)",
+                (token_id, int(uid_s)),
+            )
+    return RedirectResponse("/settings/tokens?success=Benutzer+aktualisiert", status_code=302)
 
 
 @web.post("/settings/tokens/delete/{token_id}")
@@ -1738,8 +1763,14 @@ async def tokens_delete(request: Request, token_id: int):
     uid = request.session.get("user_id")
     if is_admin:
         await db_exec("DELETE FROM bot_tokens WHERE id=?", (token_id,))
+        await db_exec("DELETE FROM bot_token_users WHERE token_id=?", (token_id,))
     else:
-        await db_exec("DELETE FROM bot_tokens WHERE id=? AND owner_id=?", (token_id, uid))
+        assigned = await db_one(
+            "SELECT 1 FROM bot_token_users WHERE token_id=? AND user_id=?", (token_id, uid)
+        )
+        if assigned:
+            await db_exec("DELETE FROM bot_tokens WHERE id=?", (token_id,))
+            await db_exec("DELETE FROM bot_token_users WHERE token_id=?", (token_id,))
     return RedirectResponse(
         "/settings/tokens?success=Token+gelöscht.+Neustart+erforderlich.",
         status_code=302,
@@ -1755,7 +1786,11 @@ async def tokens_toggle(request: Request, token_id: int):
     if is_admin:
         await db_exec("UPDATE bot_tokens SET enabled = NOT enabled WHERE id=?", (token_id,))
     else:
-        await db_exec("UPDATE bot_tokens SET enabled = NOT enabled WHERE id=? AND owner_id=?", (token_id, uid))
+        assigned = await db_one(
+            "SELECT 1 FROM bot_token_users WHERE token_id=? AND user_id=?", (token_id, uid)
+        )
+        if assigned:
+            await db_exec("UPDATE bot_tokens SET enabled = NOT enabled WHERE id=?", (token_id,))
     return RedirectResponse(
         "/settings/tokens?success=Status+geändert.+Neustart+erforderlich.",
         status_code=302,
