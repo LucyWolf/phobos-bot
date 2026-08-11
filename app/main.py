@@ -536,9 +536,9 @@ async def users_role(request: Request, user_id: int, role: str = Form(...)):
         return RedirectResponse("/users?error=Ungültige+Rolle", status_code=302)
     if role == "moderator":
         other_admins = await db_one(
-            "SELECT COUNT(*) FROM users WHERE role='admin' AND id!=?", (user_id,)
+            "SELECT COUNT(*) as c FROM users WHERE role='admin' AND id!=?", (user_id,)
         )
-        if not other_admins or other_admins[0] == 0:
+        if not other_admins or other_admins.get("c", 0) == 0:
             return RedirectResponse("/users?error=Letzter+Admin+kann+nicht+herabgestuft+werden", status_code=302)
     await db_exec("UPDATE users SET role=? WHERE id=?", (role, user_id))
     return RedirectResponse("/users?success=Rolle+geändert", status_code=302)
@@ -550,11 +550,10 @@ async def users_delete(request: Request, user_id: int, next: str = "/users"):
     dest = next if next in ("/users", "/settings") else "/users"
     is_self = user_id == request.session.get("user_id")
     if is_self:
-        # allow self-deletion only if another admin still exists
         other_admins = await db_one(
-            "SELECT COUNT(*) FROM users WHERE role='admin' AND id!=?", (user_id,)
+            "SELECT COUNT(*) as c FROM users WHERE role='admin' AND id!=?", (user_id,)
         )
-        if not other_admins or other_admins[0] == 0:
+        if not other_admins or other_admins.get("c", 0) == 0:
             return RedirectResponse(f"{dest}?error=Letzter+Admin+kann+nicht+gelöscht+werden", status_code=302)
     await db_exec("DELETE FROM users WHERE id=?", (user_id,))
     if is_self:
