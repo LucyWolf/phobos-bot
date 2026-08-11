@@ -39,10 +39,20 @@
 {% for t in tokens %}
 <div class="tok-card">
   <div class="tok-row">
-    <form method="post" action="/settings/tokens/rename/{{ t.id }}" style="margin:0;flex:1;min-width:0;display:flex;gap:0.4rem;align-items:center;">
-      <input type="text" name="label" value="{{ t.label }}"
-             style="margin:0;padding:0.25rem 0.5rem;font-size:0.9rem;font-weight:700;flex:1;min-width:0;">
-      <button type="submit" class="btn btn-secondary" style="padding:0.25rem 0.55rem;font-size:0.78rem;flex-shrink:0;" title="Bezeichnung speichern">✏️</button>
+    <form method="post" action="/settings/tokens/rename/{{ t.id }}" id="rename-form-{{ t.id }}"
+          style="margin:0;flex:1;min-width:0;display:flex;gap:0.4rem;align-items:center;">
+      <span id="tok-name-{{ t.id }}" class="tok-label"
+            style="padding:0.25rem 0.1rem;cursor:default;">{{ t.label }}</span>
+      <input type="text" name="label" value="{{ t.label }}" id="tok-input-{{ t.id }}"
+             style="display:none;margin:0;padding:0.25rem 0.5rem;font-size:0.9rem;font-weight:700;flex:1;min-width:0;">
+      <button type="button" id="tok-edit-{{ t.id }}" class="btn btn-secondary"
+              style="padding:0.25rem 0.55rem;font-size:0.78rem;flex-shrink:0;" title="Bezeichnung bearbeiten"
+              onclick="startRename({{ t.id }})">✏️</button>
+      <button type="submit" id="tok-save-{{ t.id }}" class="btn btn-primary"
+              style="display:none;padding:0.25rem 0.55rem;font-size:0.78rem;flex-shrink:0;" title="Speichern">✓</button>
+      <button type="button" id="tok-cancel-{{ t.id }}" class="btn btn-secondary"
+              style="display:none;padding:0.25rem 0.55rem;font-size:0.78rem;flex-shrink:0;" title="Abbrechen"
+              onclick="cancelRename({{ t.id }}, '{{ t.label | replace("'", "\\'") }}')">✕</button>
     </form>
     <span class="badge {% if t.running %}badge-green{% elif t.enabled %}badge-yellow{% else %}badge-gray{% endif %}" style="flex-shrink:0;">
       {% if t.running %}🟢 Online{% elif t.enabled %}⚙️ Aktiviert{% else %}⏸ Deaktiviert{% endif %}
@@ -147,4 +157,25 @@
   <div class="tok-info" style="margin-top:0.5rem;">Wird automatisch verwendet, solange keine Tokens in der Tabelle eingetragen sind.</div>
 </div>
 {% endif %}
+
+<script>
+function startRename(id) {
+  document.getElementById('tok-name-' + id).style.display = 'none';
+  document.getElementById('tok-edit-' + id).style.display = 'none';
+  var input = document.getElementById('tok-input-' + id);
+  input.style.display = '';
+  input.focus();
+  input.select();
+  document.getElementById('tok-save-' + id).style.display = '';
+  document.getElementById('tok-cancel-' + id).style.display = '';
+}
+function cancelRename(id, original) {
+  document.getElementById('tok-input-' + id).style.display = 'none';
+  document.getElementById('tok-save-' + id).style.display = 'none';
+  document.getElementById('tok-cancel-' + id).style.display = 'none';
+  document.getElementById('tok-input-' + id).value = original;
+  document.getElementById('tok-name-' + id).style.display = '';
+  document.getElementById('tok-edit-' + id).style.display = '';
+}
+</script>
 {% endblock %}
