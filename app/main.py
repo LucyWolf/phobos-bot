@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import email.mime.text
+import io
 import os
 from contextvars import ContextVar
 from zoneinfo import ZoneInfo
@@ -16,6 +17,8 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
+from PIL import Image
+
 import aiosqlite
 import bcrypt
 import discord
@@ -23,8 +26,8 @@ import psutil
 from i18n import get_tr
 import uvicorn
 from discord.ext import commands
-from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
@@ -39,6 +42,7 @@ from database import (
 
 VERSION = (Path(__file__).parent / "VERSION").read_text().strip()
 SECRET_KEY_PATH = Path("/app/data/secret.key")
+AVATARS_DIR = Path("/app/data/avatars")
 
 
 def load_secret_key() -> str:
@@ -239,15 +243,17 @@ ACTION_COLORS = {
 
 def session(request: Request) -> dict:
     lang = request.session.get("lang", "de")
+    uid = request.session.get("user_id")
     return {
         "username": request.session.get("username"),
         "display_name": request.session.get("display_name") or request.session.get("username"),
         "role": request.session.get("role"),
-        "user_id": request.session.get("user_id"),
+        "user_id": uid,
         "version": VERSION,
         "lang": lang,
         "user_tz": request.session.get("user_tz", "Europe/Berlin"),
         "tr": get_tr(lang),
+        "has_avatar": bool(uid and (AVATARS_DIR / f"{uid}.jpg").exists()),
         **{p: request.session.get(p, False) for p in PERM_COLS},
     }
 
@@ -452,6 +458,43 @@ async def profile_password_save(
         return RedirectResponse("/profile?error=Passwort+zu+kurz+(min.+6+Zeichen)", status_code=302)
     await db_exec("UPDATE users SET password_hash=? WHERE id=?", (hash_pw(pw_new), uid))
     return RedirectResponse("/profile?success=Passwort+geändert", status_code=302)
+
+
+@web.get("/avatar/{user_id}")
+async def avatar_serve(user_id: int):
+    path = AVATARS_DIR / f"{user_id}.jpg"
+    if not path.exists():
+        raise HTTPException(status_code=404)
+    return FileResponse(str(path), media_type="image/jpeg")
+
+
+@web.post("/profile/avatar")
+async def profile_avatar_upload(request: Request, avatar: UploadFile = File(...)):
+    if r := auth_redirect(request): return r
+    uid = request.session.get("user_id")
+    data = await avatar.read()
+    if len(data) > 2 * 1024 * 1024:
+        return RedirectResponse("/profile?error=Datei+zu+groß+(max.+2+MB)", status_code=302)
+    try:
+        img = Image.open(io.BytesIO(data)).convert("RGB")
+        img.thumbnail((256, 256), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+        (AVATARS_DIR / f"{uid}.jpg").write_bytes(buf.getvalue())
+    except Exception:
+        return RedirectResponse("/profile?error=Ungültiges+Bildformat", status_code=302)
+    return RedirectResponse("/profile?success=Profilbild+gespeichert", status_code=302)
+
+
+@web.post("/profile/avatar/delete")
+async def profile_avatar_delete(request: Request):
+    if r := auth_redirect(request): return r
+    uid = request.session.get("user_id")
+    path = AVATARS_DIR / f"{uid}.jpg"
+    if path.exists():
+        path.unlink()
+    return RedirectResponse("/profile?success=Profilbild+gelöscht", status_code=302)
 
 
 # ── Password Reset ─────────────────────────────────────────────────────────────

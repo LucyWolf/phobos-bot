@@ -16,6 +16,30 @@
 
 <div class="prof-grid" style="max-width:780px;">
 
+  <!-- ── Profilbild ── -->
+  <div class="card" style="grid-column:1/-1;">
+    <div class="feat-header">🖼️ {{ tr.profile_avatar }}</div>
+    <div style="display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;">
+      <div style="width:80px;height:80px;border-radius:50%;background:var(--accent);flex-shrink:0;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:700;color:#fff;">
+        {{ (user.display_name or user.username or '?')[0].upper() }}
+        {% if has_avatar %}<img src="/avatar/{{ user_id }}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" onerror="this.remove()" alt="">{% endif %}
+      </div>
+      <form method="post" action="/profile/avatar" enctype="multipart/form-data" style="flex:1;min-width:220px;">
+        <label>{{ tr.profile_avatar_upload }}</label>
+        <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:0.5rem;">
+          <input type="file" name="avatar" accept="image/*" required style="flex:1;margin-bottom:0;">
+          <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
+        </div>
+        <p class="hint">{{ tr.profile_avatar_hint }}</p>
+      </form>
+      {% if has_avatar %}
+      <form method="post" action="/profile/avatar/delete" style="margin:0;align-self:flex-start;">
+        <button type="submit" class="btn btn-danger" onclick="return confirm('{{ tr.profile_avatar_delete }}?')">🗑 {{ tr.profile_avatar_delete }}</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
   <!-- ── Profil-Info ── -->
   <div class="card" style="grid-column:1/-1;">
     <div class="feat-header">🪪 {{ tr.profile_info }}</div>

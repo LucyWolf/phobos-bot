@@ -67,6 +67,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "profile_pw_current": "Aktuelles Passwort",
         "profile_pw_new":     "Neues Passwort",
         "profile_pw_confirm": "Passwort bestätigen",
+        "profile_avatar":     "Profilbild",
+        "profile_avatar_upload": "Neues Bild hochladen",
+        "profile_avatar_hint":   "JPG, PNG, WEBP · max. 2 MB · wird auf 256×256 px skaliert",
+        "profile_avatar_delete": "Profilbild entfernen",
         # Lang toggle label (shows the OTHER language to switch to)
         "lang_switch":        "🇬🇧 EN",
     },
@@ -138,6 +142,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "profile_pw_current": "Current Password",
         "profile_pw_new":     "New Password",
         "profile_pw_confirm": "Confirm Password",
+        "profile_avatar":     "Profile Picture",
+        "profile_avatar_upload": "Upload new picture",
+        "profile_avatar_hint":   "JPG, PNG, WEBP · max. 2 MB · resized to 256×256 px",
+        "profile_avatar_delete": "Remove profile picture",
         # Lang toggle label
         "lang_switch":        "🇩🇪 DE",
     },
