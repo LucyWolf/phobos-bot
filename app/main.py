@@ -120,6 +120,7 @@ COGS = [
     "cogs.notifications",
     "cogs.freestuff",
     "cogs.auto_delete",
+    "cogs.temp_voice",
 ]
 
 
@@ -1682,6 +1683,32 @@ async def auto_delete_remove(request: Request, guild_id: str, entry_id: int):
     return RedirectResponse(f"/servers/{guild_id}?tab=autodelete&success=Gelöscht", status_code=302)
 
 
+# ── Temp Voice ────────────────────────────────────────────────────────────────
+
+@web.post("/servers/{guild_id}/tempvoice/add")
+async def tempvoice_add(request: Request, guild_id: str):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    trigger = form.get("trigger_channel_id", "")
+    category = form.get("category_id", "")
+    name_tpl = form.get("name_template", "{user}'s Channel") or "{user}'s Channel"
+    user_limit = int(form.get("user_limit") or 0)
+    if trigger:
+        await db_exec(
+            "INSERT OR REPLACE INTO temp_voice_config (guild_id, trigger_channel_id, category_id, name_template, user_limit) VALUES (?,?,?,?,?)",
+            (guild_id, trigger, category, name_tpl, user_limit),
+        )
+    return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&success=Gespeichert", status_code=302)
+
+@web.post("/servers/{guild_id}/tempvoice/delete/{config_id}")
+async def tempvoice_delete(request: Request, guild_id: str, config_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
+    await db_exec("DELETE FROM temp_voice_config WHERE id=? AND guild_id=?", (config_id, guild_id))
+    return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&success=Gelöscht", status_code=302)
+
+
 # ── Notifications ─────────────────────────────────────────────────────────────
 
 @web.get("/servers/{guild_id}/notifications", response_class=HTMLResponse)
@@ -2182,6 +2209,7 @@ async def server_config(
     token_set = await _token_configured()
     cfg = await get_all_guild_config(guild_id)
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
+    voice_channels = [{"id": str(c.id), "name": c.name} for c in guild.voice_channels]
     roles = [{"id": str(ro.id), "name": ro.name} for ro in guild.roles if not ro.is_default()]
     categories = [{"id": str(c.id), "name": c.name} for c in guild.categories]
 
@@ -2277,6 +2305,10 @@ async def server_config(
         "all_users": all_users, "server_perms": server_perms,
         "auto_delete_entries": await db_rows(
             "SELECT * FROM auto_delete_channels WHERE guild_id=?", (str(guild_id),)
+        ),
+        "voice_channels": voice_channels,
+        "tempvoice_configs": await db_rows(
+            "SELECT * FROM temp_voice_config WHERE guild_id=?", (str(guild_id),)
         ),
     })
 

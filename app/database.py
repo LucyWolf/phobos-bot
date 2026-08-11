@@ -267,6 +267,24 @@ async def init_db():
                 UNIQUE(guild_id, channel_id)
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS temp_voice_config (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                trigger_channel_id TEXT NOT NULL,
+                category_id TEXT DEFAULT '',
+                name_template TEXT DEFAULT '{user}''s Channel',
+                user_limit INTEGER DEFAULT 0,
+                UNIQUE(guild_id, trigger_channel_id)
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS temp_voice_active (
+                channel_id TEXT PRIMARY KEY,
+                guild_id TEXT NOT NULL,
+                owner_id TEXT NOT NULL
+            )
+        """)
         for col in [
             "ALTER TABLE tickets ADD COLUMN panel_id INTEGER",
             "ALTER TABLE freestuff_channels ADD COLUMN deal_max_price REAL",

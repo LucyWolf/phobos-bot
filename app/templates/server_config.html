@@ -587,6 +587,75 @@ function togglePanelEdit(id) {
 
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Temp Voice                                                      -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-tempvoice">
+<div class="card">
+  <div class="feat-header">🔊 Temporäre Voice-Kanäle</div>
+  <p class="hint" style="margin-bottom:1rem;">
+    Wenn ein Nutzer den Trigger-Kanal betritt, erstellt der Bot automatisch einen neuen Voice-Kanal.
+    Sobald alle den Kanal verlassen, wird er wieder gelöscht.
+  </p>
+
+  {% if tempvoice_configs %}
+  <table style="width:100%;border-collapse:collapse;margin-bottom:1.25rem;">
+    <thead>
+      <tr style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;">
+        <th style="text-align:left;padding:0.4rem 0.5rem;">Trigger-Kanal</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">Name-Vorlage</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">Limit</th>
+        <th style="padding:0.4rem 0.5rem;"></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for tv in tempvoice_configs %}
+    {% set vc_name = voice_channels | selectattr('id','equalto',tv.trigger_channel_id) | map(attribute='name') | first | default(tv.trigger_channel_id) %}
+    <tr style="border-top:1px solid var(--border);font-size:0.85rem;">
+      <td style="padding:0.5rem;">🔊 {{ vc_name }}</td>
+      <td style="padding:0.5rem;">{{ tv.name_template }}</td>
+      <td style="padding:0.5rem;">{{ tv.user_limit if tv.user_limit else '∞' }}</td>
+      <td style="padding:0.5rem;text-align:right;">
+        <form method="post" action="/servers/{{ guild.id }}/tempvoice/delete/{{ tv.id }}" style="margin:0;">
+          <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <form method="post" action="/servers/{{ guild.id }}/tempvoice/add">
+    <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
+      <div>
+        <label style="font-size:0.82rem;">Trigger-Kanal <span style="color:var(--muted)">(Voice)</span></label>
+        <select name="trigger_channel_id" required>
+          <option value="">— Kanal wählen —</option>
+          {% for vc in voice_channels %}<option value="{{ vc.id }}">🔊 {{ vc.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:0.82rem;">Kategorie <span style="color:var(--muted)">(optional)</span></label>
+        <select name="category_id">
+          <option value="">— Gleiche wie Trigger —</option>
+          {% for cat in categories %}<option value="{{ cat.id }}">📁 {{ cat.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:0.82rem;">Name-Vorlage <span style="color:var(--muted)">{user} = Username</span></label>
+        <input type="text" name="name_template" value="{user}'s Channel" placeholder="{user}'s Channel">
+      </div>
+      <div>
+        <label style="font-size:0.82rem;">Nutzer-Limit <span style="color:var(--muted)">(0 = unbegrenzt)</span></label>
+        <input type="number" name="user_limit" value="0" min="0" max="99">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">➕ Trigger hinzufügen</button>
+  </form>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <!-- TAB: Auto-Delete                                                     -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-autodelete">
@@ -658,7 +727,7 @@ function togglePanelEdit(id) {
 </div>
 
 <script>
-const TABS = ['config','leveling','rr','commands','tickets','giveaways','warnings','users','autodelete'];
+const TABS = ['config','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','autodelete'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {
