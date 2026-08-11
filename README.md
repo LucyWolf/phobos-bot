@@ -1,6 +1,8 @@
 # 🛡️ Phobos Bot
 
-Ein selbst-hostbarer Discord-Bot – ähnlich wie MEE6 – mit Web-Dashboard. Open Source, kostenlos, für immer.
+Ein selbst-hostbarer Discord-Bot mit Web-Dashboard. Open Source, kostenlos, für immer.
+
+> Entwickelt von **lucy_wolf** in Zusammenarbeit mit **Claude AI**
 
 **Aktuelle Version: 1.2.38**
 
