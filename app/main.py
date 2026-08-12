@@ -30,7 +30,7 @@ from i18n import get_tr
 import uvicorn
 from discord.ext import commands
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
@@ -644,6 +644,306 @@ async def profile_avatar_delete(request: Request):
     if path.exists():
         path.unlink()
     return RedirectResponse("/profile?success=Profilbild+gelöscht", status_code=302)
+
+
+# ── Backup / Restore ───────────────────────────────────────────────────────────
+
+_BACKUP_FEATURE_TABLES = [
+    "reaction_roles", "custom_commands", "auto_delete_channels",
+    "temp_voice_config", "notifications", "freestuff_channels",
+    "birthdays", "warnings",
+]
+
+
+async def _build_user_backup(target_user_id: int, exported_by: str) -> dict:
+    user = await db_one("SELECT * FROM users WHERE id=?", (target_user_id,))
+    if not user:
+        return {}
+    token_links = await db_rows(
+        "SELECT token_id FROM bot_token_users WHERE user_id=?", (target_user_id,)
+    )
+    token_ids = [r["token_id"] for r in token_links]
+    tokens = []
+    for tid in token_ids:
+        t = await db_one("SELECT * FROM bot_tokens WHERE id=?", (tid,))
+        if t:
+            tokens.append(t)
+    scheduled = await db_rows(
+        "SELECT * FROM scheduled_messages WHERE sent=0"
+    )
+    data: dict = {
+        "meta": {
+            "version": "1.0", "type": "user",
+            "app_version": VERSION,
+            "exported_at": datetime.datetime.utcnow().isoformat(),
+            "exported_by": exported_by,
+            "username": user["username"],
+        },
+        "user": dict(user),
+        "bot_tokens": tokens,
+        "bot_token_users": await db_rows(
+            "SELECT * FROM bot_token_users WHERE user_id=?", (target_user_id,)
+        ),
+        "user_guild_permissions": await db_rows(
+            "SELECT * FROM user_guild_permissions WHERE user_id=?", (target_user_id,)
+        ),
+        "guild_configs": await db_rows("SELECT * FROM guild_configs"),
+        "scheduled_messages": scheduled,
+    }
+    for tbl in _BACKUP_FEATURE_TABLES:
+        data[tbl] = await db_rows(f"SELECT * FROM {tbl}")
+    return data
+
+
+async def _build_full_backup(exported_by: str) -> dict:
+    scheduled = await db_rows("SELECT * FROM scheduled_messages WHERE sent=0")
+    data: dict = {
+        "meta": {
+            "version": "1.0", "type": "full",
+            "app_version": VERSION,
+            "exported_at": datetime.datetime.utcnow().isoformat(),
+            "exported_by": exported_by,
+        },
+        "users": await db_rows("SELECT * FROM users"),
+        "roles": await db_rows("SELECT * FROM roles"),
+        "bot_tokens": await db_rows("SELECT * FROM bot_tokens"),
+        "bot_token_users": await db_rows("SELECT * FROM bot_token_users"),
+        "user_guild_permissions": await db_rows("SELECT * FROM user_guild_permissions"),
+        "guild_configs": await db_rows("SELECT * FROM guild_configs"),
+        "scheduled_messages": scheduled,
+        "config": await db_rows(
+            "SELECT * FROM config WHERE key NOT IN ('discord_token','smtp_pass')"
+        ),
+    }
+    for tbl in _BACKUP_FEATURE_TABLES:
+        data[tbl] = await db_rows(f"SELECT * FROM {tbl}")
+    return data
+
+
+def _json_dl(data: dict, filename: str) -> Response:
+    content = _djson.dumps(data, ensure_ascii=False, indent=2)
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@web.get("/backup/export")
+async def backup_export_own(request: Request):
+    if r := auth_redirect(request): return r
+    uid = request.session.get("user_id")
+    uname = request.session.get("username", "user")
+    data = await _build_user_backup(uid, uname)
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+    return _json_dl(data, f"backup_{uname}_{ts}.json")
+
+
+@web.get("/admin/backup/user/{user_id}")
+async def backup_export_user(request: Request, user_id: int):
+    if r := admin_redirect(request): return r
+    by = request.session.get("username", "admin")
+    data = await _build_user_backup(user_id, by)
+    if not data:
+        return RedirectResponse("/users?error=Benutzer+nicht+gefunden", status_code=302)
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+    uname = data["meta"]["username"]
+    return _json_dl(data, f"backup_{uname}_{ts}.json")
+
+
+@web.get("/admin/backup/all")
+async def backup_export_all(request: Request):
+    if r := admin_redirect(request): return r
+    by = request.session.get("username", "admin")
+    data = await _build_full_backup(by)
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+    return _json_dl(data, f"backup_full_{ts}.json")
+
+
+@web.post("/admin/backup/restore")
+async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
+    if r := admin_redirect(request): return r
+    try:
+        raw = await backup_file.read()
+        data = _djson.loads(raw)
+    except Exception:
+        return RedirectResponse("/users?error=Ungültige+Backup-Datei+(kein+gültiges+JSON)", status_code=302)
+
+    meta = data.get("meta", {})
+    if not meta.get("version"):
+        return RedirectResponse("/users?error=Kein+gültiges+Phobos-Backup", status_code=302)
+
+    restored: list[str] = []
+
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        # 1. Roles (full backup only)
+        for row in data.get("roles", []):
+            try:
+                await db.execute("""
+                    INSERT INTO roles
+                        (name,color,perm_settings,perm_tokens,perm_users,perm_bots,
+                         perm_streaming,perm_smtp,perm_updates,perm_server)
+                    VALUES
+                        (:name,:color,:perm_settings,:perm_tokens,:perm_users,:perm_bots,
+                         :perm_streaming,:perm_smtp,:perm_updates,:perm_server)
+                    ON CONFLICT(name) DO UPDATE SET
+                        color=excluded.color,perm_settings=excluded.perm_settings,
+                        perm_tokens=excluded.perm_tokens,perm_users=excluded.perm_users,
+                        perm_bots=excluded.perm_bots,perm_streaming=excluded.perm_streaming,
+                        perm_smtp=excluded.perm_smtp,perm_updates=excluded.perm_updates,
+                        perm_server=excluded.perm_server
+                """, row)
+            except Exception:
+                pass
+        if data.get("roles"):
+            restored.append("Rollen")
+
+        # 2. Users — build old_id → new_id map
+        users_list = data.get("users", [])
+        if "user" in data:
+            users_list = [data["user"]]
+        old_uid_map: dict[int, int] = {}
+
+        for u in users_list:
+            old_id = u.get("id")
+            try:
+                ex = await db.execute("SELECT id FROM users WHERE username=?", (u["username"],))
+                ex = await ex.fetchone()
+                if ex:
+                    await db.execute(
+                        "UPDATE users SET display_name=?,position=?,email=?,role=?,language=?,timezone=? WHERE username=?",
+                        (u.get("display_name",""), u.get("position",""), u.get("email",""),
+                         u.get("role","moderator"), u.get("language","de"), u.get("timezone",""),
+                         u["username"]),
+                    )
+                    new_id = ex[0]
+                else:
+                    cur = await db.execute(
+                        "INSERT INTO users (username,password_hash,role,email,display_name,position,language,timezone) VALUES (?,?,?,?,?,?,?,?)",
+                        (u["username"], u.get("password_hash",""), u.get("role","moderator"),
+                         u.get("email",""), u.get("display_name",""), u.get("position",""),
+                         u.get("language","de"), u.get("timezone","")),
+                    )
+                    new_id = cur.lastrowid
+                if old_id is not None:
+                    old_uid_map[old_id] = new_id
+            except Exception:
+                pass
+        if users_list:
+            restored.append("Benutzer")
+
+        # 3. Bot tokens — old_id → new_id map
+        old_tid_map: dict[int, int] = {}
+        for t in data.get("bot_tokens", []):
+            old_id = t.get("id")
+            try:
+                ex = await db.execute("SELECT id FROM bot_tokens WHERE token=?", (t["token"],))
+                ex = await ex.fetchone()
+                if ex:
+                    new_id = ex[0]
+                else:
+                    cur = await db.execute(
+                        "INSERT INTO bot_tokens (label,token,enabled) VALUES (?,?,?)",
+                        (t.get("label","Bot"), t["token"], t.get("enabled",1)),
+                    )
+                    new_id = cur.lastrowid
+                if old_id is not None:
+                    old_tid_map[old_id] = new_id
+            except Exception:
+                pass
+        if data.get("bot_tokens"):
+            restored.append("Bot-Tokens")
+
+        # 4. bot_token_users
+        for btu in data.get("bot_token_users", []):
+            old_t = btu.get("token_id")
+            old_u = btu.get("user_id")
+            new_t = old_tid_map.get(old_t, old_t)
+            new_u = old_uid_map.get(old_u, old_u)
+            try:
+                await db.execute(
+                    "INSERT OR IGNORE INTO bot_token_users (token_id,user_id) VALUES (?,?)",
+                    (new_t, new_u),
+                )
+            except Exception:
+                pass
+
+        # 5. user_guild_permissions
+        for p in data.get("user_guild_permissions", []):
+            old_u = p.get("user_id")
+            new_u = old_uid_map.get(old_u, old_u)
+            try:
+                await db.execute(
+                    "INSERT OR IGNORE INTO user_guild_permissions (user_id,guild_id) VALUES (?,?)",
+                    (new_u, p["guild_id"]),
+                )
+            except Exception:
+                pass
+
+        # 6. Guild configs
+        for gc in data.get("guild_configs", []):
+            try:
+                await db.execute(
+                    "INSERT INTO guild_configs (guild_id,key,value) VALUES (?,?,?) "
+                    "ON CONFLICT(guild_id,key) DO UPDATE SET value=excluded.value",
+                    (gc["guild_id"], gc["key"], gc["value"]),
+                )
+            except Exception:
+                pass
+        if data.get("guild_configs"):
+            restored.append("Server-Konfiguration")
+
+        # 7. Feature tables
+        _tbl_insert = {
+            "reaction_roles":
+                "INSERT OR IGNORE INTO reaction_roles (guild_id,channel_id,message_id,emoji,role_id) VALUES (:guild_id,:channel_id,:message_id,:emoji,:role_id)",
+            "custom_commands":
+                "INSERT INTO custom_commands (guild_id,trigger,response) VALUES (:guild_id,:trigger,:response) ON CONFLICT(guild_id,trigger) DO UPDATE SET response=excluded.response",
+            "auto_delete_channels":
+                "INSERT INTO auto_delete_channels (guild_id,channel_id,delay_seconds) VALUES (:guild_id,:channel_id,:delay_seconds) ON CONFLICT(guild_id,channel_id) DO UPDATE SET delay_seconds=excluded.delay_seconds",
+            "temp_voice_config":
+                "INSERT INTO temp_voice_config (guild_id,trigger_channel_id,category_id,name_template,user_limit) VALUES (:guild_id,:trigger_channel_id,:category_id,:name_template,:user_limit) ON CONFLICT(guild_id,trigger_channel_id) DO UPDATE SET category_id=excluded.category_id,name_template=excluded.name_template,user_limit=excluded.user_limit",
+            "scheduled_messages":
+                "INSERT OR IGNORE INTO scheduled_messages (guild_id,channel_id,message,send_at,sent) VALUES (:guild_id,:channel_id,:message,:send_at,:sent)",
+            "notifications":
+                "INSERT OR IGNORE INTO notifications (guild_id,platform,discord_channel_id,target,target_name,last_id,live,custom_message) VALUES (:guild_id,:platform,:discord_channel_id,:target,:target_name,:last_id,0,:custom_message)",
+            "freestuff_channels":
+                "INSERT INTO freestuff_channels (guild_id,channel_id,platforms,deal_max_price,deal_min_discount,deal_channel_id) VALUES (:guild_id,:channel_id,:platforms,:deal_max_price,:deal_min_discount,:deal_channel_id) ON CONFLICT(guild_id) DO UPDATE SET channel_id=excluded.channel_id,platforms=excluded.platforms,deal_max_price=excluded.deal_max_price,deal_min_discount=excluded.deal_min_discount,deal_channel_id=excluded.deal_channel_id",
+            "birthdays":
+                "INSERT OR REPLACE INTO birthdays (user_id,guild_id,birthday) VALUES (:user_id,:guild_id,:birthday)",
+            "warnings":
+                "INSERT OR IGNORE INTO warnings (user_id,guild_id,moderator_id,reason,timestamp) VALUES (:user_id,:guild_id,:moderator_id,:reason,:timestamp)",
+        }
+        for tbl, sql in _tbl_insert.items():
+            rows = data.get(tbl, [])
+            for row in rows:
+                try:
+                    await db.execute(sql, row)
+                except Exception:
+                    pass
+            if rows:
+                restored.append(tbl.replace("_", " ").title())
+
+        # 8. Global config (full backup only, skip sensitive keys)
+        _skip_cfg = {"discord_token", "smtp_pass", "secret_key"}
+        for row in data.get("config", []):
+            if row.get("key") in _skip_cfg:
+                continue
+            try:
+                await db.execute(
+                    "INSERT INTO config (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    (row["key"], row["value"]),
+                )
+            except Exception:
+                pass
+
+        await db.commit()
+
+    summary = ", ".join(restored) if restored else "Nichts"
+    return RedirectResponse(
+        f"/users?success=Backup+eingespielt:+{urllib.parse.quote(summary)}", status_code=302
+    )
 
 
 # ── Password Reset ─────────────────────────────────────────────────────────────
