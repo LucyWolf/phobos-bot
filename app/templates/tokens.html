@@ -78,7 +78,7 @@
     &nbsp;·&nbsp; Hinzugefügt: {{ t.created_at | dt }}
   </div>
   {% if role == 'admin' and all_users %}
-  {% set assigned = token_users.get(t.id, set()) %}
+  {% set assigned = token_users.get(t.id, []) %}
   {% if assigned %}
   <div style="display:flex;flex-direction:column;gap:0.25rem;margin-top:0.4rem;">
     {% for u in all_users if u.id in assigned %}
