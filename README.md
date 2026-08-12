@@ -59,6 +59,22 @@ Phobos supports **multiple bot accounts simultaneously**. Go to **Settings → �
 
 ---
 
+## Docker Compose
+
+```yaml
+services:
+  bot:
+    build: ./app
+    container_name: discord-bot
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./app:/app
+      - ./data:/app/data
+```
+
+---
+
 ## Welcome Card
 
 When a member joins, the bot can send a **generated image card** instead of a plain text embed:
@@ -379,6 +395,22 @@ Phobos unterstützt **mehrere Bot-Accounts gleichzeitig**. Unter **Einstellungen
 - Normale Nutzer sehen und verwalten nur ihre eigenen Tokens
 - Admins sehen alle Tokens und können Nutzer beliebigen Tokens zuweisen
 - Token-Besitzer erhalten automatisch Zugriff auf die Server ihres Bots
+
+---
+
+## Docker Compose
+
+```yaml
+services:
+  bot:
+    build: ./app
+    container_name: discord-bot
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./app:/app
+      - ./data:/app/data
+```
 
 ---
 
