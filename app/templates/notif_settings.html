@@ -30,7 +30,12 @@
   <div class="api-card-head">
     <span style="font-size:1.2rem;">🟣</span>
     <span class="api-label">{{ api.label }}</span>
-    {% if role == 'admin' %}<span class="api-id-badge">👤 {{ api.owner_name }}</span>{% endif %}
+    <div style="display:flex;flex-direction:column;gap:0.25rem;">
+      <span class="api-id-badge" style="width:fit-content;">👤 {{ api.owner_name }}</span>
+      {% for gu in api.granted_users[:5] %}
+      <span class="api-id-badge" style="width:fit-content;">👤 {{ gu.username }}</span>
+      {% endfor %}
+    </div>
     <span class="api-id-badge">#{{ api.id }}</span>
     <button type="button" onclick="toggleApiEdit({{ api.id }})"
             class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;">✏️ Bearbeiten</button>
@@ -40,13 +45,6 @@
     </form>
   </div>
   <div style="font-size:0.8rem;color:var(--muted);">Client-ID: <code>{{ api.client_id[:12] }}…</code></div>
-  {% if api.granted_users %}
-  <div style="display:flex;flex-direction:column;gap:0.25rem;margin-top:0.35rem;">
-    {% for gu in api.granted_users[:5] %}
-    <span class="api-id-badge" style="width:fit-content;">👤 {{ gu.username }}</span>
-    {% endfor %}
-  </div>
-  {% endif %}
 
   <div class="api-edit-row" id="api-edit-{{ api.id }}">
     <form method="post" action="/settings/notifications/edit/{{ api.id }}">
