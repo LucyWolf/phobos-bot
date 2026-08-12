@@ -59,6 +59,34 @@
       </div>
       <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">💾 Speichern</button>
     </form>
+
+    {% if api.is_own %}
+    <div style="border-top:1px solid var(--border);margin-top:0.85rem;padding-top:0.85rem;">
+      <div style="font-size:0.8rem;font-weight:700;margin-bottom:0.6rem;">🔐 Zugriff verwalten</div>
+      {% if api.granted_users %}
+        {% for gu in api.granted_users %}
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+          <span style="font-size:0.82rem;">👤 {{ gu.username }}</span>
+          <form method="post" action="/settings/notifications/{{ api.id }}/access/remove/{{ gu.id }}" style="margin:0">
+            <button class="btn btn-danger" style="font-size:0.7rem;padding:0.15rem 0.4rem;">✕</button>
+          </form>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p style="font-size:0.78rem;color:var(--muted);margin-bottom:0.6rem;">Noch niemand freigegeben.</p>
+      {% endif %}
+      <form method="post" action="/settings/notifications/{{ api.id }}/access/add" style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;">
+        <select name="grant_user_id" style="margin:0;width:auto;min-width:150px;font-size:0.8rem;">
+          {% for u in all_users %}
+            {% if u.id != api.owner_id and u.id not in api.granted_users|map(attribute='id')|list %}
+            <option value="{{ u.id }}">{{ u.username }}</option>
+            {% endif %}
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;">➕ Freigeben</button>
+      </form>
+    </div>
+    {% endif %}
   </div>
 </div>
 {% else %}
