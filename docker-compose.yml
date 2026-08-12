@@ -9,6 +9,7 @@ services:
       - ./app:/app
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
+      - .:/repo
     environment:
       - TZ=Europe/Berlin
       - PYTHONUNBUFFERED=1
