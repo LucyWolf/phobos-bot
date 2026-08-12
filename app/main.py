@@ -1727,95 +1727,39 @@ async def bot_update_apply(request: Request):
     async def _do_update():
         global _update_status
         _update_status = {"logs": [], "done": False, "error": ""}
-        tar_url = "https://github.com/LucyWolf/phobos-bot/archive/refs/heads/main.tar.gz"
+
+        async def _run(cmd: list, cwd: str | None = None) -> int:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, cwd=cwd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            async for raw in proc.stdout:
+                line = raw.decode("utf-8", errors="replace").rstrip()
+                if line:
+                    _ulog(line, "info")
+            return await proc.wait()
 
         try:
-            def _download_and_apply():
-                _ulog("$ phobos-bot update — " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "cmd")
+            _ulog("$ phobos-bot update — " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "cmd")
 
-                with tempfile.TemporaryDirectory() as tmp:
-                    tar_path = os.path.join(tmp, "update.tar.gz")
+            # Fetch latest commits
+            _ulog("$ git -C /repo fetch origin main", "cmd")
+            rc = await _run(["git", "-C", "/repo", "fetch", "origin", "main"])
+            if rc != 0:
+                raise RuntimeError(f"git fetch fehlgeschlagen (exit {rc})")
 
-                    # Download
-                    _ulog("$ curl -L https://github.com/LucyWolf/phobos-bot/archive/main.tar.gz", "cmd")
-                    last_pct = [-1]
-                    def reporthook(block, bsize, total):
-                        if total <= 0:
-                            return
-                        pct = min(100, block * bsize * 100 // total)
-                        if pct // 10 != last_pct[0] // 10 or pct == 100:
-                            last_pct[0] = pct
-                            mb = min(block * bsize, total) / 1048576
-                            tmb = total / 1048576
-                            _ulog(f"  Herunterladen… {mb:.1f} MB / {tmb:.1f} MB ({pct}%)", "progress")
-                    urllib.request.urlretrieve(tar_url, tar_path, reporthook)
-                    size_mb = os.path.getsize(tar_path) / 1048576
-                    _ulog(f"  ✓  {size_mb:.2f} MB empfangen", "ok")
-
-                    # Extract
-                    _ulog("$ tar xzf update.tar.gz", "cmd")
-                    with tarfile.open(tar_path, "r:gz") as tf:
-                        members = tf.getmembers()
-                        _ulog(f"  Entpacke {len(members)} Einträge…", "info")
-                        tf.extractall(tmp)
-                    _ulog(f"  ✓  Archiv entpackt", "ok")
-
-                    dirs = [d for d in os.listdir(tmp)
-                            if os.path.isdir(os.path.join(tmp, d)) and d != "__pycache__"]
-                    if not dirs:
-                        raise RuntimeError("Archiv enthält kein Verzeichnis")
-
-                    src_app = os.path.join(tmp, dirs[0], "app")
-                    dst = "/app"
-                    skip = {"data"}
-
-                    # Copy files
-                    _ulog("$ cp -r ./app/* /app/   (data/ wird übersprungen)", "cmd")
-                    count = [0]
-
-                    def copy_logged(src_dir, dst_dir, prefix=""):
-                        for item in sorted(os.listdir(src_dir)):
-                            if item in skip and prefix == "":
-                                _ulog(f"  skip  {item}/", "file")
-                                continue
-                            s = os.path.join(src_dir, item)
-                            d = os.path.join(dst_dir, item)
-                            rel = prefix + item
-                            if os.path.isfile(s):
-                                shutil.copy2(s, d)
-                                _ulog(f"  → {rel}", "file")
-                                count[0] += 1
-                            elif os.path.isdir(s):
-                                if not os.path.exists(d):
-                                    os.makedirs(d, exist_ok=True)
-                                copy_logged(s, d, rel + "/")
-
-                    copy_logged(src_app, dst)
-                    _ulog(f"  ✓  {count[0]} Dateien aktualisiert", "ok")
-
-                    # Done
-                    _ulog("$ exec python " + " ".join(sys.argv), "cmd")
-                    _ulog("  🚀  Server wird neu gestartet…", "restart")
-
-            await asyncio.get_event_loop().run_in_executor(None, _download_and_apply)
+            # Hard-reset to remote HEAD (handles any local drift)
+            _ulog("$ git -C /repo reset --hard origin/main", "cmd")
+            rc = await _run(["git", "-C", "/repo", "reset", "--hard", "origin/main"])
+            if rc != 0:
+                raise RuntimeError(f"git reset fehlgeschlagen (exit {rc})")
+            _ulog("  ✓  Code aktualisiert", "ok")
 
             compose_dir = await asyncio.get_event_loop().run_in_executor(None, _get_compose_dir)
             if compose_dir:
-                _ulog("$ docker-compose up --build -d", "cmd")
-                proc = await asyncio.create_subprocess_exec(
-                    "docker-compose", "up", "--build", "-d",
-                    cwd=compose_dir,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.STDOUT,
-                )
-                try:
-                    async for raw in proc.stdout:
-                        line = raw.decode("utf-8", errors="replace").rstrip()
-                        if line:
-                            _ulog(line, "info")
-                    await proc.wait()
-                except Exception:
-                    pass
+                _ulog("$ docker-compose restart", "cmd")
+                rc = await _run(["docker-compose", "restart"], cwd=compose_dir)
                 _update_status["done"] = True
             else:
                 _ulog("$ exec python " + " ".join(sys.argv), "cmd")
