@@ -322,6 +322,16 @@ Bot and web dashboard run in the **same asyncio process** — no separate web se
 
 ---
 
+## A Note on This Project
+
+This code was created by Claude AI — and I know, many people roll their eyes at those words. Even so, this bot stands for a simple idea: to be there for everyone, without exception. AI is not a miracle that solves every problem — it's a tool, nothing more, but in the right hands a powerful one. And because this bot grew from a tool rather than from craft by hand, it will never cost anything. All files are open, freely accessible and freely usable by anyone.
+
+I want to be honest here: this is AI-generated, and I make no claim to have written it myself. That credit is not mine to take. I see in this a parallel to the 3D printer — once a tool that enabled hobby engineers to solve problems they previously lacked the knowledge or resources for. In the same way, artificial intelligence could give rise to a new generation of hobby programmers — people who are not computer scientists, but who still take on those small, nagging problems we all encounter in everyday life. Not out of any claim to genius, but out of the simple desire to make something better.
+
+> *— lucy_wolf*
+
+---
+
 <a name="deutsch"></a>
 # 🇩🇪 Deutsch
 
@@ -635,3 +645,13 @@ phobos-bot/
 | psutil | 5.9.8 |
 
 Bot und Web-Dashboard laufen im **selben asyncio-Prozess** — kein separater Web-Server nötig.
+
+---
+
+## Eine Anmerkung zu diesem Projekt
+
+Dieser Code wurde von Claude AI erschaffen – und ich weiß, viele rümpfen bei diesen Worten die Nase. Trotzdem steht dieser Bot für einen einfachen Gedanken: für alle da zu sein, ohne Ausnahme. Eine KI ist kein Wundermittel, das jedes Problem löst – sie ist ein Werkzeug, nichts weiter, aber in den richtigen Händen ein mächtiges. Und weil dieser Bot aus einem Werkzeug entstanden ist und nicht aus eigener Handarbeit, wird er niemals etwas kosten. Alle Dateien liegen offen, für jeden frei zugänglich, frei verwendbar.
+
+Ich will an dieser Stelle ehrlich sein: Das hier ist KI-generiert, und ich beanspruche nicht, es selbst geschrieben zu haben. Diese Ehre gebührt mir nicht. Ich sehe darin eher eine Parallele zum 3D-Drucker – einst ein Werkzeug, das Hobby-Ingenieure in die Lage versetzte, Probleme zu lösen, für die ihnen früher Wissen oder Mittel fehlten. Genauso könnte künstliche Intelligenz eine neue Generation von Hobby-Programmierern hervorbringen – Menschen, die keine Informatiker sind, aber trotzdem jene kleinen, nervigen Probleme angehen, die uns allen im Alltag begegnen. Nicht aus Anspruch auf Genialität, sondern aus dem einfachen Wunsch, etwas besser zu machen.
+
+> *— lucy_wolf*
