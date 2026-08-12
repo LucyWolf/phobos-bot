@@ -52,9 +52,11 @@
 </div>
 
 <div class="card" style="padding:0; overflow:hidden;">
-  <div style="padding:1rem 1.25rem; border-bottom:1px solid var(--border); font-size:0.95rem; font-weight:700; display:flex; align-items:center; gap:0.5rem;">
+  <div style="padding:1rem 1.25rem; border-bottom:1px solid var(--border); font-size:0.95rem; font-weight:700; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
     Alle Benutzer
     <span style="font-size:0.78rem; font-weight:400; color:var(--muted);">{{ users|length }} gesamt</span>
+    <span style="flex:1;"></span>
+    <a href="/admin/backup/all" class="btn btn-secondary" style="font-size:0.78rem;padding:0.28rem 0.7rem;">💾 Alle sichern</a>
   </div>
   <div class="table-wrap">
     <table>
@@ -114,6 +116,8 @@
                 {% if u.active %}🚫{% else %}✅{% endif %}
               </button>
             </form>
+            <a href="/admin/backup/user/{{ u.id }}" class="btn btn-secondary"
+               style="font-size:0.78rem;padding:0.25rem 0.6rem;" title="Backup herunterladen">💾</a>
             <form method="post" action="/users/delete/{{ u.id }}?next=/users" onsubmit="return confirm('Benutzer {{ u.username }} wirklich löschen?')" style="display:inline">
               <button type="submit" class="btn btn-danger">✕ Löschen</button>
             </form>
@@ -184,6 +188,23 @@
   <strong>Admin</strong> — Dashboard, Einstellungen, Benutzerverwaltung, alle Server<br>
   <strong>Moderator</strong> — Dashboard + nur zugewiesene Server (🖥 Server-Button)
 </p>
+
+<!-- ── Backup wiederherstellen ── -->
+<div class="section-label" style="margin:2rem 0 0.75rem;">💾 Backup wiederherstellen</div>
+<div class="card" style="max-width:580px;">
+  <p style="font-size:0.83rem;color:var(--muted);margin-bottom:1.1rem;">
+    Lade eine zuvor exportierte Backup-Datei hoch. Bestehende Einträge werden dabei
+    aktualisiert, neue werden hinzugefügt — nichts wird gelöscht.
+    Passwörter bestehender Benutzer bleiben unverändert.
+    Neue Benutzer erhalten das gespeicherte Passwort aus dem Backup.
+  </p>
+  <form method="post" action="/admin/backup/restore" enctype="multipart/form-data"
+        onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='⏳ Lädt…'">
+    <label>Backup-Datei (.json)</label>
+    <input type="file" name="backup_file" accept=".json,application/json" required style="margin-bottom:1rem;">
+    <button type="submit" class="btn btn-primary">📂 Backup einspielen</button>
+  </form>
+</div>
 
 <!-- ── Rollen ── -->
 <div class="section-label" style="margin:2rem 0 0.75rem;">🎭 Rollen &amp; Berechtigungen</div>
