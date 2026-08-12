@@ -4,32 +4,103 @@
 {% block page_title %}📡 Streaming-API{% endblock %}
 
 {% block content %}
-{% if saved %}<div class="alert alert-success">✅ Gespeichert.</div>{% endif %}
+{% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
 {% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
 
-<div class="card">
-  <div class="platform-header" style="display:flex;align-items:center;gap:0.6rem;font-weight:700;font-size:0.95rem;margin-bottom:1.1rem;">
-    <span style="font-size:1.3rem;">🟣</span> Twitch
+<style>
+  .api-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.25rem; margin-bottom:0.85rem; max-width:660px; }
+  .api-card-head { display:flex; align-items:center; gap:0.75rem; margin-bottom:0.85rem; }
+  .api-label { font-weight:700; font-size:0.92rem; flex:1; }
+  .api-id-badge { font-size:0.68rem; color:var(--muted); background:var(--bg); border:1px solid var(--border); border-radius:999px; padding:0.1rem 0.5rem; }
+  .api-edit-row { display:none; border-top:1px solid var(--border); margin-top:0.85rem; padding-top:0.85rem; }
+  .api-edit-row.open { display:block; }
+  .hint-link { color:var(--accent); }
+</style>
+
+<div class="section-label" style="margin-bottom:0.75rem;">🟣 Twitch API-Zugänge</div>
+<p class="hint" style="max-width:660px;margin-bottom:1.25rem;">
+  Mehrere Twitch-Apps gleichzeitig möglich. Pro Server kann unter
+  <strong>Server → Streaming</strong> ausgewählt werden, welche API verwendet wird.
+  App erstellen auf <a href="https://dev.twitch.tv/console/apps/create" target="_blank" class="hint-link">dev.twitch.tv</a>
+  (OAuth Redirect: <code>http://localhost</code>, Kategorie: Chat Bot).
+</p>
+
+{% for api in twitch_apis %}
+<div class="api-card">
+  <div class="api-card-head">
+    <span style="font-size:1.2rem;">🟣</span>
+    <span class="api-label">{{ api.label }}</span>
+    <span class="api-id-badge">#{{ api.id }}</span>
+    <button type="button" onclick="toggleApiEdit({{ api.id }})"
+            class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;">✏️ Bearbeiten</button>
+    {% if twitch_apis|length > 1 %}
+    <form method="post" action="/settings/notifications/delete/{{ api.id }}" style="margin:0"
+          onsubmit="return confirm('API «{{ api.label }}» wirklich löschen?')">
+      <button class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.5rem;">🗑</button>
+    </form>
+    {% endif %}
   </div>
-  <form method="post" action="/settings/notifications">
-    <label>Client-ID</label>
-    <input type="text" name="twitch_client_id" value="{{ twitch_client_id }}" placeholder="deine Twitch Client-ID" autocomplete="off">
-    <label>Client-Secret <span style="font-size:0.72rem;color:var(--muted)">(wird verschlüsselt gespeichert — leer lassen um beizubehalten)</span></label>
-    <input type="password" name="twitch_client_secret" placeholder="••••••••••••••••" autocomplete="off">
-    <button type="submit" class="btn btn-primary">💾 Speichern</button>
+  <div style="font-size:0.8rem;color:var(--muted);">Client-ID: <code>{{ api.client_id[:12] }}…</code></div>
+
+  <div class="api-edit-row" id="api-edit-{{ api.id }}">
+    <form method="post" action="/settings/notifications/edit/{{ api.id }}">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
+        <div>
+          <label>Bezeichnung</label>
+          <input type="text" name="label" value="{{ api.label }}" style="margin:0;">
+        </div>
+        <div>
+          <label>Client-ID</label>
+          <input type="text" name="twitch_client_id" value="{{ api.client_id }}" autocomplete="off" style="margin:0;">
+        </div>
+      </div>
+      <div style="margin-bottom:0.75rem;">
+        <label>Client-Secret <span style="font-size:0.72rem;color:var(--muted)">(leer = unverändert)</span></label>
+        <input type="password" name="twitch_client_secret" placeholder="••••••••••••" autocomplete="off" style="margin:0;">
+      </div>
+      <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">💾 Speichern</button>
+    </form>
+  </div>
+</div>
+{% else %}
+<div class="api-card" style="text-align:center;color:var(--muted);font-size:0.85rem;">
+  Noch keine Twitch-API eingetragen.
+</div>
+{% endfor %}
+
+<!-- Neue API hinzufügen -->
+<div class="api-card" style="max-width:660px;border-style:dashed;">
+  <div style="font-weight:700;font-size:0.88rem;margin-bottom:1rem;">➕ Neue Twitch-API hinzufügen</div>
+  <form method="post" action="/settings/notifications/add">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
+      <div>
+        <label>Bezeichnung</label>
+        <input type="text" name="label" placeholder="z.B. Haupt-App" style="margin:0;">
+      </div>
+      <div>
+        <label>Client-ID</label>
+        <input type="text" name="twitch_client_id" placeholder="deine Client-ID" autocomplete="off" style="margin:0;">
+      </div>
+    </div>
+    <div style="margin-bottom:0.85rem;">
+      <label>Client-Secret</label>
+      <input type="password" name="twitch_client_secret" placeholder="dein Client-Secret" autocomplete="off" style="margin:0;">
+    </div>
+    <button type="submit" class="btn btn-primary">➕ Hinzufügen</button>
   </form>
-  <p class="hint" style="margin-top:0.75rem;">
-    Twitch-App erstellen auf
-    <a href="https://dev.twitch.tv/console/apps/create" target="_blank" style="color:var(--accent)">dev.twitch.tv</a>
-    → „Register Your Application" → OAuth Redirect URL: <code>http://localhost</code> → Kategorie: „Chat Bot".<br>
-    Client-ID und Secret dann hier eintragen.
-  </p>
 </div>
 
-<div class="card" style="opacity:0.6;">
+<div class="api-card" style="max-width:660px;opacity:0.6;margin-top:1rem;">
   <div style="display:flex;align-items:center;gap:0.6rem;font-weight:700;font-size:0.95rem;margin-bottom:0.5rem;">
     <span style="font-size:1.3rem;">🔴</span> YouTube
   </div>
   <p style="font-size:0.82rem;color:var(--muted);">Kein API-Key nötig — YouTube-Benachrichtigungen funktionieren über öffentliche RSS-Feeds.</p>
 </div>
+
+<script>
+function toggleApiEdit(id) {
+  const el = document.getElementById('api-edit-' + id);
+  el.classList.toggle('open');
+}
+</script>
 {% endblock %}
