@@ -1,6 +1,20 @@
+import datetime
 import discord
 from discord.ext import commands
 from database import db_rows, db_exec, db_one
+
+
+def _apply_template(tpl: str, member: discord.Member, channel_number: int) -> str:
+    now = datetime.datetime.now()
+    return (
+        tpl
+        .replace("{user}",    member.display_name)
+        .replace("{name}",    member.name)
+        .replace("{number}",  str(channel_number))
+        .replace("{date}",    now.strftime("%d.%m.%Y"))
+        .replace("{time}",    now.strftime("%H:%M"))
+        .replace("{count}",   str(member.guild.member_count))
+    )
 
 
 class TempVoice(commands.Cog):
@@ -30,7 +44,10 @@ class TempVoice(commands.Cog):
             )
             if cfg:
                 tpl = cfg["name_template"] or "{user}'s Channel"
-                name = tpl.replace("{user}", member.display_name)
+                existing = await db_rows(
+                    "SELECT channel_id FROM temp_voice_active WHERE guild_id=?", (str(guild.id),)
+                )
+                name = _apply_template(tpl, member, len(existing) + 1)
                 limit = int(cfg["user_limit"] or 0)
                 category = (
                     guild.get_channel(int(cfg["category_id"]))
