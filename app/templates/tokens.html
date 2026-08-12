@@ -15,6 +15,9 @@
   .tok-actions { display:flex; gap:0.5rem; flex-shrink:0; }
   .tok-info { color:var(--muted); font-size:0.77rem; margin-top:0.35rem; }
   .info-box { background:rgba(124,58,237,.08); border:1px solid rgba(124,58,237,.25); border-radius:0.6rem; padding:0.9rem 1rem; max-width:680px; margin-bottom:1.25rem; font-size:0.85rem; color:var(--muted); }
+  .user-badge { display:inline-block; font-size:0.68rem; color:var(--muted); background:var(--bg); border:1px solid var(--border); border-radius:999px; padding:0.1rem 0.5rem; width:fit-content; }
+  .tok-users-edit { display:none; border-top:1px solid var(--border); margin-top:0.85rem; padding-top:0.85rem; }
+  .tok-users-edit.open { display:block; }
 </style>
 
 {% if success %}<div class="alert alert-success" style="max-width:680px;">✅ {{ success }}</div>{% endif %}
@@ -55,6 +58,10 @@
       {% if t.running %}🟢 Online{% elif t.enabled %}⚙️ Aktiviert{% else %}⏸ Deaktiviert{% endif %}
     </span>
     <div class="tok-actions">
+      {% if role == 'admin' and all_users %}
+      <button type="button" class="btn btn-secondary" style="padding:0.3rem 0.65rem;font-size:0.8rem;" title="Benutzer verwalten"
+              onclick="toggleTokUsers({{ t.id }})">👥</button>
+      {% endif %}
       <form method="post" action="/settings/tokens/toggle/{{ t.id }}" style="margin:0;">
         <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.65rem;font-size:0.8rem;" title="{% if t.enabled %}Deaktivieren{% else %}Aktivieren{% endif %}">
           {% if t.enabled %}⏸{% else %}▶{% endif %}
@@ -71,19 +78,28 @@
     &nbsp;·&nbsp; Hinzugefügt: {{ t.created_at | dt }}
   </div>
   {% if role == 'admin' and all_users %}
-  <form method="post" action="/settings/tokens/users/{{ t.id }}" style="margin-top:0.75rem;">
-    <div style="font-size:0.75rem;color:var(--muted);margin-bottom:0.35rem;font-weight:600;">👥 Zugewiesene Benutzer:</div>
-    <div style="display:flex;flex-wrap:wrap;gap:0.35rem 1.1rem;margin-bottom:0.55rem;">
-      {% for u in all_users %}
-      <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.82rem;cursor:pointer;white-space:nowrap;">
-        <input type="checkbox" name="user_ids" value="{{ u.id }}"
-               {% if t.id in token_users and u.id in token_users[t.id] %}checked{% endif %}>
-        {{ u.username }}
-      </label>
-      {% endfor %}
-    </div>
-    <button type="submit" class="btn btn-secondary" style="font-size:0.75rem;padding:0.2rem 0.6rem;">💾 Speichern</button>
-  </form>
+  {% set assigned = token_users.get(t.id, set()) %}
+  {% if assigned %}
+  <div style="display:flex;flex-direction:column;gap:0.25rem;margin-top:0.4rem;">
+    {% for u in all_users if u.id in assigned %}
+    <span class="user-badge">👤 {{ u.username }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div class="tok-users-edit" id="tok-users-{{ t.id }}">
+    <form method="post" action="/settings/tokens/users/{{ t.id }}">
+      <div style="display:flex;flex-wrap:wrap;gap:0.35rem 1.1rem;margin-bottom:0.55rem;">
+        {% for u in all_users %}
+        <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.82rem;cursor:pointer;white-space:nowrap;">
+          <input type="checkbox" name="user_ids" value="{{ u.id }}"
+                 {% if u.id in assigned %}checked{% endif %}>
+          {{ u.username }}
+        </label>
+        {% endfor %}
+      </div>
+      <button type="submit" class="btn btn-secondary" style="font-size:0.75rem;padding:0.2rem 0.6rem;">💾 Speichern</button>
+    </form>
+  </div>
   {% endif %}
 </div>
 {% endfor %}
@@ -173,6 +189,9 @@ function cancelRename(id, original) {
   document.getElementById('tok-input-' + id).value = original;
   document.getElementById('tok-name-' + id).style.display = '';
   document.getElementById('tok-edit-' + id).style.display = '';
+}
+function toggleTokUsers(id) {
+  document.getElementById('tok-users-' + id).classList.toggle('open');
 }
 </script>
 {% endblock %}
