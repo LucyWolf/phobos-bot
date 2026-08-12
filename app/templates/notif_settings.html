@@ -17,9 +17,9 @@
   .hint-link { color:var(--accent); }
 </style>
 
-<div class="section-label" style="margin-bottom:0.75rem;">🟣 Twitch API-Zugänge</div>
+<div class="section-label" style="margin-bottom:0.75rem;">🟣 Meine Twitch-API</div>
 <p class="hint" style="max-width:660px;margin-bottom:1.25rem;">
-  Mehrere Twitch-Apps gleichzeitig möglich. Pro Server kann unter
+  Jeder Benutzer verwaltet seine eigene Twitch-App. Pro Server kann unter
   <strong>Server → Streaming</strong> ausgewählt werden, welche API verwendet wird.
   App erstellen auf <a href="https://dev.twitch.tv/console/apps/create" target="_blank" class="hint-link">dev.twitch.tv</a>
   (OAuth Redirect: <code>http://localhost</code>, Kategorie: Chat Bot).
@@ -30,15 +30,14 @@
   <div class="api-card-head">
     <span style="font-size:1.2rem;">🟣</span>
     <span class="api-label">{{ api.label }}</span>
+    {% if role == 'admin' %}<span class="api-id-badge">👤 {{ api.owner_name }}</span>{% endif %}
     <span class="api-id-badge">#{{ api.id }}</span>
     <button type="button" onclick="toggleApiEdit({{ api.id }})"
             class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;">✏️ Bearbeiten</button>
-    {% if twitch_apis|length > 1 %}
     <form method="post" action="/settings/notifications/delete/{{ api.id }}" style="margin:0"
           onsubmit="return confirm('API «{{ api.label }}» wirklich löschen?')">
       <button class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.5rem;">🗑</button>
     </form>
-    {% endif %}
   </div>
   <div style="font-size:0.8rem;color:var(--muted);">Client-ID: <code>{{ api.client_id[:12] }}…</code></div>
 

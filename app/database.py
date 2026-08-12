@@ -315,6 +315,7 @@ async def init_db():
         await db.execute("""
             CREATE TABLE IF NOT EXISTS twitch_apis (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_id INTEGER,
                 label TEXT NOT NULL DEFAULT 'Standard',
                 client_id TEXT NOT NULL,
                 client_secret TEXT NOT NULL,

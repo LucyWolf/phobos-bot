@@ -2049,7 +2049,12 @@ async def notifications_page(request: Request, guild_id: str, success: str = "",
         return RedirectResponse("/servers", status_code=302)
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
     subs = await db_rows("SELECT * FROM notifications WHERE guild_id=? ORDER BY platform, target_name", (guild_id,))
-    twitch_apis = await db_rows("SELECT * FROM twitch_apis ORDER BY created_at")
+    uid = request.session.get("user_id")
+    srv_role = request.session.get("role")
+    if srv_role == "admin":
+        twitch_apis = await db_rows("SELECT * FROM twitch_apis ORDER BY created_at")
+    else:
+        twitch_apis = await db_rows("SELECT * FROM twitch_apis WHERE owner_id=? ORDER BY created_at", (uid,))
     current_api_cfg = await db_one(
         "SELECT value FROM guild_configs WHERE guild_id=? AND key='twitch_api_id'", (guild_id,)
     )
@@ -2128,7 +2133,16 @@ async def notif_settings_page(request: Request, saved: bool = False, error: str 
     if r := auth_redirect(request): return r
     if r := await perm_redirect(request, "perm_streaming"): return r
     token_set = await _token_configured()
-    twitch_apis = await db_rows("SELECT * FROM twitch_apis ORDER BY created_at")
+    uid = request.session.get("user_id")
+    role = request.session.get("role")
+    if role == "admin":
+        twitch_apis = await db_rows("SELECT * FROM twitch_apis ORDER BY owner_id, created_at")
+    else:
+        twitch_apis = await db_rows("SELECT * FROM twitch_apis WHERE owner_id=? ORDER BY created_at", (uid,))
+    # attach owner username for admin view
+    all_users_map = {u["id"]: u["username"] for u in await db_rows("SELECT id, username FROM users")}
+    for a in twitch_apis:
+        a["owner_name"] = all_users_map.get(a["owner_id"], "—")
     return templates.TemplateResponse("notif_settings.html", {
         **session(request), "request": request,
         "guilds": await _guild_list(request), "token_set": token_set,
@@ -2151,9 +2165,10 @@ async def notif_api_add(
     sec = twitch_client_secret.strip()
     if not cid or not sec:
         return RedirectResponse("/settings/notifications?error=Client-ID+und+Secret+erforderlich", status_code=302)
+    uid = request.session.get("user_id")
     await db_exec(
-        "INSERT INTO twitch_apis (label, client_id, client_secret) VALUES (?,?,?)",
-        (label.strip() or "Standard", cid, sec),
+        "INSERT INTO twitch_apis (owner_id, label, client_id, client_secret) VALUES (?,?,?,?)",
+        (uid, label.strip() or "Meine API", cid, sec),
     )
     return RedirectResponse("/settings/notifications?success=API+hinzugefügt", status_code=302)
 
@@ -2167,14 +2182,17 @@ async def notif_api_edit(
 ):
     if r := auth_redirect(request): return r
     if r := await perm_redirect(request, "perm_streaming"): return r
-    cid = twitch_client_id.strip()
-    sec = twitch_client_secret.strip()
+    uid = request.session.get("user_id")
+    role = request.session.get("role")
+    api = await db_one("SELECT * FROM twitch_apis WHERE id=?", (api_id,))
+    if not api or (role != "admin" and api["owner_id"] != uid):
+        return RedirectResponse("/settings/notifications?error=Keine+Berechtigung", status_code=302)
     if label.strip():
         await db_exec("UPDATE twitch_apis SET label=? WHERE id=?", (label.strip(), api_id))
-    if cid:
-        await db_exec("UPDATE twitch_apis SET client_id=? WHERE id=?", (cid, api_id))
-    if sec:
-        await db_exec("UPDATE twitch_apis SET client_secret=? WHERE id=?", (sec, api_id))
+    if twitch_client_id.strip():
+        await db_exec("UPDATE twitch_apis SET client_id=? WHERE id=?", (twitch_client_id.strip(), api_id))
+    if twitch_client_secret.strip():
+        await db_exec("UPDATE twitch_apis SET client_secret=? WHERE id=?", (twitch_client_secret.strip(), api_id))
     return RedirectResponse("/settings/notifications?success=API+aktualisiert", status_code=302)
 
 
@@ -2182,9 +2200,11 @@ async def notif_api_edit(
 async def notif_api_delete(request: Request, api_id: int):
     if r := auth_redirect(request): return r
     if r := await perm_redirect(request, "perm_streaming"): return r
-    count = await db_rows("SELECT id FROM twitch_apis")
-    if len(count) <= 1:
-        return RedirectResponse("/settings/notifications?error=Mindestens+eine+API+muss+vorhanden+sein", status_code=302)
+    uid = request.session.get("user_id")
+    role = request.session.get("role")
+    api = await db_one("SELECT * FROM twitch_apis WHERE id=?", (api_id,))
+    if not api or (role != "admin" and api["owner_id"] != uid):
+        return RedirectResponse("/settings/notifications?error=Keine+Berechtigung", status_code=302)
     await db_exec("DELETE FROM twitch_apis WHERE id=?", (api_id,))
     return RedirectResponse("/settings/notifications?success=API+gelöscht", status_code=302)
 
