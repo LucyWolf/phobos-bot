@@ -2054,7 +2054,13 @@ async def notifications_page(request: Request, guild_id: str, success: str = "",
     if srv_role == "admin":
         twitch_apis = await db_rows("SELECT * FROM twitch_apis ORDER BY created_at")
     else:
-        twitch_apis = await db_rows("SELECT * FROM twitch_apis WHERE owner_id=? ORDER BY created_at", (uid,))
+        twitch_apis = await db_rows(
+            """SELECT DISTINCT ta.* FROM twitch_apis ta
+               LEFT JOIN twitch_api_access taa ON taa.api_id = ta.id
+               WHERE ta.owner_id=? OR taa.user_id=?
+               ORDER BY ta.created_at""",
+            (uid, uid),
+        )
     current_api_cfg = await db_one(
         "SELECT value FROM guild_configs WHERE guild_id=? AND key='twitch_api_id'", (guild_id,)
     )
@@ -2138,18 +2144,66 @@ async def notif_settings_page(request: Request, saved: bool = False, error: str 
     if role == "admin":
         twitch_apis = await db_rows("SELECT * FROM twitch_apis ORDER BY owner_id, created_at")
     else:
-        twitch_apis = await db_rows("SELECT * FROM twitch_apis WHERE owner_id=? ORDER BY created_at", (uid,))
-    # attach owner username for admin view
+        twitch_apis = await db_rows(
+            """SELECT DISTINCT ta.* FROM twitch_apis ta
+               LEFT JOIN twitch_api_access taa ON taa.api_id = ta.id
+               WHERE ta.owner_id=? OR taa.user_id=?
+               ORDER BY ta.created_at""",
+            (uid, uid),
+        )
     all_users_map = {u["id"]: u["username"] for u in await db_rows("SELECT id, username FROM users")}
+    # attach owner name and list of users with granted access
+    access_rows = await db_rows("SELECT api_id, user_id FROM twitch_api_access")
+    access_map: dict[int, list] = {}
+    for ar in access_rows:
+        access_map.setdefault(ar["api_id"], []).append(ar["user_id"])
     for a in twitch_apis:
         a["owner_name"] = all_users_map.get(a["owner_id"], "—")
+        a["is_own"] = (a["owner_id"] == uid) or (role == "admin")
+        granted_ids = access_map.get(a["id"], [])
+        a["granted_users"] = [{"id": gid, "username": all_users_map.get(gid, str(gid))} for gid in granted_ids]
+    # users available to grant (all except self and already granted)
+    all_users = await db_rows("SELECT id, username FROM users ORDER BY username")
     return templates.TemplateResponse("notif_settings.html", {
         **session(request), "request": request,
         "guilds": await _guild_list(request), "token_set": token_set,
         "active": "notif_settings",
         "twitch_apis": twitch_apis,
+        "all_users": all_users,
         "saved": saved, "error": error, "success": success,
     })
+
+
+@web.post("/settings/notifications/{api_id}/access/add")
+async def notif_api_access_add(request: Request, api_id: int, grant_user_id: int = Form(...)):
+    if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_streaming"): return r
+    uid = request.session.get("user_id")
+    role = request.session.get("role")
+    api = await db_one("SELECT * FROM twitch_apis WHERE id=?", (api_id,))
+    if not api or (role != "admin" and api["owner_id"] != uid):
+        return RedirectResponse("/settings/notifications?error=Keine+Berechtigung", status_code=302)
+    await db_exec(
+        "INSERT OR IGNORE INTO twitch_api_access (api_id, user_id) VALUES (?,?)",
+        (api_id, grant_user_id),
+    )
+    return RedirectResponse("/settings/notifications?success=Zugriff+gewaehrt", status_code=302)
+
+
+@web.post("/settings/notifications/{api_id}/access/remove/{target_uid}")
+async def notif_api_access_remove(request: Request, api_id: int, target_uid: int):
+    if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_streaming"): return r
+    uid = request.session.get("user_id")
+    role = request.session.get("role")
+    api = await db_one("SELECT * FROM twitch_apis WHERE id=?", (api_id,))
+    if not api or (role != "admin" and api["owner_id"] != uid):
+        return RedirectResponse("/settings/notifications?error=Keine+Berechtigung", status_code=302)
+    await db_exec(
+        "DELETE FROM twitch_api_access WHERE api_id=? AND user_id=?",
+        (api_id, target_uid),
+    )
+    return RedirectResponse("/settings/notifications?success=Zugriff+entzogen", status_code=302)
 
 
 @web.post("/settings/notifications/add")

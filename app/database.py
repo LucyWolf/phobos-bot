@@ -322,6 +322,13 @@ async def init_db():
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS twitch_api_access (
+                api_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                PRIMARY KEY (api_id, user_id)
+            )
+        """)
         # Migrate legacy single Twitch credentials into twitch_apis
         try:
             old_id   = await db.execute("SELECT value FROM config WHERE key='twitch_client_id'")
