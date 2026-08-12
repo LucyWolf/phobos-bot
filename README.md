@@ -28,16 +28,18 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **Free Stuff & Deals** | Automatic free game alerts + configurable deal notifications + test button |
 | **Auto-Delete** | Automatically delete messages in selected channels after a configurable time |
 | **Temp Voice** | Join-to-Create temporary voice channels — auto-created on join, auto-deleted when empty |
+| **Scheduled Messages** | Schedule messages to be sent to any channel at a specific date and time |
+| **Birthday System** | `!geburtstag DD.MM` — daily congratulations at 8 AM, configurable channel and message |
 
 ### Web Dashboard
 
 | Section | Function |
 |---|---|
 | **Dashboard** | Bot status, connected servers, moderation statistics — personalized per user |
-| **Per Server** | Config, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Twitch, Free Stuff, Log, Temp Voice, Auto-Delete, Bot Design |
+| **Per Server** | Config, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Twitch, Free Stuff, Log, Temp Voice, Scheduled Messages, Birthdays, Auto-Delete, Bot Design |
 | **Server List** | All connected servers, invite bot |
 | **🔑 Tokens** | Manage multiple bot tokens — each token runs its own bot account, hot-reload without restart |
-| **👥 Users** | Create/delete dashboard users, assign roles and server access |
+| **👥 Users** | Create/delete dashboard users, assign roles and server access, **download & restore backups** |
 | **🎭 Roles** | Create custom roles with fine-grained permissions |
 | **📊 Bot Info** | Version, uptime, latency, CPU/RAM, hostname, OS |
 | **🔄 Updates** | Check current version, one-click update from GitHub |
@@ -54,35 +56,6 @@ Phobos supports **multiple bot accounts simultaneously**. Go to **Settings → �
 - Users can only see and manage tokens assigned to them
 - Admins see all tokens and can assign users to any token
 - Token owners automatically get access to their bot's servers
-
----
-
-## Multi-Instance (Multiple Users)
-
-Run a **completely independent second instance** for another user by adding a second service to `docker-compose.yml`:
-
-```yaml
-services:
-  bot:
-    build: ./app
-    container_name: discord-bot
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./app:/app
-      - ./data:/app/data
-
-  second-instance:
-    build: ./app
-    container_name: discord-bot-2
-    ports:
-      - "8081:8080"
-    volumes:
-      - ./app:/app
-      - ./data-2:/app/data      # separate database
-```
-
-Each instance has its own database, users, tokens and settings — completely isolated.
 
 ---
 
@@ -114,6 +87,30 @@ When a member joins the trigger channel, the bot creates a private voice channel
 ## Auto-Delete
 
 Under **Server → Auto-Delete** you can configure which channels should have their messages automatically deleted after a set time (5 min – 7 days). Changes take effect immediately without a restart.
+
+---
+
+## Scheduled Messages
+
+Under **Server → Scheduled Messages** you can schedule a message to be sent to any channel at a specific date and time. Useful for announcements, reminders or recurring events.
+
+---
+
+## Birthday System
+
+Under **Server → Birthdays** you can configure a birthday channel and a custom message. Members can register their birthday with `!geburtstag DD.MM` (or delete it with `!geburtstag löschen`). Every day at 8 AM the bot automatically congratulates members whose birthday it is — each person only once per year.
+
+---
+
+## Backup & Restore
+
+Every user can export their own data (account, bot tokens, all server configurations) as a JSON file via their **profile page**. Admins can additionally:
+
+- Download a backup for any individual user
+- Download a **full backup** of the entire system (all users, tokens, configs)
+- **Restore** any backup via file upload — existing entries are updated, new ones are added, nothing is deleted
+
+Passwords of existing accounts are never overwritten during a restore. This makes it easy to migrate to a new server or hand off a bot setup to someone else.
 
 ---
 
@@ -354,16 +351,18 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **Free Stuff & Deals** | Automatische Meldung kostenloser Spiele + konfigurierbare Angebote + Test-Button |
 | **Auto-Delete** | Nachrichten in gewählten Kanälen automatisch nach konfigurierbarer Zeit löschen |
 | **Temp Voice** | Join-to-Create temporäre Voice-Kanäle — automatisch erstellt beim Beitritt, automatisch gelöscht wenn leer |
+| **Geplante Nachrichten** | Nachrichten zu einem bestimmten Datum und Uhrzeit in jeden Kanal planen |
+| **Geburtstags-System** | `!geburtstag TT.MM` — tägliche Glückwünsche um 8 Uhr, konfigurierbarer Kanal und Text |
 
 ### Web-Dashboard
 
 | Bereich | Funktion |
 |---|---|
 | **Dashboard** | Bot-Status, verbundene Server, Moderations-Statistiken — personalisiert pro Nutzer |
-| **Pro Server** | Konfiguration, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Twitch, Free Stuff, Log, Temp Voice, Auto-Delete, Bot-Design |
+| **Pro Server** | Konfiguration, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Twitch, Free Stuff, Log, Temp Voice, Geplant, Geburtstage, Auto-Delete, Bot-Design |
 | **Server-Übersicht** | Alle verbundenen Server, Bot einladen |
 | **🔑 Tokens** | Mehrere Bot-Tokens verwalten – jeder Token startet einen eigenen Bot-Account, Hot-Reload ohne Neustart |
-| **👥 Benutzer** | Dashboard-Nutzer anlegen/löschen, Rolle und Server-Zugriff vergeben |
+| **👥 Benutzer** | Dashboard-Nutzer anlegen/löschen, Rolle und Server-Zugriff vergeben, **Backups erstellen & einspielen** |
 | **🎭 Rollen** | Eigene Rollen mit feingranularen Berechtigungen erstellen |
 | **📊 Bot-Info** | Version, Uptime, Latenz, CPU/RAM, Hostname, OS |
 | **🔄 Updates** | Aktuelle Version prüfen, One-Click-Update von GitHub |
@@ -380,35 +379,6 @@ Phobos unterstützt **mehrere Bot-Accounts gleichzeitig**. Unter **Einstellungen
 - Normale Nutzer sehen und verwalten nur ihre eigenen Tokens
 - Admins sehen alle Tokens und können Nutzer beliebigen Tokens zuweisen
 - Token-Besitzer erhalten automatisch Zugriff auf die Server ihres Bots
-
----
-
-## Multi-Instanz (Mehrere Nutzer)
-
-Für einen weiteren Nutzer kann eine **komplett eigenständige zweite Instanz** gestartet werden — einfach einen zweiten Service in `docker-compose.yml` eintragen:
-
-```yaml
-services:
-  bot:
-    build: ./app
-    container_name: discord-bot
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./app:/app
-      - ./data:/app/data
-
-  zweite-instanz:
-    build: ./app
-    container_name: discord-bot-2
-    ports:
-      - "8081:8080"
-    volumes:
-      - ./app:/app
-      - ./data-2:/app/data      # eigene Datenbank
-```
-
-Jede Instanz hat eigene Datenbank, Nutzer, Tokens und Einstellungen — vollständig isoliert.
 
 ---
 
@@ -440,6 +410,30 @@ Sobald ein Mitglied den Trigger-Kanal betritt, erstellt der Bot einen eigenen Vo
 ## Auto-Delete
 
 Unter **Server → Auto-Delete** kann festgelegt werden, in welchen Kanälen Nachrichten automatisch nach einer bestimmten Zeit (5 Min. – 7 Tage) gelöscht werden. Änderungen gelten sofort ohne Neustart.
+
+---
+
+## Geplante Nachrichten
+
+Unter **Server → Geplant** können Nachrichten für einen beliebigen Kanal zu einem bestimmten Datum und einer Uhrzeit eingeplant werden. Ideal für Ankündigungen, Erinnerungen oder regelmäßige Ereignisse.
+
+---
+
+## Geburtstags-System
+
+Unter **Server → Geburtstage** können ein Geburtstags-Kanal und ein eigener Glückwunsch-Text konfiguriert werden. Mitglieder tragen ihren Geburtstag mit `!geburtstag TT.MM` ein (oder löschen ihn mit `!geburtstag löschen`). Jeden Tag um 8 Uhr morgens gratuliert der Bot automatisch — jede Person nur einmal pro Jahr.
+
+---
+
+## Backup & Wiederherstellen
+
+Jeder Nutzer kann seine eigenen Daten (Konto, Bot-Tokens, alle Server-Konfigurationen) als JSON-Datei über die **Profilseite** exportieren. Admins können zusätzlich:
+
+- Backup eines einzelnen Nutzers herunterladen
+- **Komplett-Backup** des gesamten Systems (alle Nutzer, Tokens, Konfigurationen)
+- Beliebiges Backup per Datei-Upload **wiederherstellen** — bestehende Einträge werden aktualisiert, neue hinzugefügt, nichts wird gelöscht
+
+Passwörter bestehender Konten werden beim Einspielen nie überschrieben. So lässt sich ein Bot-Setup einfach auf einen neuen Server migrieren oder an jemand anderen weitergeben.
 
 ---
 
