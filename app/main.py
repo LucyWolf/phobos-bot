@@ -2049,16 +2049,32 @@ async def notifications_page(request: Request, guild_id: str, success: str = "",
         return RedirectResponse("/servers", status_code=302)
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
     subs = await db_rows("SELECT * FROM notifications WHERE guild_id=? ORDER BY platform, target_name", (guild_id,))
-    twitch_id = await get_config("twitch_client_id") or ""
+    twitch_apis = await db_rows("SELECT * FROM twitch_apis ORDER BY created_at")
+    current_api_cfg = await db_one(
+        "SELECT value FROM guild_configs WHERE guild_id=? AND key='twitch_api_id'", (guild_id,)
+    )
+    current_api_id = int(current_api_cfg["value"]) if current_api_cfg else (twitch_apis[0]["id"] if twitch_apis else 0)
     return templates.TemplateResponse("notifications.html", {
         **session(request), "request": request,
         "guilds": await _guild_list(request), "token_set": token_set,
         "active": f"server_{guild_id}",
         "guild_id": guild_id, "guild_name": guild.name,
         "channels": channels, "subs": subs,
-        "twitch_configured": bool(twitch_id),
+        "twitch_apis": twitch_apis,
+        "current_api_id": current_api_id,
+        "twitch_configured": bool(twitch_apis),
         "success": success, "error": error,
     })
+
+
+@web.post("/servers/{guild_id}/notifications/api")
+async def notifications_set_api(request: Request, guild_id: str, twitch_api_id: str = Form("")):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    if twitch_api_id.strip():
+        await set_guild_config(int(guild_id), "twitch_api_id", twitch_api_id.strip())
+    return RedirectResponse(f"/servers/{guild_id}/notifications?success=API+gespeichert", status_code=302)
 
 
 @web.post("/servers/{guild_id}/notifications/add")
@@ -2108,32 +2124,69 @@ async def notifications_delete(request: Request, guild_id: str, nid: int, next_u
 
 
 @web.get("/settings/notifications", response_class=HTMLResponse)
-async def notif_settings_page(request: Request, saved: bool = False, error: str = ""):
+async def notif_settings_page(request: Request, saved: bool = False, error: str = "", success: str = ""):
     if r := auth_redirect(request): return r
     if r := await perm_redirect(request, "perm_streaming"): return r
     token_set = await _token_configured()
+    twitch_apis = await db_rows("SELECT * FROM twitch_apis ORDER BY created_at")
     return templates.TemplateResponse("notif_settings.html", {
         **session(request), "request": request,
         "guilds": await _guild_list(request), "token_set": token_set,
         "active": "notif_settings",
-        "twitch_client_id": await get_config("twitch_client_id") or "",
-        "saved": saved, "error": error,
+        "twitch_apis": twitch_apis,
+        "saved": saved, "error": error, "success": success,
     })
 
 
-@web.post("/settings/notifications")
-async def notif_settings_save(
+@web.post("/settings/notifications/add")
+async def notif_api_add(
     request: Request,
+    label: str = Form("Standard"),
     twitch_client_id: str = Form(""),
     twitch_client_secret: str = Form(""),
 ):
     if r := auth_redirect(request): return r
     if r := await perm_redirect(request, "perm_streaming"): return r
-    if twitch_client_id.strip():
-        await set_config("twitch_client_id", twitch_client_id.strip())
-    if twitch_client_secret.strip():
-        await set_config("twitch_client_secret", twitch_client_secret.strip())
-    return RedirectResponse("/settings?success=Twitch-API+gespeichert", status_code=302)
+    cid = twitch_client_id.strip()
+    sec = twitch_client_secret.strip()
+    if not cid or not sec:
+        return RedirectResponse("/settings/notifications?error=Client-ID+und+Secret+erforderlich", status_code=302)
+    await db_exec(
+        "INSERT INTO twitch_apis (label, client_id, client_secret) VALUES (?,?,?)",
+        (label.strip() or "Standard", cid, sec),
+    )
+    return RedirectResponse("/settings/notifications?success=API+hinzugefügt", status_code=302)
+
+
+@web.post("/settings/notifications/edit/{api_id}")
+async def notif_api_edit(
+    request: Request, api_id: int,
+    label: str = Form(""),
+    twitch_client_id: str = Form(""),
+    twitch_client_secret: str = Form(""),
+):
+    if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_streaming"): return r
+    cid = twitch_client_id.strip()
+    sec = twitch_client_secret.strip()
+    if label.strip():
+        await db_exec("UPDATE twitch_apis SET label=? WHERE id=?", (label.strip(), api_id))
+    if cid:
+        await db_exec("UPDATE twitch_apis SET client_id=? WHERE id=?", (cid, api_id))
+    if sec:
+        await db_exec("UPDATE twitch_apis SET client_secret=? WHERE id=?", (sec, api_id))
+    return RedirectResponse("/settings/notifications?success=API+aktualisiert", status_code=302)
+
+
+@web.post("/settings/notifications/delete/{api_id}")
+async def notif_api_delete(request: Request, api_id: int):
+    if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_streaming"): return r
+    count = await db_rows("SELECT id FROM twitch_apis")
+    if len(count) <= 1:
+        return RedirectResponse("/settings/notifications?error=Mindestens+eine+API+muss+vorhanden+sein", status_code=302)
+    await db_exec("DELETE FROM twitch_apis WHERE id=?", (api_id,))
+    return RedirectResponse("/settings/notifications?success=API+gelöscht", status_code=302)
 
 
 # ── SMTP Settings ─────────────────────────────────────────────────────────────

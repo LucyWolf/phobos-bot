@@ -312,6 +312,30 @@ async def init_db():
                 PRIMARY KEY (user_id, guild_id, year)
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS twitch_apis (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                label TEXT NOT NULL DEFAULT 'Standard',
+                client_id TEXT NOT NULL,
+                client_secret TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # Migrate legacy single Twitch credentials into twitch_apis
+        try:
+            old_id   = await db.execute("SELECT value FROM config WHERE key='twitch_client_id'")
+            old_id   = await old_id.fetchone()
+            old_sec  = await db.execute("SELECT value FROM config WHERE key='twitch_client_secret'")
+            old_sec  = await old_sec.fetchone()
+            count    = await db.execute("SELECT COUNT(*) FROM twitch_apis")
+            count    = (await count.fetchone())[0]
+            if old_id and old_sec and count == 0:
+                await db.execute(
+                    "INSERT INTO twitch_apis (label, client_id, client_secret) VALUES (?,?,?)",
+                    ("Standard", old_id[0], old_sec[0]),
+                )
+        except Exception:
+            pass
         for col in [
             "ALTER TABLE tickets ADD COLUMN panel_id INTEGER",
             "ALTER TABLE freestuff_channels ADD COLUMN deal_max_price REAL",
