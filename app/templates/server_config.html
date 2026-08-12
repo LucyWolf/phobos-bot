@@ -419,28 +419,37 @@
 </div>
 
 <!-- Offene Tickets -->
-{% if ticket_list %}
 <div class="section-label" style="margin-bottom:0.5rem;">Offene Tickets</div>
+{% if ticket_list %}
 <div class="card" style="padding:0;overflow:hidden;">
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Nutzer</th><th>Kanal</th><th>Panel</th><th>Erstellt</th></tr></thead>
+      <thead><tr><th>Nutzer</th><th>Kanal</th><th>Erstellt</th><th></th></tr></thead>
       <tbody>
         {% for t in ticket_list %}
         <tr>
           <td style="font-weight:500">{{ t.username }}</td>
           <td style="color:#a78bfa">{{ t.channel_name }}</td>
-          <td style="color:var(--muted);font-size:0.8rem;">{{ t.panel_id or '—' }}</td>
           <td style="color:var(--muted);font-size:0.8rem">{{ t.created_at | dt }}</td>
+          <td style="display:flex;gap:0.4rem;align-items:center;">
+            <form method="post" action="/servers/{{ guild.id }}/tickets/{{ t.id }}/close"
+                  onsubmit="return confirm('Ticket von {{ t.username }} schließen und Kanal löschen?')" style="margin:0">
+              <button class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.55rem;">✖ Schließen</button>
+            </form>
+            <form method="post" action="/servers/{{ guild.id }}/tickets/{{ t.id }}/delete"
+                  onsubmit="return confirm('Ticket-Eintrag dauerhaft aus der Datenbank löschen?')" style="margin:0">
+              <button class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.5rem;">🗑</button>
+            </form>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
+{% else %}
+<p class="hint">Keine offenen Tickets.</p>
 {% endif %}
-
-<p class="hint" style="margin-top:1rem;">Ticket schließen: Button im Ticket-Kanal oder <code>/ticket-close</code></p>
 
 <script>
 function togglePanelEdit(id) {

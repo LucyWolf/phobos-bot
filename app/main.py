@@ -2785,6 +2785,37 @@ async def tickets_panel_unpublish(request: Request, guild_id: int, panel_id: int
     return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Panel+deaktiviert", status_code=302)
 
 
+@web.post("/servers/{guild_id}/tickets/{ticket_id}/close")
+async def ticket_close(request: Request, guild_id: int, ticket_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    ticket = await db_one("SELECT * FROM tickets WHERE id=? AND guild_id=?", (ticket_id, guild_id))
+    if ticket:
+        b = bot._bot_for_guild(guild_id)
+        if b:
+            ch = b.get_channel(ticket["channel_id"])
+            if ch:
+                try:
+                    await ch.delete(reason="Ticket via Dashboard geschlossen")
+                except Exception:
+                    pass
+        await db_exec(
+            "UPDATE tickets SET status='closed' WHERE id=? AND guild_id=?",
+            (ticket_id, guild_id),
+        )
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Ticket+geschlossen", status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/{ticket_id}/delete")
+async def ticket_delete(request: Request, guild_id: int, ticket_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    await db_exec("DELETE FROM tickets WHERE id=? AND guild_id=?", (ticket_id, guild_id))
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Ticket+gelöscht", status_code=302)
+
+
 # ── Server User Access ────────────────────────────────────────────────────────
 
 @web.post("/servers/{guild_id}/users/{user_id}/grant")
