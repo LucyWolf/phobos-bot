@@ -2166,11 +2166,14 @@ async def notif_api_add(
     if not cid or not sec:
         return RedirectResponse("/settings/notifications?error=Client-ID+und+Secret+erforderlich", status_code=302)
     uid = request.session.get("user_id")
-    await db_exec(
-        "INSERT INTO twitch_apis (owner_id, label, client_id, client_secret) VALUES (?,?,?,?)",
-        (uid, label.strip() or "Meine API", cid, sec),
-    )
-    return RedirectResponse("/settings/notifications?success=API+hinzugefügt", status_code=302)
+    try:
+        await db_exec(
+            "INSERT INTO twitch_apis (owner_id, label, client_id, client_secret) VALUES (?,?,?,?)",
+            (uid, label.strip() or "Meine API", cid, sec),
+        )
+    except Exception as e:
+        return RedirectResponse(f"/settings/notifications?error={str(e)}", status_code=302)
+    return RedirectResponse("/settings/notifications?success=API+hinzugefuegt", status_code=302)
 
 
 @web.post("/settings/notifications/edit/{api_id}")
