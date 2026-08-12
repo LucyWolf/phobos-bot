@@ -354,6 +354,7 @@ async def init_db():
             "ALTER TABLE roles ADD COLUMN perm_updates INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE roles ADD COLUMN perm_server INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE twitch_apis ADD COLUMN owner_id INTEGER",
             """CREATE TABLE IF NOT EXISTS bot_token_users (
                 token_id INTEGER NOT NULL,
                 user_id  INTEGER NOT NULL,
