@@ -1,7 +1,5 @@
 # 🛡️ Phobos Bot
 
-> Developed by **lucy_wolf** in collaboration with **Claude AI**
-
 🇬🇧 [English](#english) &nbsp;|&nbsp; 🇩🇪 [Deutsch](#deutsch)
 
 ---
