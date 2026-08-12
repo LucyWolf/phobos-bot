@@ -39,12 +39,11 @@
       <button class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.5rem;">🗑</button>
     </form>
   </div>
-  <div style="font-size:0.8rem;color:var(--muted);margin-bottom:{% if api.granted_users %}0.4rem{% else %}0{% endif %};">Client-ID: <code>{{ api.client_id[:12] }}…</code></div>
+  <div style="font-size:0.8rem;color:var(--muted);">Client-ID: <code>{{ api.client_id[:12] }}…</code></div>
   {% if api.granted_users %}
-  <div style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-top:0.3rem;">
-    <span style="font-size:0.72rem;color:var(--muted);">Freigegeben für:</span>
-    {% for gu in api.granted_users %}
-    <span class="api-id-badge">👤 {{ gu.username }}</span>
+  <div style="display:flex;flex-direction:column;gap:0.25rem;margin-top:0.35rem;">
+    {% for gu in api.granted_users[:5] %}
+    <span class="api-id-badge" style="width:fit-content;">👤 {{ gu.username }}</span>
     {% endfor %}
   </div>
   {% endif %}
