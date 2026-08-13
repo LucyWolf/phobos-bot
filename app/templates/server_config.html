@@ -748,7 +748,14 @@ document.addEventListener('click', function(e) {
       </div>
     </div>
     <label style="font-size:0.82rem;">Nachricht</label>
-    <textarea name="message" rows="3" placeholder="Nachrichtentext…" required style="margin-bottom:0.75rem;"></textarea>
+    <textarea name="message" rows="4" placeholder="Nachrichtentext…" required
+              style="margin-bottom:0.75rem;width:100%;box-sizing:border-box;
+                     background:var(--bg);color:var(--text);border:1px solid var(--border);
+                     border-radius:0.5rem;padding:0.65rem 0.75rem;font-size:0.88rem;
+                     line-height:1.55;resize:vertical;font-family:inherit;
+                     transition:border-color 0.15s;outline:none;"
+              onfocus="this.style.borderColor='var(--accent)'"
+              onblur="this.style.borderColor='var(--border)'"></textarea>
     <button type="submit" class="btn btn-primary">📅 Planen</button>
   </form>
 </div>
