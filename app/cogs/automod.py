@@ -41,7 +41,10 @@ class AutoMod(commands.Cog):
         history.append(now)
         self._spam[key] = history
         if len(history) >= threshold:
-            await message.delete()
+            try:
+                await message.delete()
+            except Exception:
+                pass
             await self._punish(message, "Anti-Spam: zu viele Nachrichten")
             self._spam[key] = []
             return True
@@ -52,7 +55,10 @@ class AutoMod(commands.Cog):
         if enabled != "1":
             return False
         if URL_RE.search(message.content):
-            await message.delete()
+            try:
+                await message.delete()
+            except Exception:
+                pass
             await self._punish(message, "Auto-Mod: Links nicht erlaubt")
             return True
         return False
@@ -65,7 +71,10 @@ class AutoMod(commands.Cog):
         content = message.content.lower()
         for word in banned:
             if word in content:
-                await message.delete()
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
                 await self._punish(message, f"Auto-Mod: verbotenes Wort")
                 return
 

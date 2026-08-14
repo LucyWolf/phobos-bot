@@ -113,11 +113,14 @@ class Notifications(commands.Cog):
                         if is_live and not was_live:
                             ch = self.bot.get_channel(int(row["discord_channel_id"]))
                             if ch:
-                                await self._send_embed(ch, live_map[uname], row["custom_message"])
-                                await db_exec(
-                                    "UPDATE notifications SET live=1, last_id=? WHERE id=?",
-                                    (live_map[uname]["id"], row["id"]),
-                                )
+                                try:
+                                    await self._send_embed(ch, live_map[uname], row["custom_message"])
+                                    await db_exec(
+                                        "UPDATE notifications SET live=1, last_id=? WHERE id=?",
+                                        (live_map[uname]["id"], row["id"]),
+                                    )
+                                except Exception as e:
+                                    print(f"[Notifications] send error for {uname}: {e}")
                         elif not is_live and was_live:
                             await db_exec("UPDATE notifications SET live=0 WHERE id=?", (row["id"],))
 
