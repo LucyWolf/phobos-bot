@@ -49,7 +49,10 @@ class Notifications(commands.Cog):
             apis = await db_rows("SELECT * FROM twitch_apis")
             if not apis:
                 return
-            default_api_id = apis[0]["id"]
+            # Only auto-select when unambiguous — with multiple APIs registered by
+            # different owners, a guild without an explicit choice must not silently
+            # piggyback on someone else's Twitch credentials.
+            default_api_id = apis[0]["id"] if len(apis) == 1 else None
             api_map = {a["id"]: a for a in apis}
 
             rows = await db_rows("SELECT * FROM notifications WHERE platform='twitch'")
@@ -57,7 +60,7 @@ class Notifications(commands.Cog):
                 return
 
             # resolve guild → api_id
-            guild_api: dict[str, int] = {}
+            guild_api: dict[str, int | None] = {}
             for row in rows:
                 gid = str(row["guild_id"])
                 if gid not in guild_api:
@@ -67,10 +70,12 @@ class Notifications(commands.Cog):
                     )
                     guild_api[gid] = int(cfg["value"]) if cfg else default_api_id
 
-            # group rows by api_id
+            # group rows by api_id (skip guilds with no resolvable API)
             by_api: dict[int, list] = {}
             for row in rows:
                 aid = guild_api.get(str(row["guild_id"]), default_api_id)
+                if aid is None:
+                    continue
                 by_api.setdefault(aid, []).append(row)
 
             for api_id, api_rows in by_api.items():

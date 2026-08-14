@@ -22,11 +22,15 @@ class ReactionRoles(commands.Cog):
         if not msg:
             await interaction.response.send_message("Nachricht nicht gefunden.", ephemeral=True)
             return
+        try:
+            await msg.add_reaction(emoji)
+        except (discord.HTTPException, discord.NotFound):
+            await interaction.response.send_message("Ungültiger Emoji.", ephemeral=True)
+            return
         await db_exec(
             "INSERT INTO reaction_roles (guild_id,channel_id,message_id,emoji,role_id) VALUES (?,?,?,?,?)",
             (interaction.guild_id, channel_id, int(message_id), emoji, role.id),
         )
-        await msg.add_reaction(emoji)
         await interaction.response.send_message(f"Reaction Role hinzugefügt: {emoji} → {role.mention}", ephemeral=True)
 
     @app_commands.command(name="reactionrole-remove", description="Reaction Role entfernen")
@@ -75,10 +79,13 @@ class ReactionRoles(commands.Cog):
         role = guild.get_role(row[0]["role_id"])
         if not member or not role:
             return
-        if add:
-            await member.add_roles(role, reason="Reaction Role")
-        else:
-            await member.remove_roles(role, reason="Reaction Role")
+        try:
+            if add:
+                await member.add_roles(role, reason="Reaction Role")
+            else:
+                await member.remove_roles(role, reason="Reaction Role")
+        except discord.HTTPException:
+            pass
 
 
 async def setup(bot):

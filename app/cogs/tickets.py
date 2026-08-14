@@ -16,6 +16,10 @@ class CloseTicketView(ui.View):
 
 
 class PanelButton(ui.Button):
+    # In-Flight-Guard gegen Doppelklick/retried Interaction — sonst können zwei
+    # gleichzeitige Callbacks beide "kein offenes Ticket" lesen und je einen Channel anlegen.
+    _in_progress: set = set()
+
     def __init__(self, panel_id: int, label: str = "Ticket öffnen", emoji: str = "🎫"):
         super().__init__(
             label=label,
@@ -26,12 +30,24 @@ class PanelButton(ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         panel_id = int(self.custom_id.split(":")[1])
+        guild = interaction.guild
+        lock_key = (guild.id, interaction.user.id, panel_id)
+        if lock_key in PanelButton._in_progress:
+            await interaction.response.send_message(
+                "Dein Ticket wird bereits erstellt, bitte warten.", ephemeral=True
+            )
+            return
+        PanelButton._in_progress.add(lock_key)
+        try:
+            await self._create_ticket(interaction, guild, panel_id)
+        finally:
+            PanelButton._in_progress.discard(lock_key)
+
+    async def _create_ticket(self, interaction: discord.Interaction, guild: discord.Guild, panel_id: int):
         panel = await db_one("SELECT * FROM ticket_panels WHERE id=?", (panel_id,))
         if not panel:
             await interaction.response.send_message("Panel nicht gefunden.", ephemeral=True)
             return
-
-        guild = interaction.guild
 
         existing = await db_one(
             "SELECT channel_id FROM tickets WHERE guild_id=? AND user_id=? AND panel_id=? AND status='open'",
