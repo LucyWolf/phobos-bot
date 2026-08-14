@@ -16,18 +16,3 @@ services:
     mem_limit: ${MEM_LIMIT:-1g}
     memswap_limit: ${MEM_LIMIT:-1g}
 
-  SecondBot:
-    build: ./app
-    container_name: phobos-bot-SecondBot
-    restart: unless-stopped
-    ports:
-      - "8081:8080"
-    volumes:
-      - ./app:/app
-      - ./data-SecondBot:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - TZ=Europe/Berlin
-      - PYTHONUNBUFFERED=1
-    mem_limit: ${MEM_LIMIT:-1g}
-    memswap_limit: ${MEM_LIMIT:-1g}
