@@ -94,8 +94,8 @@ docker-compose restart
 - `automod.py` — Spam/Link/Wort-Filter (delete in try/except)
 - `reaction_roles.py`, `custom_commands.py`, `temp_voice.py`, `logging_cog.py`
 
-## Bekannte fixes (v1.3.7, alle committed)
-Über 4 Review-Runden wurden 26 Bugs gefixt:
+## Bekannte fixes (v1.3.8, alle committed)
+Über 5 Review-Runden wurden 30 Bugs gefixt:
 - API-Endpunkte abgesichert (Auth/Admin)
 - Backup-Datenlecks geschlossen
 - Token-Management-Berechtigungen
@@ -106,6 +106,10 @@ docker-compose restart
 - perm_server funktioniert jetzt korrekt
 - Avatar-Endpoint gesichert
 - Alle int()-Casts abgesichert
+- automod: try/except um kick/ban/timeout
+- giveaways: __import__-Hack durch db_insert ersetzt
+- roles_page URL-Bug (? statt & als zweiter Parameter)
+- server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
-1.3.7
+1.3.8
