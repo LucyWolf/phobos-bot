@@ -86,19 +86,23 @@ class AutoMod(commands.Cog):
             await member.send(f"⚠️ **{message.guild.name}**: {reason}")
         except Exception:
             pass
-        if action == "warn":
-            await db_exec(
-                "INSERT INTO warnings (user_id,guild_id,moderator_id,reason) VALUES (?,?,?,?)",
-                (member.id, message.guild.id, bot_member.id, reason),
-            )
-        elif action == "timeout":
-            import datetime
-            until = discord.utils.utcnow() + datetime.timedelta(minutes=5)
-            await member.timeout(until, reason=reason)
-        elif action == "kick":
-            await member.kick(reason=reason)
-        elif action == "ban":
-            await member.ban(reason=reason)
+        try:
+            if action == "warn":
+                await db_exec(
+                    "INSERT INTO warnings (user_id,guild_id,moderator_id,reason) VALUES (?,?,?,?)",
+                    (member.id, message.guild.id, bot_member.id, reason),
+                )
+            elif action == "timeout":
+                import datetime
+                until = discord.utils.utcnow() + datetime.timedelta(minutes=5)
+                await member.timeout(until, reason=reason)
+            elif action == "kick":
+                await member.kick(reason=reason)
+            elif action == "ban":
+                await member.ban(reason=reason)
+        except Exception as e:
+            print(f"[AutoMod] Konnte {action} nicht ausführen auf {member}: {e}")
+            return
         await log_mod_action(f"automod:{action}", member, bot_member, message.guild.id, reason)
 
 

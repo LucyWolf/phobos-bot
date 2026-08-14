@@ -4,7 +4,7 @@ import random
 import discord
 from discord import app_commands
 from discord.ext import commands
-from database import db_exec, db_exec_rowcount, db_one, db_rows
+from database import db_exec, db_exec_rowcount, db_insert, db_one, db_rows
 
 
 GIVEAWAY_EMOJI = "🎉"
@@ -94,13 +94,10 @@ class Giveaways(commands.Cog):
         msg = await interaction.channel.send(embed=embed)
         await msg.add_reaction(GIVEAWAY_EMOJI)
 
-        async with __import__("aiosqlite").connect(__import__("pathlib").Path("/app/data/phobos.db")) as db:
-            cur = await db.execute(
-                "INSERT INTO giveaways (guild_id,channel_id,message_id,prize,winners,ends_at,created_by) VALUES (?,?,?,?,?,?,?)",
-                (interaction.guild_id, interaction.channel_id, msg.id, prize, winners, ends_at.isoformat(), interaction.user.id),
-            )
-            await db.commit()
-            gid = cur.lastrowid
+        gid = await db_insert(
+            "INSERT INTO giveaways (guild_id,channel_id,message_id,prize,winners,ends_at,created_by) VALUES (?,?,?,?,?,?,?)",
+            (interaction.guild_id, interaction.channel_id, msg.id, prize, winners, ends_at.isoformat(), interaction.user.id),
+        )
 
         g = await db_one("SELECT * FROM giveaways WHERE id=?", (gid,))
         self._schedule(g)
