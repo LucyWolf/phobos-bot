@@ -19,13 +19,17 @@ class Scheduler(commands.Cog):
             "SELECT * FROM scheduled_messages WHERE sent=0 AND send_at <= ?", (now,)
         )
         for row in rows:
-            ch = self.bot.get_channel(int(row["channel_id"]))
-            if ch:
-                try:
-                    await ch.send(row["message"])
-                    await db_exec("UPDATE scheduled_messages SET sent=1 WHERE id=?", (row["id"],))
-                except Exception:
-                    pass
+            try:
+                ch = self.bot.get_channel(int(row["channel_id"]))
+            except (ValueError, TypeError):
+                continue
+            if not ch:
+                continue
+            try:
+                await ch.send(row["message"])
+                await db_exec("UPDATE scheduled_messages SET sent=1 WHERE id=?", (row["id"],))
+            except Exception:
+                pass
 
     @_check.before_loop
     async def _before(self):

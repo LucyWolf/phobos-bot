@@ -94,8 +94,17 @@ docker-compose restart
 - `automod.py` — Spam/Link/Wort-Filter (delete in try/except)
 - `reaction_roles.py`, `custom_commands.py`, `temp_voice.py`, `logging_cog.py`
 
-## Bekannte fixes (v1.3.8, alle committed)
-Über 5 Review-Runden wurden 30 Bugs gefixt:
+## Bekannte fixes (v1.3.9, alle committed)
+Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
+- `/bot/design` (POST) änderte global Namen/Avatar des Bots ohne `perm_settings`-Check
+- Token rename/toggle/delete prüften `perm_tokens` nicht (nur Zuweisung)
+- Twitch-Notifications fielen ohne explizite Auswahl auf eine beliebige fremde API zurück
+- `!`-alleine als Nachricht crashte custom_commands (IndexError)
+- Reaction-Role-DB-Eintrag wurde vor der Discord-Reaction angelegt (verwaiste Mappings bei ungültigem Emoji)
+- Ticket-Panel-Button: Doppelklick/retried Interaction konnte zwei Ticket-Channels erzeugen (In-Flight-Guard ergänzt)
+- Scheduler: nicht-numerische channel_id (z.B. aus Backup-Restore) konnte den `@tasks.loop` dauerhaft stoppen
+
+Über 5 vorherige Review-Runden wurden 30 Bugs gefixt (v1.3.4–1.3.8):
 - API-Endpunkte abgesichert (Auth/Admin)
 - Backup-Datenlecks geschlossen
 - Token-Management-Berechtigungen
@@ -112,4 +121,4 @@ docker-compose restart
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
-1.3.8
+1.3.9

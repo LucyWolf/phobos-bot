@@ -12,22 +12,34 @@ class Moderation(commands.Cog):
     @app_commands.command(name="kick", description="Ein Mitglied kicken")
     @app_commands.default_permissions(kick_members=True)
     async def kick(self, interaction: discord.Interaction, member: discord.Member, reason: str = "Kein Grund angegeben"):
-        await member.kick(reason=reason)
+        try:
+            await member.kick(reason=reason)
+        except discord.HTTPException as e:
+            await interaction.response.send_message(f"Kick fehlgeschlagen: {e}", ephemeral=True)
+            return
         await log_mod_action("kick", member, interaction.user, interaction.guild_id, reason)
         await interaction.response.send_message(f"{member.mention} wurde gekickt. Grund: {reason}", ephemeral=True)
 
     @app_commands.command(name="ban", description="Ein Mitglied bannen")
     @app_commands.default_permissions(ban_members=True)
     async def ban(self, interaction: discord.Interaction, member: discord.Member, reason: str = "Kein Grund angegeben"):
-        await member.ban(reason=reason)
+        try:
+            await member.ban(reason=reason)
+        except discord.HTTPException as e:
+            await interaction.response.send_message(f"Bann fehlgeschlagen: {e}", ephemeral=True)
+            return
         await log_mod_action("ban", member, interaction.user, interaction.guild_id, reason)
         await interaction.response.send_message(f"{member.mention} wurde gebannt. Grund: {reason}", ephemeral=True)
 
     @app_commands.command(name="unban", description="User anhand ID entbannen")
     @app_commands.default_permissions(ban_members=True)
     async def unban(self, interaction: discord.Interaction, user_id: str, reason: str = "Kein Grund angegeben"):
-        user = await self.bot.fetch_user(int(user_id))
-        await interaction.guild.unban(user, reason=reason)
+        try:
+            user = await self.bot.fetch_user(int(user_id))
+            await interaction.guild.unban(user, reason=reason)
+        except (discord.HTTPException, ValueError) as e:
+            await interaction.response.send_message(f"Entbannen fehlgeschlagen: {e}", ephemeral=True)
+            return
         await log_mod_action("unban", user, interaction.user, interaction.guild_id, reason)
         await interaction.response.send_message(f"{user} wurde entbannt.", ephemeral=True)
 
@@ -35,7 +47,11 @@ class Moderation(commands.Cog):
     @app_commands.default_permissions(moderate_members=True)
     async def timeout(self, interaction: discord.Interaction, member: discord.Member, minutes: int, reason: str = "Kein Grund angegeben"):
         until = discord.utils.utcnow() + datetime.timedelta(minutes=minutes)
-        await member.timeout(until, reason=reason)
+        try:
+            await member.timeout(until, reason=reason)
+        except discord.HTTPException as e:
+            await interaction.response.send_message(f"Timeout fehlgeschlagen: {e}", ephemeral=True)
+            return
         await log_mod_action("timeout", member, interaction.user, interaction.guild_id, reason)
         await interaction.response.send_message(f"{member.mention} für {minutes} Min. getimeouted.", ephemeral=True)
 

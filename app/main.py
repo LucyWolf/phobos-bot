@@ -286,9 +286,38 @@ class TZMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class SessionValidityMiddleware(BaseHTTPMiddleware):
+    """Re-checks role/active status from the DB on every request — otherwise a
+    deactivated or demoted user keeps full access for the rest of their
+    (up to 14 day) session cookie lifetime."""
+    async def dispatch(self, request: Request, call_next):
+        try:
+            uid = request.session.get("user_id")
+        except Exception:
+            uid = None
+        if uid:
+            row = await db_one("SELECT role, active FROM users WHERE id=?", (uid,))
+            if not row or not row.get("active", 1):
+                request.session.clear()
+            elif row["role"] != request.session.get("role"):
+                request.session["role"] = row["role"]
+                if row["role"] == "admin":
+                    for p in PERM_COLS:
+                        request.session[p] = True
+                else:
+                    custom = await db_one(
+                        "SELECT r.* FROM roles r JOIN users u ON r.id=u.custom_role_id WHERE u.id=?",
+                        (uid,),
+                    )
+                    for p in PERM_COLS:
+                        request.session[p] = bool(custom.get(p, 0)) if custom else False
+        return await call_next(request)
+
+
 web = FastAPI()
-# TZMiddleware added first → inner (runs after SessionMiddleware populates session)
+# TZMiddleware/SessionValidityMiddleware added first → inner (run after SessionMiddleware populates session)
 web.add_middleware(TZMiddleware)
+web.add_middleware(SessionValidityMiddleware)
 web.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="phobos_session")
 templates = Jinja2Templates(directory="templates")
 templates.env.filters["dt"] = _fmt_dt
@@ -1341,6 +1370,7 @@ async def bot_design_save(
     avatar: UploadFile = File(None),
 ):
     if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_settings"): return r
     target = bot._bot_for_guild(int(guild_id)) if guild_id else None
     if target is None:
         ready = bot._ready_bots()
@@ -2365,6 +2395,7 @@ async def tokens_set_users(request: Request, token_id: int):
 @web.post("/settings/tokens/delete/{token_id}")
 async def tokens_delete(request: Request, token_id: int):
     if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_tokens"): return r
     is_admin = request.session.get("role") == "admin"
     uid = request.session.get("user_id")
     allowed = is_admin
@@ -2383,6 +2414,7 @@ async def tokens_delete(request: Request, token_id: int):
 @web.post("/settings/tokens/rename/{token_id}")
 async def tokens_rename(request: Request, token_id: int):
     if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_tokens"): return r
     form = await request.form()
     label = (form.get("label") or "").strip()
     if not label:
@@ -2404,6 +2436,7 @@ async def tokens_rename(request: Request, token_id: int):
 @web.post("/settings/tokens/toggle/{token_id}")
 async def tokens_toggle(request: Request, token_id: int):
     if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_tokens"): return r
     is_admin = request.session.get("role") == "admin"
     uid = request.session.get("user_id")
     allowed = is_admin

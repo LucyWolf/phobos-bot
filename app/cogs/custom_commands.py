@@ -15,7 +15,10 @@ class CustomCommands(commands.Cog):
         content = message.content.strip()
         if not content.startswith("!"):
             return
-        trigger = content[1:].split()[0].lower()
+        parts = content[1:].split()
+        if not parts:
+            return
+        trigger = parts[0].lower()
         row = await db_rows(
             "SELECT response FROM custom_commands WHERE guild_id=? AND trigger=?",
             (message.guild.id, trigger),
