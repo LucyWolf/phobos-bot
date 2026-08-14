@@ -2438,7 +2438,11 @@ async def users_set_email(request: Request, user_id: int, email_addr: str = Form
 @web.get("/roles", response_class=HTMLResponse)
 async def roles_page(request: Request, success: str = "", error: str = ""):
     if r := admin_redirect(request): return r
-    return RedirectResponse(f"/users{'?success=' + success if success else ''}{'?error=' + error if error else ''}", status_code=302)
+    if success:
+        return RedirectResponse(f"/users?success={urllib.parse.quote(success)}", status_code=302)
+    if error:
+        return RedirectResponse(f"/users?error={urllib.parse.quote(error)}", status_code=302)
+    return RedirectResponse("/users", status_code=302)
 
 
 @web.post("/roles/create")
@@ -2610,6 +2614,7 @@ async def server_config(
     request: Request, guild_id: int,
     saved: bool = False, tab: str = "config", error: str = "", success: str = "",
 ):
+    if r := auth_redirect(request): return r
     guild_ok = await _guild_access(request, guild_id)
     has_server_perm = await has_perm(request, "perm_server")
     if not guild_ok and not has_server_perm:
@@ -2733,6 +2738,7 @@ async def server_config(
 
 @web.post("/servers/{guild_id}")
 async def server_config_save(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
     guild_ok = await _guild_access(request, guild_id)
     if not guild_ok and not await has_perm(request, "perm_server"):
         return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
