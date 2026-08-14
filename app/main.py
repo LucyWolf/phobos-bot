@@ -685,11 +685,8 @@ async def _build_user_backup(target_user_id: int, exported_by: str) -> dict:
         "user_guild_permissions": await db_rows(
             "SELECT * FROM user_guild_permissions WHERE user_id=?", (target_user_id,)
         ),
-        "guild_configs": await db_rows("SELECT * FROM guild_configs"),
         "scheduled_messages": scheduled,
     }
-    for tbl in _BACKUP_FEATURE_TABLES:
-        data[tbl] = await db_rows(f"SELECT * FROM {tbl}")
     return data
 
 
@@ -2381,13 +2378,14 @@ async def tokens_rename(request: Request, token_id: int):
     uid = request.session.get("user_id")
     if is_admin:
         await db_exec("UPDATE bot_tokens SET label=? WHERE id=?", (label, token_id))
-    else:
-        assigned = await db_one(
-            "SELECT 1 FROM bot_token_users WHERE token_id=? AND user_id=?", (token_id, uid)
-        )
-        if assigned:
-            await db_exec("UPDATE bot_tokens SET label=? WHERE id=?", (label, token_id))
-    return RedirectResponse("/settings/tokens?success=Bezeichnung+gespeichert", status_code=302)
+        return RedirectResponse("/settings/tokens?success=Bezeichnung+gespeichert", status_code=302)
+    assigned = await db_one(
+        "SELECT 1 FROM bot_token_users WHERE token_id=? AND user_id=?", (token_id, uid)
+    )
+    if assigned:
+        await db_exec("UPDATE bot_tokens SET label=? WHERE id=?", (label, token_id))
+        return RedirectResponse("/settings/tokens?success=Bezeichnung+gespeichert", status_code=302)
+    return RedirectResponse("/settings/tokens?error=Keine+Berechtigung", status_code=302)
 
 
 @web.post("/settings/tokens/toggle/{token_id}")
@@ -2409,7 +2407,8 @@ async def tokens_toggle(request: Request, token_id: int):
                 asyncio.create_task(_start_bot_by_id(token_id))
             else:
                 await _stop_bot(token_id)
-    return RedirectResponse("/settings/tokens?success=Status+geändert.", status_code=302)
+        return RedirectResponse("/settings/tokens?success=Status+geändert.", status_code=302)
+    return RedirectResponse("/settings/tokens?error=Keine+Berechtigung", status_code=302)
 
 
 # ── User Email ─────────────────────────────────────────────────────────────────
@@ -2984,7 +2983,7 @@ async def giveaway_start_web(
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
     channel = bot.get_channel(int(channel_id))
-    if not channel:
+    if not channel or channel.guild.id != guild_id:
         return RedirectResponse(
             f"/servers/{guild_id}?tab=giveaways&error=Kanal+nicht+gefunden", status_code=302
         )
@@ -3027,6 +3026,9 @@ async def giveaway_end_web(request: Request, guild_id: int, gid: int):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
+    g = await db_one("SELECT id FROM giveaways WHERE id=? AND guild_id=?", (gid, guild_id))
+    if not g:
+        return RedirectResponse(f"/servers/{guild_id}?tab=giveaways&error=Giveaway+nicht+gefunden", status_code=302)
     cog = bot.cogs.get("Giveaways")
     if cog:
         await cog._end_giveaway(gid)

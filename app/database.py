@@ -32,6 +32,13 @@ async def db_exec(query: str, params: tuple = ()):
         await db.commit()
 
 
+async def db_exec_rowcount(query: str, params: tuple = ()) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(query, params)
+        await db.commit()
+        return cur.rowcount
+
+
 async def db_insert(query: str, params: tuple = ()) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(query, params)

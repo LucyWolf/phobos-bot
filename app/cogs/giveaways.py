@@ -4,7 +4,7 @@ import random
 import discord
 from discord import app_commands
 from discord.ext import commands
-from database import db_exec, db_one, db_rows
+from database import db_exec, db_exec_rowcount, db_one, db_rows
 
 
 GIVEAWAY_EMOJI = "🎉"
@@ -38,10 +38,13 @@ class Giveaways(commands.Cog):
 
     async def _end_giveaway(self, giveaway_id: int):
         self._tasks.pop(giveaway_id, None)
-        g = await db_one("SELECT * FROM giveaways WHERE id=? AND ended=0", (giveaway_id,))
-        if not g:
+        # Atomisch auf ended=1 setzen — liefert 0 zurück wenn schon beendet
+        rows_updated = await db_exec_rowcount(
+            "UPDATE giveaways SET ended=1 WHERE id=? AND ended=0", (giveaway_id,)
+        )
+        if rows_updated == 0:
             return
-        await db_exec("UPDATE giveaways SET ended=1 WHERE id=?", (giveaway_id,))
+        g = await db_one("SELECT * FROM giveaways WHERE id=?", (giveaway_id,))
         channel = self.bot.get_channel(g["channel_id"])
         if not channel:
             return

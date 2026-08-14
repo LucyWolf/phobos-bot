@@ -109,12 +109,12 @@ class FreeStuff(commands.Cog):
                             continue
                         try:
                             await self._send_embed(ch_free, game, is_deal=False)
+                            await db_exec(
+                                "INSERT OR IGNORE INTO freestuff_posted (guild_id,game_id,platform) VALUES (?,?,?)",
+                                (guild_id, game["id"], game["platform"]),
+                            )
                         except Exception as e:
                             print(f"[FreeStuff] send error: {e}")
-                        await db_exec(
-                            "INSERT OR IGNORE INTO freestuff_posted (guild_id,game_id,platform) VALUES (?,?,?)",
-                            (guild_id, game["id"], game["platform"]),
-                        )
 
                 # ── Deals ─────────────────────────────────────────────────
                 max_price = cfg.get("deal_max_price")
@@ -135,12 +135,12 @@ class FreeStuff(commands.Cog):
                             continue
                         try:
                             await self._send_embed(ch_deals, game, is_deal=True)
+                            await db_exec(
+                                "INSERT OR IGNORE INTO freestuff_posted (guild_id,game_id,platform) VALUES (?,?,?)",
+                                (guild_id, deal_key, game["platform"]),
+                            )
                         except Exception as e:
                             print(f"[FreeStuff] deal send error: {e}")
-                        await db_exec(
-                            "INSERT OR IGNORE INTO freestuff_posted (guild_id,game_id,platform) VALUES (?,?,?)",
-                            (guild_id, deal_key, game["platform"]),
-                        )
 
         except Exception as e:
             print(f"[FreeStuff] Loop error: {e}")

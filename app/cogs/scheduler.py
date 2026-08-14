@@ -23,9 +23,9 @@ class Scheduler(commands.Cog):
             if ch:
                 try:
                     await ch.send(row["message"])
+                    await db_exec("UPDATE scheduled_messages SET sent=1 WHERE id=?", (row["id"],))
                 except Exception:
                     pass
-            await db_exec("UPDATE scheduled_messages SET sent=1 WHERE id=?", (row["id"],))
 
     @_check.before_loop
     async def _before(self):
