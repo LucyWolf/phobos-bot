@@ -81,9 +81,10 @@ class Leveling(commands.Cog):
             await interaction.response.send_message(f"{member.mention} hat noch keine XP.", ephemeral=True)
             return
         needed = xp_for_level(row["level"])
+        xp_in_level = row["xp"] - sum(xp_for_level(i) for i in range(row["level"]))
         embed = discord.Embed(title=f"Rang von {member.display_name}", color=0x7c3aed)
         embed.add_field(name="Level", value=str(row["level"]))
-        embed.add_field(name="XP", value=f"{row['xp']} / {row['xp'] + needed}")
+        embed.add_field(name="XP", value=f"{xp_in_level} / {needed}")
         embed.add_field(name="Nachrichten", value=str(row["messages"]))
         embed.set_thumbnail(url=member.display_avatar.url)
         await interaction.response.send_message(embed=embed)
