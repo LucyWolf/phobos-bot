@@ -2681,7 +2681,7 @@ async def server_config(
     subs = await db_rows(
         "SELECT * FROM notifications WHERE guild_id=? ORDER BY platform, target_name", (str(guild_id),)
     )
-    twitch_configured = bool(await get_config("twitch_client_id"))
+    twitch_configured = bool(await db_rows("SELECT 1 FROM twitch_apis LIMIT 1"))
 
     # Dashboard users & server access
     all_users = await db_rows("SELECT id, username, role FROM users ORDER BY role DESC, username")
