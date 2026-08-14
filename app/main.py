@@ -610,7 +610,8 @@ async def profile_delete(
 
 
 @web.get("/avatar/{user_id}")
-async def avatar_serve(user_id: int):
+async def avatar_serve(request: Request, user_id: int):
+    if r := auth_redirect(request): return r
     path = AVATARS_DIR / f"{user_id}.jpg"
     if not path.exists():
         raise HTTPException(status_code=404)
@@ -2271,6 +2272,7 @@ async def smtp_test(request: Request, test_email: str = Form(...)):
 @web.get("/settings/tokens", response_class=HTMLResponse)
 async def tokens_page(request: Request, success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_tokens"): return r
     is_admin = request.session.get("role") == "admin"
     uid = request.session.get("user_id")
     if is_admin:
@@ -2311,6 +2313,7 @@ async def tokens_page(request: Request, success: str = "", error: str = ""):
 @web.post("/settings/tokens/add")
 async def tokens_add(request: Request):
     if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_tokens"): return r
     form = await request.form()
     label = (form.get("label") or "Bot").strip()
     token = (form.get("token") or "").strip()
@@ -3052,11 +3055,12 @@ async def giveaway_reroll_web(request: Request, guild_id: int, gid: int):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
-    await db_exec("UPDATE giveaways SET ended=0 WHERE id=? AND guild_id=?", (gid, guild_id))
     b = bot._bot_for_guild(guild_id)
     cog = b.cogs.get("Giveaways") if b else None
-    if cog:
-        await cog._end_giveaway(gid)
+    if not cog:
+        return RedirectResponse(f"/servers/{guild_id}?tab=giveaways&error=Bot+nicht+online", status_code=302)
+    await db_exec("UPDATE giveaways SET ended=0 WHERE id=? AND guild_id=?", (gid, guild_id))
+    await cog._end_giveaway(gid)
     return RedirectResponse(f"/servers/{guild_id}?tab=giveaways", status_code=302)
 
 

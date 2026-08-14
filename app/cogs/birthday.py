@@ -1,7 +1,7 @@
 import datetime
 import discord
 from discord.ext import commands, tasks
-from database import db_rows, db_exec, get_guild_config
+from database import db_rows, db_exec, db_exec_rowcount, get_guild_config
 
 
 class Birthday(commands.Cog):
@@ -24,12 +24,12 @@ class Birthday(commands.Cog):
         rows = await db_rows("SELECT * FROM birthdays WHERE birthday=?", (today,))
         for row in rows:
             uid, gid = row["user_id"], row["guild_id"]
-            # Skip if already congratulated this year
-            already = await db_rows(
-                "SELECT 1 FROM birthday_sent WHERE user_id=? AND guild_id=? AND year=?",
+            # Optimistisch reservieren — INSERT schlägt fehl wenn anderer Bot schon gesendet hat
+            inserted = await db_exec_rowcount(
+                "INSERT OR IGNORE INTO birthday_sent (user_id, guild_id, year) VALUES (?,?,?)",
                 (uid, gid, year),
             )
-            if already:
+            if inserted == 0:
                 continue
 
             guild = self.bot.get_guild(int(gid))
@@ -52,10 +52,6 @@ class Birthday(commands.Cog):
                 embed.set_author(name=member.display_name, icon_url=member.display_avatar.url)
                 embed.set_thumbnail(url=member.display_avatar.url)
                 await channel.send(embed=embed)
-                await db_exec(
-                    "INSERT OR IGNORE INTO birthday_sent (user_id, guild_id, year) VALUES (?,?,?)",
-                    (uid, gid, year),
-                )
             except Exception:
                 pass
 
