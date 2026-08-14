@@ -79,8 +79,7 @@ class Birthday(commands.Cog):
             if len(parts) != 2:
                 raise ValueError
             day, month = int(parts[0]), int(parts[1])
-            if not (1 <= month <= 12 and 1 <= day <= 31):
-                raise ValueError
+            datetime.date(2000, month, day)  # prüft ob Datum wirklich existiert (z.B. kein 30.02)
             bday = f"{month:02d}-{day:02d}"
         except (ValueError, IndexError):
             await ctx.reply("❌ Format: `!geburtstag TT.MM` (z.B. `!geburtstag 15.06`)", mention_author=False)
