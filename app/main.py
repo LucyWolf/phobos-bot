@@ -1114,6 +1114,7 @@ async def settings_page(request: Request, saved: bool = False, error: str = "", 
 @web.post("/settings")
 async def settings_save(request: Request, token: str = Form(...)):
     if r := auth_redirect(request): return r
+    if r := await perm_redirect(request, "perm_settings"): return r
     if token.strip():
         await set_config("discord_token", token.strip())
     return RedirectResponse("/settings?saved=true", status_code=303)
@@ -3064,12 +3065,16 @@ async def warnings_clear(request: Request, guild_id: int, user_id: int):
 # ── API ───────────────────────────────────────────────────────────────────────
 
 @web.get("/api/actions")
-async def api_actions():
+async def api_actions(request: Request):
+    if r := admin_redirect(request):
+        return JSONResponse({"error": "Keine Berechtigung"}, status_code=401)
     return await db_rows("SELECT * FROM mod_actions ORDER BY timestamp DESC LIMIT 100")
 
 
 @web.get("/api/guilds")
-async def api_guilds():
+async def api_guilds(request: Request):
+    if r := admin_redirect(request):
+        return JSONResponse({"error": "Keine Berechtigung"}, status_code=401)
     return [{"id": str(g.id), "name": g.name, "members": g.member_count} for g in bot.guilds]
 
 
