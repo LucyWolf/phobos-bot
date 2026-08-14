@@ -668,9 +668,7 @@ async def _build_user_backup(target_user_id: int, exported_by: str) -> dict:
         t = await db_one("SELECT * FROM bot_tokens WHERE id=?", (tid,))
         if t:
             tokens.append(t)
-    scheduled = await db_rows(
-        "SELECT * FROM scheduled_messages WHERE sent=0"
-    )
+    scheduled = []
     data: dict = {
         "meta": {
             "version": "1.0", "type": "user",
@@ -2368,7 +2366,8 @@ async def tokens_delete(request: Request, token_id: int):
         await _stop_bot(token_id)
         await db_exec("DELETE FROM bot_tokens WHERE id=?", (token_id,))
         await db_exec("DELETE FROM bot_token_users WHERE token_id=?", (token_id,))
-    return RedirectResponse("/settings/tokens?success=Token+gelöscht.", status_code=302)
+        return RedirectResponse("/settings/tokens?success=Token+gelöscht.", status_code=302)
+    return RedirectResponse("/settings/tokens?error=Keine+Berechtigung", status_code=302)
 
 
 @web.post("/settings/tokens/rename/{token_id}")
@@ -2600,13 +2599,12 @@ async def server_config(
     saved: bool = False, tab: str = "config", error: str = "", success: str = "",
 ):
     guild_ok = await _guild_access(request, guild_id)
-    if not guild_ok and not await has_perm(request, "perm_server"):
+    has_server_perm = await has_perm(request, "perm_server")
+    if not guild_ok and not has_server_perm:
         return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
     guild = bot.get_guild(guild_id)
     if not guild:
         return RedirectResponse("/", status_code=302)
-    if not guild_ok:
-        return RedirectResponse("/servers", status_code=302)
 
     token_set = await _token_configured()
     cfg = await get_all_guild_config(guild_id)
@@ -2726,8 +2724,6 @@ async def server_config_save(request: Request, guild_id: int):
     guild_ok = await _guild_access(request, guild_id)
     if not guild_ok and not await has_perm(request, "perm_server"):
         return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
-    if not guild_ok:
-        return RedirectResponse("/servers", status_code=302)
     form = await request.form()
     text_keys = [
         "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
