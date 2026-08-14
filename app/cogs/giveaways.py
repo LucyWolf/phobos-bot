@@ -45,6 +45,8 @@ class Giveaways(commands.Cog):
         if rows_updated == 0:
             return
         g = await db_one("SELECT * FROM giveaways WHERE id=?", (giveaway_id,))
+        if not g:
+            return
         channel = self.bot.get_channel(g["channel_id"])
         if not channel:
             return

@@ -1815,7 +1815,10 @@ async def freestuff_save(
         max_price = float(deal_max_price.replace(",", ".")) if deal_max_price.strip() else None
     except ValueError:
         max_price = None
-    min_disc = max(0, min(100, int(deal_min_discount or 75)))
+    try:
+        min_disc = max(0, min(100, int(deal_min_discount or 75)))
+    except ValueError:
+        min_disc = 75
     deal_ch = deal_channel_id if deal_channel_id else None
     await db_exec(
         """INSERT INTO freestuff_channels
@@ -1908,10 +1911,14 @@ async def auto_delete_save(request: Request, guild_id: str):
     delay_values = form.getlist("delay_seconds")
     await db_exec("DELETE FROM auto_delete_channels WHERE guild_id=?", (guild_id,))
     for cid, delay in zip(channel_ids, delay_values):
-        if cid and delay and int(delay) > 0:
+        try:
+            delay_int = int(delay)
+        except (ValueError, TypeError):
+            continue
+        if cid and delay_int > 0:
             await db_exec(
                 "INSERT OR REPLACE INTO auto_delete_channels (guild_id, channel_id, delay_seconds) VALUES (?,?,?)",
-                (guild_id, cid, int(delay)),
+                (guild_id, cid, delay_int),
             )
     await _reload_auto_delete()
     return RedirectResponse(f"/servers/{guild_id}?tab=autodelete&success=Gespeichert", status_code=302)
@@ -1960,7 +1967,10 @@ async def tempvoice_add(request: Request, guild_id: str):
     trigger = form.get("trigger_channel_id", "")
     category = form.get("category_id", "")
     name_tpl = form.get("name_template", "{user}'s Channel") or "{user}'s Channel"
-    user_limit = int(form.get("user_limit") or 0)
+    try:
+        user_limit = int(form.get("user_limit") or 0)
+    except (ValueError, TypeError):
+        user_limit = 0
     if trigger:
         await db_exec(
             "INSERT OR REPLACE INTO temp_voice_config (guild_id, trigger_channel_id, category_id, name_template, user_limit) VALUES (?,?,?,?,?)",
@@ -3012,7 +3022,8 @@ async def giveaway_start_web(
         gid = cur.lastrowid
 
     g = await db_one("SELECT * FROM giveaways WHERE id=?", (gid,))
-    cog = bot.cogs.get("Giveaways")
+    b = bot._bot_for_guild(guild_id)
+    cog = b.cogs.get("Giveaways") if b else None
     if cog and g:
         cog._schedule(g)
 
@@ -3029,7 +3040,8 @@ async def giveaway_end_web(request: Request, guild_id: int, gid: int):
     g = await db_one("SELECT id FROM giveaways WHERE id=? AND guild_id=?", (gid, guild_id))
     if not g:
         return RedirectResponse(f"/servers/{guild_id}?tab=giveaways&error=Giveaway+nicht+gefunden", status_code=302)
-    cog = bot.cogs.get("Giveaways")
+    b = bot._bot_for_guild(guild_id)
+    cog = b.cogs.get("Giveaways") if b else None
     if cog:
         await cog._end_giveaway(gid)
     return RedirectResponse(f"/servers/{guild_id}?tab=giveaways", status_code=302)
@@ -3041,7 +3053,8 @@ async def giveaway_reroll_web(request: Request, guild_id: int, gid: int):
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
     await db_exec("UPDATE giveaways SET ended=0 WHERE id=? AND guild_id=?", (gid, guild_id))
-    cog = bot.cogs.get("Giveaways")
+    b = bot._bot_for_guild(guild_id)
+    cog = b.cogs.get("Giveaways") if b else None
     if cog:
         await cog._end_giveaway(gid)
     return RedirectResponse(f"/servers/{guild_id}?tab=giveaways", status_code=302)
