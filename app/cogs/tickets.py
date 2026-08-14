@@ -44,6 +44,8 @@ class PanelButton(ui.Button):
                     f"Du hast bereits ein offenes Ticket: {ch.mention}", ephemeral=True
                 )
                 return
+            # Channel wurde extern gelöscht — altes Ticket bereinigen
+            await db_exec("UPDATE tickets SET status='closed' WHERE channel_id=?", (existing["channel_id"],))
 
         category = None
         if panel.get("category_id"):

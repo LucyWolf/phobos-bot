@@ -104,6 +104,10 @@ class Giveaways(commands.Cog):
     @app_commands.command(name="giveaway-end", description="Giveaway sofort beenden")
     @app_commands.default_permissions(manage_guild=True)
     async def giveaway_end(self, interaction: discord.Interaction, giveaway_id: int):
+        g = await db_one("SELECT id FROM giveaways WHERE id=? AND guild_id=?", (giveaway_id, interaction.guild_id))
+        if not g:
+            await interaction.response.send_message("Giveaway nicht gefunden.", ephemeral=True)
+            return
         await self._end_giveaway(giveaway_id)
         await interaction.response.send_message("Giveaway beendet.", ephemeral=True)
 
