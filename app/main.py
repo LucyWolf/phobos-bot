@@ -2210,8 +2210,7 @@ async def events_edit(request: Request, guild_id: int, event_id: int):
         if not channel:
             return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Kanal+nicht+gefunden", status_code=302)
         kwargs["channel"] = channel
-        if end_dt:
-            kwargs["end_time"] = end_dt
+        kwargs["end_time"] = end_dt  # explicit None clears an existing end time
 
     try:
         await event.edit(**kwargs)

@@ -121,6 +121,11 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
+1.3.21 — "Ende"-Feld bei Voice-Kanal-Events (Erstellen + Bearbeiten) jetzt mit Checkbox
+"Ende festlegen" statt einem leeren, unklaren Datumsfeld. Bugfix dabei: beim Bearbeiten wurde
+end_time bisher nur gesetzt, nie explizit auf None geleert — Checkbox abwählen entfernte das
+Enddatum bei Discord bisher nicht wirklich.
+
 1.3.20 — Events-Bereich Bug-Review: (1) Erinnerungs-Platzhaltertext mit Apostroph brach das
 komplette <script>-Tag im Events-Tab (alle Buttons kaputt) — neue Jinja-Filter `js` (HTML-Attribut-
 Kontext, z.B. onsubmit) und `jsraw` (<script>-Element-Kontext) lösen das JSON-sicher, unabhängig

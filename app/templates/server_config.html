@@ -893,8 +893,17 @@ function toggleScheduledEdit(id) {
               <input type="datetime-local" name="start_at" value="{{ ev.start_time | dtlocal }}" required style="margin-bottom:0;">
             </div>
             <div>
-              <label style="font-size:0.82rem;">{{ tr.events_field_end }} {% if ev.entity_type.name != 'external' %}<span style="color:var(--muted);">{{ tr.events_end_optional }}</span>{% endif %}</label>
-              <input type="datetime-local" name="end_at" value="{{ ev.end_time | dtlocal }}" {% if ev.entity_type.name == 'external' %}required{% endif %} style="margin-bottom:0;">
+              <label style="font-size:0.82rem;">{{ tr.events_field_end }}</label>
+              {% if ev.entity_type.name == 'external' %}
+              <input type="datetime-local" name="end_at" value="{{ ev.end_time | dtlocal }}" required style="margin-bottom:0;">
+              {% else %}
+              <div style="display:flex;align-items:center;gap:0.5rem;">
+                <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.78rem;color:var(--muted);white-space:nowrap;margin:0;">
+                  <input type="checkbox" id="event-edit-end-cb-{{ ev.id }}" onchange="evToggleEditEndAt('{{ ev.id }}')" {% if ev.end_time %}checked{% endif %}> {{ tr.events_end_checkbox_label }}
+                </label>
+                <input type="datetime-local" name="end_at" id="event-edit-end-{{ ev.id }}" value="{{ ev.end_time | dtlocal }}" {% if not ev.end_time %}disabled{% endif %} style="flex:1;margin:0;">
+              </div>
+              {% endif %}
             </div>
             {% if ev.entity_type.name == 'external' %}
             <div>
@@ -942,8 +951,13 @@ function toggleScheduledEdit(id) {
         <input type="datetime-local" name="start_at" required>
       </div>
       <div>
-        <label style="font-size:0.82rem;">{{ tr.events_field_end }} <span style="color:var(--muted);" id="ev-end-hint">{{ tr.events_end_required }}</span></label>
-        <input type="datetime-local" name="end_at" id="ev-end-at" required>
+        <label style="font-size:0.82rem;">{{ tr.events_field_end }}</label>
+        <div style="display:flex;align-items:center;gap:0.5rem;">
+          <label id="ev-end-checkbox-wrap" style="display:none;align-items:center;gap:0.3rem;font-size:0.78rem;color:var(--muted);white-space:nowrap;margin:0;">
+            <input type="checkbox" id="ev-end-checkbox" onchange="evToggleEndAt()"> {{ tr.events_end_checkbox_label }}
+          </label>
+          <input type="datetime-local" name="end_at" id="ev-end-at" required style="flex:1;">
+        </div>
       </div>
       <div id="ev-channel-row" style="display:none;">
         <label style="font-size:0.82rem;">{{ tr.label_channel }}</label>
@@ -984,13 +998,17 @@ function toggleScheduledEdit(id) {
 </div>
 
 <script>
-const EV_END_REQUIRED = {{ tr.events_end_required | jsraw }};
-const EV_END_OPTIONAL = {{ tr.events_end_optional | jsraw }};
 const EV_REMINDER_MIN_PH = {{ tr.events_reminder_minutes_placeholder | jsraw }};
 const EV_REMINDER_MSG_PH = {{ tr.events_reminder_message_placeholder | jsraw }};
 function toggleEventEdit(id) {
   const row = document.getElementById('event-edit-' + id);
   if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+function evToggleEditEndAt(id) {
+  const checkbox = document.getElementById('event-edit-end-cb-' + id);
+  const endInput = document.getElementById('event-edit-end-' + id);
+  endInput.disabled = !checkbox.checked;
+  if (!checkbox.checked) endInput.value = '';
 }
 function evAddReminder() {
   const row = document.createElement('div');
@@ -1001,12 +1019,28 @@ function evAddReminder() {
     '<button type="button" onclick="this.parentElement.remove()" class="btn" style="padding:0.2rem 0.5rem;margin:0;flex-shrink:0;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>';
   document.getElementById('ev-reminders-list').appendChild(row);
 }
+function evToggleEndAt() {
+  const checkbox = document.getElementById('ev-end-checkbox');
+  const endInput = document.getElementById('ev-end-at');
+  endInput.disabled = !checkbox.checked;
+  if (!checkbox.checked) endInput.value = '';
+}
 function evToggleType() {
   const isExternal = document.getElementById('ev-entity-type').value === 'external';
   document.getElementById('ev-channel-row').style.display = isExternal ? 'none' : '';
   document.getElementById('ev-location-row').style.display = isExternal ? '' : 'none';
-  document.getElementById('ev-end-at').required = isExternal;
-  document.getElementById('ev-end-hint').textContent = isExternal ? EV_END_REQUIRED : EV_END_OPTIONAL;
+  const checkboxWrap = document.getElementById('ev-end-checkbox-wrap');
+  const checkbox = document.getElementById('ev-end-checkbox');
+  const endInput = document.getElementById('ev-end-at');
+  if (isExternal) {
+    checkboxWrap.style.display = 'none';
+    endInput.disabled = false;
+    endInput.required = true;
+  } else {
+    checkboxWrap.style.display = 'flex';
+    endInput.required = checkbox.checked;
+    endInput.disabled = !checkbox.checked;
+  }
 }
 function toggleEvInfo() {
   const box = document.getElementById('ev-info-box');
