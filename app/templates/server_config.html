@@ -914,6 +914,7 @@ function toggleScheduledEdit(id) {
             <div>
               <label style="font-size:0.82rem;">{{ tr.label_channel }}</label>
               <select name="channel_id" style="margin-bottom:0;">
+                {% if not ev.channel %}<option value="" selected>{{ tr.events_channel_placeholder }}</option>{% endif %}
                 {% for c in voice_channels %}<option value="{{ c.id }}" {% if ev.channel and c.id == (ev.channel.id | string) %}selected{% endif %}>🔊 {{ c.name }}</option>{% endfor %}
               </select>
             </div>

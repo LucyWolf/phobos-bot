@@ -2040,6 +2040,10 @@ async def scheduled_delete(request: Request, guild_id: str, msg_id: int):
 
 # ── Discord Events ───────────────────────────────────────────────────────────
 
+_EVENT_START_MESSAGE = "🔴 Das Event startet jetzt!"
+_EVENT_END_MESSAGE = "🏁 Das Event ist jetzt beendet!"
+
+
 async def _event_reminders_by_event(guild_id) -> dict[str, list[dict]]:
     rows = await db_rows(
         "SELECT * FROM scheduled_messages WHERE guild_id=? AND sent=0 AND event_id IS NOT NULL ORDER BY send_at",
@@ -2143,7 +2147,7 @@ async def events_create(request: Request, guild_id: int):
 
     if announce_channel_id:
         berlin_tz = ZoneInfo("Europe/Berlin")
-        entries = [(0, "🔴 Das Event startet jetzt!")] + reminders
+        entries = [(0, _EVENT_START_MESSAGE)] + reminders
         for off_min, msg in entries:
             fire_at = (start_dt - datetime.timedelta(minutes=off_min)).astimezone(berlin_tz)
             await db_exec(
@@ -2154,7 +2158,7 @@ async def events_create(request: Request, guild_id: int):
             fire_at_end = end_dt.astimezone(berlin_tz)
             await db_exec(
                 "INSERT INTO scheduled_messages (guild_id, channel_id, message, send_at, event_id) VALUES (?,?,?,?,?)",
-                (str(guild_id), announce_channel_id, "🏁 Das Event ist jetzt beendet!", fire_at_end.strftime("%Y-%m-%dT%H:%M"), str(event.id)),
+                (str(guild_id), announce_channel_id, _EVENT_END_MESSAGE, fire_at_end.strftime("%Y-%m-%dT%H:%M"), str(event.id)),
             )
 
     return RedirectResponse(f"/servers/{guild_id}?tab=events&success=Event+erstellt", status_code=302)
@@ -2224,10 +2228,34 @@ async def events_edit(request: Request, guild_id: int, event_id: int):
         kwargs["channel"] = channel
         kwargs["end_time"] = end_dt  # explicit None clears an existing end time
 
+    old_start_dt = event.start_time
+
     try:
         await event.edit(**kwargs)
     except discord.HTTPException as e:
         return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Discord-Fehler:+{e.text}", status_code=302)
+
+    berlin_tz = ZoneInfo("Europe/Berlin")
+    pending = await db_rows(
+        "SELECT * FROM scheduled_messages WHERE event_id=? AND sent=0", (str(event_id),)
+    )
+    for row in pending:
+        if row["message"] == _EVENT_END_MESSAGE:
+            if not end_dt:
+                await db_exec("DELETE FROM scheduled_messages WHERE id=?", (row["id"],))
+                continue
+            new_send_dt = end_dt.astimezone(berlin_tz)
+        else:
+            try:
+                old_send_dt = datetime.datetime.fromisoformat(row["send_at"]).replace(tzinfo=berlin_tz)
+            except ValueError:
+                continue
+            offset = old_start_dt.astimezone(berlin_tz) - old_send_dt
+            new_send_dt = start_dt.astimezone(berlin_tz) - offset
+        await db_exec(
+            "UPDATE scheduled_messages SET send_at=? WHERE id=?",
+            (new_send_dt.strftime("%Y-%m-%dT%H:%M"), row["id"]),
+        )
 
     return RedirectResponse(f"/servers/{guild_id}?tab=events&success=Event+aktualisiert", status_code=302)
 
