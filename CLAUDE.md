@@ -121,6 +121,14 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
+1.4.0 — Zwei-Faktor-Authentifizierung (TOTP, Google-Authenticator-kompatibel) für den Dashboard-
+Login. Neu: app/totp.py (Secret/QR/Verify/Backup-Codes), users.totp_secret/totp_enabled,
+totp_backup_codes-Tabelle, /profile/2fa/setup (+Bestätigung, zeigt 8 Backup-Codes einmalig),
+/profile/2fa/disable (Passwort-Pflicht), /login/2fa als zweiter Login-Schritt nach Passwort
+(Session-Key pending_2fa_user_id, komplett getrennt von echtem user_id — kein Zugriff ohne
+bestandene 2FA). Einfache Brute-Force-Bremse: 5 Fehlversuche pro Pending-Session, danach zurück
+zu /login. Neue Deps: pyotp, qrcode (nutzt vorhandenes Pillow).
+
 1.3.25 — Events "Ende festlegen"-Checkbox (Erstellen + Bearbeiten): required-Attribut wurde beim
 Checkbox-Toggle nie gesetzt, nur disabled/value. Checkbox anhaken machte das Datumsfeld sichtbar,
 aber nicht zur Browser-Pflicht — leer lassen + absenden hätte das Ende stillschweigend NICHT

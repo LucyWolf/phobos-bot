@@ -370,10 +370,19 @@ async def init_db():
             "ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1",
             "ALTER TABLE twitch_apis ADD COLUMN owner_id INTEGER",
             "ALTER TABLE scheduled_messages ADD COLUMN event_id TEXT",
+            "ALTER TABLE users ADD COLUMN totp_secret TEXT",
+            "ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0",
             """CREATE TABLE IF NOT EXISTS bot_token_users (
                 token_id INTEGER NOT NULL,
                 user_id  INTEGER NOT NULL,
                 PRIMARY KEY (token_id, user_id)
+            )""",
+            """CREATE TABLE IF NOT EXISTS totp_backup_codes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                code_hash TEXT NOT NULL,
+                used INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )""",
         ]:
             try:

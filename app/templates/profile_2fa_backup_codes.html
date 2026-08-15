@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} – Backup-Codes{% endblock %}
+{% block page_title %}🔑 Backup-Codes{% endblock %}
+
+{% block content %}
+<div class="alert alert-success" style="max-width:480px;">✅ Zwei-Faktor-Authentifizierung ist jetzt aktiv.</div>
+
+<div class="card" style="max-width:480px;">
+  <p class="hint" style="margin-bottom:1rem;">
+    Speichere diese Backup-Codes an einem sicheren Ort. Jeder Code funktioniert <strong>einmal</strong>
+    als Ersatz für den Authenticator-Code, z.B. falls du dein Handy verlierst.
+    Sie werden dir nur <strong>jetzt</strong> angezeigt.
+  </p>
+
+  <div style="background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;padding:1rem;
+              font-family:monospace;font-size:0.95rem;line-height:2;text-align:center;margin-bottom:1rem;">
+    {% for c in codes %}{{ c }}<br>{% endfor %}
+  </div>
+
+  <a href="/profile" class="btn btn-primary" style="display:block;text-align:center;width:100%;">Ich habe sie gespeichert</a>
+</div>
+{% endblock %}

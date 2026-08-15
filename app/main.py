@@ -43,6 +43,7 @@ from database import (
     get_guild_config, set_guild_config, get_all_guild_config,
     db_rows, db_one, db_exec, db_insert, log_mod_action,
 )
+import totp
 
 VERSION = (Path(__file__).parent / "VERSION").read_text().strip()
 SECRET_KEY_PATH = Path("/app/data/secret.key")
@@ -519,13 +520,7 @@ async def login_page(request: Request, error: str = "", success: str = ""):
     })
 
 
-@web.post("/login")
-async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
-    user = await db_one("SELECT * FROM users WHERE username=?", (username.strip(),))
-    if not user or not verify_pw(password, user["password_hash"]):
-        return RedirectResponse("/login?error=Ungültige+Zugangsdaten", status_code=302)
-    if not user.get("active", 1):
-        return RedirectResponse("/login?error=Dein+Konto+ist+deaktiviert", status_code=302)
+async def _complete_login(request: Request, user: dict) -> None:
     request.session["user_id"] = user["id"]
     request.session["username"] = user["username"]
     request.session["display_name"] = user.get("display_name") or ""
@@ -543,6 +538,66 @@ async def login_submit(request: Request, username: str = Form(...), password: st
         )
         for p in PERM_COLS:
             request.session[p] = bool(custom.get(p, 0)) if custom else False
+
+
+@web.post("/login")
+async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
+    user = await db_one("SELECT * FROM users WHERE username=?", (username.strip(),))
+    if not user or not verify_pw(password, user["password_hash"]):
+        return RedirectResponse("/login?error=Ungültige+Zugangsdaten", status_code=302)
+    if not user.get("active", 1):
+        return RedirectResponse("/login?error=Dein+Konto+ist+deaktiviert", status_code=302)
+    if user.get("totp_enabled"):
+        request.session["pending_2fa_user_id"] = user["id"]
+        request.session.pop("totp_fail_count", None)
+        return RedirectResponse("/login/2fa", status_code=302)
+    await _complete_login(request, user)
+    return RedirectResponse("/", status_code=302)
+
+
+@web.get("/login/2fa", response_class=HTMLResponse)
+async def login_2fa_page(request: Request, error: str = ""):
+    if not request.session.get("pending_2fa_user_id"):
+        return RedirectResponse("/login", status_code=302)
+    return templates.TemplateResponse("login_2fa.html", {
+        "request": request, "error": error, "version": VERSION,
+    })
+
+
+@web.post("/login/2fa")
+async def login_2fa_submit(request: Request, code: str = Form(...)):
+    uid = request.session.get("pending_2fa_user_id")
+    if not uid:
+        return RedirectResponse("/login", status_code=302)
+    user = await db_one("SELECT * FROM users WHERE id=?", (uid,))
+    if not user or not user.get("totp_enabled"):
+        request.session.pop("pending_2fa_user_id", None)
+        return RedirectResponse("/login", status_code=302)
+
+    code = code.strip()
+    ok = totp.verify_totp(user["totp_secret"], code)
+    if not ok:
+        backup_rows = await db_rows(
+            "SELECT * FROM totp_backup_codes WHERE user_id=? AND used=0", (uid,)
+        )
+        for row in backup_rows:
+            if verify_pw(code.lower(), row["code_hash"]):
+                await db_exec("UPDATE totp_backup_codes SET used=1 WHERE id=?", (row["id"],))
+                ok = True
+                break
+
+    if not ok:
+        fails = request.session.get("totp_fail_count", 0) + 1
+        if fails >= 5:
+            request.session.pop("pending_2fa_user_id", None)
+            request.session.pop("totp_fail_count", None)
+            return RedirectResponse("/login?error=Zu+viele+Fehlversuche+–+bitte+erneut+einloggen", status_code=302)
+        request.session["totp_fail_count"] = fails
+        return RedirectResponse("/login/2fa?error=Ungültiger+Code", status_code=302)
+
+    request.session.pop("pending_2fa_user_id", None)
+    request.session.pop("totp_fail_count", None)
+    await _complete_login(request, user)
     return RedirectResponse("/", status_code=302)
 
 
@@ -646,6 +701,65 @@ async def profile_password_save(
         return RedirectResponse("/profile?error=Passwort+zu+kurz+(min.+6+Zeichen)", status_code=302)
     await db_exec("UPDATE users SET password_hash=? WHERE id=?", (hash_pw(pw_new), uid))
     return RedirectResponse("/profile?success=Passwort+geändert", status_code=302)
+
+
+@web.get("/profile/2fa/setup", response_class=HTMLResponse)
+async def profile_2fa_setup_page(request: Request, error: str = ""):
+    if r := auth_redirect(request): return r
+    uid = request.session.get("user_id")
+    user = await db_one("SELECT * FROM users WHERE id=?", (uid,))
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if user.get("totp_enabled"):
+        return RedirectResponse("/profile", status_code=302)
+    secret = request.session.get("pending_totp_secret")
+    if not secret:
+        secret = totp.generate_secret()
+        request.session["pending_totp_secret"] = secret
+    uri = totp.provisioning_uri(secret, user["username"])
+    return templates.TemplateResponse("profile_2fa_setup.html", {
+        **session(request), "request": request,
+        "guilds": await _guild_list(request), "token_set": await _token_configured(),
+        "active": "profile", "secret": secret, "qr": totp.qr_data_uri(uri), "error": error,
+    })
+
+
+@web.post("/profile/2fa/setup")
+async def profile_2fa_setup_confirm(request: Request, code: str = Form(...)):
+    if r := auth_redirect(request): return r
+    uid = request.session.get("user_id")
+    secret = request.session.get("pending_totp_secret")
+    if not secret:
+        return RedirectResponse("/profile/2fa/setup", status_code=302)
+    if not totp.verify_totp(secret, code):
+        return RedirectResponse("/profile/2fa/setup?error=Ungültiger+Code", status_code=302)
+
+    await db_exec("UPDATE users SET totp_secret=?, totp_enabled=1 WHERE id=?", (secret, uid))
+    request.session.pop("pending_totp_secret", None)
+    await db_exec("DELETE FROM totp_backup_codes WHERE user_id=?", (uid,))
+    codes = totp.generate_backup_codes()
+    for c in codes:
+        await db_exec(
+            "INSERT INTO totp_backup_codes (user_id, code_hash) VALUES (?,?)",
+            (uid, hash_pw(c)),
+        )
+    return templates.TemplateResponse("profile_2fa_backup_codes.html", {
+        **session(request), "request": request,
+        "guilds": await _guild_list(request), "token_set": await _token_configured(),
+        "active": "profile", "codes": codes,
+    })
+
+
+@web.post("/profile/2fa/disable")
+async def profile_2fa_disable(request: Request, password: str = Form(...)):
+    if r := auth_redirect(request): return r
+    uid = request.session.get("user_id")
+    user = await db_one("SELECT * FROM users WHERE id=?", (uid,))
+    if not user or not verify_pw(password, user["password_hash"]):
+        return RedirectResponse("/profile?error=Passwort+falsch", status_code=302)
+    await db_exec("UPDATE users SET totp_secret=NULL, totp_enabled=0 WHERE id=?", (uid,))
+    await db_exec("DELETE FROM totp_backup_codes WHERE user_id=?", (uid,))
+    return RedirectResponse("/profile?success=Zwei-Faktor-Authentifizierung+deaktiviert", status_code=302)
 
 
 @web.post("/profile/delete")

@@ -95,6 +95,22 @@
     </form>
   </div>
 
+  <!-- ── Zwei-Faktor-Authentifizierung ── -->
+  <div class="card">
+    <div class="feat-header">🔐 {{ tr.profile_2fa }}</div>
+    {% if user.totp_enabled %}
+    <p class="hint" style="margin-bottom:1rem;color:#22c55e;">✅ {{ tr.profile_2fa_enabled }}</p>
+    <form method="post" action="/profile/2fa/disable" onsubmit="return confirm({{ tr.profile_2fa_disable_confirm | js }})">
+      <label>{{ tr.label_password }}</label>
+      <input type="password" name="password" required autocomplete="current-password">
+      <button type="submit" class="btn btn-danger">{{ tr.profile_2fa_disable }}</button>
+    </form>
+    {% else %}
+    <p class="hint" style="margin-bottom:1rem;">{{ tr.profile_2fa_disabled_hint }}</p>
+    <a href="/profile/2fa/setup" class="btn btn-primary" style="display:block;text-align:center;">{{ tr.profile_2fa_enable }}</a>
+    {% endif %}
+  </div>
+
   <!-- ── Datensicherung ── -->
   <div class="card" style="grid-column:1/-1;">
     <div class="feat-header">💾 Datensicherung</div>
