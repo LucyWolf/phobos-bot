@@ -2045,13 +2045,13 @@ async def events_create(request: Request, guild_id: int):
         "privacy_level": discord.PrivacyLevel.guild_only,
     }
     if entity_type == "external":
-        if not location or not end_dt:
+        if not end_dt:
             return RedirectResponse(
-                f"/servers/{guild_id}?tab=events&error=Ort+und+Ende+für+externe+Events+erforderlich",
+                f"/servers/{guild_id}?tab=events&error=Ende+für+externe+Events+erforderlich",
                 status_code=302,
             )
         kwargs["entity_type"] = discord.EntityType.external
-        kwargs["location"] = location
+        kwargs["location"] = location or guild.name
         kwargs["end_time"] = end_dt
     else:
         try:

@@ -121,6 +121,8 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
+1.3.12 — Events-Tab: Typ "Ohne Kanal" ist jetzt Standard, Ort optional (fällt sonst auf Servername zurück)
+
 1.3.11 — Native Discord-Events (Server-Events-Tab) im Dashboard erstellen/auflisten/löschen (Tab "🗓️ Events")
 
 Hinweis: nur einmalige Events, keine wiederkehrenden Serien — Discords `recurrence_rule`
