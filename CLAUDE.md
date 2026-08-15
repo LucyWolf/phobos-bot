@@ -121,4 +121,4 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
-1.3.9
+1.3.10 — Geplante Nachrichten sind jetzt bearbeitbar (nicht mehr nur löschen+neu anlegen)
