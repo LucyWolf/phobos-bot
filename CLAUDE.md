@@ -121,6 +121,18 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
+1.3.24 — Events-Bereich weitere Bug-Review, zwei echte Fixes:
+(1) Erinnerungen (inkl. Start-/Ende-Benachrichtigung) wurden beim Bearbeiten eines Events NICHT
+mitverschoben, wenn Start/Ende geändert wurden — feuerten danach zum falschen, alten Zeitpunkt.
+events_edit rekonstruiert jetzt pro Erinnerung den ursprünglichen Offset (alte Startzeit − alter
+send_at) und wendet ihn auf die neue Startzeit an; die Ende-Benachrichtigung wird per fixem
+Nachrichtentext (_EVENT_END_MESSAGE-Konstante) erkannt und exakt auf die neue Endzeit gelegt bzw.
+gelöscht, falls kein Ende mehr gesetzt ist.
+(2) Bearbeiten-Formular bei Voice-Events: fehlte der zugehörige Kanal (z.B. gelöscht), wählte der
+Browser stillschweigend den ersten Kanal der Liste vor — beim Speichern wäre das Event unbemerkt
+auf einen falschen Kanal umgehängt worden. Jetzt explizite Platzhalter-Option, erzwingt bewusste
+Auswahl bzw. liefert "Kanal nicht gefunden"-Fehler statt stiller Fehlzuweisung.
+
 1.3.23 — Info-Box-Texte im Events-Tab aktualisiert: "Ende: leer lassen" ersetzt durch Hinweis auf
 die neue "Ende festlegen"-Checkbox (v1.3.21), Erinnerungs-Beispiel korrigiert (Start-Meldung ist
 seit v1.3.18 automatisch, nicht mehr manuell per "0 Min. vorher"-Reminder nachzustellen). Deutsch
