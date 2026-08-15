@@ -30,17 +30,19 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **Temp Voice** | Join-to-Create temporary voice channels — auto-created on join, auto-deleted when empty |
 | **Scheduled Messages** | Schedule messages to be sent to any channel at a specific date and time |
 | **Birthday System** | `!geburtstag DD.MM` — daily congratulations at 8 AM, configurable channel and message |
+| **Discord Events** | Create/edit native Discord scheduled events (voice or external) from the dashboard, with optional reminders and start/end announcements posted to a channel |
 
 ### Web Dashboard
 
 | Section | Function |
 |---|---|
 | **Dashboard** | Bot status, connected servers, moderation statistics — personalized per user |
-| **Per Server** | Config, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Twitch, Free Stuff, Log, Temp Voice, Scheduled Messages, Birthdays, Auto-Delete, Bot Design |
+| **Per Server** | Config, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Twitch, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, Birthdays, Auto-Delete, Bot Design |
 | **Server List** | All connected servers, invite bot |
 | **🔑 Tokens** | Manage multiple bot tokens — each token runs its own bot account, hot-reload without restart |
 | **👥 Users** | Create/delete dashboard users, assign roles and server access, **download & restore backups** |
 | **🎭 Roles** | Create custom roles with fine-grained permissions |
+| **🔐 Two-Factor Auth** | Optional TOTP-based 2FA for dashboard login (Google Authenticator, Authy, etc.), with one-time backup codes |
 | **📊 Bot Info** | Version, uptime, latency, CPU/RAM, hostname, OS |
 | **🔄 Updates** | Check current version, one-click update from GitHub |
 | **🕐 Timezone** | Configure timezone for all timestamps in the dashboard |
@@ -114,6 +116,16 @@ Under **Server → Scheduled Messages** you can schedule a message to be sent to
 
 ---
 
+## Discord Events
+
+Under **Server → Events** you can create native Discord scheduled events directly from the dashboard — either tied to a voice channel or as an "external" event (custom location, e.g. a game or an outside venue). Events can be edited as long as they haven't started yet; once Discord marks them active or completed, only deletion remains.
+
+Optional extras when creating an event:
+- **Announcement channel** — the bot posts a message there automatically once the event starts (and, if enabled, once it ends), including name, time, location and a link to the event
+- **Reminders** — any number of custom messages posted a chosen number of minutes before the event starts
+
+---
+
 ## Birthday System
 
 Under **Server → Birthdays** you can configure a birthday channel and a custom message. Members can register their birthday with `!geburtstag DD.MM` (or delete it with `!geburtstag löschen`). Every day at 8 AM the bot automatically congratulates members whose birthday it is — each person only once per year.
@@ -129,6 +141,12 @@ Every user can export their own data (account, bot tokens, all server configurat
 - **Restore** any backup via file upload — existing entries are updated, new ones are added, nothing is deleted
 
 Passwords of existing accounts are never overwritten during a restore. This makes it easy to migrate to a new server or hand off a bot setup to someone else.
+
+---
+
+## Two-Factor Authentication
+
+Every dashboard user can enable TOTP-based two-factor authentication under **Profile → Two-Factor Authentication** — compatible with Google Authenticator, Authy, Aegis and similar apps. After entering the confirmation code once, 8 one-time backup codes are shown (for account recovery if you lose your device); they can be regenerated anytime with your password. Login then requires the app code (or a backup code) after the password, and repeated failed codes temporarily lock the account.
 
 ---
 
@@ -371,17 +389,19 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **Temp Voice** | Join-to-Create temporäre Voice-Kanäle — automatisch erstellt beim Beitritt, automatisch gelöscht wenn leer |
 | **Geplante Nachrichten** | Nachrichten zu einem bestimmten Datum und Uhrzeit in jeden Kanal planen |
 | **Geburtstags-System** | `!geburtstag TT.MM` — tägliche Glückwünsche um 8 Uhr, konfigurierbarer Kanal und Text |
+| **Discord-Events** | Native Discord-Events (Voice oder extern) direkt im Dashboard erstellen/bearbeiten, mit optionalen Erinnerungen und Start-/Ende-Ankündigungen in einem Kanal |
 
 ### Web-Dashboard
 
 | Bereich | Funktion |
 |---|---|
 | **Dashboard** | Bot-Status, verbundene Server, Moderations-Statistiken — personalisiert pro Nutzer |
-| **Pro Server** | Konfiguration, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Twitch, Free Stuff, Log, Temp Voice, Geplant, Geburtstage, Auto-Delete, Bot-Design |
+| **Pro Server** | Konfiguration, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Twitch, Free Stuff, Log, Temp Voice, Geplant, Events, Geburtstage, Auto-Delete, Bot-Design |
 | **Server-Übersicht** | Alle verbundenen Server, Bot einladen |
 | **🔑 Tokens** | Mehrere Bot-Tokens verwalten – jeder Token startet einen eigenen Bot-Account, Hot-Reload ohne Neustart |
 | **👥 Benutzer** | Dashboard-Nutzer anlegen/löschen, Rolle und Server-Zugriff vergeben, **Backups erstellen & einspielen** |
 | **🎭 Rollen** | Eigene Rollen mit feingranularen Berechtigungen erstellen |
+| **🔐 Zwei-Faktor-Auth** | Optionale TOTP-2FA für den Dashboard-Login (Google Authenticator, Authy, etc.), mit einmaligen Backup-Codes |
 | **📊 Bot-Info** | Version, Uptime, Latenz, CPU/RAM, Hostname, OS |
 | **🔄 Updates** | Aktuelle Version prüfen, One-Click-Update von GitHub |
 | **🕐 Zeitzone** | Zeitzone für alle Zeitangaben im Dashboard konfigurieren |
@@ -455,6 +475,16 @@ Unter **Server → Geplant** können Nachrichten für einen beliebigen Kanal zu 
 
 ---
 
+## Discord-Events
+
+Unter **Server → Events** lassen sich native Discord-Events direkt im Dashboard erstellen — entweder an einen Voice-Kanal gebunden oder als "externes" Event (freier Ort, z.B. ein Spiel oder eine Location außerhalb Discords). Events können bearbeitet werden, solange sie noch nicht gestartet sind; sobald Discord sie als aktiv oder beendet markiert, bleibt nur noch Löschen.
+
+Optionale Extras beim Erstellen:
+- **Ankündigungskanal** — der Bot postet dort automatisch eine Nachricht, sobald das Event startet (und optional, wenn es endet), mit Name, Zeit, Ort und einem Link zum Event
+- **Erinnerungen** — beliebig viele eigene Nachrichten, die eine wählbare Anzahl Minuten vor Start gepostet werden
+
+---
+
 ## Geburtstags-System
 
 Unter **Server → Geburtstage** können ein Geburtstags-Kanal und ein eigener Glückwunsch-Text konfiguriert werden. Mitglieder tragen ihren Geburtstag mit `!geburtstag TT.MM` ein (oder löschen ihn mit `!geburtstag löschen`). Jeden Tag um 8 Uhr morgens gratuliert der Bot automatisch — jede Person nur einmal pro Jahr.
@@ -470,6 +500,12 @@ Jeder Nutzer kann seine eigenen Daten (Konto, Bot-Tokens, alle Server-Konfigurat
 - Beliebiges Backup per Datei-Upload **wiederherstellen** — bestehende Einträge werden aktualisiert, neue hinzugefügt, nichts wird gelöscht
 
 Passwörter bestehender Konten werden beim Einspielen nie überschrieben. So lässt sich ein Bot-Setup einfach auf einen neuen Server migrieren oder an jemand anderen weitergeben.
+
+---
+
+## Zwei-Faktor-Authentifizierung
+
+Jeder Dashboard-Nutzer kann unter **Profil → Zwei-Faktor-Authentifizierung** TOTP-basierte 2FA aktivieren — kompatibel mit Google Authenticator, Authy, Aegis und ähnlichen Apps. Nach einmaliger Bestätigung mit dem Code aus der App werden 8 Backup-Codes angezeigt (für den Notfall, falls das Handy verloren geht); sie lassen sich jederzeit mit dem Passwort neu erstellen. Der Login verlangt danach zusätzlich zum Passwort den App-Code (oder einen Backup-Code); wiederholt falsche Codes sperren das Konto vorübergehend.
 
 ---
 
