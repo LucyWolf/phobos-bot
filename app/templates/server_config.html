@@ -855,12 +855,64 @@ function toggleScheduledEdit(id) {
         {% else %}{{ tr.events_none_location }}{% endif %}
       </td>
       <td style="padding:0.5rem;color:var(--muted);">{{ tr.get('events_status_' + ev.status.name, ev.status.name) }}</td>
-      <td style="padding:0.5rem;text-align:right;">
-        <form method="post" action="/servers/{{ guild.id }}/events/delete/{{ ev.id }}" style="margin:0;" onsubmit="return confirm('{{ tr.events_confirm_delete.replace('{name}', ev.name) }}')">
+      <td style="padding:0.5rem;text-align:right;white-space:nowrap;">
+        {% if ev.status.name == 'scheduled' %}
+        <button type="button" class="btn btn-secondary" onclick="toggleEventEdit({{ ev.id }})" style="padding:0.2rem 0.6rem;font-size:0.78rem;" title="{{ tr.btn_edit }}">✎</button>
+        {% endif %}
+        <form method="post" action="/servers/{{ guild.id }}/events/delete/{{ ev.id }}" style="margin:0;display:inline;" onsubmit="return confirm('{{ tr.events_confirm_delete.replace('{name}', ev.name) }}')">
           <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
         </form>
       </td>
     </tr>
+    {% if ev.status.name == 'scheduled' %}
+    <tr id="event-edit-{{ ev.id }}" style="display:none;" class="panel-edit-row">
+      <td colspan="5" style="padding:1rem 1.25rem;">
+        {% set reminders_for_ev = event_reminders.get(ev.id | string) %}
+        {% if reminders_for_ev %}
+        <div style="margin-bottom:0.75rem;font-size:0.78rem;color:var(--muted);">
+          <div style="font-weight:600;color:var(--text);margin-bottom:0.3rem;">{{ tr.events_reminders_list_title }}</div>
+          {% for rem in reminders_for_ev %}
+          <div>⏰ {{ rem.send_at | replace("T"," ") }} — {{ rem.message }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <form method="post" action="/servers/{{ guild.id }}/events/edit/{{ ev.id }}">
+          <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
+            <div>
+              <label style="font-size:0.82rem;">{{ tr.label_name }}</label>
+              <input type="text" name="name" value="{{ ev.name }}" required style="margin-bottom:0;">
+            </div>
+            <div>
+              <label style="font-size:0.82rem;">{{ tr.events_col_start }}</label>
+              <input type="datetime-local" name="start_at" value="{{ ev.start_time | dtlocal }}" required style="margin-bottom:0;">
+            </div>
+            <div>
+              <label style="font-size:0.82rem;">{{ tr.events_field_end }} {% if ev.entity_type.name != 'external' %}<span style="color:var(--muted);">{{ tr.events_end_optional }}</span>{% endif %}</label>
+              <input type="datetime-local" name="end_at" value="{{ ev.end_time | dtlocal }}" {% if ev.entity_type.name == 'external' %}required{% endif %} style="margin-bottom:0;">
+            </div>
+            {% if ev.entity_type.name == 'external' %}
+            <div>
+              <label style="font-size:0.82rem;">{{ tr.events_field_location }}</label>
+              <input type="text" name="location" value="{{ ev.location }}" style="margin-bottom:0;">
+            </div>
+            {% else %}
+            <div>
+              <label style="font-size:0.82rem;">{{ tr.label_channel }}</label>
+              <select name="channel_id" style="margin-bottom:0;">
+                {% for c in voice_channels %}<option value="{{ c.id }}" {% if ev.channel and c.id == (ev.channel.id | string) %}selected{% endif %}>🔊 {{ c.name }}</option>{% endfor %}
+              </select>
+            </div>
+            {% endif %}
+            <div style="grid-column:1/-1;">
+              <label style="font-size:0.82rem;">{{ tr.events_field_description }}</label>
+              <input type="text" name="description" value="{{ ev.description or '' }}" style="margin-bottom:0;">
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
+        </form>
+      </td>
+    </tr>
+    {% endif %}
     {% endfor %}
     </tbody>
   </table>
@@ -930,6 +982,10 @@ const EV_END_REQUIRED = '{{ tr.events_end_required }}';
 const EV_END_OPTIONAL = '{{ tr.events_end_optional }}';
 const EV_REMINDER_MIN_PH = '{{ tr.events_reminder_minutes_placeholder }}';
 const EV_REMINDER_MSG_PH = '{{ tr.events_reminder_message_placeholder }}';
+function toggleEventEdit(id) {
+  const row = document.getElementById('event-edit-' + id);
+  if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
 function evAddReminder() {
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem;';

@@ -271,6 +271,20 @@ def _fmt_dt(value) -> str:
         return str(value)[:16]
 
 
+def _fmt_dt_local(value) -> str:
+    """Format for <input type=datetime-local> value= (YYYY-MM-DDTHH:MM), in the request's timezone."""
+    if not value:
+        return ""
+    try:
+        s = str(value).replace(" ", "T")
+        dt = datetime.datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return dt.astimezone(_request_tz.get()).strftime("%Y-%m-%dT%H:%M")
+    except Exception:
+        return ""
+
+
 class TZMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         try:
@@ -321,6 +335,7 @@ web.add_middleware(SessionValidityMiddleware)
 web.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="phobos_session")
 templates = Jinja2Templates(directory="templates")
 templates.env.filters["dt"] = _fmt_dt
+templates.env.filters["dtlocal"] = _fmt_dt_local
 
 def _log_bar_class(icon: str) -> str:
     _map = {
@@ -2005,6 +2020,17 @@ async def scheduled_delete(request: Request, guild_id: str, msg_id: int):
 
 # ── Discord Events ───────────────────────────────────────────────────────────
 
+async def _event_reminders_by_event(guild_id) -> dict[str, list[dict]]:
+    rows = await db_rows(
+        "SELECT * FROM scheduled_messages WHERE guild_id=? AND sent=0 AND event_id IS NOT NULL ORDER BY send_at",
+        (str(guild_id),),
+    )
+    grouped: dict[str, list[dict]] = {}
+    for row in rows:
+        grouped.setdefault(row["event_id"], []).append(row)
+    return grouped
+
+
 @web.post("/servers/{guild_id}/events/create")
 async def events_create(request: Request, guild_id: int):
     if r := auth_redirect(request): return r
@@ -2118,11 +2144,84 @@ async def events_create(request: Request, guild_id: int):
         for off_min, msg in reminders:
             fire_at = (start_dt - datetime.timedelta(minutes=off_min)).astimezone(berlin_tz)
             await db_exec(
-                "INSERT INTO scheduled_messages (guild_id, channel_id, message, send_at) VALUES (?,?,?,?)",
-                (str(guild_id), announce_channel_id, msg, fire_at.strftime("%Y-%m-%dT%H:%M")),
+                "INSERT INTO scheduled_messages (guild_id, channel_id, message, send_at, event_id) VALUES (?,?,?,?,?)",
+                (str(guild_id), announce_channel_id, msg, fire_at.strftime("%Y-%m-%dT%H:%M"), str(event.id)),
             )
 
     return RedirectResponse(f"/servers/{guild_id}?tab=events&success=Event+erstellt", status_code=302)
+
+
+@web.post("/servers/{guild_id}/events/edit/{event_id}")
+async def events_edit(request: Request, guild_id: int, event_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Server+nicht+gefunden", status_code=302)
+    try:
+        event = await guild.fetch_scheduled_event(event_id)
+    except discord.NotFound:
+        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Event+nicht+gefunden", status_code=302)
+    if event.status != discord.EventStatus.scheduled:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=events&error=Event+läuft+bereits+oder+ist+beendet,+nur+noch+löschbar",
+            status_code=302,
+        )
+
+    form = await request.form()
+    name = form.get("name", "").strip()
+    description = form.get("description", "").strip()
+    start_at = form.get("start_at", "")
+    end_at = form.get("end_at", "")
+    channel_id = form.get("channel_id", "")
+    location = form.get("location", "").strip()
+
+    if not name or not start_at:
+        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Name+und+Start+erforderlich", status_code=302)
+
+    tz = _request_tz.get()
+    try:
+        start_dt = datetime.datetime.fromisoformat(start_at).replace(tzinfo=tz)
+    except ValueError:
+        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Ungültiger+Startzeitpunkt", status_code=302)
+    end_dt = None
+    if end_at:
+        try:
+            end_dt = datetime.datetime.fromisoformat(end_at).replace(tzinfo=tz)
+        except ValueError:
+            return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Ungültiger+Endzeitpunkt", status_code=302)
+
+    kwargs = {
+        "name": name,
+        "description": description or None,
+        "start_time": start_dt,
+    }
+    if event.entity_type == discord.EntityType.external:
+        if not end_dt:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=events&error=Ende+für+externe+Events+erforderlich",
+                status_code=302,
+            )
+        kwargs["location"] = location or guild.name
+        kwargs["end_time"] = end_dt
+    else:
+        try:
+            channel = guild.get_channel(int(channel_id))
+        except (ValueError, TypeError):
+            channel = None
+        if not channel:
+            return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Kanal+nicht+gefunden", status_code=302)
+        kwargs["channel"] = channel
+        if end_dt:
+            kwargs["end_time"] = end_dt
+
+    try:
+        await event.edit(**kwargs)
+    except discord.HTTPException as e:
+        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Discord-Fehler:+{e.text}", status_code=302)
+
+    return RedirectResponse(f"/servers/{guild_id}?tab=events&success=Event+aktualisiert", status_code=302)
 
 
 @web.post("/servers/{guild_id}/events/delete/{event_id}")
@@ -2922,6 +3021,7 @@ async def server_config(
             "SELECT * FROM birthdays WHERE guild_id=? ORDER BY birthday", (str(guild_id),)
         ),
         "events_list": sorted(guild.scheduled_events, key=lambda e: e.start_time),
+        "event_reminders": await _event_reminders_by_event(guild_id),
     })
 
 
