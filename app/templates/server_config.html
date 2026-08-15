@@ -846,9 +846,16 @@ function toggleScheduledEdit(id) {
     </thead>
     <tbody>
     {% for ev in events_list %}
+    {% set reminders_for_ev = event_reminders.get(ev.id | string) %}
     <tr style="border-top:1px solid var(--border);font-size:0.85rem;">
       <td style="padding:0.5rem;white-space:nowrap;">{{ ev.start_time | dt }}</td>
-      <td style="padding:0.5rem;">{{ ev.name }}</td>
+      <td style="padding:0.5rem;">
+        <div>{% if ev.entity_type.name == 'external' %}📍{% else %}🔊{% endif %} {{ ev.name }}</div>
+        {% if ev.description %}<div style="font-size:0.72rem;color:var(--muted);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ ev.description }}</div>{% endif %}
+        {% if reminders_for_ev %}
+        <div style="font-size:0.72rem;color:#a78bfa;">⏰ {% for rem in reminders_for_ev %}{{ rem.send_at | replace("T"," ") }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
+        {% endif %}
+      </td>
       <td style="padding:0.5rem;">
         {% if ev.entity_type.name == 'external' %}📍 {{ ev.location }}
         {% elif ev.channel %}🔊 #{{ ev.channel.name }}
@@ -857,7 +864,7 @@ function toggleScheduledEdit(id) {
       <td style="padding:0.5rem;color:var(--muted);">{{ tr.get('events_status_' + ev.status.name, ev.status.name) }}</td>
       <td style="padding:0.5rem;text-align:right;white-space:nowrap;">
         {% if ev.status.name == 'scheduled' %}
-        <button type="button" class="btn btn-secondary" onclick="toggleEventEdit({{ ev.id }})" style="padding:0.2rem 0.6rem;font-size:0.78rem;" title="{{ tr.btn_edit }}">✎</button>
+        <button type="button" class="btn btn-secondary" onclick="toggleEventEdit('{{ ev.id }}')" style="padding:0.2rem 0.6rem;font-size:0.78rem;" title="{{ tr.btn_edit }}">✎</button>
         {% endif %}
         <form method="post" action="/servers/{{ guild.id }}/events/delete/{{ ev.id }}" style="margin:0;display:inline;" onsubmit="return confirm('{{ tr.events_confirm_delete.replace('{name}', ev.name) }}')">
           <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
@@ -867,7 +874,6 @@ function toggleScheduledEdit(id) {
     {% if ev.status.name == 'scheduled' %}
     <tr id="event-edit-{{ ev.id }}" style="display:none;" class="panel-edit-row">
       <td colspan="5" style="padding:1rem 1.25rem;">
-        {% set reminders_for_ev = event_reminders.get(ev.id | string) %}
         {% if reminders_for_ev %}
         <div style="margin-bottom:0.75rem;font-size:0.78rem;color:var(--muted);">
           <div style="font-weight:600;color:var(--text);margin-bottom:0.3rem;">{{ tr.events_reminders_list_title }}</div>
