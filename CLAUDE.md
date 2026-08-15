@@ -121,6 +121,11 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
+1.3.19 — Bugfix: Bearbeiten-Button bei Events tat nichts, weil die Discord-Snowflake-ID als rohe
+JS-Zahl im onclick Präzision verlor (>2^53) und dadurch nicht mehr zur gerenderten Zeilen-ID
+passte — jetzt als String übergeben. Zusätzlich: Beschreibung + Erinnerungs-Zeitpunkte werden
+direkt in der Events-Tabellenzeile angezeigt statt nur versteckt im Bearbeiten-Panel.
+
 1.3.18 — Bugfix: Ankündigung postete bisher sofort bei Event-Erstellung statt beim Event-Start.
 Läuft jetzt über denselben Mechanismus wie die Erinnerungen (Offset 0 = bei Start), scheduler.py
 baut das Embed live beim Versenden aus dem aktuellen Event-Zustand statt es vorab zu bauen.
