@@ -802,17 +802,37 @@ function toggleScheduledEdit(id) {
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-events">
 <div class="card">
-  <div class="feat-header">🗓️ Discord-Events</div>
-  <p class="hint" style="margin-bottom:1rem;">Erstellt native Discord-Server-Events (erscheinen im Events-Tab des Servers).</p>
+  <div class="feat-header" style="display:flex;align-items:center;gap:0.4rem;">
+    {{ tr.events_title }}
+    <span style="position:relative;">
+      <button type="button" onclick="toggleEvInfo()" title="{{ tr.events_info_title }}"
+        style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+      <div id="ev-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.3rem;
+           background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.75rem 1rem;
+           font-size:0.78rem;min-width:300px;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-weight:400;">
+        <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.events_info_title }}</div>
+        <div style="margin-bottom:0.6rem;">
+          <div style="font-weight:600;">{{ tr.events_info_voice_title }}</div>
+          <div style="color:var(--muted);">{{ tr.events_info_voice_example }}</div>
+        </div>
+        <div>
+          <div style="font-weight:600;">{{ tr.events_info_external_title }}</div>
+          <div style="color:var(--muted);">{{ tr.events_info_external_example }}</div>
+        </div>
+        <div style="margin-top:0.6rem;color:var(--muted);font-size:0.72rem;">{{ tr.events_info_footer }}</div>
+      </div>
+    </span>
+  </div>
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.events_hint }}</p>
 
   {% if events_list %}
   <table style="width:100%;border-collapse:collapse;margin-bottom:1.25rem;">
     <thead>
       <tr style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;">
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Start</th>
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Name</th>
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Ort</th>
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Status</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.events_col_start }}</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.label_name }}</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.events_col_location }}</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.events_col_status }}</th>
         <th style="padding:0.4rem 0.5rem;"></th>
       </tr>
     </thead>
@@ -824,11 +844,11 @@ function toggleScheduledEdit(id) {
       <td style="padding:0.5rem;">
         {% if ev.entity_type.name == 'external' %}📍 {{ ev.location }}
         {% elif ev.channel %}🔊 #{{ ev.channel.name }}
-        {% else %}—{% endif %}
+        {% else %}{{ tr.events_none_location }}{% endif %}
       </td>
-      <td style="padding:0.5rem;color:var(--muted);">{{ ev.status.name }}</td>
+      <td style="padding:0.5rem;color:var(--muted);">{{ tr.get('events_status_' + ev.status.name, ev.status.name) }}</td>
       <td style="padding:0.5rem;text-align:right;">
-        <form method="post" action="/servers/{{ guild.id }}/events/delete/{{ ev.id }}" style="margin:0;" onsubmit="return confirm('Event «{{ ev.name }}» wirklich löschen?')">
+        <form method="post" action="/servers/{{ guild.id }}/events/delete/{{ ev.id }}" style="margin:0;" onsubmit="return confirm('{{ tr.events_confirm_delete.replace('{name}', ev.name) }}')">
           <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
         </form>
       </td>
@@ -841,38 +861,38 @@ function toggleScheduledEdit(id) {
   <form method="post" action="/servers/{{ guild.id }}/events/create">
     <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
       <div>
-        <label style="font-size:0.82rem;">Name</label>
+        <label style="font-size:0.82rem;">{{ tr.label_name }}</label>
         <input type="text" name="name" required>
       </div>
       <div>
-        <label style="font-size:0.82rem;">Typ</label>
+        <label style="font-size:0.82rem;">{{ tr.events_field_type }}</label>
         <select name="entity_type" id="ev-entity-type" onchange="evToggleType()">
-          <option value="external" selected>📍 Ohne Kanal (nur Events-Liste)</option>
-          <option value="voice">🔊 Voice-Kanal</option>
+          <option value="external" selected>{{ tr.events_type_external }}</option>
+          <option value="voice">{{ tr.events_type_voice }}</option>
         </select>
       </div>
       <div>
-        <label style="font-size:0.82rem;">Start</label>
+        <label style="font-size:0.82rem;">{{ tr.events_col_start }}</label>
         <input type="datetime-local" name="start_at" required>
       </div>
       <div>
-        <label style="font-size:0.82rem;">Ende <span style="color:var(--muted);" id="ev-end-hint">(erforderlich)</span></label>
+        <label style="font-size:0.82rem;">{{ tr.events_field_end }} <span style="color:var(--muted);" id="ev-end-hint">{{ tr.events_end_required }}</span></label>
         <input type="datetime-local" name="end_at" id="ev-end-at" required>
       </div>
       <div id="ev-channel-row" style="display:none;">
-        <label style="font-size:0.82rem;">Kanal</label>
+        <label style="font-size:0.82rem;">{{ tr.label_channel }}</label>
         <select name="channel_id">
-          <option value="">— Kanal wählen —</option>
+          <option value="">{{ tr.events_channel_placeholder }}</option>
           {% for c in voice_channels %}<option value="{{ c.id }}">🔊 {{ c.name }}</option>{% endfor %}
         </select>
       </div>
       <div id="ev-location-row">
-        <label style="font-size:0.82rem;">Ort <span style="color:var(--muted);">(optional, Standard: Servername)</span></label>
-        <input type="text" name="location" placeholder="z.B. VRChat, Stadtpark, https://...">
+        <label style="font-size:0.82rem;">{{ tr.events_field_location }} <span style="color:var(--muted);">{{ tr.events_location_hint }}</span></label>
+        <input type="text" name="location" placeholder="{{ tr.events_location_placeholder }}">
       </div>
     </div>
-    <label style="font-size:0.82rem;">Beschreibung</label>
-    <textarea name="description" rows="3" placeholder="Beschreibung (optional)…"
+    <label style="font-size:0.82rem;">{{ tr.events_field_description }}</label>
+    <textarea name="description" rows="3" placeholder="{{ tr.events_description_placeholder }}"
               style="margin-bottom:0.75rem;width:100%;box-sizing:border-box;
                      background:var(--bg);color:var(--text);border:1px solid var(--border);
                      border-radius:0.5rem;padding:0.65rem 0.75rem;font-size:0.88rem;
@@ -880,19 +900,31 @@ function toggleScheduledEdit(id) {
                      transition:border-color 0.15s;outline:none;"
               onfocus="this.style.borderColor='var(--accent)'"
               onblur="this.style.borderColor='var(--border)'"></textarea>
-    <button type="submit" class="btn btn-primary">🗓️ Event erstellen</button>
+    <button type="submit" class="btn btn-primary">{{ tr.events_btn_create }}</button>
   </form>
 </div>
 </div>
 
 <script>
+const EV_END_REQUIRED = '{{ tr.events_end_required }}';
+const EV_END_OPTIONAL = '{{ tr.events_end_optional }}';
 function evToggleType() {
   const isExternal = document.getElementById('ev-entity-type').value === 'external';
   document.getElementById('ev-channel-row').style.display = isExternal ? 'none' : '';
   document.getElementById('ev-location-row').style.display = isExternal ? '' : 'none';
   document.getElementById('ev-end-at').required = isExternal;
-  document.getElementById('ev-end-hint').textContent = isExternal ? '(erforderlich)' : '(optional)';
+  document.getElementById('ev-end-hint').textContent = isExternal ? EV_END_REQUIRED : EV_END_OPTIONAL;
 }
+function toggleEvInfo() {
+  const box = document.getElementById('ev-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('ev-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleEvInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
