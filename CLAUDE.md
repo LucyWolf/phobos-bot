@@ -121,6 +121,14 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
+1.4.2 — 2FA-Sicherheitsreview: die 5-Versuche-Bremse hing bisher nur an der Session
+(request.session["totp_fail_count"]) — wer das Passwort kennt, konnte durch erneutes Einloggen
+jederzeit eine frische Session mit zurückgesetztem Zähler bekommen, die Bremse griff also nicht
+wirklich. Jetzt kontobasiert in der DB (users.totp_fail_count/totp_locked_until, 15 Min. Sperre
+nach 5 Fehlversuchen), geprüft sowohl in login_submit als auch login_2fa_submit. Wird beim
+Aktivieren/Deaktivieren von 2FA mitzurückgesetzt, damit keine alte Sperre nach Reaktivierung
+wieder auflebt. Kleiner Cosmetic-Fix: Restzeit-Anzeige rundete immer eine Minute zu viel.
+
 1.4.1 — 2FA: Backup-Codes lassen sich jetzt jederzeit neu erstellen (Profil-Karte, Passwort-Pflicht,
 POST /profile/2fa/backup-codes/regenerate) statt nur einmalig beim Setup sichtbar zu sein — alte
 Codes werden dabei ungültig. Wichtig: requirements.txt-Änderungen (wie pyotp/qrcode in 1.4.0)
