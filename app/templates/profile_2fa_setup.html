@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} – 2FA einrichten{% endblock %}
+{% block page_title %}🔐 Zwei-Faktor-Authentifizierung einrichten{% endblock %}
+
+{% block content %}
+{% if error %}<div class="alert alert-error" style="max-width:480px;">❌ {{ error }}</div>{% endif %}
+
+<div class="card" style="max-width:480px;">
+  <p class="hint" style="margin-bottom:1rem;">
+    1. Scanne den QR-Code mit einer Authenticator-App (z.B. Google Authenticator, Authy, Aegis).<br>
+    2. Gib unten den 6-stelligen Code aus der App ein, um die Einrichtung abzuschließen.
+  </p>
+
+  <div style="display:flex;justify-content:center;margin-bottom:1rem;">
+    <img src="{{ qr }}" alt="QR-Code" style="width:220px;height:220px;border-radius:0.5rem;background:#fff;padding:0.5rem;">
+  </div>
+
+  <p class="hint" style="text-align:center;margin-bottom:1rem;">
+    Kein QR-Scanner? Manuell eintragen:<br>
+    <code style="font-size:0.85rem;letter-spacing:0.05em;user-select:all;">{{ secret }}</code>
+  </p>
+
+  <form method="post" action="/profile/2fa/setup">
+    <label>Code aus der App</label>
+    <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus maxlength="6"
+           style="text-align:center;font-size:1.2rem;letter-spacing:0.3em;">
+    <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem;">Aktivieren</button>
+  </form>
+  <a href="/profile" class="hint" style="display:block;text-align:center;margin-top:1rem;">Abbrechen</a>
+</div>
+{% endblock %}
