@@ -121,6 +121,14 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
+1.3.20 — Events-Bereich Bug-Review: (1) Erinnerungs-Platzhaltertext mit Apostroph brach das
+komplette <script>-Tag im Events-Tab (alle Buttons kaputt) — neue Jinja-Filter `js` (HTML-Attribut-
+Kontext, z.B. onsubmit) und `jsraw` (<script>-Element-Kontext) lösen das JSON-sicher, unabhängig
+von Jinja-Autoescape. (2) Gleiches Muster fixiert bei Event-Namen mit Anführungszeichen im
+Lösch-Confirm-Dialog. (3) Löschen eines Events räumt jetzt auch dessen noch nicht gefeuerte
+Erinnerungen in scheduled_messages auf (vorher: verwaiste Erinnerungen feuerten trotzdem noch).
+Info-Box erwähnt jetzt auch die Bearbeiten-Einschränkung (nur solange "Geplant").
+
 1.3.19 — Bugfix: Bearbeiten-Button bei Events tat nichts, weil die Discord-Snowflake-ID als rohe
 JS-Zahl im onclick Präzision verlor (>2^53) und dadurch nicht mehr zur gerenderten Zeilen-ID
 passte — jetzt als String übergeben. Zusätzlich: Beschreibung + Erinnerungs-Zeitpunkte werden
