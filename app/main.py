@@ -1902,10 +1902,10 @@ function waitForServer() {
 function retry() {
   waitTries++;
   hint.textContent = 'Warte auf Neustart… (' + waitTries + ')';
-  if (waitTries === 5)  addLine('  ⏳  Image wird neu gebaut – bitte warten…', 'info');
+  if (waitTries === 5)  addLine('  ⏳  Neustart dauert länger – bitte warten…', 'info');
   if (waitTries === 15) addLine('  ⏳  Server verbindet sich mit Discord…', 'info');
-  if (waitTries === 60) addLine('  ⚠   Startet noch – bei Bedarf: docker compose up -d --build', 'warn');
-  if (waitTries < 240) setTimeout(waitForServer, 2500);
+  if (waitTries === 30) addLine('  ⚠   Startet noch – falls nötig: docker compose restart', 'warn');
+  if (waitTries < 120) setTimeout(waitForServer, 2500);
   else { addLine('❌  Timeout – bitte Container manuell neu starten.', 'err'); spin.style.display='none'; }
 }
 
@@ -2001,9 +2001,8 @@ async def bot_update_apply(request: Request):
 
             compose_dir = await asyncio.get_event_loop().run_in_executor(None, _get_compose_dir)
             if compose_dir:
-                _ulog("$ docker-compose up -d --build", "cmd")
-                _ulog("  🔧  Baue Image neu (installiert auch neue Python-Pakete) …", "info")
-                rc = await _run(["docker-compose", "up", "-d", "--build"], cwd=compose_dir)
+                _ulog("$ docker-compose restart", "cmd")
+                rc = await _run(["docker-compose", "restart"], cwd=compose_dir)
                 _update_status["done"] = True
             else:
                 _ulog("$ exec python " + " ".join(sys.argv), "cmd")

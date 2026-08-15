@@ -5,7 +5,7 @@ Discord-Bot mit Web-Dashboard. Python 3.11, discord.py 2.3.2, FastAPI + Uvicorn,
 
 ## Wichtige Regeln
 - **`app/VERSION` bei JEDEM Commit erhöhen** — User hat mehrfach darauf hingewiesen, niemals vergessen
-- Deploy: User zieht selbst über die Dashboard-UI (Updates-Seite, macht seit v1.4.2 `docker-compose up -d --build`, nicht mehr nur `restart`)
+- Deploy: `git pull && docker compose restart` auf Linux-Server (root@Phobos-Bot)
 - Commit immer mit `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
 
 ## Pfade
@@ -79,12 +79,8 @@ xp_in_level = row["xp"] - sum(xp_for_level(i) for i in range(row["level"]))
 ```python
 git -C /repo fetch origin main
 git -C /repo reset --hard origin/main
-docker-compose up -d --build
+docker-compose restart
 ```
-Seit v1.4.2 bewusst immer `--build` statt nur `restart` — sonst werden neue Python-Pakete in
-`requirements.txt` (z.B. pyotp/qrcode für 2FA) beim In-App-Update nicht installiert und der
-Container crash-loopt (`ModuleNotFoundError`). Docker cached den pip-install-Layer, daher ist
-das bei unveränderten Dependencies trotzdem schnell.
 
 ## Cogs (app/cogs/)
 - `leveling.py` — XP, /rank, /leaderboard, /setxp
@@ -125,15 +121,6 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
-1.4.3 — In-App-Updater (Dashboard "Jetzt updaten") macht jetzt immer einen echten Docker-Image-
-Rebuild (`docker-compose up -d --build`) statt nur `docker-compose restart` — Grund: v1.4.0 hat
-neue Pakete (pyotp/qrcode) eingeführt, die beim reinen Neustart nicht nachinstalliert wurden und
-den Container in eine ModuleNotFoundError-Crashloop geschickt haben (bei mehreren Nutzern
-aufgetreten). Wartezeit-Timeout auf der Update-Seite von 5 auf 10 Minuten erhöht (Rebuilds dauern
-länger als ein reiner Neustart), veralteter "docker compose restart"-Hinweistext korrigiert.
-README (DE+EN) und CLAUDE.md-eigene Doku entsprechend aktualisiert: bei manuellen Updates immer
-`--build` verwenden, nicht nur `restart`.
-
 1.4.2 — 2FA-Sicherheitsreview: die 5-Versuche-Bremse hing bisher nur an der Session
 (request.session["totp_fail_count"]) — wer das Passwort kennt, konnte durch erneutes Einloggen
 jederzeit eine frische Session mit zurückgesetztem Zähler bekommen, die Bremse griff also nicht
