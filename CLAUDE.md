@@ -121,6 +121,10 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
+1.3.16 — Events: mehrere Erinnerungen (X Min. vorher + eigene Nachricht, 0 = bei Start) —
+werden als Einträge in scheduled_messages angelegt, laufen über den bestehenden Scheduler-Cog
+und sind im Tab "Geplant" bearbeitbar. Erfordert einen gesetzten Ankündigungskanal.
+
 1.3.15 — Events-Info-Karte (ℹ) um Beispiel-Block zur Ankündigungsfunktion ergänzt
 
 1.3.14 — Events-Tab: optionaler Ankündigungskanal — Bot postet Embed (Name/Start/Ende/Ort, Link zum Event) in einen Textkanal bei Event-Erstellung
