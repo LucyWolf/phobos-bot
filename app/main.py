@@ -2022,6 +2022,7 @@ async def events_create(request: Request, guild_id: int):
     entity_type = form.get("entity_type", "voice")
     channel_id = form.get("channel_id", "")
     location = form.get("location", "").strip()
+    announce_channel_id = form.get("announce_channel_id", "")
 
     if not name or not start_at:
         return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Name+und+Start+erforderlich", status_code=302)
@@ -2066,9 +2067,33 @@ async def events_create(request: Request, guild_id: int):
             kwargs["end_time"] = end_dt
 
     try:
-        await guild.create_scheduled_event(**kwargs)
+        event = await guild.create_scheduled_event(**kwargs)
     except discord.HTTPException as e:
         return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Discord-Fehler:+{e.text}", status_code=302)
+
+    if announce_channel_id:
+        try:
+            announce_ch = guild.get_channel(int(announce_channel_id))
+        except (ValueError, TypeError):
+            announce_ch = None
+        if announce_ch:
+            embed = discord.Embed(
+                title=f"🗓️ Neues Event: {event.name}",
+                description=event.description or None,
+                url=event.url,
+                color=0x7C3AED,
+            )
+            embed.add_field(name="Start", value=_fmt_dt(event.start_time), inline=True)
+            if event.end_time:
+                embed.add_field(name="Ende", value=_fmt_dt(event.end_time), inline=True)
+            if entity_type == "external":
+                embed.add_field(name="Ort", value=kwargs["location"], inline=False)
+            elif event.channel:
+                embed.add_field(name="Ort", value=event.channel.mention, inline=False)
+            try:
+                await announce_ch.send(embed=embed)
+            except discord.HTTPException:
+                pass
 
     return RedirectResponse(f"/servers/{guild_id}?tab=events&success=Event+erstellt", status_code=302)
 

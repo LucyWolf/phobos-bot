@@ -890,6 +890,13 @@ function toggleScheduledEdit(id) {
         <label style="font-size:0.82rem;">{{ tr.events_field_location }} <span style="color:var(--muted);">{{ tr.events_location_hint }}</span></label>
         <input type="text" name="location" placeholder="{{ tr.events_location_placeholder }}">
       </div>
+      <div style="grid-column:1/-1;">
+        <label style="font-size:0.82rem;">{{ tr.events_field_announce }} <span style="color:var(--muted);">{{ tr.events_announce_hint }}</span></label>
+        <select name="announce_channel_id">
+          <option value="">{{ tr.events_announce_none }}</option>
+          {% for c in channels %}<option value="{{ c.id }}">#{{ c.name }}</option>{% endfor %}
+        </select>
+      </div>
     </div>
     <label style="font-size:0.82rem;">{{ tr.events_field_description }}</label>
     <textarea name="description" rows="3" placeholder="{{ tr.events_description_placeholder }}"
