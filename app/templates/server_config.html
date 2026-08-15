@@ -866,7 +866,7 @@ function toggleScheduledEdit(id) {
         {% if ev.status.name == 'scheduled' %}
         <button type="button" class="btn btn-secondary" onclick="toggleEventEdit('{{ ev.id }}')" style="padding:0.2rem 0.6rem;font-size:0.78rem;" title="{{ tr.btn_edit }}">✎</button>
         {% endif %}
-        <form method="post" action="/servers/{{ guild.id }}/events/delete/{{ ev.id }}" style="margin:0;display:inline;" onsubmit="return confirm('{{ tr.events_confirm_delete.replace('{name}', ev.name) }}')">
+        <form method="post" action="/servers/{{ guild.id }}/events/delete/{{ ev.id }}" style="margin:0;display:inline;" onsubmit="return confirm({{ tr.events_confirm_delete.replace('{name}', ev.name) | js }})">
           <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
         </form>
       </td>
@@ -984,10 +984,10 @@ function toggleScheduledEdit(id) {
 </div>
 
 <script>
-const EV_END_REQUIRED = '{{ tr.events_end_required }}';
-const EV_END_OPTIONAL = '{{ tr.events_end_optional }}';
-const EV_REMINDER_MIN_PH = '{{ tr.events_reminder_minutes_placeholder }}';
-const EV_REMINDER_MSG_PH = '{{ tr.events_reminder_message_placeholder }}';
+const EV_END_REQUIRED = {{ tr.events_end_required | jsraw }};
+const EV_END_OPTIONAL = {{ tr.events_end_optional | jsraw }};
+const EV_REMINDER_MIN_PH = {{ tr.events_reminder_minutes_placeholder | jsraw }};
+const EV_REMINDER_MSG_PH = {{ tr.events_reminder_message_placeholder | jsraw }};
 function toggleEventEdit(id) {
   const row = document.getElementById('event-edit-' + id);
   if (row) row.style.display = row.style.display === 'none' ? '' : 'none';

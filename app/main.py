@@ -32,6 +32,7 @@ from discord.ext import commands
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+import markupsafe
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -334,8 +335,27 @@ web.add_middleware(TZMiddleware)
 web.add_middleware(SessionValidityMiddleware)
 web.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="phobos_session")
 templates = Jinja2Templates(directory="templates")
+def _js_attr(value) -> str:
+    """JSON-encode value for embedding as a JS string literal inside a double-quoted HTML
+    attribute (e.g. onclick="fn({{ value | js }})"). Safe regardless of Jinja autoescape,
+    since the result is HTML-attribute-escaped here and marked safe."""
+    encoded = _djson.dumps("" if value is None else str(value))
+    escaped = encoded.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
+    return markupsafe.Markup(escaped)
+
+
+def _js_raw(value) -> str:
+    """JSON-encode value for embedding as a JS string literal inside a <script> element's
+    text content (e.g. const X = {{ value | jsraw }};). Do NOT use inside HTML attributes -
+    entities are not decoded in <script> content, so no HTML-escaping is applied here."""
+    encoded = _djson.dumps("" if value is None else str(value))
+    return markupsafe.Markup(encoded.replace("</", "<\\/"))
+
+
 templates.env.filters["dt"] = _fmt_dt
 templates.env.filters["dtlocal"] = _fmt_dt_local
+templates.env.filters["js"] = _js_attr
+templates.env.filters["jsraw"] = _js_raw
 
 def _log_bar_class(icon: str) -> str:
     _map = {
@@ -2216,6 +2236,7 @@ async def events_delete(request: Request, guild_id: int, event_id: int):
         pass
     except discord.HTTPException as e:
         return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Discord-Fehler:+{e.text}", status_code=302)
+    await db_exec("DELETE FROM scheduled_messages WHERE event_id=? AND sent=0", (str(event_id),))
     return RedirectResponse(f"/servers/{guild_id}?tab=events&success=Event+gelöscht", status_code=302)
 
 

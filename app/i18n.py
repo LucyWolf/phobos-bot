@@ -135,7 +135,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "events_info_announce_example": "Textkanal wählen: sobald das Event startet, postet der Bot dort automatisch eine Nachricht mit Event-Infos + Link.",
         "events_info_reminder_title": "⏰ Erinnerungen (optional)",
         "events_info_reminder_example": "Min. vorher: 10, Text: „Los geht's gleich!“ · Min. vorher: 0, Text: „Wir starten jetzt!“ — landen im Ankündigungskanal, auch im Tab „Geplant“ editierbar.",
-        "events_info_footer":         "Bei „Ohne Kanal“ verlangt Discord immer ein Enddatum. Lässt du den Ort leer, wird automatisch der Servername eingetragen.",
+        "events_info_footer":         "Bei „Ohne Kanal“ verlangt Discord immer ein Enddatum. Lässt du den Ort leer, wird automatisch der Servername eingetragen. Solange ein Event noch nicht gestartet ist (Status „Geplant“), kannst du es über ✎ nachträglich bearbeiten — danach nur noch löschen.",
         # Lang toggle label (shows the OTHER language to switch to)
         "lang_switch":        "🇬🇧 EN",
     },
@@ -275,7 +275,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "events_info_announce_example": "Pick a text channel: once the event starts, the bot automatically posts a message there with the event info + link.",
         "events_info_reminder_title": "⏰ Reminders (optional)",
         "events_info_reminder_example": "Min. before: 10, text: \"Starting soon!\" · Min. before: 0, text: \"We're starting now!\" — posted to the announcement channel, also editable in the \"Scheduled\" tab.",
-        "events_info_footer":         "For \"No channel\" events, Discord always requires an end date. If you leave the location empty, the server name is used automatically.",
+        "events_info_footer":         "For \"No channel\" events, Discord always requires an end date. If you leave the location empty, the server name is used automatically. As long as an event hasn't started yet (status \"Scheduled\"), you can edit it via ✎ — afterwards it can only be deleted.",
         # Lang toggle label
         "lang_switch":        "🇩🇪 DE",
     },
