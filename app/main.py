@@ -1980,6 +1980,21 @@ async def scheduled_add(request: Request, guild_id: str):
         )
     return RedirectResponse(f"/servers/{guild_id}?tab=scheduled&success=Geplant", status_code=302)
 
+@web.post("/servers/{guild_id}/scheduled/edit/{msg_id}")
+async def scheduled_edit(request: Request, guild_id: str, msg_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    channel_id = form.get("channel_id", "")
+    message = form.get("message", "").strip()
+    send_at = form.get("send_at", "")
+    if channel_id and message and send_at:
+        await db_exec(
+            "UPDATE scheduled_messages SET channel_id=?, message=?, send_at=? WHERE id=? AND guild_id=? AND sent=0",
+            (channel_id, message, send_at, msg_id, guild_id),
+        )
+    return RedirectResponse(f"/servers/{guild_id}?tab=scheduled&success=Gespeichert", status_code=302)
+
 @web.post("/servers/{guild_id}/scheduled/delete/{msg_id}")
 async def scheduled_delete(request: Request, guild_id: str, msg_id: int):
     if r := auth_redirect(request): return r
