@@ -722,9 +722,38 @@ document.addEventListener('click', function(e) {
       <td style="padding:0.5rem;white-space:nowrap;">{{ sm.send_at | replace("T"," ") }}</td>
       <td style="padding:0.5rem;">#{{ ch_name }}</td>
       <td style="padding:0.5rem;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ sm.message }}</td>
-      <td style="padding:0.5rem;text-align:right;">
-        <form method="post" action="/servers/{{ guild.id }}/scheduled/delete/{{ sm.id }}" style="margin:0;">
+      <td style="padding:0.5rem;text-align:right;white-space:nowrap;">
+        <button type="button" class="btn btn-secondary" onclick="toggleScheduledEdit({{ sm.id }})" style="padding:0.2rem 0.6rem;font-size:0.78rem;" title="Bearbeiten">✎</button>
+        <form method="post" action="/servers/{{ guild.id }}/scheduled/delete/{{ sm.id }}" style="margin:0;display:inline;">
           <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
+        </form>
+      </td>
+    </tr>
+    <tr id="scheduled-edit-{{ sm.id }}" style="display:none;" class="panel-edit-row">
+      <td colspan="4" style="padding:1rem 1.25rem;">
+        <form method="post" action="/servers/{{ guild.id }}/scheduled/edit/{{ sm.id }}">
+          <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
+            <div>
+              <label style="font-size:0.82rem;">Kanal</label>
+              <select name="channel_id" required style="margin-bottom:0;">
+                {% for c in channels %}<option value="{{ c.id }}" {% if c.id == sm.channel_id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div>
+              <label style="font-size:0.82rem;">Zeitpunkt</label>
+              <input type="datetime-local" name="send_at" value="{{ sm.send_at }}" required style="margin-bottom:0;">
+            </div>
+          </div>
+          <label style="font-size:0.82rem;">Nachricht</label>
+          <textarea name="message" rows="4" required
+                    style="margin-bottom:0.75rem;width:100%;box-sizing:border-box;
+                           background:var(--bg);color:var(--text);border:1px solid var(--border);
+                           border-radius:0.5rem;padding:0.65rem 0.75rem;font-size:0.88rem;
+                           line-height:1.55;resize:vertical;font-family:inherit;
+                           transition:border-color 0.15s;outline:none;"
+                    onfocus="this.style.borderColor='var(--accent)'"
+                    onblur="this.style.borderColor='var(--border)'">{{ sm.message }}</textarea>
+          <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">💾 Speichern</button>
         </form>
       </td>
     </tr>
@@ -760,6 +789,13 @@ document.addEventListener('click', function(e) {
   </form>
 </div>
 </div>
+
+<script>
+function toggleScheduledEdit(id) {
+  const row = document.getElementById('scheduled-edit-' + id);
+  if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+</script>
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <!-- TAB: Geburtstage                                                     -->
