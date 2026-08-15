@@ -226,10 +226,10 @@ The dashboard is available on port `8080`.
 ```bash
 cd phobos-bot
 git pull
-docker compose up -d --build
+docker compose restart
 ```
 
-> Always use `--build`, not just `docker compose restart` — otherwise new Python packages added to `requirements.txt` won't get installed and the bot will crash with `ModuleNotFoundError` on the next restart. Docker caches the pip-install layer, so `--build` stays fast when dependencies haven't changed.
+> A full rebuild (`docker compose up -d --build`) is only needed when `requirements.txt` or `Dockerfile` changes. For code or template changes, `docker compose restart` is enough.
 
 ### RAM Display
 
@@ -565,10 +565,10 @@ Dashboard ist auf Port `8080` erreichbar.
 ```bash
 cd phobos-bot
 git pull
-docker compose up -d --build
+docker compose restart
 ```
 
-> Immer `--build` verwenden, nicht nur `docker compose restart` — sonst werden neue Python-Pakete aus `requirements.txt` nicht installiert und der Bot crasht beim nächsten Neustart mit `ModuleNotFoundError`. Docker cached den pip-install-Layer, `--build` bleibt also schnell, solange sich die Abhängigkeiten nicht geändert haben.
+> Vollständiger Rebuild (`docker compose up -d --build`) ist nur nötig wenn sich `requirements.txt` oder `Dockerfile` geändert hat. Bei Code- oder Template-Änderungen reicht `docker compose restart`.
 
 ### RAM-Anzeige konfigurieren
 
