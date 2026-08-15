@@ -121,6 +121,13 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
+1.3.25 — Events "Ende festlegen"-Checkbox (Erstellen + Bearbeiten): required-Attribut wurde beim
+Checkbox-Toggle nie gesetzt, nur disabled/value. Checkbox anhaken machte das Datumsfeld sichtbar,
+aber nicht zur Browser-Pflicht — leer lassen + absenden hätte das Ende stillschweigend NICHT
+gesetzt bzw. (im Bearbeiten-Formular, wenn Datum manuell geleert ohne Checkbox anzufassen) ein
+bestehendes Enddatum unbemerkt gelöscht. required wird jetzt in beiden Toggle-Funktionen synchron
+zum checked-Status gesetzt, im Bearbeiten-Formular zusätzlich beim initialen Rendern.
+
 1.3.24 — Events-Bereich weitere Bug-Review, zwei echte Fixes:
 (1) Erinnerungen (inkl. Start-/Ende-Benachrichtigung) wurden beim Bearbeiten eines Events NICHT
 mitverschoben, wenn Start/Ende geändert wurden — feuerten danach zum falschen, alten Zeitpunkt.

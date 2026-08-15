@@ -901,7 +901,7 @@ function toggleScheduledEdit(id) {
                 <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.78rem;color:var(--muted);white-space:nowrap;margin:0;">
                   <input type="checkbox" id="event-edit-end-cb-{{ ev.id }}" onchange="evToggleEditEndAt('{{ ev.id }}')" {% if ev.end_time %}checked{% endif %}> {{ tr.events_end_checkbox_label }}
                 </label>
-                <input type="datetime-local" name="end_at" id="event-edit-end-{{ ev.id }}" value="{{ ev.end_time | dtlocal }}" {% if not ev.end_time %}disabled{% endif %} style="flex:1;margin:0;">
+                <input type="datetime-local" name="end_at" id="event-edit-end-{{ ev.id }}" value="{{ ev.end_time | dtlocal }}" {% if ev.end_time %}required{% else %}disabled{% endif %} style="flex:1;margin:0;">
               </div>
               {% endif %}
             </div>
@@ -1015,6 +1015,7 @@ function evToggleEditEndAt(id) {
   const checkbox = document.getElementById('event-edit-end-cb-' + id);
   const endInput = document.getElementById('event-edit-end-' + id);
   endInput.disabled = !checkbox.checked;
+  endInput.required = checkbox.checked;
   if (!checkbox.checked) endInput.value = '';
 }
 function evAddReminder() {
@@ -1030,6 +1031,7 @@ function evToggleEndAt() {
   const checkbox = document.getElementById('ev-end-checkbox');
   const endInput = document.getElementById('ev-end-at');
   endInput.disabled = !checkbox.checked;
+  endInput.required = checkbox.checked;
   if (!checkbox.checked) endInput.value = '';
 }
 function evNotifyEndToggled(notifyCheckbox) {
