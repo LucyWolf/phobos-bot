@@ -81,6 +81,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "profile_2fa_enable":         "Einrichten",
         "profile_2fa_disable":        "Deaktivieren",
         "profile_2fa_disable_confirm": "Zwei-Faktor-Authentifizierung wirklich deaktivieren?",
+        "profile_2fa_backup_regenerate": "Backup-Codes neu erstellen",
+        "profile_2fa_backup_regenerate_hint": "Erstellt 8 neue Backup-Codes. Die alten werden dabei ungültig.",
+        "profile_2fa_backup_regenerate_confirm": "Neue Backup-Codes erstellen? Die alten werden ungültig.",
         # Dashboard
         "dash_morning":       "Guten Morgen",
         "dash_day":           "Guten Tag",
@@ -228,6 +231,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "profile_2fa_enable":         "Set up",
         "profile_2fa_disable":        "Disable",
         "profile_2fa_disable_confirm": "Really disable two-factor authentication?",
+        "profile_2fa_backup_regenerate": "Regenerate backup codes",
+        "profile_2fa_backup_regenerate_hint": "Creates 8 new backup codes. The old ones will stop working.",
+        "profile_2fa_backup_regenerate_confirm": "Generate new backup codes? The old ones will stop working.",
         # Dashboard
         "dash_morning":       "Good morning",
         "dash_day":           "Good afternoon",

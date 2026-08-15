@@ -121,6 +121,12 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
+1.4.1 — 2FA: Backup-Codes lassen sich jetzt jederzeit neu erstellen (Profil-Karte, Passwort-Pflicht,
+POST /profile/2fa/backup-codes/regenerate) statt nur einmalig beim Setup sichtbar zu sein — alte
+Codes werden dabei ungültig. Wichtig: requirements.txt-Änderungen (wie pyotp/qrcode in 1.4.0)
+erfordern beim Deploy `docker compose up -d --build`, der eingebaute Dashboard-Updater macht nur
+git reset + Prozess-Neustart und installiert KEINE neuen pip-Pakete nach.
+
 1.4.0 — Zwei-Faktor-Authentifizierung (TOTP, Google-Authenticator-kompatibel) für den Dashboard-
 Login. Neu: app/totp.py (Secret/QR/Verify/Backup-Codes), users.totp_secret/totp_enabled,
 totp_backup_codes-Tabelle, /profile/2fa/setup (+Bestätigung, zeigt 8 Backup-Codes einmalig),
