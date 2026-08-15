@@ -2069,6 +2069,7 @@ async def events_create(request: Request, guild_id: int):
     channel_id = form.get("channel_id", "")
     location = form.get("location", "").strip()
     announce_channel_id = form.get("announce_channel_id", "")
+    notify_end = form.get("notify_end") == "1"
 
     reminders = []
     for off, msg in zip(form.getlist("reminder_offset"), form.getlist("reminder_message")):
@@ -2085,9 +2086,9 @@ async def events_create(request: Request, guild_id: int):
 
     if not name or not start_at:
         return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Name+und+Start+erforderlich", status_code=302)
-    if reminders and not announce_channel_id:
+    if (reminders or notify_end) and not announce_channel_id:
         return RedirectResponse(
-            f"/servers/{guild_id}?tab=events&error=Ankündigungskanal+für+Erinnerungen+erforderlich",
+            f"/servers/{guild_id}?tab=events&error=Ankündigungskanal+für+Erinnerungen/Ende-Benachrichtigung+erforderlich",
             status_code=302,
         )
 
@@ -2102,6 +2103,11 @@ async def events_create(request: Request, guild_id: int):
             end_dt = datetime.datetime.fromisoformat(end_at).replace(tzinfo=tz)
         except ValueError:
             return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Ungültiger+Endzeitpunkt", status_code=302)
+    if notify_end and not end_dt:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=events&error=Für+Ende-Benachrichtigung+muss+ein+Enddatum+gesetzt+sein",
+            status_code=302,
+        )
 
     kwargs = {
         "name": name,
@@ -2143,6 +2149,12 @@ async def events_create(request: Request, guild_id: int):
             await db_exec(
                 "INSERT INTO scheduled_messages (guild_id, channel_id, message, send_at, event_id) VALUES (?,?,?,?,?)",
                 (str(guild_id), announce_channel_id, msg, fire_at.strftime("%Y-%m-%dT%H:%M"), str(event.id)),
+            )
+        if notify_end and end_dt:
+            fire_at_end = end_dt.astimezone(berlin_tz)
+            await db_exec(
+                "INSERT INTO scheduled_messages (guild_id, channel_id, message, send_at, event_id) VALUES (?,?,?,?,?)",
+                (str(guild_id), announce_channel_id, "🏁 Das Event ist jetzt beendet!", fire_at_end.strftime("%Y-%m-%dT%H:%M"), str(event.id)),
             )
 
     return RedirectResponse(f"/servers/{guild_id}?tab=events&success=Event+erstellt", status_code=302)
