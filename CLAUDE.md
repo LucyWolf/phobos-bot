@@ -121,6 +121,8 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
+1.3.15 — Events-Info-Karte (ℹ) um Beispiel-Block zur Ankündigungsfunktion ergänzt
+
 1.3.14 — Events-Tab: optionaler Ankündigungskanal — Bot postet Embed (Name/Start/Ende/Ort, Link zum Event) in einen Textkanal bei Event-Erstellung
 
 1.3.13 — Events-Tab: Info-Button mit Beispielen (ℹ), komplett zweisprachig (de/en) über i18n.py
