@@ -121,6 +121,11 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
+1.3.23 — Info-Box-Texte im Events-Tab aktualisiert: "Ende: leer lassen" ersetzt durch Hinweis auf
+die neue "Ende festlegen"-Checkbox (v1.3.21), Erinnerungs-Beispiel korrigiert (Start-Meldung ist
+seit v1.3.18 automatisch, nicht mehr manuell per "0 Min. vorher"-Reminder nachzustellen). Deutsch
+und Englisch synchron (127/127 Keys geprüft).
+
 1.3.22 — Neue Checkbox "🏁 Auch bei Event-Ende benachrichtigen" im Events-Erstellen-Formular:
 postet zusätzlich zur Start-Meldung eine weitere Nachricht (über denselben scheduled_messages/
 event_id-Mechanismus) in den Ankündigungskanal, sobald das Event endet. Braucht ein gesetztes
