@@ -65,7 +65,7 @@ Phobos supports **multiple bot accounts simultaneously**. Go to **Settings → �
 services:
   bot:
     build: ./app
-    container_name: ${BOT_CONTAINER_NAME:-discord-bot}
+    container_name: ${BOT_CONTAINER_NAME:-Phobos-Bot}
     ports:
       - "8080:8080"
     volumes:
@@ -73,7 +73,7 @@ services:
       - ./data:/app/data
 ```
 
-> Running a second full instance (separate dashboard + bot process, e.g. on port 8081) on the same server? Set `BOT_CONTAINER_NAME` in `.env` to something matching that bot (e.g. `zerafi`) so `docker ps` shows which container belongs to which bot — otherwise it defaults to `discord-bot` for every instance and they become impossible to tell apart at a glance.
+> Running a second full instance (separate dashboard + bot process, e.g. on port 8081) on the same server? Set `BOT_CONTAINER_NAME` in `.env` to something matching that bot (e.g. `zerafi`) so `docker ps` shows which container belongs to which bot — otherwise it defaults to `Phobos-Bot` for every instance and they become impossible to tell apart at a glance.
 
 ---
 
@@ -406,7 +406,7 @@ Phobos unterstützt **mehrere Bot-Accounts gleichzeitig**. Unter **Einstellungen
 services:
   bot:
     build: ./app
-    container_name: ${BOT_CONTAINER_NAME:-discord-bot}
+    container_name: ${BOT_CONTAINER_NAME:-Phobos-Bot}
     ports:
       - "8080:8080"
     volumes:
@@ -414,7 +414,7 @@ services:
       - ./data:/app/data
 ```
 
-> Läuft eine zweite vollständige Instanz (eigenes Dashboard + Bot-Prozess, z.B. auf Port 8081) auf demselben Server? In der `.env` `BOT_CONTAINER_NAME` auf einen Namen setzen, der zu diesem Bot passt (z.B. `zerafi`), damit `docker ps` zeigt, welcher Container zu welchem Bot gehört — sonst heißt standardmäßig jede Instanz `discord-bot` und sie sind auf den ersten Blick nicht zu unterscheiden.
+> Läuft eine zweite vollständige Instanz (eigenes Dashboard + Bot-Prozess, z.B. auf Port 8081) auf demselben Server? In der `.env` `BOT_CONTAINER_NAME` auf einen Namen setzen, der zu diesem Bot passt (z.B. `zerafi`), damit `docker ps` zeigt, welcher Container zu welchem Bot gehört — sonst heißt standardmäßig jede Instanz `Phobos-Bot` und sie sind auf den ersten Blick nicht zu unterscheiden.
 
 ---
 
