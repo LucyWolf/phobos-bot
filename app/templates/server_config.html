@@ -978,6 +978,12 @@ function toggleScheduledEdit(id) {
         </select>
       </div>
       <div style="grid-column:1/-1;">
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;margin:0;">
+          <input type="checkbox" name="notify_end" value="1" onchange="evNotifyEndToggled(this)"> {{ tr.events_notify_end_label }}
+        </label>
+        <div style="font-size:0.75rem;color:var(--muted);margin-top:0.15rem;">{{ tr.events_notify_end_hint }}</div>
+      </div>
+      <div style="grid-column:1/-1;">
         <label style="font-size:0.82rem;">{{ tr.events_field_reminders }} <span style="color:var(--muted);">{{ tr.events_reminders_hint }}</span></label>
         <div id="ev-reminders-list"></div>
         <button type="button" class="btn btn-secondary" onclick="evAddReminder()" style="font-size:0.78rem;padding:0.3rem 0.7rem;margin-top:0.4rem;">➕ {{ tr.events_add_reminder }}</button>
@@ -1024,6 +1030,14 @@ function evToggleEndAt() {
   const endInput = document.getElementById('ev-end-at');
   endInput.disabled = !checkbox.checked;
   if (!checkbox.checked) endInput.value = '';
+}
+function evNotifyEndToggled(notifyCheckbox) {
+  if (!notifyCheckbox.checked) return;
+  const endCheckbox = document.getElementById('ev-end-checkbox');
+  if (endCheckbox && !endCheckbox.checked) {
+    endCheckbox.checked = true;
+    evToggleEndAt();
+  }
 }
 function evToggleType() {
   const isExternal = document.getElementById('ev-entity-type').value === 'external';

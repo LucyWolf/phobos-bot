@@ -121,6 +121,12 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
+1.3.22 — Neue Checkbox "🏁 Auch bei Event-Ende benachrichtigen" im Events-Erstellen-Formular:
+postet zusätzlich zur Start-Meldung eine weitere Nachricht (über denselben scheduled_messages/
+event_id-Mechanismus) in den Ankündigungskanal, sobald das Event endet. Braucht ein gesetztes
+Enddatum + Ankündigungskanal, sonst Fehlermeldung. Nur im Erstellen-Formular, nicht nachträglich
+im Bearbeiten-Panel änderbar.
+
 1.3.21 — "Ende"-Feld bei Voice-Kanal-Events (Erstellen + Bearbeiten) jetzt mit Checkbox
 "Ende festlegen" statt einem leeren, unklaren Datumsfeld. Bugfix dabei: beim Bearbeiten wurde
 end_time bisher nur gesetzt, nie explizit auf None geleert — Checkbox abwählen entfernte das
