@@ -100,11 +100,26 @@
     <div class="feat-header">🔐 {{ tr.profile_2fa }}</div>
     {% if user.totp_enabled %}
     <p class="hint" style="margin-bottom:1rem;color:#22c55e;">✅ {{ tr.profile_2fa_enabled }}</p>
+
+    <button type="button" class="btn btn-secondary" onclick="toggle2faBackupForm()" style="margin-bottom:0.75rem;">🔑 {{ tr.profile_2fa_backup_regenerate }}</button>
+    <form method="post" action="/profile/2fa/backup-codes/regenerate" id="2fa-backup-form" style="display:none;margin-bottom:1.25rem;" onsubmit="return confirm({{ tr.profile_2fa_backup_regenerate_confirm | js }})">
+      <p class="hint" style="margin-bottom:0.5rem;">{{ tr.profile_2fa_backup_regenerate_hint }}</p>
+      <label>{{ tr.label_password }}</label>
+      <input type="password" name="password" required autocomplete="current-password">
+      <button type="submit" class="btn btn-primary">{{ tr.profile_2fa_backup_regenerate }}</button>
+    </form>
+
     <form method="post" action="/profile/2fa/disable" onsubmit="return confirm({{ tr.profile_2fa_disable_confirm | js }})">
       <label>{{ tr.label_password }}</label>
       <input type="password" name="password" required autocomplete="current-password">
       <button type="submit" class="btn btn-danger">{{ tr.profile_2fa_disable }}</button>
     </form>
+    <script>
+      function toggle2faBackupForm() {
+        const f = document.getElementById('2fa-backup-form');
+        if (f) f.style.display = f.style.display === 'none' ? '' : 'none';
+      }
+    </script>
     {% else %}
     <p class="hint" style="margin-bottom:1rem;">{{ tr.profile_2fa_disabled_hint }}</p>
     <a href="/profile/2fa/setup" class="btn btn-primary" style="display:block;text-align:center;">{{ tr.profile_2fa_enable }}</a>

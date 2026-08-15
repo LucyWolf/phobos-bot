@@ -736,6 +736,15 @@ async def profile_2fa_setup_confirm(request: Request, code: str = Form(...)):
 
     await db_exec("UPDATE users SET totp_secret=?, totp_enabled=1 WHERE id=?", (secret, uid))
     request.session.pop("pending_totp_secret", None)
+    codes = await _regenerate_backup_codes(uid)
+    return templates.TemplateResponse("profile_2fa_backup_codes.html", {
+        **session(request), "request": request,
+        "guilds": await _guild_list(request), "token_set": await _token_configured(),
+        "active": "profile", "codes": codes,
+    })
+
+
+async def _regenerate_backup_codes(uid: int) -> list[str]:
     await db_exec("DELETE FROM totp_backup_codes WHERE user_id=?", (uid,))
     codes = totp.generate_backup_codes()
     for c in codes:
@@ -743,6 +752,19 @@ async def profile_2fa_setup_confirm(request: Request, code: str = Form(...)):
             "INSERT INTO totp_backup_codes (user_id, code_hash) VALUES (?,?)",
             (uid, hash_pw(c)),
         )
+    return codes
+
+
+@web.post("/profile/2fa/backup-codes/regenerate")
+async def profile_2fa_backup_codes_regenerate(request: Request, password: str = Form(...)):
+    if r := auth_redirect(request): return r
+    uid = request.session.get("user_id")
+    user = await db_one("SELECT * FROM users WHERE id=?", (uid,))
+    if not user or not user.get("totp_enabled"):
+        return RedirectResponse("/profile", status_code=302)
+    if not verify_pw(password, user["password_hash"]):
+        return RedirectResponse("/profile?error=Passwort+falsch", status_code=302)
+    codes = await _regenerate_backup_codes(uid)
     return templates.TemplateResponse("profile_2fa_backup_codes.html", {
         **session(request), "request": request,
         "guilds": await _guild_list(request), "token_set": await _token_configured(),
