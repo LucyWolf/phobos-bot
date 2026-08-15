@@ -121,6 +121,12 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
+1.4.4 — v1.4.3 ("Updater macht immer --build") auf User-Wunsch zurückgerollt (git revert), User
+wollte das so nicht. Updater macht wieder nur `docker-compose restart`. WICHTIG für zukünftige
+requirements.txt-Änderungen: der eingebaute Updater installiert dann weiterhin KEINE neuen
+pip-Pakete nach — bei sowas den User explizit auf den nötigen manuellen `docker compose up -d
+--build` hinweisen, nicht automatisch am Updater-Verhalten selbst rumbauen.
+
 1.4.2 — 2FA-Sicherheitsreview: die 5-Versuche-Bremse hing bisher nur an der Session
 (request.session["totp_fail_count"]) — wer das Passwort kennt, konnte durch erneutes Einloggen
 jederzeit eine frische Session mit zurückgesetztem Zähler bekommen, die Bremse griff also nicht
