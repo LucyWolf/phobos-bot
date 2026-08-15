@@ -372,6 +372,8 @@ async def init_db():
             "ALTER TABLE scheduled_messages ADD COLUMN event_id TEXT",
             "ALTER TABLE users ADD COLUMN totp_secret TEXT",
             "ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN totp_fail_count INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN totp_locked_until TEXT",
             """CREATE TABLE IF NOT EXISTS bot_token_users (
                 token_id INTEGER NOT NULL,
                 user_id  INTEGER NOT NULL,

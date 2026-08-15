@@ -3,6 +3,7 @@ import datetime
 import email.mime.text
 import io
 import json as _djson
+import math
 import os
 import socket as _dsock
 from contextvars import ContextVar
@@ -540,6 +541,21 @@ async def _complete_login(request: Request, user: dict) -> None:
             request.session[p] = bool(custom.get(p, 0)) if custom else False
 
 
+def _totp_lock_remaining_minutes(user: dict) -> int:
+    """Minutes left on an active TOTP lockout, or 0 if not locked."""
+    locked_until = user.get("totp_locked_until")
+    if not locked_until:
+        return 0
+    try:
+        lock_dt = datetime.datetime.fromisoformat(locked_until)
+    except ValueError:
+        return 0
+    remaining_seconds = (lock_dt - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
+    if remaining_seconds <= 0:
+        return 0
+    return math.ceil(remaining_seconds / 60)
+
+
 @web.post("/login")
 async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     user = await db_one("SELECT * FROM users WHERE username=?", (username.strip(),))
@@ -548,8 +564,13 @@ async def login_submit(request: Request, username: str = Form(...), password: st
     if not user.get("active", 1):
         return RedirectResponse("/login?error=Dein+Konto+ist+deaktiviert", status_code=302)
     if user.get("totp_enabled"):
+        remaining = _totp_lock_remaining_minutes(user)
+        if remaining:
+            return RedirectResponse(
+                f"/login?error=Zu+viele+Fehlversuche+–+bitte+in+{remaining}+Minute(n)+erneut+versuchen",
+                status_code=302,
+            )
         request.session["pending_2fa_user_id"] = user["id"]
-        request.session.pop("totp_fail_count", None)
         return RedirectResponse("/login/2fa", status_code=302)
     await _complete_login(request, user)
     return RedirectResponse("/", status_code=302)
@@ -574,6 +595,14 @@ async def login_2fa_submit(request: Request, code: str = Form(...)):
         request.session.pop("pending_2fa_user_id", None)
         return RedirectResponse("/login", status_code=302)
 
+    remaining = _totp_lock_remaining_minutes(user)
+    if remaining:
+        request.session.pop("pending_2fa_user_id", None)
+        return RedirectResponse(
+            f"/login?error=Zu+viele+Fehlversuche+–+bitte+in+{remaining}+Minute(n)+erneut+versuchen",
+            status_code=302,
+        )
+
     code = code.strip()
     ok = totp.verify_totp(user["totp_secret"], code)
     if not ok:
@@ -587,16 +616,26 @@ async def login_2fa_submit(request: Request, code: str = Form(...)):
                 break
 
     if not ok:
-        fails = request.session.get("totp_fail_count", 0) + 1
-        if fails >= 5:
+        fail_count = (user.get("totp_fail_count") or 0) + 1
+        if fail_count >= 5:
+            lock_until = (
+                datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=15)
+            ).isoformat()
+            await db_exec(
+                "UPDATE users SET totp_fail_count=0, totp_locked_until=? WHERE id=?",
+                (lock_until, uid),
+            )
             request.session.pop("pending_2fa_user_id", None)
-            request.session.pop("totp_fail_count", None)
-            return RedirectResponse("/login?error=Zu+viele+Fehlversuche+–+bitte+erneut+einloggen", status_code=302)
-        request.session["totp_fail_count"] = fails
+            return RedirectResponse(
+                "/login?error=Zu+viele+Fehlversuche+–+bitte+in+15+Minute(n)+erneut+versuchen",
+                status_code=302,
+            )
+        await db_exec("UPDATE users SET totp_fail_count=? WHERE id=?", (fail_count, uid))
         return RedirectResponse("/login/2fa?error=Ungültiger+Code", status_code=302)
 
+    if user.get("totp_fail_count"):
+        await db_exec("UPDATE users SET totp_fail_count=0, totp_locked_until=NULL WHERE id=?", (uid,))
     request.session.pop("pending_2fa_user_id", None)
-    request.session.pop("totp_fail_count", None)
     await _complete_login(request, user)
     return RedirectResponse("/", status_code=302)
 
@@ -734,7 +773,10 @@ async def profile_2fa_setup_confirm(request: Request, code: str = Form(...)):
     if not totp.verify_totp(secret, code):
         return RedirectResponse("/profile/2fa/setup?error=Ungültiger+Code", status_code=302)
 
-    await db_exec("UPDATE users SET totp_secret=?, totp_enabled=1 WHERE id=?", (secret, uid))
+    await db_exec(
+        "UPDATE users SET totp_secret=?, totp_enabled=1, totp_fail_count=0, totp_locked_until=NULL WHERE id=?",
+        (secret, uid),
+    )
     request.session.pop("pending_totp_secret", None)
     codes = await _regenerate_backup_codes(uid)
     return templates.TemplateResponse("profile_2fa_backup_codes.html", {
@@ -779,7 +821,10 @@ async def profile_2fa_disable(request: Request, password: str = Form(...)):
     user = await db_one("SELECT * FROM users WHERE id=?", (uid,))
     if not user or not verify_pw(password, user["password_hash"]):
         return RedirectResponse("/profile?error=Passwort+falsch", status_code=302)
-    await db_exec("UPDATE users SET totp_secret=NULL, totp_enabled=0 WHERE id=?", (uid,))
+    await db_exec(
+        "UPDATE users SET totp_secret=NULL, totp_enabled=0, totp_fail_count=0, totp_locked_until=NULL WHERE id=?",
+        (uid,),
+    )
     await db_exec("DELETE FROM totp_backup_codes WHERE user_id=?", (uid,))
     return RedirectResponse("/profile?success=Zwei-Faktor-Authentifizierung+deaktiviert", status_code=302)
 
