@@ -1,7 +1,7 @@
 services:
   bot:
     build: ./app
-    container_name: discord-bot
+    container_name: ${BOT_CONTAINER_NAME:-discord-bot}
     restart: unless-stopped
     ports:
       - "8080:8080"
