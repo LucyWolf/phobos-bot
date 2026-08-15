@@ -5,11 +5,10 @@ Discord-Bot mit Web-Dashboard. Python 3.11, discord.py 2.3.2, FastAPI + Uvicorn,
 
 ## Wichtige Regeln
 - **`app/VERSION` bei JEDEM Commit erhöhen** — User hat mehrfach darauf hingewiesen, niemals vergessen
-- Deploy: `git pull && docker compose restart` auf Linux-Server (root@Phobos-Bot)
+- Deploy: User zieht selbst über die Dashboard-UI (Updates-Seite, `docker-compose restart`); Verzeichnis variiert je nach Installation (Compose-Projektverzeichnis, siehe `docker inspect <container> --format '{{ .Config.Labels }}'`)
 - Commit immer mit `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
 
 ## Pfade
-- Server: `/root/projekte/discord-bot`
 - Datenbank: `/app/data/phobos.db` (im Container)
 - VERSION: `app/VERSION`
 
@@ -121,6 +120,12 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
+1.4.5 — Privacy-Review: geprüft, dass keine Tokens/Secrets/persönlichen Daten im (öffentlichen)
+Repo landen — weder aktuell noch in der Git-Historie (Token, E-Mail, Webhooks, Private Keys,
+.env/data/, hartcodierte Discord-IDs — alles sauber). CLAUDE.md hatte noch den echten
+Server-Hostnamen + einen veralteten persönlichen Pfad, jetzt generisch formuliert, da andere
+dieses Repo für ihre eigene Installation nutzen sollen.
+
 1.4.4 — v1.4.3 ("Updater macht immer --build") auf User-Wunsch zurückgerollt (git revert), User
 wollte das so nicht. Updater macht wieder nur `docker-compose restart`. WICHTIG für zukünftige
 requirements.txt-Änderungen: der eingebaute Updater installiert dann weiterhin KEINE neuen
