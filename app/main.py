@@ -2116,32 +2116,9 @@ async def events_create(request: Request, guild_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Discord-Fehler:+{e.text}", status_code=302)
 
     if announce_channel_id:
-        try:
-            announce_ch = guild.get_channel(int(announce_channel_id))
-        except (ValueError, TypeError):
-            announce_ch = None
-        if announce_ch:
-            embed = discord.Embed(
-                title=f"🗓️ Neues Event: {event.name}",
-                description=event.description or None,
-                url=event.url,
-                color=0x7C3AED,
-            )
-            embed.add_field(name="Start", value=_fmt_dt(event.start_time), inline=True)
-            if event.end_time:
-                embed.add_field(name="Ende", value=_fmt_dt(event.end_time), inline=True)
-            if entity_type == "external":
-                embed.add_field(name="Ort", value=kwargs["location"], inline=False)
-            elif event.channel:
-                embed.add_field(name="Ort", value=event.channel.mention, inline=False)
-            try:
-                await announce_ch.send(embed=embed)
-            except discord.HTTPException:
-                pass
-
-    if reminders:
         berlin_tz = ZoneInfo("Europe/Berlin")
-        for off_min, msg in reminders:
+        entries = [(0, "🔴 Das Event startet jetzt!")] + reminders
+        for off_min, msg in entries:
             fire_at = (start_dt - datetime.timedelta(minutes=off_min)).astimezone(berlin_tz)
             await db_exec(
                 "INSERT INTO scheduled_messages (guild_id, channel_id, message, send_at, event_id) VALUES (?,?,?,?,?)",

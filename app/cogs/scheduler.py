@@ -1,4 +1,6 @@
 import datetime
+from zoneinfo import ZoneInfo
+
 import discord
 from discord.ext import commands, tasks
 from database import db_rows, db_exec
@@ -26,10 +28,48 @@ class Scheduler(commands.Cog):
             if not ch:
                 continue
             try:
-                await ch.send(row["message"])
+                embed = await self._build_event_embed(row) if row.get("event_id") else None
+                if embed:
+                    await ch.send(embed=embed)
+                else:
+                    await ch.send(row["message"])
                 await db_exec("UPDATE scheduled_messages SET sent=1 WHERE id=?", (row["id"],))
             except Exception:
                 pass
+
+    async def _build_event_embed(self, row):
+        try:
+            guild = self.bot.get_guild(int(row["guild_id"]))
+            if not guild:
+                return None
+            event = await guild.fetch_scheduled_event(int(row["event_id"]))
+        except Exception:
+            return None
+        embed = discord.Embed(
+            title=f"🗓️ {event.name}",
+            description=row["message"] or event.description,
+            url=event.url,
+            color=0x7C3AED,
+        )
+        start_str = self._fmt_local(event.start_time)
+        if start_str:
+            embed.add_field(name="Start", value=start_str, inline=True)
+        end_str = self._fmt_local(event.end_time)
+        if end_str:
+            embed.add_field(name="Ende", value=end_str, inline=True)
+        if event.entity_type.name == "external" and event.location:
+            embed.add_field(name="Ort", value=event.location, inline=False)
+        elif event.channel:
+            embed.add_field(name="Ort", value=event.channel.mention, inline=False)
+        return embed
+
+    def _fmt_local(self, dt):
+        if not dt:
+            return None
+        try:
+            return dt.astimezone(ZoneInfo("Europe/Berlin")).strftime("%d.%m.%Y %H:%M")
+        except Exception:
+            return None
 
     @_check.before_loop
     async def _before(self):
