@@ -819,9 +819,13 @@ function toggleScheduledEdit(id) {
           <div style="font-weight:600;">{{ tr.events_info_external_title }}</div>
           <div style="color:var(--muted);">{{ tr.events_info_external_example }}</div>
         </div>
-        <div>
+        <div style="margin-bottom:0.6rem;">
           <div style="font-weight:600;">{{ tr.events_info_announce_title }}</div>
           <div style="color:var(--muted);">{{ tr.events_info_announce_example }}</div>
+        </div>
+        <div>
+          <div style="font-weight:600;">{{ tr.events_info_reminder_title }}</div>
+          <div style="color:var(--muted);">{{ tr.events_info_reminder_example }}</div>
         </div>
         <div style="margin-top:0.6rem;color:var(--muted);font-size:0.72rem;">{{ tr.events_info_footer }}</div>
       </div>
@@ -901,6 +905,11 @@ function toggleScheduledEdit(id) {
           {% for c in channels %}<option value="{{ c.id }}">#{{ c.name }}</option>{% endfor %}
         </select>
       </div>
+      <div style="grid-column:1/-1;">
+        <label style="font-size:0.82rem;">{{ tr.events_field_reminders }} <span style="color:var(--muted);">{{ tr.events_reminders_hint }}</span></label>
+        <div id="ev-reminders-list"></div>
+        <button type="button" class="btn btn-secondary" onclick="evAddReminder()" style="font-size:0.78rem;padding:0.3rem 0.7rem;margin-top:0.4rem;">➕ {{ tr.events_add_reminder }}</button>
+      </div>
     </div>
     <label style="font-size:0.82rem;">{{ tr.events_field_description }}</label>
     <textarea name="description" rows="3" placeholder="{{ tr.events_description_placeholder }}"
@@ -919,6 +928,17 @@ function toggleScheduledEdit(id) {
 <script>
 const EV_END_REQUIRED = '{{ tr.events_end_required }}';
 const EV_END_OPTIONAL = '{{ tr.events_end_optional }}';
+const EV_REMINDER_MIN_PH = '{{ tr.events_reminder_minutes_placeholder }}';
+const EV_REMINDER_MSG_PH = '{{ tr.events_reminder_message_placeholder }}';
+function evAddReminder() {
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem;';
+  row.innerHTML =
+    '<input type="number" name="reminder_offset" min="0" placeholder="' + EV_REMINDER_MIN_PH + '" style="width:100px;margin:0;flex-shrink:0;">' +
+    '<input type="text" name="reminder_message" placeholder="' + EV_REMINDER_MSG_PH + '" style="flex:1;margin:0;">' +
+    '<button type="button" onclick="this.parentElement.remove()" class="btn" style="padding:0.2rem 0.5rem;margin:0;flex-shrink:0;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>';
+  document.getElementById('ev-reminders-list').appendChild(row);
+}
 function evToggleType() {
   const isExternal = document.getElementById('ev-entity-type').value === 'external';
   document.getElementById('ev-channel-row').style.display = isExternal ? 'none' : '';

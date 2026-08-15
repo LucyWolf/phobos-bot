@@ -2024,8 +2024,26 @@ async def events_create(request: Request, guild_id: int):
     location = form.get("location", "").strip()
     announce_channel_id = form.get("announce_channel_id", "")
 
+    reminders = []
+    for off, msg in zip(form.getlist("reminder_offset"), form.getlist("reminder_message")):
+        msg = msg.strip()
+        if not off or not msg:
+            continue
+        try:
+            off_min = int(off)
+        except ValueError:
+            continue
+        if off_min < 0:
+            continue
+        reminders.append((off_min, msg))
+
     if not name or not start_at:
         return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Name+und+Start+erforderlich", status_code=302)
+    if reminders and not announce_channel_id:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=events&error=Ankündigungskanal+für+Erinnerungen+erforderlich",
+            status_code=302,
+        )
 
     tz = _request_tz.get()
     try:
@@ -2094,6 +2112,15 @@ async def events_create(request: Request, guild_id: int):
                 await announce_ch.send(embed=embed)
             except discord.HTTPException:
                 pass
+
+    if reminders:
+        berlin_tz = ZoneInfo("Europe/Berlin")
+        for off_min, msg in reminders:
+            fire_at = (start_dt - datetime.timedelta(minutes=off_min)).astimezone(berlin_tz)
+            await db_exec(
+                "INSERT INTO scheduled_messages (guild_id, channel_id, message, send_at) VALUES (?,?,?,?)",
+                (str(guild_id), announce_channel_id, msg, fire_at.strftime("%Y-%m-%dT%H:%M")),
+            )
 
     return RedirectResponse(f"/servers/{guild_id}?tab=events&success=Event+erstellt", status_code=302)
 
