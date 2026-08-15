@@ -2003,6 +2003,94 @@ async def scheduled_delete(request: Request, guild_id: str, msg_id: int):
     return RedirectResponse(f"/servers/{guild_id}?tab=scheduled&success=Gelöscht", status_code=302)
 
 
+# ── Discord Events ───────────────────────────────────────────────────────────
+
+@web.post("/servers/{guild_id}/events/create")
+async def events_create(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Server+nicht+gefunden", status_code=302)
+
+    form = await request.form()
+    name = form.get("name", "").strip()
+    description = form.get("description", "").strip()
+    start_at = form.get("start_at", "")
+    end_at = form.get("end_at", "")
+    entity_type = form.get("entity_type", "voice")
+    channel_id = form.get("channel_id", "")
+    location = form.get("location", "").strip()
+
+    if not name or not start_at:
+        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Name+und+Start+erforderlich", status_code=302)
+
+    tz = _request_tz.get()
+    try:
+        start_dt = datetime.datetime.fromisoformat(start_at).replace(tzinfo=tz)
+    except ValueError:
+        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Ungültiger+Startzeitpunkt", status_code=302)
+    end_dt = None
+    if end_at:
+        try:
+            end_dt = datetime.datetime.fromisoformat(end_at).replace(tzinfo=tz)
+        except ValueError:
+            return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Ungültiger+Endzeitpunkt", status_code=302)
+
+    kwargs = {
+        "name": name,
+        "description": description or None,
+        "start_time": start_dt,
+        "privacy_level": discord.PrivacyLevel.guild_only,
+    }
+    if entity_type == "external":
+        if not location or not end_dt:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=events&error=Ort+und+Ende+für+externe+Events+erforderlich",
+                status_code=302,
+            )
+        kwargs["entity_type"] = discord.EntityType.external
+        kwargs["location"] = location
+        kwargs["end_time"] = end_dt
+    else:
+        try:
+            channel = guild.get_channel(int(channel_id))
+        except (ValueError, TypeError):
+            channel = None
+        if not channel:
+            return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Kanal+nicht+gefunden", status_code=302)
+        kwargs["entity_type"] = discord.EntityType.voice
+        kwargs["channel"] = channel
+        if end_dt:
+            kwargs["end_time"] = end_dt
+
+    try:
+        await guild.create_scheduled_event(**kwargs)
+    except discord.HTTPException as e:
+        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Discord-Fehler:+{e.text}", status_code=302)
+
+    return RedirectResponse(f"/servers/{guild_id}?tab=events&success=Event+erstellt", status_code=302)
+
+
+@web.post("/servers/{guild_id}/events/delete/{event_id}")
+async def events_delete(request: Request, guild_id: int, event_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Server+nicht+gefunden", status_code=302)
+    try:
+        event = await guild.fetch_scheduled_event(event_id)
+        await event.delete()
+    except discord.NotFound:
+        pass
+    except discord.HTTPException as e:
+        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Discord-Fehler:+{e.text}", status_code=302)
+    return RedirectResponse(f"/servers/{guild_id}?tab=events&success=Event+gelöscht", status_code=302)
+
+
 # ── Temp Voice ────────────────────────────────────────────────────────────────
 
 @web.post("/servers/{guild_id}/tempvoice/add")
@@ -2781,6 +2869,7 @@ async def server_config(
         "birthdays": await db_rows(
             "SELECT * FROM birthdays WHERE guild_id=? ORDER BY birthday", (str(guild_id),)
         ),
+        "events_list": sorted(guild.scheduled_events, key=lambda e: e.start_time),
     })
 
 

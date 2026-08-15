@@ -121,4 +121,9 @@ Sechste Review-Runde (v1.3.9) — 7 weitere Bugs gefixt:
 - server_config/server_config_save: auth_redirect hinzugefügt
 
 ## Aktuelle VERSION
+1.3.11 — Native Discord-Events (Server-Events-Tab) im Dashboard erstellen/auflisten/löschen (Tab "🗓️ Events")
+
+Hinweis: nur einmalige Events, keine wiederkehrenden Serien — Discords `recurrence_rule`
+ist im gepinnten discord.py 2.3.2 noch nicht unterstützt (Rapptz/discord.py PR #9685 offen).
+
 1.3.10 — Geplante Nachrichten sind jetzt bearbeitbar (nicht mehr nur löschen+neu anlegen)
