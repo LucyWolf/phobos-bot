@@ -125,6 +125,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "events_info_voice_example":  "Name: Grillabend · Kanal: Theke · Start: 20.08.2026 18:00 · Ende: leer lassen",
         "events_info_external_title": "📍 Ohne Kanal (extern)",
         "events_info_external_example": "Name: Community-Treffen · Ort: VRChat oder https://... · Start + Ende zwingend",
+        "events_info_announce_title": "📢 Ankündigung (optional)",
+        "events_info_announce_example": "Textkanal wählen, um beim Erstellen automatisch eine Nachricht mit Event-Infos + Link dort zu posten.",
         "events_info_footer":         "Bei „Ohne Kanal“ verlangt Discord immer ein Enddatum. Lässt du den Ort leer, wird automatisch der Servername eingetragen.",
         # Lang toggle label (shows the OTHER language to switch to)
         "lang_switch":        "🇬🇧 EN",
@@ -255,6 +257,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "events_info_voice_example":  "Name: BBQ Night · Channel: Bar · Start: 08/20/2026 18:00 · End: leave empty",
         "events_info_external_title": "📍 No channel (external)",
         "events_info_external_example": "Name: Community Meetup · Location: VRChat or https://... · Start + End required",
+        "events_info_announce_title": "📢 Announcement (optional)",
+        "events_info_announce_example": "Pick a text channel to automatically post a message with the event info + link there when it's created.",
         "events_info_footer":         "For \"No channel\" events, Discord always requires an end date. If you leave the location empty, the server name is used automatically.",
         # Lang toggle label
         "lang_switch":        "🇩🇪 DE",
