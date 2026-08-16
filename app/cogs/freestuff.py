@@ -81,7 +81,7 @@ class FreeStuff(commands.Cog):
 
     # ── Loop ──────────────────────────────────────────────────────────────────
 
-    @tasks.loop(hours=2)
+    @tasks.loop(hours=1)
     async def check_loop(self):
         try:
             configs = await db_rows("SELECT * FROM freestuff_channels")
