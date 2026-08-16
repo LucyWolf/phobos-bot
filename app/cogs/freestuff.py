@@ -17,14 +17,19 @@ EPIC_URL = (
 GAMERPOWER_URL = "https://www.gamerpower.com/api/giveaways"
 
 PLATFORMS = {
-    "epic":      {"name": "Epic Games",      "icon": "🎮", "color": 0x313131, "cs_id": None,  "gp": None},
-    "steam":     {"name": "Steam",           "icon": "🖥️", "color": 0x1B2838, "cs_id": "1",   "gp": None},
-    "gog":       {"name": "GOG",             "icon": "🟣", "color": 0x86328A, "cs_id": "7",   "gp": None},
-    "humble":    {"name": "Humble Bundle",   "icon": "🙏", "color": 0xCC2929, "cs_id": "11",  "gp": None},
-    "ea":        {"name": "EA App",          "icon": "🟡", "color": 0xFF4747, "cs_id": None,  "gp": "ea-app"},
-    "ubisoft":   {"name": "Ubisoft Connect", "icon": "🔷", "color": 0x0070D1, "cs_id": None,  "gp": "ubisoft-connect"},
-    "battlenet": {"name": "Battle.net",      "icon": "⚔️", "color": 0x148EFF, "cs_id": None,  "gp": "battle.net"},
-    "itchio":    {"name": "itch.io",         "icon": "🍓", "color": 0xFA5C5C, "cs_id": None,  "gp": "itch.io"},
+    "epic":      {"name": "Epic Games",      "icon": "🎮", "color": 0x313131, "cs_id": None,  "gp": None,     "gp_match": None},
+    "steam":     {"name": "Steam",           "icon": "🖥️", "color": 0x1B2838, "cs_id": "1",   "gp": None,     "gp_match": None},
+    "gog":       {"name": "GOG",             "icon": "🟣", "color": 0x86328A, "cs_id": "7",   "gp": None,     "gp_match": None},
+    "humble":    {"name": "Humble Bundle",   "icon": "🙏", "color": 0xCC2929, "cs_id": "11",  "gp": None,     "gp_match": None},
+    "fanatical": {"name": "Fanatical",       "icon": "🐰", "color": 0xFF4C00, "cs_id": "15",  "gp": None,     "gp_match": None},
+    "gmg":       {"name": "GreenManGaming",  "icon": "🟢", "color": 0x00A650, "cs_id": "3",   "gp": None,     "gp_match": None},
+    # GamerPower has no dedicated "platform" filter for these three - the API only
+    # supports pc/steam/epic-games-store/gog/ps4/ps5/xbox-*/switch/android/ios/drm-free/itchio.
+    # We fetch the general PC giveaway list once and match by the free-text "platforms" field instead.
+    "ea":        {"name": "EA App",          "icon": "🟡", "color": 0xFF4747, "cs_id": None,  "gp": None,     "gp_match": ("origin", "ea app", "ea play")},
+    "ubisoft":   {"name": "Ubisoft Connect", "icon": "🔷", "color": 0x0070D1, "cs_id": None,  "gp": None,     "gp_match": ("ubisoft",)},
+    "battlenet": {"name": "Battle.net",      "icon": "⚔️", "color": 0x148EFF, "cs_id": None,  "gp": None,     "gp_match": ("battle.net", "battlenet", "blizzard")},
+    "itchio":    {"name": "itch.io",         "icon": "🍓", "color": 0xFA5C5C, "cs_id": None,  "gp": "itchio", "gp_match": None},
 }
 
 
@@ -155,13 +160,19 @@ class FreeStuff(commands.Cog):
         fetch_tasks = []
         if "epic" in platforms:
             fetch_tasks.append(self._fetch_epic())
+
+        needs_general = any(PLATFORMS[k].get("gp_match") for k in platforms if k in PLATFORMS)
+        general_items = await self._fetch_gamerpower_general() if needs_general else []
+
         for key, info in PLATFORMS.items():
             if key not in platforms:
                 continue
             if info["cs_id"]:
                 fetch_tasks.append(self._fetch_cheapshark(info["cs_id"], key, upper=0, lower=0, min_disc=100))
-            elif info["gp"]:
+            elif info.get("gp"):
                 fetch_tasks.append(self._fetch_gamerpower(key, info["gp"]))
+            elif info.get("gp_match"):
+                fetch_tasks.append(self._match_gamerpower(key, info["gp_match"], general_items))
         results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
         out = []
         for r in results:
@@ -199,47 +210,72 @@ class FreeStuff(commands.Cog):
             print(f"[FreeStuff] Epic error: {e}")
             return []
 
+    def _gp_item_to_game(self, item: dict, platform_key: str) -> dict | None:
+        try:
+            if item.get("status", "").lower() != "active":
+                return None
+            worth = item.get("worth", "$0")
+            # skip always-free items (worth = "N/A" or "$0.00")
+            if worth in ("N/A", "$0.00", "$0"):
+                return None
+            end_raw = item.get("end_date", "")
+            end = end_raw[:10] if end_raw and end_raw.lower() != "n/a" else ""
+            return {
+                "id": f"gp_{item['id']}",
+                "title": item.get("title", ""),
+                "description": (item.get("description") or "")[:180],
+                "url": item.get("open_giveaway_url") or item.get("gamerpower_url", ""),
+                "image": item.get("image") or item.get("thumbnail", ""),
+                "end_date": end,
+                "original_price": None,
+                "sale_price": 0.0,
+                "discount": 100,
+                "platform": platform_key,
+            }
+        except Exception:
+            return None
+
+    async def _gamerpower_get(self, params: dict) -> list:
+        url = f"{GAMERPOWER_URL}?{urllib.parse.urlencode(params)}"
+
+        def _get():
+            req = urllib.request.Request(url, headers={"User-Agent": "PhobosBot/1.0"})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                data = json.loads(r.read())
+                return data if isinstance(data, list) else []
+
+        return await asyncio.to_thread(_get)
+
     async def _fetch_gamerpower(self, platform_key: str, gp_platform: str) -> list:
         try:
-            params = urllib.parse.urlencode({"platform": gp_platform, "type": "game"})
-            url = f"{GAMERPOWER_URL}?{params}"
-
-            def _get():
-                req = urllib.request.Request(url, headers={"User-Agent": "PhobosBot/1.0"})
-                with urllib.request.urlopen(req, timeout=10) as r:
-                    data = json.loads(r.read())
-                    return data if isinstance(data, list) else []
-
-            items = await asyncio.to_thread(_get)
-            out = []
-            for item in items:
-                try:
-                    if item.get("status", "").lower() != "active":
-                        continue
-                    worth = item.get("worth", "$0")
-                    # skip always-free items (worth = "N/A" or "$0.00")
-                    if worth in ("N/A", "$0.00", "$0"):
-                        continue
-                    end_raw = item.get("end_date", "")
-                    end = end_raw[:10] if end_raw and end_raw.lower() != "n/a" else ""
-                    out.append({
-                        "id": f"gp_{item['id']}",
-                        "title": item.get("title", ""),
-                        "description": (item.get("description") or "")[:180],
-                        "url": item.get("open_giveaway_url") or item.get("gamerpower_url", ""),
-                        "image": item.get("image") or item.get("thumbnail", ""),
-                        "end_date": end,
-                        "original_price": None,
-                        "sale_price": 0.0,
-                        "discount": 100,
-                        "platform": platform_key,
-                    })
-                except Exception:
-                    continue
-            return out
+            items = await self._gamerpower_get({"platform": gp_platform, "type": "game"})
+            return [g for i in items if (g := self._gp_item_to_game(i, platform_key))]
         except Exception as e:
             print(f"[FreeStuff] GamerPower ({platform_key}) error: {e}")
             return []
+
+    async def _fetch_gamerpower_general(self) -> list:
+        """Unfiltered PC giveaway list, used as a base for platforms GamerPower has no
+        dedicated "platform" filter for (EA/Origin, Ubisoft, Battle.net) - see PLATFORMS."""
+        try:
+            return await self._gamerpower_get({"platform": "pc", "type": "game"})
+        except Exception as e:
+            print(f"[FreeStuff] GamerPower (general) error: {e}")
+            return []
+
+    async def _match_gamerpower(self, platform_key: str, keywords: tuple, items: list) -> list:
+        out = []
+        for item in items:
+            try:
+                platforms_str = (item.get("platforms") or "").lower()
+                if not any(kw in platforms_str for kw in keywords):
+                    continue
+                game = self._gp_item_to_game(item, platform_key)
+                if game:
+                    out.append(game)
+            except Exception:
+                continue
+        return out
 
     async def _fetch_cheapshark(
         self, store_id: str, platform: str,
