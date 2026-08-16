@@ -108,6 +108,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "log_entries_count":      "Einträge",
         "log_empty":              "Noch keine Ereignisse aufgezeichnet.",
         "log_page_title":         "📋 Server-Log",
+        # FreeStuff
+        "freestuff_info_tooltip": "Was ist das?",
+        "freestuff_info_title":   "🎁 Wie funktioniert Free Stuff?",
+        "freestuff_info_intro":   "Der Bot prüft automatisch stündlich, ob es bei den ausgewählten Plattformen neue kostenlose Spiele oder (bei aktivierten Angeboten) stark reduzierte Deals gibt, und postet sie in den gewählten Kanal.",
+        "freestuff_info_item_free": "Kostenlose Spiele: jedes gefundene Spiel wird nur einmal gepostet, kein doppeltes Melden",
+        "freestuff_info_item_deal": "Angebote (optional): nur Spiele unter deinem Max.-Preis UND mit mindestens deinem Mindest-Rabatt",
+        "freestuff_info_item_epic": "Epic Games unterstützt keine Angebote (nur kostenlose Spiele), da es keine öffentliche Preis-API gibt",
+        "freestuff_info_interval": "Prüf-Intervall: alle 1 Stunde.",
         # Dashboard
         "dash_morning":       "Guten Morgen",
         "dash_day":           "Guten Tag",
@@ -282,6 +290,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "log_entries_count":      "entries",
         "log_empty":              "No events recorded yet.",
         "log_page_title":         "📋 Server Log",
+        # FreeStuff
+        "freestuff_info_tooltip": "What is this?",
+        "freestuff_info_title":   "🎁 How does Free Stuff work?",
+        "freestuff_info_intro":   "The bot automatically checks every hour whether the selected platforms have new free games or (if deal alerts are enabled) heavily discounted deals, and posts them to the selected channel.",
+        "freestuff_info_item_free": "Free games: each one found is posted only once, no duplicate alerts",
+        "freestuff_info_item_deal": "Deals (optional): only games below your max price AND at least your minimum discount",
+        "freestuff_info_item_epic": "Epic Games doesn't support deal alerts (free games only) since there's no public price API for it",
+        "freestuff_info_interval": "Check interval: every 1 hour.",
         # Dashboard
         "dash_morning":       "Good morning",
         "dash_day":           "Good afternoon",
