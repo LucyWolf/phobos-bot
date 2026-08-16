@@ -35,6 +35,7 @@
 </style>
 
 {% if success %}<div class="alert alert-success" style="max-width:660px;">✅ Gespeichert.</div>{% endif %}
+{% if error %}<div class="alert alert-error" style="max-width:660px;">❌ {{ error }}</div>{% endif %}
 
 <div class="log-settings">
   <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.85rem;">⚙️ Log-Einstellungen</div>

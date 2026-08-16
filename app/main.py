@@ -3046,7 +3046,7 @@ LOG_LIMIT_OPTIONS = (10, 50, 100, 200)
 
 
 @web.get("/servers/{guild_id}/log", response_class=HTMLResponse)
-async def server_log_page(request: Request, guild_id: str, success: str = "", limit: int = 200):
+async def server_log_page(request: Request, guild_id: str, success: str = "", error: str = "", limit: int = 200):
     if r := auth_redirect(request): return r
     token_set = await _token_configured()
     guild = bot.get_guild(int(guild_id))
@@ -3071,7 +3071,7 @@ async def server_log_page(request: Request, guild_id: str, success: str = "", li
         "guild_id": guild_id, "guild_name": guild.name,
         "channels": channels, "log_channel": log_channel,
         "log_exclude_channels": log_exclude_channels,
-        "logs": logs, "success": success,
+        "logs": logs, "success": success, "error": error,
         "log_limit": limit, "log_limit_options": LOG_LIMIT_OPTIONS,
     })
 
@@ -3081,9 +3081,17 @@ async def server_log_save(request: Request, guild_id: str):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(int(guild_id))
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    valid_channel_ids = {str(c.id) for c in guild.text_channels}
+
     form = await request.form()
     log_channel = form.get("log_channel", "")
-    exclude_channels = ",".join(form.getlist("log_exclude_channels"))
+    if log_channel and log_channel not in valid_channel_ids:
+        return RedirectResponse(f"/servers/{guild_id}/log?error=Ungültiger+Log-Kanal", status_code=302)
+    exclude_channels = ",".join(c for c in form.getlist("log_exclude_channels") if c in valid_channel_ids)
+
     from database import set_guild_config
     await set_guild_config(int(guild_id), "log_channel", log_channel)
     await set_guild_config(int(guild_id), "log_exclude_channels", exclude_channels)
