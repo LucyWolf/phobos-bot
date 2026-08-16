@@ -203,29 +203,46 @@ bot = BotManager()
 
 
 async def _run_single_bot(token_id: int, token: str):
-    intents = discord.Intents.all()
-    instance = commands.Bot(command_prefix="!", intents=intents)
+    """Runs one bot instance. Auto-reconnects after unexpected disconnects (e.g. a
+    discord.py gateway hiccup) as long as the token stays enabled - only an invalid
+    token or an explicit disable/delete stops the retry loop for good."""
+    while True:
+        intents = discord.Intents.all()
+        instance = commands.Bot(command_prefix="!", intents=intents)
 
-    @instance.event
-    async def on_ready():
-        await instance.tree.sync()
-        print(f"Phobos v{VERSION} online als {instance.user} [ID {token_id}]")
+        @instance.event
+        async def on_ready():
+            await instance.tree.sync()
+            print(f"Phobos v{VERSION} online als {instance.user} [ID {token_id}]")
 
-    bot._bots[token_id] = instance
-    try:
-        async with instance:
-            for cog in COGS:
-                try:
-                    await instance.load_extension(cog)
-                except Exception as e:
-                    print(f"[Token-ID {token_id}] Fehler beim Laden von {cog}: {e}")
-            await instance.start(token)
-    except discord.errors.LoginFailure:
-        print(f"[Token-ID {token_id}] ❌ Ungültiger Token – Bot wird übersprungen.")
-    except Exception as e:
-        print(f"[Token-ID {token_id}] ❌ Bot-Fehler: {e}")
-    finally:
-        bot._bots.pop(token_id, None)
+        bot._bots[token_id] = instance
+        login_failed = False
+        try:
+            async with instance:
+                for cog in COGS:
+                    try:
+                        await instance.load_extension(cog)
+                    except Exception as e:
+                        print(f"[Token-ID {token_id}] Fehler beim Laden von {cog}: {e}")
+                await instance.start(token)
+        except discord.errors.LoginFailure:
+            print(f"[Token-ID {token_id}] ❌ Ungültiger Token – Bot wird übersprungen.")
+            login_failed = True
+        except Exception as e:
+            print(f"[Token-ID {token_id}] ❌ Bot-Fehler: {e}")
+        finally:
+            bot._bots.pop(token_id, None)
+
+        if login_failed:
+            return
+
+        if token_id:
+            row = await db_one("SELECT enabled FROM bot_tokens WHERE id=?", (token_id,))
+            if not row or not row.get("enabled", 1):
+                return  # deaktiviert/gelöscht - absichtlich beendet, nicht neu verbinden
+
+        print(f"[Token-ID {token_id}] 🔄 Verbindung verloren, versuche in 10s erneut zu verbinden…")
+        await asyncio.sleep(10)
 
 
 async def _stop_bot(token_id: int):
@@ -2876,6 +2893,7 @@ async def tokens_delete(request: Request, token_id: int):
             "SELECT 1 FROM bot_token_users WHERE token_id=? AND user_id=?", (token_id, uid)
         ))
     if allowed:
+        await db_exec("UPDATE bot_tokens SET enabled=0 WHERE id=?", (token_id,))
         await _stop_bot(token_id)
         await db_exec("DELETE FROM bot_tokens WHERE id=?", (token_id,))
         await db_exec("DELETE FROM bot_token_users WHERE token_id=?", (token_id,))
