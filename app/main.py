@@ -3024,8 +3024,11 @@ async def servers_list(request: Request, success: str = ""):
     })
 
 
+LOG_LIMIT_OPTIONS = (10, 50, 100, 200)
+
+
 @web.get("/servers/{guild_id}/log", response_class=HTMLResponse)
-async def server_log_page(request: Request, guild_id: str, success: str = ""):
+async def server_log_page(request: Request, guild_id: str, success: str = "", limit: int = 200):
     if r := auth_redirect(request): return r
     token_set = await _token_configured()
     guild = bot.get_guild(int(guild_id))
@@ -3033,13 +3036,15 @@ async def server_log_page(request: Request, guild_id: str, success: str = ""):
         return RedirectResponse("/servers", status_code=302)
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
+    if limit not in LOG_LIMIT_OPTIONS:
+        limit = 200
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
     log_channel = await get_guild_config(int(guild_id), "log_channel") or ""
     exclude_raw = await get_guild_config(int(guild_id), "log_exclude_channels") or ""
     log_exclude_channels = [c.strip() for c in exclude_raw.split(",") if c.strip()]
     logs = await db_rows(
-        "SELECT icon, title, description, created_at FROM server_logs WHERE guild_id=? ORDER BY id DESC LIMIT 200",
-        (guild_id,),
+        "SELECT icon, title, description, created_at FROM server_logs WHERE guild_id=? ORDER BY id DESC LIMIT ?",
+        (guild_id, limit),
     )
     return templates.TemplateResponse("server_log.html", {
         **session(request), "request": request,
@@ -3049,6 +3054,7 @@ async def server_log_page(request: Request, guild_id: str, success: str = ""):
         "channels": channels, "log_channel": log_channel,
         "log_exclude_channels": log_exclude_channels,
         "logs": logs, "success": success,
+        "log_limit": limit, "log_limit_options": LOG_LIMIT_OPTIONS,
     })
 
 
