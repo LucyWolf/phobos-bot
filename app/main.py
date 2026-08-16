@@ -3046,7 +3046,7 @@ LOG_LIMIT_OPTIONS = (10, 50, 100, 200)
 
 
 @web.get("/servers/{guild_id}/log", response_class=HTMLResponse)
-async def server_log_page(request: Request, guild_id: str, success: str = "", error: str = "", limit: int = 200):
+async def server_log_page(request: Request, guild_id: str, success: str = "", error: str = "", limit: int | None = None):
     if r := auth_redirect(request): return r
     token_set = await _token_configured()
     guild = bot.get_guild(int(guild_id))
@@ -3054,6 +3054,13 @@ async def server_log_page(request: Request, guild_id: str, success: str = "", er
         return RedirectResponse("/servers", status_code=302)
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
+    uid = request.session.get("user_id")
+    if limit is not None and limit in LOG_LIMIT_OPTIONS:
+        if uid:
+            await db_exec("UPDATE users SET log_limit=? WHERE id=?", (limit, uid))
+    else:
+        user_row = await db_one("SELECT log_limit FROM users WHERE id=?", (uid,)) if uid else None
+        limit = (user_row or {}).get("log_limit") or 200
     if limit not in LOG_LIMIT_OPTIONS:
         limit = 200
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
