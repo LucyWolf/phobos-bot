@@ -64,8 +64,43 @@
 
 <div class="log-table-wrap">
   <div class="log-table-head">
-    <span style="font-weight:700;font-size:0.9rem;">Letzte Ereignisse</span>
-    <span style="font-size:0.78rem;color:var(--muted);">{{ logs|length }} Einträge (max. 200)</span>
+    <span style="display:flex;align-items:center;gap:0.4rem;">
+      <span style="font-weight:700;font-size:0.9rem;">Letzte Ereignisse</span>
+      <span style="position:relative;">
+        <button type="button" onclick="toggleLogInfo()" title="Was wird hier angezeigt?"
+          style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+        <div id="log-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.3rem;
+             background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+             font-size:0.78rem;min-width:320px;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-weight:400;">
+          <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">📋 Was wird geloggt?</div>
+          <div style="color:var(--muted);line-height:1.6;">
+            Automatisch erfasste Server-Ereignisse:
+            <ul style="margin:0.3rem 0 0.6rem 1.1rem;padding:0;">
+              <li>Mitglied beigetreten / verlassen (mit Rollen beim Verlassen)</li>
+              <li>Rollen-, Nickname-Änderungen, Timeouts</li>
+              <li>Bans / Entbannungen</li>
+              <li>Nachricht gelöscht — <strong>inkl. wer sie gelöscht hat</strong> (braucht "Audit-Log anzeigen"-Berechtigung)</li>
+              <li>Massenlöschung (z.B. <code>/clear</code>) mit verantwortlichem Mod</li>
+              <li>Nachricht bearbeitet (vorher + nachher + Link)</li>
+              <li>Voice-Kanal beigetreten / verlassen / gewechselt</li>
+              <li>Kanal erstellt / gelöscht / umbenannt</li>
+              <li>Server-Boost-Änderungen</li>
+            </ul>
+            Landet immer im Dashboard hier (max. 300 gespeichert, älteste fallen automatisch raus)
+            und zusätzlich im gewählten Log-Kanal, falls oben einer gesetzt ist. Ausgeschlossene
+            Kanäle betreffen nur Nachrichten-Events, keine anderen Ereignisse.
+          </div>
+        </div>
+      </span>
+    </span>
+    <span style="display:flex;align-items:center;gap:0.6rem;">
+      <span style="font-size:0.78rem;color:var(--muted);">{{ logs|length }} Einträge</span>
+      <select onchange="location.href='/servers/{{ guild_id }}/log?limit=' + this.value" style="margin:0;padding:0.25rem 0.5rem;font-size:0.78rem;width:auto;">
+        {% for n in log_limit_options %}
+        <option value="{{ n }}" {% if n == log_limit %}selected{% endif %}>max. {{ n }}</option>
+        {% endfor %}
+      </select>
+    </span>
   </div>
   {% if logs %}
   {% for e in logs %}
@@ -83,4 +118,17 @@
   <div class="empty">Noch keine Ereignisse aufgezeichnet.</div>
   {% endif %}
 </div>
+
+<script>
+function toggleLogInfo() {
+  const box = document.getElementById('log-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('log-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleLogInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+</script>
 {% endblock %}
