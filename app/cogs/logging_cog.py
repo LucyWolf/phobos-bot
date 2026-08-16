@@ -19,7 +19,7 @@ class Logging(commands.Cog):
         embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
         title = embed.title or ""
         icon = title.split()[0] if title else "📋"
-        label = title.lstrip(icon).strip()
+        label = title.removeprefix(icon).strip()
 
         try:
             await db_exec(
@@ -32,8 +32,8 @@ class Logging(commands.Cog):
                 )""",
                 (str(guild_id), str(guild_id)),
             )
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[logging_cog] server_logs insert failed for guild {guild_id} ({title!r}): {e!r}")
 
         channel_id = await get_guild_config(guild_id, "log_channel")
         if not channel_id:
@@ -42,8 +42,8 @@ class Logging(commands.Cog):
         if channel:
             try:
                 await channel.send(embed=embed)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[logging_cog] failed to send log embed to channel {channel_id}: {e!r}")
 
     async def _find_deleter(self, guild: discord.Guild, channel_id: int, author_id: int):
         """Checks audit log to find who deleted the message (None if self-deleted)."""
@@ -257,11 +257,14 @@ class Logging(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_channel_update(self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel):
-        if before.name != after.name:
-            embed = discord.Embed(title="✏️ Kanal umbenannt", color=0xa78bfa)
-            embed.add_field(name="Vorher", value=f"#{before.name}")
-            embed.add_field(name="Nachher", value=after.mention if hasattr(after, "mention") else f"#{after.name}")
-            await self._log(after.guild.id, embed, plain=f"#{before.name} → #{after.name}")
+        try:
+            if before.name != after.name:
+                embed = discord.Embed(title="✏️ Kanal umbenannt", color=0xa78bfa)
+                embed.add_field(name="Vorher", value=f"#{before.name}")
+                embed.add_field(name="Nachher", value=after.mention if hasattr(after, "mention") else f"#{after.name}")
+                await self._log(after.guild.id, embed, plain=f"#{before.name} → #{after.name}")
+        except Exception as e:
+            print(f"[logging_cog] on_guild_channel_update failed for channel {getattr(after, 'id', '?')}: {e!r}")
 
     # ── Server-Boost ──────────────────────────────────────────────────────────
 
