@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}{{ app_name }} – Log – {{ guild_name }}{% endblock %}
-{% block page_title %}📋 Server-Log – {{ guild_name }}{% endblock %}
+{% block title %}{{ app_name }} – {{ tr.nav_log }} – {{ guild_name }}{% endblock %}
+{% block page_title %}{{ tr.log_page_title }} – {{ guild_name }}{% endblock %}
 
 {% block content %}
 {% from '_server_subnav.html' import server_subnav %}
@@ -34,24 +34,24 @@
   .multi-select-wrap select[multiple] { height:7rem; }
 </style>
 
-{% if success %}<div class="alert alert-success" style="max-width:660px;">✅ Gespeichert.</div>{% endif %}
+{% if success %}<div class="alert alert-success" style="max-width:660px;">✅ {{ tr.saved_ok }}</div>{% endif %}
 {% if error %}<div class="alert alert-error" style="max-width:660px;">❌ {{ error }}</div>{% endif %}
 
 <div class="log-settings">
-  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.85rem;">⚙️ Log-Einstellungen</div>
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.85rem;">{{ tr.log_settings_title }}</div>
   <form method="post" action="/servers/{{ guild_id }}/log/save">
     <div class="grid-2" style="gap:1rem;margin-bottom:1rem;">
       <div>
-        <label>Log-Kanal <span style="color:var(--muted);font-size:0.72rem">(leer = nur Dashboard)</span></label>
+        <label>{{ tr.log_channel_label }} <span style="color:var(--muted);font-size:0.72rem">{{ tr.log_channel_hint }}</span></label>
         <select name="log_channel" style="margin-bottom:0;">
-          <option value="">— Nur Dashboard —</option>
+          <option value="">{{ tr.log_channel_none }}</option>
           {% for c in channels %}
           <option value="{{ c.id }}" {% if log_channel == c.id %}selected{% endif %}>#{{ c.name }}</option>
           {% endfor %}
         </select>
       </div>
       <div>
-        <label>Kanäle ausschließen <span style="color:var(--muted);font-size:0.72rem">(Strg/Cmd für mehrere)</span></label>
+        <label>{{ tr.log_exclude_label }} <span style="color:var(--muted);font-size:0.72rem">{{ tr.log_exclude_hint }}</span></label>
         <select name="log_exclude_channels" multiple style="margin-bottom:0;height:7rem;">
           {% for c in channels %}
           <option value="{{ c.id }}" {% if c.id in log_exclude_channels %}selected{% endif %}>#{{ c.name }}</option>
@@ -59,43 +59,41 @@
         </select>
       </div>
     </div>
-    <button type="submit" class="btn btn-primary">💾 Speichern</button>
+    <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
   </form>
 </div>
 
 <div class="log-table-wrap">
   <div class="log-table-head">
     <span style="display:flex;align-items:center;gap:0.4rem;">
-      <span style="font-weight:700;font-size:0.9rem;">Letzte Ereignisse</span>
+      <span style="font-weight:700;font-size:0.9rem;">{{ tr.log_recent_events }}</span>
       <span style="position:relative;">
-        <button type="button" onclick="toggleLogInfo()" title="Was wird hier angezeigt?"
+        <button type="button" onclick="toggleLogInfo()" title="{{ tr.log_info_tooltip }}"
           style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
         <div id="log-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.3rem;
              background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
              font-size:0.78rem;min-width:320px;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-weight:400;">
-          <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">📋 Was wird geloggt?</div>
+          <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.log_info_title }}</div>
           <div style="color:var(--muted);line-height:1.6;">
-            Automatisch erfasste Server-Ereignisse:
+            {{ tr.log_info_intro }}
             <ul style="margin:0.3rem 0 0.6rem 1.1rem;padding:0;">
-              <li>Mitglied beigetreten / verlassen (mit Rollen beim Verlassen)</li>
-              <li>Rollen-, Nickname-Änderungen, Timeouts</li>
-              <li>Bans / Entbannungen</li>
-              <li>Nachricht gelöscht — <strong>inkl. wer sie gelöscht hat</strong> (braucht "Audit-Log anzeigen"-Berechtigung)</li>
-              <li>Massenlöschung (z.B. <code>/clear</code>) mit verantwortlichem Mod</li>
-              <li>Nachricht bearbeitet (vorher + nachher + Link)</li>
-              <li>Voice-Kanal beigetreten / verlassen / gewechselt</li>
-              <li>Kanal erstellt / gelöscht / umbenannt</li>
-              <li>Server-Boost-Änderungen</li>
+              <li>{{ tr.log_info_item_member }}</li>
+              <li>{{ tr.log_info_item_roles }}</li>
+              <li>{{ tr.log_info_item_bans }}</li>
+              <li>{{ tr.log_info_item_delete }}</li>
+              <li>{{ tr.log_info_item_bulk }}</li>
+              <li>{{ tr.log_info_item_edit }}</li>
+              <li>{{ tr.log_info_item_voice }}</li>
+              <li>{{ tr.log_info_item_channel }}</li>
+              <li>{{ tr.log_info_item_boost }}</li>
             </ul>
-            Landet immer im Dashboard hier (max. 300 gespeichert, älteste fallen automatisch raus)
-            und zusätzlich im gewählten Log-Kanal, falls oben einer gesetzt ist. Ausgeschlossene
-            Kanäle betreffen nur Nachrichten-Events, keine anderen Ereignisse.
+            {{ tr.log_info_footer }}
           </div>
         </div>
       </span>
     </span>
     <span style="display:flex;align-items:center;gap:0.6rem;">
-      <span style="font-size:0.78rem;color:var(--muted);">{{ logs|length }} Einträge</span>
+      <span style="font-size:0.78rem;color:var(--muted);">{{ logs|length }} {{ tr.log_entries_count }}</span>
       <select onchange="location.href='/servers/{{ guild_id }}/log?limit=' + this.value" style="margin:0;padding:0.25rem 0.5rem;font-size:0.78rem;width:auto;">
         {% for n in log_limit_options %}
         <option value="{{ n }}" {% if n == log_limit %}selected{% endif %}>max. {{ n }}</option>
@@ -116,7 +114,7 @@
   </div>
   {% endfor %}
   {% else %}
-  <div class="empty">Noch keine Ereignisse aufgezeichnet.</div>
+  <div class="empty">{{ tr.log_empty }}</div>
   {% endif %}
 </div>
 
