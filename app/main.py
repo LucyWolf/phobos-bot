@@ -2071,6 +2071,15 @@ async def freestuff_save(
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(int(guild_id))
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    valid_channel_ids = {str(c.id) for c in guild.text_channels}
+    if channel_id not in valid_channel_ids:
+        return RedirectResponse(f"/servers/{guild_id}/freestuff?error=Ungültiger+Kanal", status_code=302)
+    if deal_channel_id and deal_channel_id not in valid_channel_ids:
+        return RedirectResponse(f"/servers/{guild_id}/freestuff?error=Ungültiger+Deal-Kanal", status_code=302)
+
     valid = {"epic", "steam", "gog", "humble", "fanatical", "gmg", "ea", "ubisoft", "battlenet", "itchio"}
     plat_str = ",".join(p for p in platforms if p in valid)
     if not plat_str:
