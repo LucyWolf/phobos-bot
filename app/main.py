@@ -2211,10 +2211,15 @@ async def auto_delete_remove(request: Request, guild_id: str, entry_id: int):
 async def scheduled_add(request: Request, guild_id: str):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(int(guild_id))
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
     form = await request.form()
     channel_id = form.get("channel_id", "")
     message = form.get("message", "").strip()
     send_at = form.get("send_at", "")
+    if channel_id and channel_id not in {str(c.id) for c in guild.text_channels}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=scheduled&error=Ungültiger+Kanal", status_code=302)
     if channel_id and message and send_at:
         await db_exec(
             "INSERT INTO scheduled_messages (guild_id, channel_id, message, send_at) VALUES (?,?,?,?)",
@@ -2226,10 +2231,15 @@ async def scheduled_add(request: Request, guild_id: str):
 async def scheduled_edit(request: Request, guild_id: str, msg_id: int):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(int(guild_id))
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
     form = await request.form()
     channel_id = form.get("channel_id", "")
     message = form.get("message", "").strip()
     send_at = form.get("send_at", "")
+    if channel_id and channel_id not in {str(c.id) for c in guild.text_channels}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=scheduled&error=Ungültiger+Kanal", status_code=302)
     if channel_id and message and send_at:
         await db_exec(
             "UPDATE scheduled_messages SET channel_id=?, message=?, send_at=? WHERE id=? AND guild_id=? AND sent=0",
@@ -2302,6 +2312,8 @@ async def events_create(request: Request, guild_id: int):
             f"/servers/{guild_id}?tab=events&error=Ankündigungskanal+für+Erinnerungen/Ende-Benachrichtigung+erforderlich",
             status_code=302,
         )
+    if announce_channel_id and announce_channel_id not in {str(c.id) for c in guild.text_channels}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Ungültiger+Ankündigungskanal", status_code=302)
 
     tz = _request_tz.get()
     try:
@@ -2583,6 +2595,9 @@ async def notifications_add(
     target = target.strip()
     if not target or not discord_channel_id:
         return RedirectResponse(f"/servers/{guild_id}/notifications?error=Pflichtfelder+fehlen", status_code=302)
+    guild = bot.get_guild(int(guild_id))
+    if not guild or discord_channel_id not in {str(c.id) for c in guild.text_channels}:
+        return RedirectResponse(f"/servers/{guild_id}/notifications?error=Ungültiger+Kanal", status_code=302)
     # Normalize YouTube channel URL to ID
     if platform == "youtube" and "youtube.com" in target:
         parts = target.rstrip("/").split("/")
@@ -3297,12 +3312,29 @@ async def server_config_save(request: Request, guild_id: int):
     guild_ok = await _guild_access(request, guild_id)
     if not guild_ok and not await has_perm(request, "perm_server"):
         return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
     form = await request.form()
+
+    # Channel-valued keys are validated against the guild's own channels before saving -
+    # some are resolved later via a global bot.get_channel() (not guild-scoped), so an
+    # unvalidated ID here could otherwise make the bot post into a channel in a different
+    # guild served by the same token.
+    channel_keys = ["welcome_channel", "leave_channel", "birthday_channel", "level_channel"]
+    valid_channel_ids = {str(c.id) for c in guild.text_channels}
+    for key in channel_keys:
+        value = str(form.get(key, ""))
+        if value and value not in valid_channel_ids:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=config&error=Ungültiger+Kanal+({key})", status_code=302
+            )
+
     text_keys = [
         "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
         "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",
         "birthday_channel", "birthday_message",
-        "log_channel", "level_channel",
+        "level_channel",
         "automod_spam_threshold", "automod_banned_words", "automod_action",
         "ticket_support_role", "ticket_category",
     ]
@@ -3389,7 +3421,7 @@ async def tickets_panel_publish(
         ch = b.get_channel(int(channel_id))
     except (ValueError, TypeError):
         ch = None
-    if not ch:
+    if not ch or ch.guild.id != guild_id:
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Kanal+nicht+gefunden", status_code=302)
     # Remove old panel message if any
     if panel.get("message_id") and panel.get("channel_id"):
