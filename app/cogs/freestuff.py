@@ -89,63 +89,64 @@ class FreeStuff(commands.Cog):
                 return
 
             needed_free = set()
-            needed_deals = set()
             for cfg in configs:
                 needed_free.update((cfg["platforms"] or "epic").split(","))
-                if cfg.get("deal_max_price"):
-                    needed_deals.update((cfg["platforms"] or "epic").split(","))
 
             free_games = await self._fetch_free(needed_free) if needed_free else []
 
             for cfg in configs:
                 guild_id = cfg["guild_id"]
-                platforms = set((cfg["platforms"] or "epic").split(","))
+                try:
+                    platforms = set((cfg["platforms"] or "epic").split(","))
 
-                # ── Free games ────────────────────────────────────────────
-                ch_free = self.bot.get_channel(int(cfg["channel_id"]))
-                if ch_free:
-                    for game in free_games:
-                        if game["platform"] not in platforms:
-                            continue
-                        if await db_one(
-                            "SELECT 1 FROM freestuff_posted WHERE guild_id=? AND game_id=? AND platform=?",
-                            (guild_id, game["id"], game["platform"]),
-                        ):
-                            continue
-                        try:
-                            await self._send_embed(ch_free, game, is_deal=False)
-                            await db_exec(
-                                "INSERT OR IGNORE INTO freestuff_posted (guild_id,game_id,platform) VALUES (?,?,?)",
+                    # ── Free games ────────────────────────────────────────
+                    ch_free = self.bot.get_channel(int(cfg["channel_id"]))
+                    if ch_free:
+                        for game in free_games:
+                            if game["platform"] not in platforms:
+                                continue
+                            if await db_one(
+                                "SELECT 1 FROM freestuff_posted WHERE guild_id=? AND game_id=? AND platform=?",
                                 (guild_id, game["id"], game["platform"]),
-                            )
-                        except Exception as e:
-                            print(f"[FreeStuff] send error: {e}")
+                            ):
+                                continue
+                            try:
+                                await self._send_embed(ch_free, game, is_deal=False)
+                                await db_exec(
+                                    "INSERT OR IGNORE INTO freestuff_posted (guild_id,game_id,platform) VALUES (?,?,?)",
+                                    (guild_id, game["id"], game["platform"]),
+                                )
+                            except Exception as e:
+                                print(f"[FreeStuff] send error: {e}")
 
-                # ── Deals ─────────────────────────────────────────────────
-                max_price = cfg.get("deal_max_price")
-                min_disc = int(cfg.get("deal_min_discount") or 75)
-                deal_ch_id = cfg.get("deal_channel_id") or cfg["channel_id"]
-                ch_deals = self.bot.get_channel(int(deal_ch_id))
+                    # ── Deals ─────────────────────────────────────────────
+                    max_price = cfg.get("deal_max_price")
+                    stored_min_disc = cfg.get("deal_min_discount")
+                    min_disc = int(stored_min_disc) if stored_min_disc is not None else 75
+                    deal_ch_id = cfg.get("deal_channel_id") or cfg["channel_id"]
+                    ch_deals = self.bot.get_channel(int(deal_ch_id))
 
-                if max_price and ch_deals:
-                    deals = await self._fetch_deals(platforms, float(max_price), min_disc)
-                    for game in deals:
-                        if game["platform"] not in platforms:
-                            continue
-                        deal_key = f"deal_{game['id']}"
-                        if await db_one(
-                            "SELECT 1 FROM freestuff_posted WHERE guild_id=? AND game_id=? AND platform=?",
-                            (guild_id, deal_key, game["platform"]),
-                        ):
-                            continue
-                        try:
-                            await self._send_embed(ch_deals, game, is_deal=True)
-                            await db_exec(
-                                "INSERT OR IGNORE INTO freestuff_posted (guild_id,game_id,platform) VALUES (?,?,?)",
+                    if max_price and ch_deals:
+                        deals = await self._fetch_deals(platforms, float(max_price), min_disc)
+                        for game in deals:
+                            if game["platform"] not in platforms:
+                                continue
+                            deal_key = f"deal_{game['id']}"
+                            if await db_one(
+                                "SELECT 1 FROM freestuff_posted WHERE guild_id=? AND game_id=? AND platform=?",
                                 (guild_id, deal_key, game["platform"]),
-                            )
-                        except Exception as e:
-                            print(f"[FreeStuff] deal send error: {e}")
+                            ):
+                                continue
+                            try:
+                                await self._send_embed(ch_deals, game, is_deal=True)
+                                await db_exec(
+                                    "INSERT OR IGNORE INTO freestuff_posted (guild_id,game_id,platform) VALUES (?,?,?)",
+                                    (guild_id, deal_key, game["platform"]),
+                                )
+                            except Exception as e:
+                                print(f"[FreeStuff] deal send error: {e}")
+                except Exception as e:
+                    print(f"[FreeStuff] Config error (guild {guild_id}): {e}")
 
         except Exception as e:
             print(f"[FreeStuff] Loop error: {e}")
@@ -218,13 +219,18 @@ class FreeStuff(commands.Cog):
             # skip always-free items (worth = "N/A" or "$0.00")
             if worth in ("N/A", "$0.00", "$0"):
                 return None
+            url = item.get("open_giveaway_url") or item.get("gamerpower_url", "")
+            if not url:
+                # No usable link - skip rather than send an embed Discord will reject,
+                # which would otherwise never get marked as posted and retry forever.
+                return None
             end_raw = item.get("end_date", "")
             end = end_raw[:10] if end_raw and end_raw.lower() != "n/a" else ""
             return {
                 "id": f"gp_{item['id']}",
                 "title": item.get("title", ""),
                 "description": (item.get("description") or "")[:180],
-                "url": item.get("open_giveaway_url") or item.get("gamerpower_url", ""),
+                "url": url,
                 "image": item.get("image") or item.get("thumbnail", ""),
                 "end_date": end,
                 "original_price": None,
@@ -344,10 +350,18 @@ class FreeStuff(commands.Cog):
         orig = game.get("original_price")
         sale = game.get("sale_price", 0.0)
 
+        game_title = game.get("title") or "?"
+        if len(game_title) > 200:
+            game_title = game_title[:199] + "…"
+
         if is_deal:
-            title_str = f"🔥 {game['title']} — -{disc}%"
+            title_str = f"🔥 {game_title} — -{disc}%"
         else:
-            title_str = f"{info['icon']} {game['title']} — Kostenlos!"
+            title_str = f"{info['icon']} {game_title} — Kostenlos!"
+        # Discord embed titles are capped at 256 chars - guard against any edge case
+        # (e.g. a very high discount number) still pushing past the limit.
+        if len(title_str) > 256:
+            title_str = title_str[:255] + "…"
 
         embed = discord.Embed(
             title=title_str,
