@@ -30,6 +30,29 @@
   .price-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.75rem; margin-bottom:0.85rem; align-items:end; }
 </style>
 
+<div style="font-weight:700;font-size:0.95rem;margin-bottom:1rem;display:flex;align-items:center;gap:0.4rem;">
+  {{ tr.nav_freestuff }}
+  <span style="position:relative;">
+    <button type="button" onclick="toggleFsInfo()" title="{{ tr.freestuff_info_tooltip }}"
+      style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+    <div id="fs-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.3rem;
+         background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+         font-size:0.78rem;min-width:320px;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-weight:400;">
+      <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.freestuff_info_title }}</div>
+      <div style="color:var(--muted);line-height:1.6;">
+        {{ tr.freestuff_info_intro }}
+        <ul style="margin:0.4rem 0 0.6rem 1.1rem;padding:0;">
+          <li>{{ tr.freestuff_info_item_free }}</li>
+          <li>{{ tr.freestuff_info_item_toggle }}</li>
+          <li>{{ tr.freestuff_info_item_deal }}</li>
+          <li>{{ tr.freestuff_info_item_epic }}</li>
+        </ul>
+        <strong style="color:var(--text);">{{ tr.freestuff_info_interval }}</strong>
+      </div>
+    </div>
+  </span>
+</div>
+
 {% if success %}<div class="alert alert-success" style="max-width:640px;">✅ {{ success }}</div>{% endif %}
 {% if error %}<div class="alert alert-error" style="max-width:640px;">❌ {{ error }}</div>{% endif %}
 
@@ -58,25 +81,6 @@
 <div class="fs-card">
   <div style="font-weight:700;font-size:0.95rem;margin-bottom:1.1rem;display:flex;align-items:center;gap:0.4rem;">
     {{ tr.freestuff_free_games_heading }}
-    <span style="position:relative;">
-      <button type="button" onclick="toggleFsInfo()" title="{{ tr.freestuff_info_tooltip }}"
-        style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
-      <div id="fs-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.3rem;
-           background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
-           font-size:0.78rem;min-width:320px;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-weight:400;">
-        <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.freestuff_info_title }}</div>
-        <div style="color:var(--muted);line-height:1.6;">
-          {{ tr.freestuff_info_intro }}
-          <ul style="margin:0.4rem 0 0.6rem 1.1rem;padding:0;">
-            <li>{{ tr.freestuff_info_item_free }}</li>
-            <li>{{ tr.freestuff_info_item_toggle }}</li>
-            <li>{{ tr.freestuff_info_item_deal }}</li>
-            <li>{{ tr.freestuff_info_item_epic }}</li>
-          </ul>
-          <strong style="color:var(--text);">{{ tr.freestuff_info_interval }}</strong>
-        </div>
-      </div>
-    </span>
   </div>
 
   {% set platform_list = cfg.platforms.split(',') if cfg else ['epic'] %}
