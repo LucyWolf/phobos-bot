@@ -24,8 +24,6 @@
   .status-row { display:flex; align-items:center; gap:0.75rem; padding:0.8rem 1rem; background:var(--bg); border:1px solid var(--border); border-radius:0.5rem; margin-bottom:0.6rem; max-width:640px; font-size:0.84rem; }
   .dot-on  { width:8px; height:8px; border-radius:50%; background:var(--success); box-shadow:0 0 6px var(--success); flex-shrink:0; }
   .dot-off { width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0; }
-  .divider { border:none; border-top:1px solid var(--border); margin:1.1rem 0; }
-  .row-2 { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:0.85rem; }
   select, input[type=number], input[type=text] { margin-bottom:0; }
   .price-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.75rem; margin-bottom:0.85rem; align-items:end; }
 </style>
@@ -76,7 +74,7 @@
 <form method="post" action="/servers/{{ guild_id }}/freestuff/save">
 <div class="fs-row">
 <div class="fs-card">
-  <div style="font-weight:700;font-size:0.95rem;margin-bottom:1.1rem;display:flex;align-items:center;gap:0.4rem;">
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:1.1rem;">
     {{ tr.freestuff_free_games_heading }}
   </div>
 
@@ -161,73 +159,71 @@
     {{ tr.freestuff_deals_heading }}
   </div>
 
-  <div>
-    {% set deal_platform_list = cfg.deal_platforms.split(',') if cfg and cfg.deal_platforms else [] %}
-    <label style="margin-bottom:0.35rem;">{{ tr.freestuff_deal_platforms_label }}</label>
-    <div class="platform-grid" style="margin-bottom:0.85rem;">
-      <label class="plat-label">
-        <input type="checkbox" name="deal_platforms" value="steam"
-               {% if 'steam' in deal_platform_list %}checked{% endif %}>
-        <span class="plat-icon">🖥️</span>
-        <span>Steam</span>
-      </label>
-      <label class="plat-label">
-        <input type="checkbox" name="deal_platforms" value="gog"
-               {% if 'gog' in deal_platform_list %}checked{% endif %}>
-        <span class="plat-icon">🟣</span>
-        <span>GOG</span>
-      </label>
-      <label class="plat-label">
-        <input type="checkbox" name="deal_platforms" value="humble"
-               {% if 'humble' in deal_platform_list %}checked{% endif %}>
-        <span class="plat-icon">🙏</span>
-        <span>Humble Bundle</span>
-      </label>
-      <label class="plat-label">
-        <input type="checkbox" name="deal_platforms" value="fanatical"
-               {% if 'fanatical' in deal_platform_list %}checked{% endif %}>
-        <span class="plat-icon">🐰</span>
-        <span>Fanatical</span>
-      </label>
-      <label class="plat-label">
-        <input type="checkbox" name="deal_platforms" value="gmg"
-               {% if 'gmg' in deal_platform_list %}checked{% endif %}>
-        <span class="plat-icon">🟢</span>
-        <span>GreenManGaming</span>
-      </label>
-    </div>
-    <p class="hint" style="margin-top:0;margin-bottom:0.85rem;">
-      {{ tr.freestuff_deal_hint_platforms }}
-    </p>
-    <div class="price-row">
-      <div>
-        <label>{{ tr.freestuff_max_price_label }}</label>
-        <input type="number" name="deal_max_price" min="0.50" max="100" step="0.50"
-               placeholder="{{ tr.freestuff_max_price_placeholder }}"
-               value="{{ '%.2f'|format(cfg.deal_max_price|float) if cfg and cfg.deal_max_price else '' }}">
-      </div>
-      <div>
-        <label>{{ tr.freestuff_min_discount_label }}</label>
-        <input type="number" name="deal_min_discount" min="25" max="99" step="5"
-               placeholder="75"
-               value="{{ cfg.deal_min_discount or 75 if cfg else 75 }}">
-      </div>
-      <div>
-        <label>{{ tr.freestuff_deal_channel_label }}</label>
-        <select name="deal_channel_id">
-          <option value="">{{ tr.freestuff_disabled_option }}</option>
-          {% for c in channels %}
-          <option value="{{ c.id }}"
-            {% if cfg and cfg.deal_channel_id == c.id %}selected{% endif %}>#{{ c.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-    </div>
-    <p class="hint">
-      {{ tr.freestuff_deal_hint_active }}<br>
-      {{ tr.freestuff_deal_hint_example }}
-    </p>
+  {% set deal_platform_list = cfg.deal_platforms.split(',') if cfg and cfg.deal_platforms else [] %}
+  <label style="margin-bottom:0.35rem;">{{ tr.freestuff_deal_platforms_label }}</label>
+  <div class="platform-grid" style="margin-bottom:0.85rem;">
+    <label class="plat-label">
+      <input type="checkbox" name="deal_platforms" value="steam"
+             {% if 'steam' in deal_platform_list %}checked{% endif %}>
+      <span class="plat-icon">🖥️</span>
+      <span>Steam</span>
+    </label>
+    <label class="plat-label">
+      <input type="checkbox" name="deal_platforms" value="gog"
+             {% if 'gog' in deal_platform_list %}checked{% endif %}>
+      <span class="plat-icon">🟣</span>
+      <span>GOG</span>
+    </label>
+    <label class="plat-label">
+      <input type="checkbox" name="deal_platforms" value="humble"
+             {% if 'humble' in deal_platform_list %}checked{% endif %}>
+      <span class="plat-icon">🙏</span>
+      <span>Humble Bundle</span>
+    </label>
+    <label class="plat-label">
+      <input type="checkbox" name="deal_platforms" value="fanatical"
+             {% if 'fanatical' in deal_platform_list %}checked{% endif %}>
+      <span class="plat-icon">🐰</span>
+      <span>Fanatical</span>
+    </label>
+    <label class="plat-label">
+      <input type="checkbox" name="deal_platforms" value="gmg"
+             {% if 'gmg' in deal_platform_list %}checked{% endif %}>
+      <span class="plat-icon">🟢</span>
+      <span>GreenManGaming</span>
+    </label>
   </div>
+  <p class="hint" style="margin-top:0;margin-bottom:0.85rem;">
+    {{ tr.freestuff_deal_hint_platforms }}
+  </p>
+  <div class="price-row">
+    <div>
+      <label>{{ tr.freestuff_max_price_label }}</label>
+      <input type="number" name="deal_max_price" min="0.50" max="100" step="0.50"
+             placeholder="{{ tr.freestuff_max_price_placeholder }}"
+             value="{{ '%.2f'|format(cfg.deal_max_price|float) if cfg and cfg.deal_max_price else '' }}">
+    </div>
+    <div>
+      <label>{{ tr.freestuff_min_discount_label }}</label>
+      <input type="number" name="deal_min_discount" min="25" max="99" step="5"
+             placeholder="75"
+             value="{{ cfg.deal_min_discount or 75 if cfg else 75 }}">
+    </div>
+    <div>
+      <label>{{ tr.freestuff_deal_channel_label }}</label>
+      <select name="deal_channel_id">
+        <option value="">{{ tr.freestuff_disabled_option }}</option>
+        {% for c in channels %}
+        <option value="{{ c.id }}"
+          {% if cfg and cfg.deal_channel_id == c.id %}selected{% endif %}>#{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  <p class="hint">
+    {{ tr.freestuff_deal_hint_active }}<br>
+    {{ tr.freestuff_deal_hint_example }}
+  </p>
 </div>
 </div>
 

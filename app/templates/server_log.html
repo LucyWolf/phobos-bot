@@ -27,9 +27,6 @@
   .bar-pink   { background:#ff73fa; }
   .bar-amber  { background:#f59e0b; }
   .bar-gray   { background:#64748b; }
-
-  .multi-select-wrap { position:relative; }
-  .multi-select-wrap select[multiple] { height:7rem; }
 </style>
 
 <div style="position:relative;margin-bottom:1.25rem;">
@@ -88,9 +85,7 @@
 
 <div class="log-table-wrap">
   <div class="log-table-head">
-    <span style="display:flex;align-items:center;gap:0.4rem;">
-      <span style="font-weight:700;font-size:0.9rem;">{{ tr.log_recent_events }}</span>
-    </span>
+    <span style="font-weight:700;font-size:0.9rem;">{{ tr.log_recent_events }}</span>
     <span style="display:flex;align-items:center;gap:0.6rem;">
       <span style="font-size:0.78rem;color:var(--muted);">{{ logs|length }} {{ tr.log_entries_count }}</span>
       <select onchange="location.href='/servers/{{ guild_id }}/log?limit=' + this.value" style="margin:0;padding:0.25rem 0.5rem;font-size:0.78rem;width:auto;">
