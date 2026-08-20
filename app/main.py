@@ -2626,6 +2626,9 @@ async def notifications_add(
     if platform == "youtube" and "youtube.com" in target:
         parts = target.rstrip("/").split("/")
         target = parts[-1]
+    # Normalize a pasted Twitch channel URL (e.g. https://www.twitch.tv/club_neon) to the login name
+    if platform == "twitch" and "twitch.tv" in target:
+        target = target.split("?")[0].rstrip("/").split("/")[-1]
     existing = await db_rows(
         "SELECT id FROM notifications WHERE guild_id=? AND platform=? AND target=?",
         (guild_id, platform, target.lower() if platform == "twitch" else target),
