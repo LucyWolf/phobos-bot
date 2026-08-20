@@ -331,7 +331,7 @@
       <span class="label">{{ tr.nav_dashboard }}</span>
     </a>
 
-    <div class="nav-group {% if active in ['settings','users','roles','bot_update','bot_info','notif_settings','smtp','servers','tokens'] %}open{% endif %}" id="nav-group-settings">
+    <div class="nav-group {% if active in ['settings','users','roles','bot_update','bot_info','notif_settings','smtp','servers','tokens','admin_log'] %}open{% endif %}" id="nav-group-settings">
       <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn-header{% endif %}"
            onclick="toggleNavGroup('settings')" title="{{ tr.nav_settings }}">
         <span class="icon">⚙️</span>
@@ -347,6 +347,10 @@
         <a href="/users" class="nav-item nav-sub {% if active == 'users' %}active{% endif %}">
           <span class="icon">👥</span>
           <span class="label">{{ tr.nav_users }}</span>
+        </a>
+        <a href="/admin/log" class="nav-item nav-sub {% if active == 'admin_log' %}active{% endif %}">
+          <span class="icon">🛡️</span>
+          <span class="label">{{ tr.nav_admin_log }}</span>
         </a>
         {% endif %}
         {% if role == 'admin' or perm_bots %}

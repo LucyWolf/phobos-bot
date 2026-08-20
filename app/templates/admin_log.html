@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} – {{ tr.nav_admin_log }}{% endblock %}
+{% block page_title %}{{ tr.admin_log_page_title }}{% endblock %}
+
+{% block content %}
+<style>
+  .log-table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; overflow:hidden; }
+  .log-table-head { padding:0.75rem 1.25rem; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  .log-entry { display:grid; grid-template-columns:0.25rem 1fr auto; gap:0 0.75rem; align-items:start; padding:0.55rem 1rem 0.55rem 0; border-bottom:1px solid var(--border); font-size:0.83rem; }
+  .log-entry:last-child { border-bottom:none; }
+  .log-entry:hover { background:var(--bg); }
+  .log-bar  { align-self:stretch; border-radius:0; }
+  .log-title { font-weight:600; }
+  .log-user { color:var(--muted); font-weight:400; }
+  .log-desc { color:var(--muted); font-size:0.77rem; margin-top:0.1rem; }
+  .log-time { color:var(--muted); font-size:0.72rem; white-space:nowrap; margin-top:0.15rem; }
+  .empty { text-align:center; padding:3rem 1rem; color:var(--muted); font-size:0.9rem; }
+
+  .bar-blue { background:#3b82f6; }
+  .bar-red  { background:#ef4444; }
+</style>
+
+<div class="log-table-wrap">
+  <div class="log-table-head">
+    <span style="display:flex;align-items:center;gap:0.4rem;">
+      <span style="font-weight:700;font-size:0.9rem;">{{ tr.admin_log_recent_events }}</span>
+      <span style="position:relative;">
+        <button type="button" onclick="toggleAdminLogInfo()" title="{{ tr.admin_log_info_tooltip }}"
+          style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+        <div id="admin-log-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.3rem;
+             background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+             font-size:0.78rem;min-width:320px;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-weight:400;">
+          <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.admin_log_info_title }}</div>
+          <div style="color:var(--muted);line-height:1.6;">
+            {{ tr.admin_log_info_intro }}
+            <ul style="margin:0.3rem 0 0.6rem 1.1rem;padding:0;">
+              <li>{{ tr.admin_log_info_item_login }}</li>
+              <li>{{ tr.admin_log_info_item_users }}</li>
+              <li>{{ tr.admin_log_info_item_roles }}</li>
+              <li>{{ tr.admin_log_info_item_tokens }}</li>
+              <li>{{ tr.admin_log_info_item_errors }}</li>
+            </ul>
+            {{ tr.admin_log_info_footer }}
+          </div>
+        </div>
+      </span>
+    </span>
+    <span style="display:flex;align-items:center;gap:0.6rem;">
+      <span style="font-size:0.78rem;color:var(--muted);">{{ logs|length }} {{ tr.admin_log_entries_count }}</span>
+      <select onchange="location.href='/admin/log?limit=' + this.value" style="margin:0;padding:0.25rem 0.5rem;font-size:0.78rem;width:auto;">
+        {% for n in log_limit_options %}
+        <option value="{{ n }}" {% if n == log_limit %}selected{% endif %}>max. {{ n }}</option>
+        {% endfor %}
+      </select>
+    </span>
+  </div>
+  {% if logs %}
+  {% for e in logs %}
+  <div class="log-entry">
+    <div class="log-bar {% if e.level == 'error' %}bar-red{% else %}bar-blue{% endif %}"></div>
+    <div>
+      <div class="log-title">{{ e.action }} <span class="log-user">— {{ e.username or '?' }}</span></div>
+      {% if e.details %}<div class="log-desc">{{ e.details }}</div>{% endif %}
+    </div>
+    <div class="log-time">{{ e.created_at | dt }}</div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="empty">{{ tr.admin_log_empty }}</div>
+  {% endif %}
+</div>
+
+<script>
+function toggleAdminLogInfo() {
+  const box = document.getElementById('admin-log-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('admin-log-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleAdminLogInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+</script>
+{% endblock %}
