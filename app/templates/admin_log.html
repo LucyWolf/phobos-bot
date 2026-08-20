@@ -4,8 +4,9 @@
 
 {% block content %}
 <style>
-  .log-table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; overflow:hidden; }
-  .log-table-head { padding:0.75rem 1.25rem; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  .log-table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; }
+  .log-table-head { padding:0.75rem 1.25rem; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; position:relative; }
+  .log-table-body { border-radius:0 0 0.75rem 0.75rem; overflow:hidden; }
   .log-entry { display:grid; grid-template-columns:0.25rem 1fr auto; gap:0 0.75rem; align-items:start; padding:0.55rem 1rem 0.55rem 0; border-bottom:1px solid var(--border); font-size:0.83rem; }
   .log-entry:last-child { border-bottom:none; }
   .log-entry:hover { background:var(--bg); }
@@ -54,6 +55,7 @@
       </select>
     </span>
   </div>
+  <div class="log-table-body">
   {% if logs %}
   {% for e in logs %}
   <div class="log-entry">
@@ -68,6 +70,7 @@
   {% else %}
   <div class="empty">{{ tr.admin_log_empty }}</div>
   {% endif %}
+  </div>
 </div>
 
 <script>
