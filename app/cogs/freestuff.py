@@ -99,8 +99,9 @@ class FreeStuff(commands.Cog):
                 try:
                     platforms = set((cfg["platforms"] or "epic").split(","))
 
-                    # ── Free games ────────────────────────────────────────
-                    ch_free = self.bot.get_channel(int(cfg["channel_id"]))
+                    # ── Free games (only active once a channel is set) ─────
+                    free_ch_id = cfg.get("channel_id")
+                    ch_free = self.bot.get_channel(int(free_ch_id)) if free_ch_id else None
                     if ch_free:
                         for game in free_games:
                             if game["platform"] not in platforms:

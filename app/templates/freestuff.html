@@ -36,10 +36,14 @@
 <!-- Status -->
 <div class="status-row">
   {% if cfg %}
-  <span class="dot-on"></span>
+  {% if cfg.channel_id or cfg.deal_channel_id %}<span class="dot-on"></span>{% else %}<span class="dot-off"></span>{% endif %}
+  {% if cfg.channel_id %}
   Gratis: <b>#{{ channels | selectattr('id','equalto',cfg.channel_id) | map(attribute='name') | first | default(cfg.channel_id) }}</b>
   · {{ cfg.platforms.upper().replace(',', ' · ') }}
-  {% if cfg.deal_max_price %}
+  {% else %}
+  <span style="color:var(--muted);">Gratis-Spiele deaktiviert</span>
+  {% endif %}
+  {% if cfg.deal_max_price and cfg.deal_channel_id %}
   &nbsp;|&nbsp; Deals bis <b>{{ "%.2f"|format(cfg.deal_max_price|float) }} €</b>
   (min. {{ cfg.deal_min_discount or 75 }}% Rabatt)
   {% endif %}
@@ -146,7 +150,8 @@
   </div>
 
   <label style="margin-bottom:0.35rem;">Kanal für Gratis-Spiele</label>
-  <select name="channel_id" required style="margin-bottom:0;">
+  <select name="channel_id" style="margin-bottom:0;">
+    <option value="">— deaktiviert —</option>
     {% for c in channels %}
     <option value="{{ c.id }}" {% if cfg and cfg.channel_id == c.id %}selected{% endif %}>#{{ c.name }}</option>
     {% endfor %}
@@ -231,17 +236,10 @@
 
 <div style="display:flex;gap:0.75rem;align-items:center;max-width:640px;">
   <button type="submit" class="btn btn-primary">💾 Speichern</button>
-  {% if cfg %}
-  <button type="button" class="btn btn-danger"
-    onclick="if(confirm('Alles deaktivieren?'))document.getElementById('dis-form').submit()">
-    Deaktivieren
-  </button>
-  {% endif %}
 </div>
 </form>
-<form id="dis-form" method="post" action="/servers/{{ guild_id }}/freestuff/disable" style="display:none;"></form>
 
-{% if cfg %}
+{% if cfg and cfg.channel_id %}
 <div style="margin-top:1.25rem;max-width:640px;">
   <form method="post" action="/servers/{{ guild_id }}/freestuff/test"
         onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='⏳ Wird gesendet…'">

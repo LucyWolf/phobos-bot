@@ -2093,7 +2093,7 @@ DEAL_PLATFORMS = {"steam", "gog", "humble", "fanatical", "gmg"}  # only ones wit
 @web.post("/servers/{guild_id}/freestuff/save")
 async def freestuff_save(
     request: Request, guild_id: str,
-    channel_id: str = Form(...),
+    channel_id: str = Form(""),
     platforms: list[str] = Form(default=[]),
     deal_max_price: str = Form(""),
     deal_min_discount: str = Form("75"),
@@ -2107,7 +2107,7 @@ async def freestuff_save(
     if not guild:
         return RedirectResponse("/servers", status_code=302)
     valid_channel_ids = {str(c.id) for c in guild.text_channels}
-    if channel_id not in valid_channel_ids:
+    if channel_id and channel_id not in valid_channel_ids:
         return RedirectResponse(f"/servers/{guild_id}/freestuff?error=Ungültiger+Kanal", status_code=302)
     if deal_channel_id and deal_channel_id not in valid_channel_ids:
         return RedirectResponse(f"/servers/{guild_id}/freestuff?error=Ungültiger+Deal-Kanal", status_code=302)
@@ -2142,24 +2142,15 @@ async def freestuff_save(
     return RedirectResponse(f"/servers/{guild_id}/freestuff?success=1", status_code=302)
 
 
-@web.post("/servers/{guild_id}/freestuff/disable")
-async def freestuff_disable(request: Request, guild_id: str):
-    if r := auth_redirect(request): return r
-    if not await _guild_access(request, guild_id):
-        return RedirectResponse("/servers", status_code=302)
-    await db_exec("DELETE FROM freestuff_channels WHERE guild_id=?", (guild_id,))
-    return RedirectResponse(f"/servers/{guild_id}/freestuff?success=1", status_code=302)
-
-
 @web.post("/servers/{guild_id}/freestuff/test")
 async def freestuff_test(request: Request, guild_id: str):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
     cfg = await db_one("SELECT * FROM freestuff_channels WHERE guild_id=?", (guild_id,))
-    if not cfg:
+    if not cfg or not cfg.get("channel_id"):
         return RedirectResponse(
-            f"/servers/{guild_id}/freestuff?error=Noch+nicht+konfiguriert", status_code=302
+            f"/servers/{guild_id}/freestuff?error=Gratis-Spiele-Kanal+nicht+konfiguriert", status_code=302
         )
     # Find the bot that is connected to this guild
     target_bot = None
