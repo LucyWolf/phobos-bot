@@ -273,7 +273,7 @@ class Logging(commands.Cog):
         if before.premium_subscription_count != after.premium_subscription_count:
             diff = after.premium_subscription_count - before.premium_subscription_count
             embed = discord.Embed(
-                title="💎 Server-Boost" if diff > 0 else "💎 Boost entfernt",
+                title="💎 Server-Boost" if diff > 0 else "💔 Boost entfernt",
                 color=0xff73fa if diff > 0 else 0x94a3b8,
             )
             embed.add_field(name="Boosts gesamt", value=str(after.premium_subscription_count))

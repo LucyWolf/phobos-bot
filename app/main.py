@@ -389,7 +389,6 @@ def _log_bar_class(icon: str) -> str:
         "✏️": "bar-yellow", "🔀": "bar-amber",
         "⏱️": "bar-amber",
         "🏷️": "bar-blue",
-        "✏": "bar-purple", "🔑": "bar-purple",
         "💎": "bar-pink",
     }
     for k, v in _map.items():
