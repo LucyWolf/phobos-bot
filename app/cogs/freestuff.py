@@ -90,7 +90,8 @@ class FreeStuff(commands.Cog):
 
             needed_free = set()
             for cfg in configs:
-                needed_free.update((cfg["platforms"] or "epic").split(","))
+                if cfg.get("channel_id"):
+                    needed_free.update((cfg["platforms"] or "epic").split(","))
 
             free_games = await self._fetch_free(needed_free) if needed_free else []
 
