@@ -2139,7 +2139,7 @@ async def freestuff_save(
                deal_platforms=excluded.deal_platforms""",
         (guild_id, channel_id, plat_str, max_price, min_disc, deal_ch, deal_plat_str),
     )
-    return RedirectResponse(f"/servers/{guild_id}/freestuff?success=1", status_code=302)
+    return RedirectResponse(f"/servers/{guild_id}/freestuff?success=Gespeichert", status_code=302)
 
 
 @web.post("/servers/{guild_id}/freestuff/test")
