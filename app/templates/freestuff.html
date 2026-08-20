@@ -30,7 +30,7 @@
   .price-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.75rem; margin-bottom:0.85rem; align-items:end; }
 </style>
 
-{% if success %}<div class="alert alert-success" style="max-width:640px;">✅ Gespeichert.</div>{% endif %}
+{% if success %}<div class="alert alert-success" style="max-width:640px;">✅ {{ success }}</div>{% endif %}
 {% if error %}<div class="alert alert-error" style="max-width:640px;">❌ {{ error }}</div>{% endif %}
 
 <!-- Status -->
