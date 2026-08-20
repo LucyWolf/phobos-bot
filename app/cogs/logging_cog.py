@@ -28,7 +28,7 @@ class Logging(commands.Cog):
             )
             await db_exec(
                 """DELETE FROM server_logs WHERE guild_id=? AND id NOT IN (
-                    SELECT id FROM server_logs WHERE guild_id=? ORDER BY id DESC LIMIT 300
+                    SELECT id FROM server_logs WHERE guild_id=? ORDER BY id DESC LIMIT 200
                 )""",
                 (str(guild_id), str(guild_id)),
             )
@@ -56,6 +56,20 @@ class Logging(commands.Cog):
         except Exception:
             pass
         return None
+
+    async def _audit_delete_info(self, guild: discord.Guild, channel_id: int):
+        """Best-effort audit log lookup for an uncached deletion, where there's no known
+        author to match against - just takes the most recent message_delete entry for this
+        channel. Returns (author, deleter), either of which can be None."""
+        try:
+            await asyncio.sleep(1)
+            async for entry in guild.audit_logs(limit=10, action=discord.AuditLogAction.message_delete):
+                age = (datetime.datetime.now(datetime.timezone.utc) - entry.created_at).total_seconds()
+                if age < 15 and entry.extra.channel.id == channel_id:
+                    return entry.target, entry.user
+        except Exception:
+            pass
+        return None, None
 
     # ── Mitglieder ────────────────────────────────────────────────────────────
 
@@ -173,49 +187,83 @@ class Logging(commands.Cog):
     # ── Nachrichten ───────────────────────────────────────────────────────────
 
     @commands.Cog.listener()
-    async def on_message_delete(self, message: discord.Message):
-        if message.author.bot or not message.guild:
+    async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
+        # Raw event - fires for every deletion, unlike on_message_delete which discord.py
+        # only dispatches for messages still in the (size-limited, cross-guild-shared) cache.
+        if not payload.guild_id:
             return
-        if await self._is_excluded(message.guild.id, message.channel.id):
+        if await self._is_excluded(payload.guild_id, payload.channel_id):
             return
 
-        embed = discord.Embed(title="🗑️ Nachricht gelöscht", color=0xf97316)
-        embed.set_author(name=str(message.author), icon_url=message.author.display_avatar.url)
-        embed.add_field(name="Autor", value=message.author.mention)
-        embed.add_field(name="Kanal", value=message.channel.mention)
-        if message.content:
-            embed.add_field(name="Inhalt", value=message.content[:1000], inline=False)
+        message = payload.cached_message
+        if message is not None:
+            if message.author.bot:
+                return
 
-        # Check audit log: was it deleted by someone else?
-        deleter = await self._find_deleter(message.guild, message.channel.id, message.author.id)
-        if deleter and deleter.id != message.author.id:
-            embed.add_field(name="Gelöscht von", value=deleter.mention)
+            embed = discord.Embed(title="🗑️ Nachricht gelöscht", color=0xf97316)
+            embed.set_author(name=str(message.author), icon_url=message.author.display_avatar.url)
+            embed.add_field(name="Autor", value=message.author.mention)
+            embed.add_field(name="Kanal", value=message.channel.mention)
+            if message.content:
+                embed.add_field(name="Inhalt", value=message.content[:1000], inline=False)
 
-        plain = f"{message.author.display_name} · #{message.channel.name}"
-        if deleter and deleter.id != message.author.id:
-            plain += f" · gelöscht von {deleter.display_name}"
-        if message.content:
-            plain += f" · {message.content[:80]}"
-        await self._log(message.guild.id, embed, plain=plain)
+            deleter = await self._find_deleter(message.guild, payload.channel_id, message.author.id)
+            if deleter and deleter.id != message.author.id:
+                embed.add_field(name="Gelöscht von", value=deleter.mention)
+
+            plain = f"{message.author.display_name} · #{message.channel.name}"
+            if deleter and deleter.id != message.author.id:
+                plain += f" · gelöscht von {deleter.display_name}"
+            if message.content:
+                plain += f" · {message.content[:80]}"
+        else:
+            # Not in cache - Discord doesn't send author/content for uncached deletions,
+            # so fall back to a best-effort audit log lookup (author + deleter only).
+            guild = self.bot.get_guild(payload.guild_id)
+            if not guild:
+                return
+            channel = guild.get_channel(payload.channel_id)
+            author, deleter = await self._audit_delete_info(guild, payload.channel_id)
+            if author and author.bot:
+                return
+
+            embed = discord.Embed(title="🗑️ Nachricht gelöscht", color=0xf97316)
+            if author:
+                embed.set_author(name=str(author), icon_url=author.display_avatar.url)
+                embed.add_field(name="Autor", value=author.mention)
+            embed.add_field(name="Kanal", value=channel.mention if channel else f"<#{payload.channel_id}>")
+            embed.add_field(name="Hinweis", value="Nachricht war nicht im Cache – Inhalt unbekannt", inline=False)
+            if deleter and (not author or deleter.id != author.id):
+                embed.add_field(name="Gelöscht von", value=deleter.mention)
+
+            chan_name = channel.name if channel else str(payload.channel_id)
+            plain = f"{author.display_name if author else '?'} · #{chan_name} · Inhalt unbekannt (nicht im Cache)"
+            if deleter and (not author or deleter.id != author.id):
+                plain += f" · gelöscht von {deleter.display_name}"
+
+        await self._log(payload.guild_id, embed, plain=plain)
 
     @commands.Cog.listener()
-    async def on_bulk_message_delete(self, messages: list):
-        if not messages:
+    async def on_raw_bulk_message_delete(self, payload: discord.RawBulkMessageDeleteEvent):
+        # Raw event - on_bulk_message_delete only sees the cached subset, which would
+        # both under-report the count and miss the event entirely if nothing was cached.
+        if not payload.guild_id or not payload.message_ids:
             return
-        msg = messages[0]
-        if not msg.guild:
+        guild = self.bot.get_guild(payload.guild_id)
+        if not guild:
             return
-        if await self._is_excluded(msg.guild.id, msg.channel.id):
+        if await self._is_excluded(payload.guild_id, payload.channel_id):
             return
+        channel = guild.get_channel(payload.channel_id)
 
         embed = discord.Embed(title="🗑️ Massenlöschung", color=0xef4444)
-        embed.add_field(name="Kanal", value=msg.channel.mention)
-        embed.add_field(name="Nachrichten", value=str(len(messages)))
+        embed.add_field(name="Kanal", value=channel.mention if channel else f"<#{payload.channel_id}>")
+        embed.add_field(name="Nachrichten", value=str(len(payload.message_ids)))
 
         mod = None
         try:
             await asyncio.sleep(1)
-            async for entry in msg.guild.audit_logs(limit=5, action=discord.AuditLogAction.message_bulk_delete):
+            async for entry in guild.audit_logs(limit=5, action=discord.AuditLogAction.message_bulk_delete):
                 age = (datetime.datetime.now(datetime.timezone.utc) - entry.created_at).total_seconds()
                 if age < 15 and entry.user:
                     mod = entry.user
@@ -224,10 +272,11 @@ class Logging(commands.Cog):
         except Exception:
             pass
 
-        plain = f"#{msg.channel.name} · {len(messages)} Nachrichten"
+        chan_name = channel.name if channel else str(payload.channel_id)
+        plain = f"#{chan_name} · {len(payload.message_ids)} Nachrichten"
         if mod:
             plain += f" · von {mod.display_name}"
-        await self._log(msg.guild.id, embed, plain=plain)
+        await self._log(payload.guild_id, embed, plain=plain)
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
