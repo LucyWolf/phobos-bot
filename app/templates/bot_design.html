@@ -1,26 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}{{ app_name }} – {{ tr.nav_bot_design }}{% endblock %}
-{% block page_title %}
-  🤖 {{ tr.nav_bot_design }}
-  <span style="position:relative;margin-left:0.5rem;">
-    <button type="button" onclick="toggleDesignInfo()" title="{{ tr.bot_design_info_tooltip }}"
-      style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
-    <div id="design-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.3rem;
-         background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
-         font-size:0.78rem;min-width:320px;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-weight:400;">
-      <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.bot_design_info_title }}</div>
-      <div style="color:var(--muted);line-height:1.6;">
-        {{ tr.bot_design_info_intro }}
-        <ul style="margin:0.4rem 0 0;padding:0 0 0 1.1rem;">
-          <li>{{ tr.bot_design_info_item_global }}</li>
-          <li>{{ tr.bot_design_info_item_multi }}</li>
-          <li>{{ tr.bot_design_info_item_limit }}</li>
-        </ul>
-      </div>
-    </div>
-  </span>
-{% endblock %}
+{% block page_title %}🤖 {{ tr.nav_bot_design }}{% endblock %}
 
 {% block content %}
 {% from '_server_subnav.html' import server_subnav %}
@@ -36,6 +17,23 @@
   input[type="file"] { display:none; }
   #file-name { font-size:0.78rem; color:var(--muted); margin-top:0.4rem; }
 </style>
+
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" class="btn btn-secondary" onclick="toggleDesignInfo()">ℹ️ {{ tr.bot_design_info_tooltip }}</button>
+  <div id="design-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:320px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.bot_design_info_title }}</div>
+    <div style="color:var(--muted);line-height:1.6;">
+      {{ tr.bot_design_info_intro }}
+      <ul style="margin:0.4rem 0 0;padding:0 0 0 1.1rem;">
+        <li>{{ tr.bot_design_info_item_global }}</li>
+        <li>{{ tr.bot_design_info_item_multi }}</li>
+        <li>{{ tr.bot_design_info_item_limit }}</li>
+      </ul>
+    </div>
+  </div>
+</div>
 
 {% if not bot_online %}
 <div class="alert alert-error">{{ tr.bot_design_offline_before }} <a href="/settings" style="color:var(--danger)">{{ tr.bot_design_offline_link }}</a> {{ tr.bot_design_offline_after }}</div>
