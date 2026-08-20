@@ -38,18 +38,18 @@
   {% if cfg %}
   {% if cfg.channel_id or cfg.deal_channel_id %}<span class="dot-on"></span>{% else %}<span class="dot-off"></span>{% endif %}
   {% if cfg.channel_id %}
-  Gratis: <b>#{{ channels | selectattr('id','equalto',cfg.channel_id) | map(attribute='name') | first | default(cfg.channel_id) }}</b>
+  {{ tr.freestuff_status_free }} <b>#{{ channels | selectattr('id','equalto',cfg.channel_id) | map(attribute='name') | first | default(cfg.channel_id) }}</b>
   · {{ cfg.platforms.upper().replace(',', ' · ') }}
   {% else %}
-  <span style="color:var(--muted);">Gratis-Spiele deaktiviert</span>
+  <span style="color:var(--muted);">{{ tr.freestuff_status_free_off }}</span>
   {% endif %}
   {% if cfg.deal_max_price and cfg.deal_channel_id %}
-  &nbsp;|&nbsp; Deals bis <b>{{ "%.2f"|format(cfg.deal_max_price|float) }} €</b>
-  (min. {{ cfg.deal_min_discount or 75 }}% Rabatt)
+  &nbsp;|&nbsp; {{ tr.freestuff_status_deals_upto }} <b>{{ "%.2f"|format(cfg.deal_max_price|float) }} €</b>
+  ({{ tr.freestuff_status_min_disc }} {{ cfg.deal_min_discount or 75 }}{{ tr.freestuff_status_pct_disc }})
   {% endif %}
   {% else %}
   <span class="dot-off"></span>
-  <span style="color:var(--muted);">Nicht konfiguriert.</span>
+  <span style="color:var(--muted);">{{ tr.freestuff_status_unconfigured }}</span>
   {% endif %}
 </div>
 
@@ -57,7 +57,7 @@
 <div class="fs-row">
 <div class="fs-card">
   <div style="font-weight:700;font-size:0.95rem;margin-bottom:1.1rem;display:flex;align-items:center;gap:0.4rem;">
-    🎮 Gratis-Spiele
+    {{ tr.freestuff_free_games_heading }}
     <span style="position:relative;">
       <button type="button" onclick="toggleFsInfo()" title="{{ tr.freestuff_info_tooltip }}"
         style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
@@ -80,75 +80,75 @@
   </div>
 
   {% set platform_list = cfg.platforms.split(',') if cfg else ['epic'] %}
-  <label style="margin-bottom:0.35rem;">Plattformen überwachen</label>
+  <label style="margin-bottom:0.35rem;">{{ tr.freestuff_platforms_label }}</label>
 
-  <div class="plat-group-label">Bekannte Stores</div>
+  <div class="plat-group-label">{{ tr.freestuff_known_stores }}</div>
   <div class="platform-grid">
     <label class="plat-label">
       <input type="checkbox" name="platforms" value="epic"
              {% if 'epic' in platform_list %}checked{% endif %}>
       <span class="plat-icon">🎮</span>
-      <span>Epic Games<span class="plat-desc">Gratis-Spiele jeden Donnerstag</span></span>
+      <span>Epic Games<span class="plat-desc">{{ tr.freestuff_plat_desc_epic }}</span></span>
     </label>
     <label class="plat-label">
       <input type="checkbox" name="platforms" value="steam"
              {% if 'steam' in platform_list %}checked{% endif %}>
       <span class="plat-icon">🖥️</span>
-      <span>Steam<span class="plat-desc">Free Weekends & Aktionen</span></span>
+      <span>Steam<span class="plat-desc">{{ tr.freestuff_plat_desc_steam }}</span></span>
     </label>
     <label class="plat-label">
       <input type="checkbox" name="platforms" value="gog"
              {% if 'gog' in platform_list %}checked{% endif %}>
       <span class="plat-icon">🟣</span>
-      <span>GOG<span class="plat-desc">Gelegentliche Gratis-Aktionen</span></span>
+      <span>GOG<span class="plat-desc">{{ tr.freestuff_plat_desc_gog }}</span></span>
     </label>
     <label class="plat-label">
       <input type="checkbox" name="platforms" value="humble"
              {% if 'humble' in platform_list %}checked{% endif %}>
       <span class="plat-icon">🙏</span>
-      <span>Humble Bundle<span class="plat-desc">Gratis-Promotions</span></span>
+      <span>Humble Bundle<span class="plat-desc">{{ tr.freestuff_plat_desc_humble }}</span></span>
     </label>
     <label class="plat-label">
       <input type="checkbox" name="platforms" value="fanatical"
              {% if 'fanatical' in platform_list %}checked{% endif %}>
       <span class="plat-icon">🐰</span>
-      <span>Fanatical<span class="plat-desc">Star Deals & Bundles</span></span>
+      <span>Fanatical<span class="plat-desc">{{ tr.freestuff_plat_desc_fanatical }}</span></span>
     </label>
     <label class="plat-label">
       <input type="checkbox" name="platforms" value="gmg"
              {% if 'gmg' in platform_list %}checked{% endif %}>
       <span class="plat-icon">🟢</span>
-      <span>GreenManGaming<span class="plat-desc">Gelegentliche Gratis-Aktionen</span></span>
+      <span>GreenManGaming<span class="plat-desc">{{ tr.freestuff_plat_desc_gmg }}</span></span>
     </label>
     <label class="plat-label">
       <input type="checkbox" name="platforms" value="ea"
              {% if 'ea' in platform_list %}checked{% endif %}>
       <span class="plat-icon">🟡</span>
-      <span>EA App<span class="plat-desc">EA Free-to-Play & Aktionen</span></span>
+      <span>EA App<span class="plat-desc">{{ tr.freestuff_plat_desc_ea }}</span></span>
     </label>
     <label class="plat-label">
       <input type="checkbox" name="platforms" value="ubisoft"
              {% if 'ubisoft' in platform_list %}checked{% endif %}>
       <span class="plat-icon">🔷</span>
-      <span>Ubisoft Connect<span class="plat-desc">Ubisoft Gratis-Aktionen</span></span>
+      <span>Ubisoft Connect<span class="plat-desc">{{ tr.freestuff_plat_desc_ubisoft }}</span></span>
     </label>
     <label class="plat-label">
       <input type="checkbox" name="platforms" value="battlenet"
              {% if 'battlenet' in platform_list %}checked{% endif %}>
       <span class="plat-icon">⚔️</span>
-      <span>Battle.net<span class="plat-desc">Blizzard Free-to-Play</span></span>
+      <span>Battle.net<span class="plat-desc">{{ tr.freestuff_plat_desc_battlenet }}</span></span>
     </label>
     <label class="plat-label">
       <input type="checkbox" name="platforms" value="itchio"
              {% if 'itchio' in platform_list %}checked{% endif %}>
       <span class="plat-icon">🍓</span>
-      <span>itch.io<span class="plat-desc">Indie-Spiele kostenlos</span></span>
+      <span>itch.io<span class="plat-desc">{{ tr.freestuff_plat_desc_itchio }}</span></span>
     </label>
   </div>
 
-  <label style="margin-bottom:0.35rem;">Kanal für Gratis-Spiele</label>
+  <label style="margin-bottom:0.35rem;">{{ tr.freestuff_channel_free_label }}</label>
   <select name="channel_id" style="margin-bottom:0;">
-    <option value="">— deaktiviert —</option>
+    <option value="">{{ tr.freestuff_disabled_option }}</option>
     {% for c in channels %}
     <option value="{{ c.id }}" {% if cfg and cfg.channel_id == c.id %}selected{% endif %}>#{{ c.name }}</option>
     {% endfor %}
@@ -157,12 +157,12 @@
 
 <div class="fs-card">
   <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.9rem;">
-    🔥 Angebote
+    {{ tr.freestuff_deals_heading }}
   </div>
 
   <div>
     {% set deal_platform_list = cfg.deal_platforms.split(',') if cfg and cfg.deal_platforms else [] %}
-    <label style="margin-bottom:0.35rem;">Plattformen für Angebote</label>
+    <label style="margin-bottom:0.35rem;">{{ tr.freestuff_deal_platforms_label }}</label>
     <div class="platform-grid" style="margin-bottom:0.85rem;">
       <label class="plat-label">
         <input type="checkbox" name="deal_platforms" value="steam"
@@ -196,26 +196,25 @@
       </label>
     </div>
     <p class="hint" style="margin-top:0;margin-bottom:0.85rem;">
-      Epic Games, EA App, Ubisoft Connect, Battle.net und itch.io haben keine Preis-API und
-      können daher keine Angebote liefern — nur die oben gezeigten Plattformen funktionieren.
+      {{ tr.freestuff_deal_hint_platforms }}
     </p>
     <div class="price-row">
       <div>
-        <label>Max. Preis (€)</label>
+        <label>{{ tr.freestuff_max_price_label }}</label>
         <input type="number" name="deal_max_price" min="0.50" max="100" step="0.50"
-               placeholder="z.B. 5"
+               placeholder="{{ tr.freestuff_max_price_placeholder }}"
                value="{{ '%.2f'|format(cfg.deal_max_price|float) if cfg and cfg.deal_max_price else '' }}">
       </div>
       <div>
-        <label>Mindest-Rabatt (%)</label>
+        <label>{{ tr.freestuff_min_discount_label }}</label>
         <input type="number" name="deal_min_discount" min="25" max="99" step="5"
                placeholder="75"
                value="{{ cfg.deal_min_discount or 75 if cfg else 75 }}">
       </div>
       <div>
-        <label>Kanal für Deals</label>
+        <label>{{ tr.freestuff_deal_channel_label }}</label>
         <select name="deal_channel_id">
-          <option value="">— deaktiviert —</option>
+          <option value="">{{ tr.freestuff_disabled_option }}</option>
           {% for c in channels %}
           <option value="{{ c.id }}"
             {% if cfg and cfg.deal_channel_id == c.id %}selected{% endif %}>#{{ c.name }}</option>
@@ -224,25 +223,25 @@
       </div>
     </div>
     <p class="hint">
-      Angebote werden erst gesendet, sobald hier ein Kanal ausgewählt ist.<br>
-      Beispiel: Max. Preis 5 € + 75% Rabatt → nur Spiele die normalerweise ≥ 20 € kosten und gerade ≤ 5 € sind.
+      {{ tr.freestuff_deal_hint_active }}<br>
+      {{ tr.freestuff_deal_hint_example }}
     </p>
   </div>
 </div>
 </div>
 
 <div style="display:flex;gap:0.75rem;align-items:center;max-width:640px;">
-  <button type="submit" class="btn btn-primary">💾 Speichern</button>
+  <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
 </div>
 </form>
 
 {% if cfg and cfg.channel_id %}
 <div style="margin-top:1.25rem;max-width:640px;">
   <form method="post" action="/servers/{{ guild_id }}/freestuff/test"
-        onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='⏳ Wird gesendet…'">
-    <button type="submit" class="btn btn-secondary">🧪 Jetzt testen – aktuelle Spiele in Kanal senden</button>
+        onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent={{ tr.freestuff_test_sending | js }}">
+    <button type="submit" class="btn btn-secondary">{{ tr.freestuff_test_button }}</button>
   </form>
-  <p class="hint" style="margin-top:0.4rem;">Sendet die aktuellen Gratis-Spiele sofort in den konfigurierten Kanal — unabhängig davon ob sie schon einmal gepostet wurden.</p>
+  <p class="hint" style="margin-top:0.4rem;">{{ tr.freestuff_test_hint }}</p>
 </div>
 {% endif %}
 
