@@ -125,11 +125,12 @@ class FreeStuff(commands.Cog):
                     min_disc = int(stored_min_disc) if stored_min_disc is not None else 75
                     deal_ch_id = cfg.get("deal_channel_id") or cfg["channel_id"]
                     ch_deals = self.bot.get_channel(int(deal_ch_id))
+                    deal_platforms = set((cfg.get("deal_platforms") or cfg["platforms"] or "").split(","))
 
                     if max_price and ch_deals:
-                        deals = await self._fetch_deals(platforms, float(max_price), min_disc)
+                        deals = await self._fetch_deals(deal_platforms, float(max_price), min_disc)
                         for game in deals:
-                            if game["platform"] not in platforms:
+                            if game["platform"] not in deal_platforms:
                                 continue
                             deal_key = f"deal_{game['id']}"
                             if await db_one(
