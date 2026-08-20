@@ -200,6 +200,7 @@ class BotManager:
 
 
 bot = BotManager()
+_bot_error_logged: set[int] = set()  # token_ids with an already-logged, not-yet-recovered error (avoids log-spam on repeated reconnect retries)
 
 
 async def _run_single_bot(token_id: int, token: str):
@@ -212,6 +213,7 @@ async def _run_single_bot(token_id: int, token: str):
 
         @instance.event
         async def on_ready():
+            _bot_error_logged.discard(token_id)
             await instance.tree.sync()
             print(f"Phobos v{VERSION} online als {instance.user} [ID {token_id}]")
 
@@ -231,7 +233,9 @@ async def _run_single_bot(token_id: int, token: str):
             await log_admin_action(None, "Bot-Login fehlgeschlagen", f"Token-ID {token_id}: ungültiger Token", level="error")
         except Exception as e:
             print(f"[Token-ID {token_id}] ❌ Bot-Fehler: {e}")
-            await log_admin_action(None, "Bot-Fehler", f"Token-ID {token_id}: {e}", level="error")
+            if token_id not in _bot_error_logged:
+                _bot_error_logged.add(token_id)
+                await log_admin_action(None, "Bot-Fehler", f"Token-ID {token_id}: {e}", level="error")
         finally:
             bot._bots.pop(token_id, None)
 
