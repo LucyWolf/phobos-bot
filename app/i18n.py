@@ -108,6 +108,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "log_entries_count":      "Einträge",
         "log_empty":              "Noch keine Ereignisse aufgezeichnet.",
         "log_page_title":         "📋 Server-Log",
+        "log_limit_prefix":       "max.",
         # Admin-Log
         "nav_admin_log":          "Admin-Log",
         "admin_log_page_title":   "🛡️ Admin-Log",
@@ -339,6 +340,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "log_entries_count":      "entries",
         "log_empty":              "No events recorded yet.",
         "log_page_title":         "📋 Server Log",
+        "log_limit_prefix":       "max.",
         # Admin log
         "nav_admin_log":          "Admin Log",
         "admin_log_page_title":   "🛡️ Admin Log",

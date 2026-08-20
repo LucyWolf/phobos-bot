@@ -96,7 +96,7 @@
       <span style="font-size:0.78rem;color:var(--muted);">{{ logs|length }} {{ tr.log_entries_count }}</span>
       <select onchange="location.href='/servers/{{ guild_id }}/log?limit=' + this.value" style="margin:0;padding:0.25rem 0.5rem;font-size:0.78rem;width:auto;">
         {% for n in log_limit_options %}
-        <option value="{{ n }}" {% if n == log_limit %}selected{% endif %}>max. {{ n }}</option>
+        <option value="{{ n }}" {% if n == log_limit %}selected{% endif %}>{{ tr.log_limit_prefix }} {{ n }}</option>
         {% endfor %}
       </select>
     </span>
