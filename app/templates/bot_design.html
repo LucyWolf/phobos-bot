@@ -18,6 +18,27 @@
   #file-name { font-size:0.78rem; color:var(--muted); margin-top:0.4rem; }
 </style>
 
+<div style="font-weight:700;font-size:0.95rem;margin-bottom:1rem;display:flex;align-items:center;gap:0.4rem;">
+  {{ tr.nav_bot_design }}
+  <span style="position:relative;">
+    <button type="button" onclick="toggleDesignInfo()" title="{{ tr.bot_design_info_tooltip }}"
+      style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+    <div id="design-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.3rem;
+         background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+         font-size:0.78rem;min-width:320px;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-weight:400;">
+      <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.bot_design_info_title }}</div>
+      <div style="color:var(--muted);line-height:1.6;">
+        {{ tr.bot_design_info_intro }}
+        <ul style="margin:0.4rem 0 0;padding:0 0 0 1.1rem;">
+          <li>{{ tr.bot_design_info_item_global }}</li>
+          <li>{{ tr.bot_design_info_item_multi }}</li>
+          <li>{{ tr.bot_design_info_item_limit }}</li>
+        </ul>
+      </div>
+    </div>
+  </span>
+</div>
+
 {% if not bot_online %}
 <div class="alert alert-error">{{ tr.bot_design_offline_before }} <a href="/settings" style="color:var(--danger)">{{ tr.bot_design_offline_link }}</a> {{ tr.bot_design_offline_after }}</div>
 {% endif %}
@@ -76,6 +97,16 @@
       preview.innerHTML = '<img src="' + e.target.result + '" alt="' + previewAlt + '" style="width:96px;height:96px;object-fit:cover;">';
     };
     reader.readAsDataURL(file);
+  });
+  function toggleDesignInfo() {
+    const box = document.getElementById('design-info-box');
+    box.style.display = box.style.display === 'none' ? '' : 'none';
+  }
+  document.addEventListener('click', function(e) {
+    const box = document.getElementById('design-info-box');
+    if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleDesignInfo()"]')) {
+      box.style.display = 'none';
+    }
   });
 </script>
 {% endblock %}
