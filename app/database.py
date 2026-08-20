@@ -435,7 +435,7 @@ async def log_admin_action(username: str | None, action: str, details: str = "",
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT INTO admin_logs (level, username, action, details) VALUES (?,?,?,?)",
-            (level, username, action, details[:500]),
+            (level, username[:100] if username else None, action, details[:500]),
         )
         await db.execute(
             "DELETE FROM admin_logs WHERE id NOT IN (SELECT id FROM admin_logs ORDER BY id DESC LIMIT 1000)"
