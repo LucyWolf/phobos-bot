@@ -31,7 +31,8 @@
 </style>
 
 <div style="position:relative;margin-bottom:1.25rem;">
-  <button type="button" class="btn btn-secondary" onclick="toggleFsInfo()">ℹ️ {{ tr.freestuff_info_tooltip }}</button>
+  <button type="button" onclick="toggleFsInfo()" title="{{ tr.freestuff_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
   <div id="fs-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
        background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
        font-size:0.78rem;min-width:320px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
