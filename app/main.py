@@ -2126,8 +2126,6 @@ async def freestuff_save(
         min_disc = 75
     deal_ch = deal_channel_id if deal_channel_id else None
     deal_plat_str = ",".join(p for p in deal_platforms if p in DEAL_PLATFORMS)
-    if max_price and not deal_plat_str:
-        deal_plat_str = ",".join(sorted(DEAL_PLATFORMS))
     await db_exec(
         """INSERT INTO freestuff_channels
                (guild_id, channel_id, platforms, deal_max_price, deal_min_discount, deal_channel_id, deal_platforms)
