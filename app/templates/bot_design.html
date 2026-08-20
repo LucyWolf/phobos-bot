@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}{{ app_name }} – Bot-Design{% endblock %}
-{% block page_title %}🤖 Bot-Design{% endblock %}
+{% block title %}{{ app_name }} – {{ tr.nav_bot_design }}{% endblock %}
+{% block page_title %}🤖 {{ tr.nav_bot_design }}{% endblock %}
 
 {% block content %}
 {% from '_server_subnav.html' import server_subnav %}
@@ -19,7 +19,7 @@
 </style>
 
 {% if not bot_online %}
-<div class="alert alert-error">Bot ist offline. Token in den <a href="/settings" style="color:var(--danger)">Einstellungen</a> eintragen und Bot starten.</div>
+<div class="alert alert-error">{{ tr.bot_design_offline_before }} <a href="/settings" style="color:var(--danger)">{{ tr.bot_design_offline_link }}</a> {{ tr.bot_design_offline_after }}</div>
 {% endif %}
 
 {% if success %}
@@ -32,7 +32,7 @@
 <form method="post" action="/bot/design" enctype="multipart/form-data">
   <input type="hidden" name="guild_id" value="{{ guild_id }}">
   <div class="design-card">
-    <div class="section-label" style="margin-bottom:1rem;">Bot-Profilbild</div>
+    <div class="section-label" style="margin-bottom:1rem;">{{ tr.bot_design_avatar_heading }}</div>
     <div class="avatar-row">
       <div class="avatar-preview" id="avatar-preview">
         {% if current_avatar %}
@@ -42,36 +42,38 @@
         {% endif %}
       </div>
       <div>
-        <label class="file-input-label" for="avatar-file">📁 Bild auswählen</label>
+        <label class="file-input-label" for="avatar-file">{{ tr.bot_design_choose_image }}</label>
         <input type="file" id="avatar-file" name="avatar">
-        <div id="file-name">Kein Bild ausgewählt</div>
-        <div class="avatar-meta" style="margin-top:0.5rem;">Discord ändert Avatare max. 2× / Stunde.</div>
+        <div id="file-name">{{ tr.bot_design_no_image }}</div>
+        <div class="avatar-meta" style="margin-top:0.5rem;">{{ tr.bot_design_avatar_hint }}</div>
       </div>
     </div>
   </div>
 
   <div class="design-card">
-    <div class="section-label" style="margin-bottom:1rem;">Bot-Name</div>
-    <label>Anzeigename (aktuell: {{ current_name or '—' }})</label>
-    <input type="text" name="bot_name" placeholder="{{ current_name or 'Name eingeben' }}" maxlength="32"
+    <div class="section-label" style="margin-bottom:1rem;">{{ tr.bot_design_name_heading }}</div>
+    <label>{{ tr.bot_design_display_name_label }} ({{ tr.bot_design_current }}: {{ current_name or '—' }})</label>
+    <input type="text" name="bot_name" placeholder="{{ current_name or tr.bot_design_name_placeholder }}" maxlength="32"
            {% if not bot_online %}disabled{% endif %}>
-    <p class="hint">Discord erlaubt Namensänderungen max. 2× / Stunde.</p>
+    <p class="hint">{{ tr.bot_design_name_hint }}</p>
   </div>
 
-  <button type="submit" class="btn btn-primary" {% if not bot_online %}disabled{% endif %}>💾 Speichern</button>
+  <button type="submit" class="btn btn-primary" {% if not bot_online %}disabled{% endif %}>{{ tr.btn_save }}</button>
 </form>
 
 <script>
   const fileInput = document.getElementById('avatar-file');
   const fileLabel = document.getElementById('file-name');
   const preview = document.getElementById('avatar-preview');
+  const noImageText = {{ tr.bot_design_no_image | jsraw }};
+  const previewAlt = {{ tr.bot_design_preview_alt | jsraw }};
   fileInput.addEventListener('change', function() {
     const file = this.files[0];
-    if (!file) { fileLabel.textContent = 'Kein Bild ausgewählt'; return; }
+    if (!file) { fileLabel.textContent = noImageText; return; }
     fileLabel.textContent = file.name;
     const reader = new FileReader();
     reader.onload = e => {
-      preview.innerHTML = '<img src="' + e.target.result + '" alt="Vorschau" style="width:96px;height:96px;object-fit:cover;">';
+      preview.innerHTML = '<img src="' + e.target.result + '" alt="' + previewAlt + '" style="width:96px;height:96px;object-fit:cover;">';
     };
     reader.readAsDataURL(file);
   });
