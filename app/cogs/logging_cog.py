@@ -51,7 +51,7 @@ class Logging(commands.Cog):
             await asyncio.sleep(1)
             async for entry in guild.audit_logs(limit=10, action=discord.AuditLogAction.message_delete):
                 age = (datetime.datetime.now(datetime.timezone.utc) - entry.created_at).total_seconds()
-                if age < 15 and entry.extra.channel.id == channel_id and entry.target.id == author_id:
+                if age < 15 and entry.extra.channel.id == channel_id and entry.target and entry.target.id == author_id:
                     return entry.user
         except Exception:
             pass
@@ -214,7 +214,7 @@ class Logging(commands.Cog):
             await asyncio.sleep(1)
             async for entry in msg.guild.audit_logs(limit=5, action=discord.AuditLogAction.message_bulk_delete):
                 age = (datetime.datetime.now(datetime.timezone.utc) - entry.created_at).total_seconds()
-                if age < 15:
+                if age < 15 and entry.user:
                     embed.add_field(name="Gelöscht von", value=entry.user.mention)
                     break
         except Exception:
