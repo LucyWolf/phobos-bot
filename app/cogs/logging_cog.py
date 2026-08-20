@@ -192,6 +192,8 @@ class Logging(commands.Cog):
             embed.add_field(name="Gelöscht von", value=deleter.mention)
 
         plain = f"{message.author.display_name} · #{message.channel.name}"
+        if deleter and deleter.id != message.author.id:
+            plain += f" · gelöscht von {deleter.display_name}"
         if message.content:
             plain += f" · {message.content[:80]}"
         await self._log(message.guild.id, embed, plain=plain)
@@ -210,17 +212,22 @@ class Logging(commands.Cog):
         embed.add_field(name="Kanal", value=msg.channel.mention)
         embed.add_field(name="Nachrichten", value=str(len(messages)))
 
+        mod = None
         try:
             await asyncio.sleep(1)
             async for entry in msg.guild.audit_logs(limit=5, action=discord.AuditLogAction.message_bulk_delete):
                 age = (datetime.datetime.now(datetime.timezone.utc) - entry.created_at).total_seconds()
                 if age < 15 and entry.user:
-                    embed.add_field(name="Gelöscht von", value=entry.user.mention)
+                    mod = entry.user
+                    embed.add_field(name="Gelöscht von", value=mod.mention)
                     break
         except Exception:
             pass
 
-        await self._log(msg.guild.id, embed, plain=f"#{msg.channel.name} · {len(messages)} Nachrichten")
+        plain = f"#{msg.channel.name} · {len(messages)} Nachrichten"
+        if mod:
+            plain += f" · von {mod.display_name}"
+        await self._log(msg.guild.id, embed, plain=plain)
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
@@ -236,8 +243,9 @@ class Logging(commands.Cog):
         embed.add_field(name="Vorher", value=before.content[:500] or "—", inline=False)
         embed.add_field(name="Nachher", value=after.content[:500] or "—", inline=False)
         embed.add_field(name="Link", value=f"[Zur Nachricht]({after.jump_url})")
-        await self._log(before.guild.id, embed,
-            plain=f"{before.author.display_name} · #{before.channel.name}")
+        plain = (f"{before.author.display_name} · #{before.channel.name}"
+                 f" · {before.content[:60] or '—'} → {after.content[:60] or '—'}")
+        await self._log(before.guild.id, embed, plain=plain)
 
     # ── Kanäle ────────────────────────────────────────────────────────────────
 
