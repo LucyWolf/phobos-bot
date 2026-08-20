@@ -1185,7 +1185,7 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
             "notifications":
                 "INSERT OR IGNORE INTO notifications (guild_id,platform,discord_channel_id,target,target_name,last_id,live,custom_message) VALUES (:guild_id,:platform,:discord_channel_id,:target,:target_name,:last_id,0,:custom_message)",
             "freestuff_channels":
-                "INSERT INTO freestuff_channels (guild_id,channel_id,platforms,deal_max_price,deal_min_discount,deal_channel_id) VALUES (:guild_id,:channel_id,:platforms,:deal_max_price,:deal_min_discount,:deal_channel_id) ON CONFLICT(guild_id) DO UPDATE SET channel_id=excluded.channel_id,platforms=excluded.platforms,deal_max_price=excluded.deal_max_price,deal_min_discount=excluded.deal_min_discount,deal_channel_id=excluded.deal_channel_id",
+                "INSERT INTO freestuff_channels (guild_id,channel_id,platforms,deal_max_price,deal_min_discount,deal_channel_id,deal_platforms) VALUES (:guild_id,:channel_id,:platforms,:deal_max_price,:deal_min_discount,:deal_channel_id,:deal_platforms) ON CONFLICT(guild_id) DO UPDATE SET channel_id=excluded.channel_id,platforms=excluded.platforms,deal_max_price=excluded.deal_max_price,deal_min_discount=excluded.deal_min_discount,deal_channel_id=excluded.deal_channel_id,deal_platforms=excluded.deal_platforms",
             "birthdays":
                 "INSERT OR REPLACE INTO birthdays (user_id,guild_id,birthday) VALUES (:user_id,:guild_id,:birthday)",
             "warnings":
@@ -2087,6 +2087,9 @@ async def freestuff_page(request: Request, guild_id: str, success: str = "", err
     })
 
 
+DEAL_PLATFORMS = {"steam", "gog", "humble", "fanatical", "gmg"}  # only ones with a CheapShark price API
+
+
 @web.post("/servers/{guild_id}/freestuff/save")
 async def freestuff_save(
     request: Request, guild_id: str,
@@ -2095,6 +2098,7 @@ async def freestuff_save(
     deal_max_price: str = Form(""),
     deal_min_discount: str = Form("75"),
     deal_channel_id: str = Form(""),
+    deal_platforms: list[str] = Form(default=[]),
 ):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
@@ -2121,17 +2125,21 @@ async def freestuff_save(
     except ValueError:
         min_disc = 75
     deal_ch = deal_channel_id if deal_channel_id else None
+    deal_plat_str = ",".join(p for p in deal_platforms if p in DEAL_PLATFORMS)
+    if max_price and not deal_plat_str:
+        deal_plat_str = ",".join(sorted(DEAL_PLATFORMS))
     await db_exec(
         """INSERT INTO freestuff_channels
-               (guild_id, channel_id, platforms, deal_max_price, deal_min_discount, deal_channel_id)
-           VALUES (?,?,?,?,?,?)
+               (guild_id, channel_id, platforms, deal_max_price, deal_min_discount, deal_channel_id, deal_platforms)
+           VALUES (?,?,?,?,?,?,?)
            ON CONFLICT(guild_id) DO UPDATE SET
                channel_id=excluded.channel_id,
                platforms=excluded.platforms,
                deal_max_price=excluded.deal_max_price,
                deal_min_discount=excluded.deal_min_discount,
-               deal_channel_id=excluded.deal_channel_id""",
-        (guild_id, channel_id, plat_str, max_price, min_disc, deal_ch),
+               deal_channel_id=excluded.deal_channel_id,
+               deal_platforms=excluded.deal_platforms""",
+        (guild_id, channel_id, plat_str, max_price, min_disc, deal_ch, deal_plat_str),
     )
     return RedirectResponse(f"/servers/{guild_id}/freestuff?success=1", status_code=302)
 

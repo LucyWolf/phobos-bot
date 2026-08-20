@@ -169,6 +169,44 @@
   </label>
 
   <div class="deal-fields {% if cfg and cfg.deal_max_price %}active{% endif %}" id="deal-fields">
+    {% set deal_platform_list = cfg.deal_platforms.split(',') if cfg and cfg.deal_platforms else (cfg.platforms.split(',') if cfg else []) %}
+    <label style="margin-bottom:0.35rem;">Plattformen für Angebote</label>
+    <div class="platform-grid" style="margin-bottom:0.85rem;">
+      <label class="plat-label">
+        <input type="checkbox" name="deal_platforms" value="steam"
+               {% if 'steam' in deal_platform_list %}checked{% endif %}>
+        <span class="plat-icon">🖥️</span>
+        <span>Steam</span>
+      </label>
+      <label class="plat-label">
+        <input type="checkbox" name="deal_platforms" value="gog"
+               {% if 'gog' in deal_platform_list %}checked{% endif %}>
+        <span class="plat-icon">🟣</span>
+        <span>GOG</span>
+      </label>
+      <label class="plat-label">
+        <input type="checkbox" name="deal_platforms" value="humble"
+               {% if 'humble' in deal_platform_list %}checked{% endif %}>
+        <span class="plat-icon">🙏</span>
+        <span>Humble Bundle</span>
+      </label>
+      <label class="plat-label">
+        <input type="checkbox" name="deal_platforms" value="fanatical"
+               {% if 'fanatical' in deal_platform_list %}checked{% endif %}>
+        <span class="plat-icon">🐰</span>
+        <span>Fanatical</span>
+      </label>
+      <label class="plat-label">
+        <input type="checkbox" name="deal_platforms" value="gmg"
+               {% if 'gmg' in deal_platform_list %}checked{% endif %}>
+        <span class="plat-icon">🟢</span>
+        <span>GreenManGaming</span>
+      </label>
+    </div>
+    <p class="hint" style="margin-top:0;margin-bottom:0.85rem;">
+      Epic Games, EA App, Ubisoft Connect, Battle.net und itch.io haben keine Preis-API und
+      können daher keine Angebote liefern — nur die oben gezeigten Plattformen funktionieren.
+    </p>
     <div class="price-row">
       <div>
         <label>Max. Preis (€)</label>
@@ -194,9 +232,7 @@
       </div>
     </div>
     <p class="hint">
-      Beispiel: Max. Preis 5 € + 75% Rabatt → nur Spiele die normalerweise ≥ 20 € kosten und gerade ≤ 5 € sind.<br>
-      Epic Games, EA App, Ubisoft Connect, Battle.net und itch.io werden für Deals nicht unterstützt
-      (kein Preis-API). Steam, GOG, Humble, Fanatical und GreenManGaming funktionieren.
+      Beispiel: Max. Preis 5 € + 75% Rabatt → nur Spiele die normalerweise ≥ 20 € kosten und gerade ≤ 5 € sind.
     </p>
   </div>
 </div>

@@ -356,6 +356,7 @@ async def init_db():
             "ALTER TABLE freestuff_channels ADD COLUMN deal_max_price REAL",
             "ALTER TABLE freestuff_channels ADD COLUMN deal_min_discount INTEGER DEFAULT 75",
             "ALTER TABLE freestuff_channels ADD COLUMN deal_channel_id TEXT",
+            "ALTER TABLE freestuff_channels ADD COLUMN deal_platforms TEXT",
             "ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''",
             "ALTER TABLE users ADD COLUMN custom_role_id INTEGER",
             "ALTER TABLE bot_tokens ADD COLUMN owner_id INTEGER",
