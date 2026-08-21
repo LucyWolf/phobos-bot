@@ -2095,23 +2095,22 @@ async def _reload_auto_delete():
             await cog.reload()
 
 @web.post("/servers/{guild_id}/auto-delete/save")
-async def auto_delete_save(request: Request, guild_id: str):
+async def auto_delete_save(request: Request, guild_id: str, channel_id: str = Form(""), delay_seconds: str = Form("")):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
-    form = await request.form()
-    channel_ids = form.getlist("channel_id")
-    delay_values = form.getlist("delay_seconds")
-    await db_exec("DELETE FROM auto_delete_channels WHERE guild_id=?", (guild_id,))
-    for cid, delay in zip(channel_ids, delay_values):
-        try:
-            delay_int = int(delay)
-        except (ValueError, TypeError):
-            continue
-        if cid and delay_int > 0:
-            await db_exec(
-                "INSERT OR REPLACE INTO auto_delete_channels (guild_id, channel_id, delay_seconds) VALUES (?,?,?)",
-                (guild_id, cid, delay_int),
-            )
+    guild = bot.get_guild(int(guild_id))
+    if not guild or channel_id not in {str(c.id) for c in guild.text_channels}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=autodelete&error=Ungültiger+Kanal", status_code=302)
+    try:
+        delay_int = int(delay_seconds)
+    except (ValueError, TypeError):
+        delay_int = 0
+    if delay_int > 0:
+        await db_exec(
+            "INSERT INTO auto_delete_channels (guild_id, channel_id, delay_seconds) VALUES (?,?,?) "
+            "ON CONFLICT(guild_id, channel_id) DO UPDATE SET delay_seconds=excluded.delay_seconds",
+            (guild_id, channel_id, delay_int),
+        )
     await _reload_auto_delete()
     return RedirectResponse(f"/servers/{guild_id}?tab=autodelete&success=Gespeichert", status_code=302)
 
