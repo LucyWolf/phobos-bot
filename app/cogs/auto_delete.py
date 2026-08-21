@@ -78,7 +78,13 @@ class AutoDelete(commands.Cog):
             except discord.NotFound:
                 pass
             except Exception as e:
+                # Could be a real, persistent problem (e.g. missing "Manage Messages") or just
+                # this bot instance dying mid-reconnect (_run_single_bot rebuilds a fresh Bot +
+                # cog on every reconnect, not only on a full process restart) — either way we
+                # can't confirm the message is actually gone, so leave the row for a retry on
+                # the next on_ready instead of deleting it here.
                 print(f"[AutoDelete] delete failed for message {message_id} in channel {channel_id}: {e}")
+                return
             await db_exec("DELETE FROM auto_delete_pending WHERE id=?", (pending_id,))
         finally:
             self._tasks.pop(pending_id, None)
