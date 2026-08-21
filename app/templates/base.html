@@ -331,7 +331,7 @@
       <span class="label">{{ tr.nav_dashboard }}</span>
     </a>
 
-    <div class="nav-group {% if active in ['settings','users','roles','bot_update','bot_info','notif_settings','smtp','servers','tokens','admin_log'] %}open{% endif %}" id="nav-group-settings">
+    <div class="nav-group {% if active in ['settings','users','bot_update','bot_info','notif_settings','smtp','servers','tokens','admin_log'] %}open{% endif %}" id="nav-group-settings">
       <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn-header{% endif %}"
            onclick="toggleNavGroup('settings')" title="{{ tr.nav_settings }}">
         <span class="icon">⚙️</span>
@@ -353,31 +353,27 @@
           <span class="label">{{ tr.nav_admin_log }}</span>
         </a>
         {% endif %}
-        {% if role == 'admin' or perm_bots %}
         <a href="/bot/info" class="nav-item nav-sub {% if active == 'bot_info' %}active{% endif %}">
           <span class="icon">📊</span>
           <span class="label">{{ tr.nav_bot_info }}</span>
         </a>
-        {% endif %}
-        {% if role == 'admin' or perm_server %}
         <a href="/servers" class="nav-item nav-sub {% if active == 'servers' %}active{% endif %}">
           <span class="icon">🖥️</span>
           <span class="label">{{ tr.nav_servers }}</span>
         </a>
-        {% endif %}
-        {% if role == 'admin' or perm_streaming %}
+        {% if role == 'admin' %}
         <a href="/settings/notifications" class="nav-item nav-sub {% if active == 'notif_settings' %}active{% endif %}">
           <span class="icon">🟣</span>
           <span class="label">{{ tr.nav_twitch_api }}</span>
         </a>
         {% endif %}
-        {% if role == 'admin' or perm_smtp %}
+        {% if role == 'admin' %}
         <a href="/settings/smtp" class="nav-item nav-sub {% if active == 'smtp' %}active{% endif %}">
           <span class="icon">📧</span>
           <span class="label">{{ tr.nav_smtp }}</span>
         </a>
         {% endif %}
-        {% if role == 'admin' or perm_updates %}
+        {% if role == 'admin' %}
         <a href="/bot/update" class="nav-item nav-sub {% if active == 'bot_update' %}active{% endif %}" id="nav-update-link">
           <span class="icon">🔄</span>
           <span class="label">{{ tr.nav_updates }} <span id="nav-update-badge" style="display:none;background:#f59e0b;color:#000;font-size:0.6rem;font-weight:700;border-radius:999px;padding:0.1rem 0.4rem;margin-left:0.3rem;">NEU</span></span>
