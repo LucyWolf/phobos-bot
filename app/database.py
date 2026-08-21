@@ -373,14 +373,7 @@ async def init_db():
                 used INTEGER NOT NULL DEFAULT 0,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )""",
-            """CREATE TABLE IF NOT EXISTS admin_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                level TEXT NOT NULL DEFAULT 'info',
-                username TEXT,
-                action TEXT NOT NULL,
-                details TEXT
-            )""",
+            "DROP TABLE IF EXISTS admin_logs",
             "ALTER TABLE users ADD COLUMN admin_log_limit INTEGER NOT NULL DEFAULT 200",
         ]:
             try:
@@ -403,19 +396,5 @@ async def log_mod_action(action: str, target, moderator, guild_id: int, reason: 
         await db.execute(
             "INSERT INTO mod_actions (action,target_id,target_name,moderator_id,moderator_name,guild_id,reason) VALUES (?,?,?,?,?,?,?)",
             (action, target.id, str(target), moderator.id, str(moderator), guild_id, reason),
-        )
-        await db.commit()
-
-
-async def log_admin_action(username: str | None, action: str, details: str = "", level: str = "info"):
-    """Bot-wide admin log: dashboard actions (level='info') and system/error events
-    (level='error'), visible to admins under /admin/log."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "INSERT INTO admin_logs (level, username, action, details) VALUES (?,?,?,?)",
-            (level, username[:100] if username else None, action, details[:500]),
-        )
-        await db.execute(
-            "DELETE FROM admin_logs WHERE id NOT IN (SELECT id FROM admin_logs ORDER BY id DESC LIMIT 1000)"
         )
         await db.commit()
