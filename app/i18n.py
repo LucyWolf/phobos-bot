@@ -255,6 +255,15 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "events_info_reminder_title": "⏰ Erinnerungen (optional)",
         "events_info_reminder_example": "Zusätzlich zur automatischen Start-Meldung, z.B. Min. vorher: 10, Text: „Los geht's gleich!“ — landen im Ankündigungskanal, auch im Tab „Geplant“ editierbar.",
         "events_info_footer":         "Bei „Ohne Kanal“ verlangt Discord immer ein Enddatum. Lässt du den Ort leer, wird automatisch der Servername eingetragen. Solange ein Event noch nicht gestartet ist (Status „Geplant“), kannst du es über ✎ nachträglich bearbeiten — danach nur noch löschen.",
+        # Auto-Delete
+        "autodelete_title":           "🗑️ Auto-Delete Kanäle",
+        "autodelete_hint":            "Nachrichten in diesen Kanälen werden automatisch nach der eingestellten Zeit gelöscht.",
+        "autodelete_info_tooltip":    "Was ist das?",
+        "autodelete_info_title":      "Wie funktioniert Auto-Delete?",
+        "autodelete_info_item_delay": "Nachrichten, die Nutzer in einem konfigurierten Kanal senden, werden automatisch nach der eingestellten Zeit gelöscht.",
+        "autodelete_info_item_perm":  "Der Bot braucht dafür die Berechtigung „Nachrichten verwalten“ in dem jeweiligen Kanal.",
+        "autodelete_info_item_restart": "Geplante Löschungen bleiben auch nach einem Neustart des Bots erhalten und werden automatisch fortgesetzt.",
+        "autodelete_info_item_bots":  "Nachrichten von anderen Bots werden nicht erfasst.",
         # Lang toggle label (shows the OTHER language to switch to)
         "lang_switch":        "🇬🇧 EN",
     },
@@ -514,6 +523,15 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "events_info_reminder_title": "⏰ Reminders (optional)",
         "events_info_reminder_example": "In addition to the automatic start message, e.g. min. before: 10, text: \"Starting soon!\" — posted to the announcement channel, also editable in the \"Scheduled\" tab.",
         "events_info_footer":         "For \"No channel\" events, Discord always requires an end date. If you leave the location empty, the server name is used automatically. As long as an event hasn't started yet (status \"Scheduled\"), you can edit it via ✎ — afterwards it can only be deleted.",
+        # Auto-Delete
+        "autodelete_title":           "🗑️ Auto-Delete Channels",
+        "autodelete_hint":            "Messages in these channels are automatically deleted after the configured time.",
+        "autodelete_info_tooltip":    "What is this?",
+        "autodelete_info_title":      "How does Auto-Delete work?",
+        "autodelete_info_item_delay": "Messages sent by users in a configured channel are automatically deleted after the chosen delay.",
+        "autodelete_info_item_perm":  "The bot needs the \"Manage Messages\" permission in that channel for this to work.",
+        "autodelete_info_item_restart": "Scheduled deletions survive a bot restart and automatically resume afterwards.",
+        "autodelete_info_item_bots":  "Messages from other bots are not tracked.",
         # Lang toggle label
         "lang_switch":        "🇩🇪 DE",
     },
