@@ -2540,6 +2540,58 @@ async def notifications_add(
     return RedirectResponse(f"{dest}&success=1" if "?" in dest else f"{dest}?success=1", status_code=302)
 
 
+@web.post("/servers/{guild_id}/notifications/edit/{nid}")
+async def notifications_edit(
+    request: Request, guild_id: str, nid: int,
+    target: str = Form(...),
+    target_name: str = Form(""),
+    discord_channel_id: str = Form(...),
+    custom_message: str = Form(""),
+    next_url: str = Form(""),
+):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    existing_sub = await db_one("SELECT platform, target FROM notifications WHERE id=? AND guild_id=?", (nid, guild_id))
+    if not existing_sub:
+        return RedirectResponse(f"/servers/{guild_id}/notifications?error=Nicht+gefunden", status_code=302)
+    platform = existing_sub["platform"]
+    target = target.strip()
+    if not target or not discord_channel_id:
+        return RedirectResponse(f"/servers/{guild_id}/notifications?error=Pflichtfelder+fehlen", status_code=302)
+    guild = bot.get_guild(int(guild_id))
+    if not guild or discord_channel_id not in {str(c.id) for c in guild.text_channels}:
+        return RedirectResponse(f"/servers/{guild_id}/notifications?error=Ungültiger+Kanal", status_code=302)
+    # Normalize YouTube channel URL to ID
+    if platform == "youtube" and "youtube.com" in target:
+        target = target.rstrip("/").split("/")[-1]
+    # Normalize a pasted Twitch channel URL (e.g. https://www.twitch.tv/ninja) to the login name
+    if platform == "twitch" and "twitch.tv" in target:
+        target = target.split("?")[0].rstrip("/").split("/")[-1]
+    target_norm = target.lower() if platform == "twitch" else target
+    dup = await db_rows(
+        "SELECT id FROM notifications WHERE guild_id=? AND platform=? AND target=? AND id!=?",
+        (guild_id, platform, target_norm, nid),
+    )
+    if dup:
+        dest = next_url or f"/servers/{guild_id}/notifications"
+        return RedirectResponse(f"{dest}?error=Bereits+eingetragen", status_code=302)
+    if target_norm != existing_sub["target"]:
+        # Target changed - reset live-tracking state, otherwise stale state from the
+        # previous streamer could suppress the first real notification for the new one.
+        await db_exec(
+            "UPDATE notifications SET discord_channel_id=?, target=?, target_name=?, custom_message=?, live=0, last_id='' WHERE id=? AND guild_id=?",
+            (discord_channel_id, target_norm, target_name.strip(), custom_message.strip(), nid, guild_id),
+        )
+    else:
+        await db_exec(
+            "UPDATE notifications SET discord_channel_id=?, target=?, target_name=?, custom_message=? WHERE id=? AND guild_id=?",
+            (discord_channel_id, target_norm, target_name.strip(), custom_message.strip(), nid, guild_id),
+        )
+    dest = next_url or f"/servers/{guild_id}/notifications"
+    return RedirectResponse(f"{dest}&success=1" if "?" in dest else f"{dest}?success=1", status_code=302)
+
+
 @web.post("/servers/{guild_id}/notifications/delete/{nid}")
 async def notifications_delete(request: Request, guild_id: str, nid: int, next_url: str = Form("")):
     if r := auth_redirect(request): return r
