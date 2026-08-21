@@ -42,7 +42,7 @@ PROCESS_START = datetime.datetime.utcnow()
 from database import (
     DB_PATH, init_db, get_config, set_config,
     get_guild_config, set_guild_config, get_all_guild_config,
-    db_rows, db_one, db_exec, db_insert, log_mod_action, log_admin_action,
+    db_rows, db_one, db_exec, db_insert, log_mod_action,
 )
 import totp
 
@@ -200,7 +200,6 @@ class BotManager:
 
 
 bot = BotManager()
-_bot_error_logged: set[int] = set()  # token_ids with an already-logged, not-yet-recovered error (avoids log-spam on repeated reconnect retries)
 
 
 async def _run_single_bot(token_id: int, token: str):
@@ -213,7 +212,6 @@ async def _run_single_bot(token_id: int, token: str):
 
         @instance.event
         async def on_ready():
-            _bot_error_logged.discard(token_id)
             await instance.tree.sync()
             print(f"Phobos v{VERSION} online als {instance.user} [ID {token_id}]")
 
@@ -230,12 +228,8 @@ async def _run_single_bot(token_id: int, token: str):
         except discord.errors.LoginFailure:
             print(f"[Token-ID {token_id}] ❌ Ungültiger Token – Bot wird übersprungen.")
             login_failed = True
-            await log_admin_action(None, "Bot-Login fehlgeschlagen", f"Token-ID {token_id}: ungültiger Token", level="error")
         except Exception as e:
             print(f"[Token-ID {token_id}] ❌ Bot-Fehler: {e}")
-            if token_id not in _bot_error_logged:
-                _bot_error_logged.add(token_id)
-                await log_admin_action(None, "Bot-Fehler", f"Token-ID {token_id}: {e}", level="error")
         finally:
             bot._bots.pop(token_id, None)
 
@@ -422,11 +416,6 @@ def session(request: Request) -> dict:
     }
 
 
-async def _admin_log(request: Request, action: str, details: str = "") -> None:
-    username = request.session.get("username") or "?"
-    await log_admin_action(username, action, details)
-
-
 def auth_redirect(request: Request) -> Optional[RedirectResponse]:
     if not request.session.get("user_id"):
         return RedirectResponse("/login", status_code=302)
@@ -535,10 +524,8 @@ def _totp_lock_remaining_minutes(user: dict) -> int:
 async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     user = await db_one("SELECT * FROM users WHERE username=?", (username.strip(),))
     if not user or not verify_pw(password, user["password_hash"]):
-        await log_admin_action(username.strip() or "?", "Login fehlgeschlagen", "Falsches Passwort oder unbekannter Nutzer", level="error")
         return RedirectResponse("/login?error=Ungültige+Zugangsdaten", status_code=302)
     if not user.get("active", 1):
-        await log_admin_action(user["username"], "Login abgelehnt", "Konto deaktiviert", level="error")
         return RedirectResponse("/login?error=Dein+Konto+ist+deaktiviert", status_code=302)
     if user.get("totp_enabled"):
         remaining = _totp_lock_remaining_minutes(user)
@@ -550,7 +537,6 @@ async def login_submit(request: Request, username: str = Form(...), password: st
         request.session["pending_2fa_user_id"] = user["id"]
         return RedirectResponse("/login/2fa", status_code=302)
     await _complete_login(request, user)
-    await log_admin_action(user["username"], "Login")
     return RedirectResponse("/", status_code=302)
 
 
@@ -615,15 +601,11 @@ async def login_2fa_submit(request: Request, code: str = Form(...)):
         await db_exec("UPDATE users SET totp_fail_count=0, totp_locked_until=NULL WHERE id=?", (uid,))
     request.session.pop("pending_2fa_user_id", None)
     await _complete_login(request, user)
-    await log_admin_action(user["username"], "Login (2FA)")
     return RedirectResponse("/", status_code=302)
 
 
 @web.get("/logout")
 async def logout(request: Request):
-    username = request.session.get("username")
-    if username:
-        await log_admin_action(username, "Logout")
     request.session.clear()
     return RedirectResponse("/login", status_code=302)
 
@@ -1375,7 +1357,6 @@ async def users_create(request: Request, username: str = Form(...), password: st
         )
     except Exception:
         return RedirectResponse(f"{dest}?error=Benutzername+bereits+vergeben", status_code=302)
-    await _admin_log(request, "Benutzer erstellt", f"{username.strip()} ({role})")
     return RedirectResponse(f"{dest}?success=Benutzer+erstellt", status_code=302)
 
 
@@ -1391,8 +1372,6 @@ async def users_role(request: Request, user_id: int, role: str = Form(...)):
         if not other_admins or other_admins.get("c", 0) == 0:
             return RedirectResponse("/users?error=Letzter+Admin+kann+nicht+herabgestuft+werden", status_code=302)
     await db_exec("UPDATE users SET role=? WHERE id=?", (role, user_id))
-    target = await db_one("SELECT username FROM users WHERE id=?", (user_id,))
-    await _admin_log(request, "Rolle geändert", f"{(target or {}).get('username', user_id)} → {role}")
     return RedirectResponse("/users?success=Rolle+geändert", status_code=302)
 
 
@@ -1407,9 +1386,7 @@ async def users_delete(request: Request, user_id: int, next: str = "/users"):
         )
         if not other_admins or other_admins.get("c", 0) == 0:
             return RedirectResponse(f"{dest}?error=Letzter+Admin+kann+nicht+gelöscht+werden", status_code=302)
-    target = await db_one("SELECT username FROM users WHERE id=?", (user_id,))
     await db_exec("DELETE FROM users WHERE id=?", (user_id,))
-    await _admin_log(request, "Benutzer gelöscht", (target or {}).get("username", str(user_id)))
     if is_self:
         request.session.clear()
         return RedirectResponse("/login?success=Konto+gelöscht", status_code=302)
@@ -1429,8 +1406,6 @@ async def users_guilds_save(request: Request, user_id: int):
                 "INSERT OR IGNORE INTO user_guild_permissions (user_id, guild_id) VALUES (?,?)",
                 (user_id, gid),
             )
-    target = await db_one("SELECT username FROM users WHERE id=?", (user_id,))
-    await _admin_log(request, "Serverrechte geändert", f"{(target or {}).get('username', user_id)}: {len(guild_ids)} Server")
     return RedirectResponse("/users?success=Serverrechte+gespeichert", status_code=302)
 
 
@@ -1440,8 +1415,6 @@ async def users_set_password(request: Request, user_id: int, new_pw: str = Form(
     if len(new_pw) < 6:
         return RedirectResponse("/users?error=Passwort+mindestens+6+Zeichen", status_code=302)
     await db_exec("UPDATE users SET password_hash=? WHERE id=?", (hash_pw(new_pw), user_id))
-    target = await db_one("SELECT username FROM users WHERE id=?", (user_id,))
-    await _admin_log(request, "Passwort gesetzt", (target or {}).get("username", str(user_id)))
     return RedirectResponse("/users?success=Passwort+geändert", status_code=302)
 
 
@@ -1450,12 +1423,11 @@ async def users_toggle_active(request: Request, user_id: int):
     if r := admin_redirect(request): return r
     if user_id == request.session.get("user_id"):
         return RedirectResponse("/users?error=Eigenes+Konto+kann+nicht+deaktiviert+werden", status_code=302)
-    user = await db_one("SELECT username, active FROM users WHERE id=?", (user_id,))
+    user = await db_one("SELECT active FROM users WHERE id=?", (user_id,))
     if not user:
         return RedirectResponse("/users?error=Benutzer+nicht+gefunden", status_code=302)
     new_active = 0 if user.get("active", 1) else 1
     await db_exec("UPDATE users SET active=? WHERE id=?", (new_active, user_id))
-    await _admin_log(request, "Konto aktiviert" if new_active else "Konto deaktiviert", user["username"])
     return RedirectResponse(f"/users?success={'Konto+aktiviert' if new_active else 'Konto+deaktiviert'}", status_code=302)
 
 
@@ -2833,7 +2805,6 @@ async def tokens_add(request: Request):
             (token_id, uid),
         )
     asyncio.create_task(_start_bot_by_id(token_id))
-    await _admin_log(request, "Bot-Token hinzugefügt", label or "Bot")
     return RedirectResponse(
         "/settings/tokens?success=Token+hinzugefügt+und+Bot+wird+gestartet.",
         status_code=302,
@@ -2868,12 +2839,10 @@ async def tokens_delete(request: Request, token_id: int):
             "SELECT 1 FROM bot_token_users WHERE token_id=? AND user_id=?", (token_id, uid)
         ))
     if allowed:
-        tok = await db_one("SELECT label FROM bot_tokens WHERE id=?", (token_id,))
         await db_exec("UPDATE bot_tokens SET enabled=0 WHERE id=?", (token_id,))
         await _stop_bot(token_id)
         await db_exec("DELETE FROM bot_tokens WHERE id=?", (token_id,))
         await db_exec("DELETE FROM bot_token_users WHERE token_id=?", (token_id,))
-        await _admin_log(request, "Bot-Token gelöscht", (tok or {}).get("label", str(token_id)))
         return RedirectResponse("/settings/tokens?success=Token+gelöscht.", status_code=302)
     return RedirectResponse("/settings/tokens?error=Keine+Berechtigung", status_code=302)
 
@@ -2890,14 +2859,12 @@ async def tokens_rename(request: Request, token_id: int):
     uid = request.session.get("user_id")
     if is_admin:
         await db_exec("UPDATE bot_tokens SET label=? WHERE id=?", (label, token_id))
-        await _admin_log(request, "Bot-Token umbenannt", label)
         return RedirectResponse("/settings/tokens?success=Bezeichnung+gespeichert", status_code=302)
     assigned = await db_one(
         "SELECT 1 FROM bot_token_users WHERE token_id=? AND user_id=?", (token_id, uid)
     )
     if assigned:
         await db_exec("UPDATE bot_tokens SET label=? WHERE id=?", (label, token_id))
-        await _admin_log(request, "Bot-Token umbenannt", label)
         return RedirectResponse("/settings/tokens?success=Bezeichnung+gespeichert", status_code=302)
     return RedirectResponse("/settings/tokens?error=Keine+Berechtigung", status_code=302)
 
@@ -2914,7 +2881,7 @@ async def tokens_toggle(request: Request, token_id: int):
             "SELECT 1 FROM bot_token_users WHERE token_id=? AND user_id=?", (token_id, uid)
         ))
     if allowed:
-        row = await db_one("SELECT label, enabled FROM bot_tokens WHERE id=?", (token_id,))
+        row = await db_one("SELECT enabled FROM bot_tokens WHERE id=?", (token_id,))
         if row:
             new_enabled = 0 if row["enabled"] else 1
             await db_exec("UPDATE bot_tokens SET enabled=? WHERE id=?", (new_enabled, token_id))
@@ -2922,9 +2889,6 @@ async def tokens_toggle(request: Request, token_id: int):
                 asyncio.create_task(_start_bot_by_id(token_id))
             else:
                 await _stop_bot(token_id)
-            await _admin_log(
-                request, "Bot-Token aktiviert" if new_enabled else "Bot-Token deaktiviert", row["label"]
-            )
         return RedirectResponse("/settings/tokens?success=Status+geändert.", status_code=302)
     return RedirectResponse("/settings/tokens?error=Keine+Berechtigung", status_code=302)
 
@@ -3015,32 +2979,6 @@ async def server_log_save(request: Request, guild_id: str):
     await set_guild_config(int(guild_id), "log_channel", log_channel)
     await set_guild_config(int(guild_id), "log_exclude_channels", exclude_channels)
     return RedirectResponse(f"/servers/{guild_id}/log?success=1", status_code=302)
-
-
-@web.get("/admin/log", response_class=HTMLResponse)
-async def admin_log_page(request: Request, limit: int | None = None):
-    if r := admin_redirect(request): return r
-    token_set = await _token_configured()
-    uid = request.session.get("user_id")
-    if limit is not None and limit in LOG_LIMIT_OPTIONS:
-        if uid:
-            await db_exec("UPDATE users SET admin_log_limit=? WHERE id=?", (limit, uid))
-    else:
-        user_row = await db_one("SELECT admin_log_limit FROM users WHERE id=?", (uid,)) if uid else None
-        limit = (user_row or {}).get("admin_log_limit") or 200
-    if limit not in LOG_LIMIT_OPTIONS:
-        limit = 200
-    logs = await db_rows(
-        "SELECT level, username, action, details, created_at FROM admin_logs ORDER BY id DESC LIMIT ?",
-        (limit,),
-    )
-    return templates.TemplateResponse("admin_log.html", {
-        **session(request), "request": request,
-        "guilds": await _guild_list(request), "token_set": token_set,
-        "active": "admin_log",
-        "logs": logs,
-        "log_limit": limit, "log_limit_options": LOG_LIMIT_OPTIONS,
-    })
 
 
 @web.post("/servers/{guild_id}/leave")
