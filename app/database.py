@@ -229,18 +229,6 @@ async def init_db():
         except Exception:
             pass
         # Column migrations for existing installs
-        await db.executescript("""
-            CREATE TABLE IF NOT EXISTS roles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                color TEXT NOT NULL DEFAULT '#6366f1',
-                perm_settings INTEGER NOT NULL DEFAULT 0,
-                perm_tokens   INTEGER NOT NULL DEFAULT 0,
-                perm_users    INTEGER NOT NULL DEFAULT 0,
-                perm_bots     INTEGER NOT NULL DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS invite_codes (
                 code TEXT PRIMARY KEY,
@@ -364,10 +352,7 @@ async def init_db():
             "ALTER TABLE users ADD COLUMN position TEXT DEFAULT ''",
             "ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'de'",
             "ALTER TABLE users ADD COLUMN timezone TEXT DEFAULT ''",
-            "ALTER TABLE roles ADD COLUMN perm_streaming INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE roles ADD COLUMN perm_smtp INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE roles ADD COLUMN perm_updates INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE roles ADD COLUMN perm_server INTEGER NOT NULL DEFAULT 0",
+            "DROP TABLE IF EXISTS roles",
             "ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1",
             "ALTER TABLE twitch_apis ADD COLUMN owner_id INTEGER",
             "ALTER TABLE scheduled_messages ADD COLUMN event_id TEXT",
@@ -410,14 +395,6 @@ async def init_db():
             """)
         except Exception:
             pass
-        await db.commit()
-        # Seed default "Normal User" role — upsert so existing installs get new defaults
-        await db.execute(
-            """INSERT INTO roles (name, color, perm_tokens, perm_server)
-               VALUES (?, ?, 1, 1)
-               ON CONFLICT(name) DO UPDATE SET perm_tokens=1, perm_server=1""",
-            ("Normal User", "#6366f1"),
-        )
         await db.commit()
 
 

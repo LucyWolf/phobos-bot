@@ -4,7 +4,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "nav_settings":       "Einstellungen",
         "nav_tokens":         "Tokens",
         "nav_users":          "Benutzer",
-        "nav_roles":          "Rollen",
         "nav_bot_info":       "Bot-Info",
         "nav_servers":        "Server",
         "nav_twitch_api":     "Streaming-API",
@@ -41,7 +40,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "label_message":      "Nachricht",
         "label_password":     "Passwort",
         "label_email":        "E-Mail",
-        "label_role":         "Rolle",
         "label_token":        "Token",
         "saved_ok":           "Gespeichert.",
         "no_access":          "Du hast keinen Zugriff auf diesen Bereich.",
@@ -57,10 +55,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # Users
         "users_create":       "Nutzer anlegen",
         "users_username":     "Benutzername",
-        # Roles
-        "roles_create":       "Rolle erstellen",
-        "roles_color":        "Farbe",
-        "roles_perms":        "Berechtigungen",
         # Profile
         "nav_profile":        "Mein Profil",
         "profile_info":       "Profil-Informationen",
@@ -120,7 +114,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "admin_log_info_intro":   "Aktionen im Dashboard sowie Systemfehler:",
         "admin_log_info_item_login":  "Login / Logout (auch fehlgeschlagene Versuche)",
         "admin_log_info_item_users":  "Benutzer erstellen/löschen, Rolle ändern, Passwort setzen, Serverrechte ändern",
-        "admin_log_info_item_roles":  "Rollen erstellen / bearbeiten / löschen",
         "admin_log_info_item_tokens": "Bot-Token hinzufügen / löschen / umbenennen / aktivieren",
         "admin_log_info_item_errors": "Systemfehler",
         "admin_log_info_footer":  "Nur für Administratoren sichtbar. Die letzten 1000 Einträge werden gespeichert.",
@@ -256,7 +249,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "nav_settings":       "Settings",
         "nav_tokens":         "Tokens",
         "nav_users":          "Users",
-        "nav_roles":          "Roles",
         "nav_bot_info":       "Bot Info",
         "nav_servers":        "Servers",
         "nav_twitch_api":     "Streaming API",
@@ -293,7 +285,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "label_message":      "Message",
         "label_password":     "Password",
         "label_email":        "E-Mail",
-        "label_role":         "Role",
         "label_token":        "Token",
         "saved_ok":           "Saved.",
         "no_access":          "You don't have access to this area.",
@@ -309,10 +300,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # Users
         "users_create":       "Create user",
         "users_username":     "Username",
-        # Roles
-        "roles_create":       "Create role",
-        "roles_color":        "Color",
-        "roles_perms":        "Permissions",
         # Profile
         "nav_profile":        "My Profile",
         "profile_info":       "Profile Information",
@@ -372,7 +359,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "admin_log_info_intro":   "Dashboard actions plus system errors:",
         "admin_log_info_item_login":  "Login / logout (including failed attempts)",
         "admin_log_info_item_users":  "Creating/deleting users, changing roles, setting passwords, changing server access",
-        "admin_log_info_item_roles":  "Creating / editing / deleting roles",
         "admin_log_info_item_tokens": "Adding / deleting / renaming / enabling bot tokens",
         "admin_log_info_item_errors": "System errors",
         "admin_log_info_footer":  "Only visible to administrators. The last 1000 entries are kept.",
