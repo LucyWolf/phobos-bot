@@ -2494,6 +2494,19 @@ async def notifications_set_api(request: Request, guild_id: str, twitch_api_id: 
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
     if twitch_api_id.strip():
+        role = request.session.get("role")
+        uid = request.session.get("user_id")
+        if role == "admin":
+            allowed = await db_one("SELECT 1 FROM twitch_apis WHERE id=?", (twitch_api_id.strip(),))
+        else:
+            allowed = await db_one(
+                """SELECT 1 FROM twitch_apis ta
+                   LEFT JOIN twitch_api_access taa ON taa.api_id = ta.id
+                   WHERE ta.id=? AND (ta.owner_id=? OR taa.user_id=?)""",
+                (twitch_api_id.strip(), uid, uid),
+            )
+        if not allowed:
+            return RedirectResponse(f"/servers/{guild_id}/notifications?error=Ungültige+API", status_code=302)
         await set_guild_config(int(guild_id), "twitch_api_id", twitch_api_id.strip())
     return RedirectResponse(f"/servers/{guild_id}/notifications?success=API+gespeichert", status_code=302)
 
@@ -2646,10 +2659,8 @@ async def notif_settings_page(request: Request, saved: bool = False, error: str 
 async def notif_api_access_add(request: Request, api_id: int, grant_user_id: int = Form(...)):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
-    uid = request.session.get("user_id")
-    role = request.session.get("role")
     api = await db_one("SELECT * FROM twitch_apis WHERE id=?", (api_id,))
-    if not api or (role != "admin" and api["owner_id"] != uid):
+    if not api:
         return RedirectResponse("/settings/notifications?error=Keine+Berechtigung", status_code=302)
     await db_exec(
         "INSERT OR IGNORE INTO twitch_api_access (api_id, user_id) VALUES (?,?)",
@@ -2662,10 +2673,8 @@ async def notif_api_access_add(request: Request, api_id: int, grant_user_id: int
 async def notif_api_access_remove(request: Request, api_id: int, target_uid: int):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
-    uid = request.session.get("user_id")
-    role = request.session.get("role")
     api = await db_one("SELECT * FROM twitch_apis WHERE id=?", (api_id,))
-    if not api or (role != "admin" and api["owner_id"] != uid):
+    if not api:
         return RedirectResponse("/settings/notifications?error=Keine+Berechtigung", status_code=302)
     await db_exec(
         "DELETE FROM twitch_api_access WHERE api_id=? AND user_id=?",
@@ -2694,7 +2703,7 @@ async def notif_api_add(
             (uid, label.strip() or "Meine API", cid, sec),
         )
     except Exception as e:
-        return RedirectResponse(f"/settings/notifications?error={str(e)}", status_code=302)
+        return RedirectResponse(f"/settings/notifications?error={urllib.parse.quote(str(e)[:120])}", status_code=302)
     return RedirectResponse("/settings/notifications?success=API+hinzugefuegt", status_code=302)
 
 
@@ -2707,10 +2716,8 @@ async def notif_api_edit(
 ):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
-    uid = request.session.get("user_id")
-    role = request.session.get("role")
     api = await db_one("SELECT * FROM twitch_apis WHERE id=?", (api_id,))
-    if not api or (role != "admin" and api["owner_id"] != uid):
+    if not api:
         return RedirectResponse("/settings/notifications?error=Keine+Berechtigung", status_code=302)
     if label.strip():
         await db_exec("UPDATE twitch_apis SET label=? WHERE id=?", (label.strip(), api_id))
@@ -2725,10 +2732,8 @@ async def notif_api_edit(
 async def notif_api_delete(request: Request, api_id: int):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
-    uid = request.session.get("user_id")
-    role = request.session.get("role")
     api = await db_one("SELECT * FROM twitch_apis WHERE id=?", (api_id,))
-    if not api or (role != "admin" and api["owner_id"] != uid):
+    if not api:
         return RedirectResponse("/settings/notifications?error=Keine+Berechtigung", status_code=302)
     await db_exec("DELETE FROM twitch_apis WHERE id=?", (api_id,))
     return RedirectResponse("/settings/notifications?success=API+gelöscht", status_code=302)
