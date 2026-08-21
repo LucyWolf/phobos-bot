@@ -92,42 +92,46 @@ class Notifications(commands.Cog):
                 if not token:
                     continue
 
-                usernames = [r["target"].lower() for r in api_rows]
-                for i in range(0, len(usernames), 100):
-                    batch = usernames[i:i + 100]
-                    qs = "&".join(f"user_login={u}" for u in batch)
+                try:
+                    usernames = [r["target"].lower() for r in api_rows]
+                    for i in range(0, len(usernames), 100):
+                        batch = usernames[i:i + 100]
+                        qs = "&".join(f"user_login={u}" for u in batch)
 
-                    def _fetch(q=qs, cid=client_id, tok=token):
-                        req = urllib.request.Request(
-                            f"https://api.twitch.tv/helix/streams?{q}",
-                            headers={"Client-ID": cid, "Authorization": f"Bearer {tok}"},
-                        )
-                        with urllib.request.urlopen(req, timeout=10) as r:
-                            return json.loads(r.read())
+                        def _fetch(q=qs, cid=client_id, tok=token):
+                            req = urllib.request.Request(
+                                f"https://api.twitch.tv/helix/streams?{q}",
+                                headers={"Client-ID": cid, "Authorization": f"Bearer {tok}"},
+                            )
+                            with urllib.request.urlopen(req, timeout=10) as r:
+                                return json.loads(r.read())
 
-                    data = await asyncio.to_thread(_fetch)
-                    live_map = {s["user_login"].lower(): s for s in data.get("data", [])}
+                        data = await asyncio.to_thread(_fetch)
+                        live_map = {s["user_login"].lower(): s for s in data.get("data", [])}
 
-                    for row in api_rows:
-                        uname = row["target"].lower()
-                        if uname not in batch:
-                            continue
-                        is_live = uname in live_map
-                        was_live = bool(row["live"])
+                        for row in api_rows:
+                            uname = row["target"].lower()
+                            if uname not in batch:
+                                continue
+                            is_live = uname in live_map
+                            was_live = bool(row["live"])
 
-                        if is_live and not was_live:
-                            ch = self.bot.get_channel(int(row["discord_channel_id"]))
-                            if ch:
-                                try:
-                                    await self._send_embed(ch, live_map[uname], row["custom_message"])
-                                    await db_exec(
-                                        "UPDATE notifications SET live=1, last_id=? WHERE id=?",
-                                        (live_map[uname]["id"], row["id"]),
-                                    )
-                                except Exception as e:
-                                    print(f"[Notifications] send error for {uname}: {e}")
-                        elif not is_live and was_live:
-                            await db_exec("UPDATE notifications SET live=0 WHERE id=?", (row["id"],))
+                            if is_live and not was_live:
+                                ch = self.bot.get_channel(int(row["discord_channel_id"]))
+                                if ch:
+                                    try:
+                                        await self._send_embed(ch, live_map[uname], row["custom_message"])
+                                        await db_exec(
+                                            "UPDATE notifications SET live=1, last_id=? WHERE id=?",
+                                            (live_map[uname]["id"], row["id"]),
+                                        )
+                                    except Exception as e:
+                                        print(f"[Notifications] send error for {uname}: {e}")
+                            elif not is_live and was_live:
+                                await db_exec("UPDATE notifications SET live=0 WHERE id=?", (row["id"],))
+                except Exception as e:
+                    print(f"[Notifications] Fetch error API#{api_id}: {e}")
+                    continue
 
         except Exception as e:
             print(f"[Notifications] Twitch error: {e}")
