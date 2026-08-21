@@ -2736,6 +2736,10 @@ async def notif_api_delete(request: Request, api_id: int):
     if not api:
         return RedirectResponse("/settings/notifications?error=Keine+Berechtigung", status_code=302)
     await db_exec("DELETE FROM twitch_apis WHERE id=?", (api_id,))
+    await db_exec("DELETE FROM twitch_api_access WHERE api_id=?", (api_id,))
+    # Guilds that had this API selected would otherwise be left pointing at a
+    # dead twitch_api_id — streaming silently stops working with no visible error.
+    await db_exec("DELETE FROM guild_configs WHERE key='twitch_api_id' AND value=?", (str(api_id),))
     return RedirectResponse("/settings/notifications?success=API+gelöscht", status_code=302)
 
 
