@@ -23,52 +23,52 @@
 </style>
 
 <div style="position:relative;margin-bottom:1.25rem;">
-  <button type="button" onclick="toggleNotifInfo()" title="Was ist das?"
+  <button type="button" onclick="toggleNotifInfo()" title="{{ tr.notif_info_tooltip }}"
     style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
   <div id="notif-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
        background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
        font-size:0.78rem;min-width:320px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
-    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">Streaming-Benachrichtigungen</div>
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.notif_info_title }}</div>
     <div style="color:var(--muted);line-height:1.6;">
-      Der Bot prüft alle 3 Minuten ob eingetragene Twitch-Streamer live sind und postet dann automatisch eine Benachrichtigung in den gewählten Kanal.
+      {{ tr.notif_info_intro }}
       <ul style="margin:0.4rem 0 0.6rem 1.1rem;padding:0;">
-        <li>Dafür wird eine Twitch-API (Client-ID + Secret) benötigt, siehe Einstellungen → Streaming-API.</li>
-        <li>Mehrere Twitch-Apps möglich — welche für diesen Server verwendet wird, lässt sich oben auswählen.</li>
-        <li>Pro Streamer kann ein eigener Kanal und eine eigene Ping-Nachricht hinterlegt werden.</li>
+        <li>{{ tr.notif_info_item_api }}</li>
+        <li>{{ tr.notif_info_item_multi }}</li>
+        <li>{{ tr.notif_info_item_per_streamer }}</li>
       </ul>
-      <strong style="color:var(--text);">Benachrichtigt wird nur beim Wechsel von offline → live, nicht bei jeder Prüfung erneut.</strong>
+      <strong style="color:var(--text);">{{ tr.notif_info_footer }}</strong>
     </div>
   </div>
 </div>
 
-{% if success %}<div class="alert alert-success">✅ Gespeichert.</div>{% endif %}
+{% if success %}<div class="alert alert-success">✅ {{ tr.saved_ok }}</div>{% endif %}
 {% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
 
 {% if not twitch_configured %}
 <div class="alert alert-error">
-  ⚠️ Streaming-API noch nicht konfiguriert.
-  <a href="/settings/notifications" style="color:var(--danger);font-weight:700;">Jetzt einrichten →</a>
+  ⚠️ {{ tr.notif_api_not_configured }}
+  <a href="/settings/notifications" style="color:var(--danger);font-weight:700;">{{ tr.notif_setup_now }}</a>
 </div>
 {% endif %}
 
 {% if twitch_apis|length > 1 %}
 <div class="notif-card" style="margin-bottom:1rem;">
-  <div style="font-weight:700;font-size:0.88rem;margin-bottom:0.75rem;">🟣 Twitch-API für diesen Server</div>
+  <div style="font-weight:700;font-size:0.88rem;margin-bottom:0.75rem;">🟣 {{ tr.notif_api_select_title }}</div>
   <form method="post" action="/servers/{{ guild_id }}/notifications/api" style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
     <select name="twitch_api_id" style="margin:0;width:auto;min-width:200px;">
       {% for api in twitch_apis %}
       <option value="{{ api.id }}" {% if api.id == current_api_id %}selected{% endif %}>{{ api.label }} (ID: {{ api.id }})</option>
       {% endfor %}
     </select>
-    <button type="submit" class="btn btn-primary" style="font-size:0.82rem;padding:0.38rem 0.9rem;">💾 Speichern</button>
+    <button type="submit" class="btn btn-primary" style="font-size:0.82rem;padding:0.38rem 0.9rem;">{{ tr.btn_save }}</button>
   </form>
-  <p class="hint" style="margin-top:0.5rem;">Welche Twitch-App für diesen Server verwendet wird. Weitere APIs unter <a href="/settings/notifications" style="color:var(--accent)">Einstellungen → Streaming-API</a>.</p>
+  <p class="hint" style="margin-top:0.5rem;">{{ tr.notif_api_select_hint_pre }}<a href="/settings/notifications" style="color:var(--accent)">{{ tr.notif_settings_link_label }}</a>.</p>
 </div>
 {% endif %}
 
 <div class="notif-card">
   <div style="display:flex;align-items:center;gap:0.6rem;font-weight:700;font-size:0.95rem;margin-bottom:1rem;">
-    <span style="font-size:1.3rem;">📡</span> Eingetragene Streamer
+    <span style="font-size:1.3rem;">📡</span> {{ tr.notif_streamers_title }}
   </div>
 
   {% set twitch_subs = subs | selectattr('platform', 'equalto', 'twitch') | list %}
@@ -76,7 +76,7 @@
     {% for s in twitch_subs %}
     <div class="sub-item">
       <div class="sub-row">
-        {% if s.live %}<span class="live-dot" title="Gerade live"></span>{% endif %}
+        {% if s.live %}<span class="live-dot" title="{{ tr.notif_live_now }}"></span>{% endif %}
         <div class="sub-name">
           <a href="https://twitch.tv/{{ s.target }}" target="_blank" style="color:var(--text);text-decoration:none;">
             {{ s.target_name or s.target }}
@@ -87,9 +87,9 @@
         </div>
         {% if s.custom_message %}<div class="sub-msg">"{{ s.custom_message }}"</div>{% endif %}
         <button type="button" onclick="toggleSubEdit({{ s.id }})"
-                class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;">✏️ Bearbeiten</button>
+                class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;">{{ tr.notif_btn_edit }}</button>
         <form method="post" action="/servers/{{ guild_id }}/notifications/delete/{{ s.id }}" style="margin:0"
-              onsubmit="return confirm('Streamer «{{ s.target_name or s.target }}» wirklich löschen?')">
+              onsubmit="return confirm({{ tr.notif_confirm_delete.replace('{name}', s.target_name or s.target) | js }})">
           <button class="btn btn-danger" type="submit">🗑</button>
         </form>
       </div>
@@ -97,17 +97,17 @@
         <form method="post" action="/servers/{{ guild_id }}/notifications/edit/{{ s.id }}">
           <div class="form-row">
             <div>
-              <label>Twitch-Benutzername</label>
+              <label>{{ tr.notif_label_username }}</label>
               <input type="text" name="target" value="{{ s.target }}" required>
             </div>
             <div>
-              <label>Anzeigename (optional)</label>
-              <input type="text" name="target_name" value="{{ s.target_name }}" placeholder="z.B. Ninja">
+              <label>{{ tr.notif_label_display_name }}</label>
+              <input type="text" name="target_name" value="{{ s.target_name }}" placeholder="{{ tr.notif_placeholder_display_name }}">
             </div>
           </div>
           <div class="form-row">
             <div>
-              <label>Discord-Kanal</label>
+              <label>{{ tr.notif_label_discord_channel }}</label>
               <select name="discord_channel_id" required>
                 {% for c in channels %}
                 <option value="{{ c.id }}" {% if c.id == s.discord_channel_id %}selected{% endif %}>#{{ c.name }}</option>
@@ -115,36 +115,36 @@
               </select>
             </div>
             <div>
-              <label>Ping-Nachricht (optional)</label>
-              <input type="text" name="custom_message" value="{{ s.custom_message }}" placeholder="@everyone ist live!">
+              <label>{{ tr.notif_label_ping_message }}</label>
+              <input type="text" name="custom_message" value="{{ s.custom_message }}" placeholder="{{ tr.notif_placeholder_ping_message }}">
             </div>
           </div>
-          <button type="submit" class="btn btn-primary" style="font-size:0.82rem;">💾 Speichern</button>
+          <button type="submit" class="btn btn-primary" style="font-size:0.82rem;">{{ tr.btn_save }}</button>
         </form>
       </div>
     </div>
     {% endfor %}
   {% else %}
-    <p style="font-size:0.83rem;color:var(--muted);">Noch keine Streamer eingetragen.</p>
+    <p style="font-size:0.83rem;color:var(--muted);">{{ tr.notif_empty }}</p>
   {% endif %}
 
   <div class="add-form">
-    <div class="section-label" style="margin-bottom:0.75rem;">Streamer hinzufügen</div>
+    <div class="section-label" style="margin-bottom:0.75rem;">{{ tr.notif_add_section_title }}</div>
     <form method="post" action="/servers/{{ guild_id }}/notifications/add">
       <input type="hidden" name="platform" value="twitch">
       <div class="form-row">
         <div>
-          <label>Twitch-Benutzername</label>
-          <input type="text" name="target" placeholder="z.B. ninja oder https://twitch.tv/ninja" required>
+          <label>{{ tr.notif_label_username }}</label>
+          <input type="text" name="target" placeholder="{{ tr.notif_placeholder_username_add }}" required>
         </div>
         <div>
-          <label>Anzeigename (optional)</label>
-          <input type="text" name="target_name" placeholder="z.B. Ninja">
+          <label>{{ tr.notif_label_display_name }}</label>
+          <input type="text" name="target_name" placeholder="{{ tr.notif_placeholder_display_name }}">
         </div>
       </div>
       <div class="form-row">
         <div>
-          <label>Discord-Kanal</label>
+          <label>{{ tr.notif_label_discord_channel }}</label>
           <select name="discord_channel_id" required>
             {% for c in channels %}
             <option value="{{ c.id }}">#{{ c.name }}</option>
@@ -152,15 +152,15 @@
           </select>
         </div>
         <div>
-          <label>Ping-Nachricht (optional)</label>
-          <input type="text" name="custom_message" placeholder="@everyone ist live!">
+          <label>{{ tr.notif_label_ping_message }}</label>
+          <input type="text" name="custom_message" placeholder="{{ tr.notif_placeholder_ping_message }}">
         </div>
       </div>
-      <button type="submit" class="btn btn-primary" {% if not twitch_configured %}disabled title="Twitch-API zuerst konfigurieren"{% endif %}>
-        ➕ Hinzufügen
+      <button type="submit" class="btn btn-primary" {% if not twitch_configured %}disabled title="{{ tr.notif_add_disabled_title }}"{% endif %}>
+        {{ tr.btn_add }}
       </button>
     </form>
-    <p class="hint">Der Bot prüft alle 3 Minuten ob der Streamer live ist und sendet beim Go-Live eine Benachrichtigung.</p>
+    <p class="hint">{{ tr.notif_hint_interval }}</p>
   </div>
 </div>
 
