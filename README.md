@@ -39,25 +39,23 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **Dashboard** | Bot status, connected servers, moderation statistics — personalized per user |
 | **Per Server** | Config, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Twitch, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, Birthdays, Auto-Delete, Bot Design |
 | **Server List** | All connected servers, invite bot |
-| **🔑 Tokens** | Manage multiple bot tokens — each token runs its own bot account, hot-reload without restart |
-| **👥 Users** | Create/delete dashboard users, assign roles and server access, **download & restore backups** |
-| **🎭 Roles** | Create custom roles with fine-grained permissions |
+| **🔑 Tokens** *(Admin)* | Manage multiple bot tokens — each token runs its own bot account, hot-reload without restart |
+| **👥 Users** *(Admin)* | Create/delete dashboard users, assign roles and server access, **download & restore backups** |
 | **🔐 Two-Factor Auth** | Optional TOTP-based 2FA for dashboard login (Google Authenticator, Authy, etc.), with one-time backup codes |
 | **📊 Bot Info** | Version, uptime, latency, CPU/RAM, hostname, OS |
-| **🔄 Updates** | Check current version, one-click update from GitHub |
-| **🕐 Timezone** | Configure timezone for all timestamps in the dashboard |
-| **🟣 Twitch API** | Set global Twitch Client ID and Secret |
-| **📧 E-Mail / SMTP** | Configure SMTP for password reset |
+| **🔄 Updates** *(Admin)* | Check current version, one-click update from GitHub |
+| **🕐 Timezone** *(Admin to change)* | Configure timezone for all timestamps in the dashboard |
+| **🟣 Streaming-API** *(Admin)* | Register one or more Twitch apps (Client ID + Secret), optionally shared with specific users |
+| **📧 E-Mail / SMTP** *(Admin)* | Configure SMTP for password reset |
 
 ---
 
 ## Multi-Bot
 
-Phobos supports **multiple bot accounts simultaneously**. Go to **Settings → 🔑 Tokens** to add as many Discord bot tokens as you like. Each token starts its own bot instance — bots start and stop **instantly** without a container restart.
+Phobos supports **multiple bot accounts simultaneously**. Go to **Settings → 🔑 Tokens** (Admin only) to add as many Discord bot tokens as you like. Each token starts its own bot instance — bots start and stop **instantly** without a container restart.
 
-- Users can only see and manage tokens assigned to them
-- Admins see all tokens and can assign users to any token
-- Token owners automatically get access to their bot's servers
+- Token management itself is Admin-only
+- Admins can assign moderators to individual bot tokens — those moderators then automatically get access to that bot's servers
 
 ---
 
@@ -68,14 +66,24 @@ services:
   bot:
     build: ./app
     container_name: ${BOT_CONTAINER_NAME:-Phobos-Bot}
+    restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
       - ./app:/app
       - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/repo
+    environment:
+      - TZ=Europe/Berlin
+      - PYTHONUNBUFFERED=1
+    mem_limit: ${MEM_LIMIT:-1g}
+    memswap_limit: ${MEM_LIMIT:-1g}
 ```
 
 > Running a second full instance (separate dashboard + bot process, e.g. on port 8081) on the same server? Set `BOT_CONTAINER_NAME` in `.env` to something matching that bot (e.g. `SecondBot`) so `docker ps` shows which container belongs to which bot — otherwise it defaults to `Phobos-Bot` for every instance and they become impossible to tell apart at a glance.
+
+> The `/var/run/docker.sock` mount lets the dashboard talk to the Docker Engine API directly (needed for the one-click update feature under **Settings → 🔄 Updates**). The `.:/repo` mount gives the container access to the git repository itself so updates can `git pull` the new code. Both are optional if you're fine doing updates manually from the server shell instead (`git pull` + `docker compose up -d --build`).
 
 ---
 
@@ -106,7 +114,7 @@ When a member joins the trigger channel, the bot creates a private voice channel
 
 ## Auto-Delete
 
-Under **Server → Auto-Delete** you can configure which channels should have their messages automatically deleted after a set time (5 min – 7 days). Changes take effect immediately without a restart.
+Under **Server → Auto-Delete** you can configure which channels should have their messages automatically deleted after a set time (5 min – 7 days). Changes take effect immediately without a restart, and scheduled deletions are persisted — a bot restart in between doesn't lose them. Requires the **Manage Messages** permission in the target channel.
 
 ---
 
@@ -172,26 +180,14 @@ Logged events include:
 
 ## Permission System
 
+Phobos keeps this deliberately simple — just two roles, no custom permission sets to configure:
+
 | Role | Access |
 |---|---|
-| **Admin** | Everything: settings, user management, all tokens, bot design, updates |
-| **Normal User** | Own tokens, own servers |
-| **Custom Role** | Freely configurable via **Settings → Roles** |
+| **Admin** | Everything: global settings, user management, bot tokens, Streaming-API credentials, SMTP, updates, bot design, and every connected server |
+| **Moderator** | Only the servers explicitly granted to them under **Users**, or inherited automatically from a bot token they've been assigned to. Can still view (but not change) some read-only pages like Bot Info |
 
-### Custom Role Permissions
-
-| Flag | Grants access to |
-|---|---|
-| `Settings` | Timezone, Twitch API, SMTP |
-| `Tokens` | Manage own bot tokens |
-| `Users` | User management |
-| `Bots` | Bot info page |
-| `Streaming` | Twitch notifications |
-| `SMTP` | E-mail settings |
-| `Updates` | Update page |
-| `Server` | Server configuration |
-
-A pre-configured **"Normal User"** role (tokens + server access) is created automatically on first start.
+The very first account (`admin` / `admin`, see Installation below) is always an Admin. There must always be at least one Admin — the dashboard blocks demoting or deleting the last remaining one.
 
 ---
 
@@ -268,25 +264,34 @@ Then restart: `docker compose up -d`
 1. Create a Twitch app at [dev.twitch.tv](https://dev.twitch.tv/console/apps/create)
    - OAuth Redirect URL: `http://localhost`
    - Category: `Chat Bot`
-2. In the dashboard: **Settings → 🟣 Twitch API** → enter Client ID + Secret
-3. Per server: **Server → 🟣 Twitch** → add streamers
+2. In the dashboard (Admin only): **Settings → 🟣 Streaming-API** → add the app's Client ID + Secret. You can register more than one Twitch app here — each one is owned by the Admin who added it and can optionally be shared with specific other users
+3. Per server: **Server → 🟣 Streaming** → add streamers (plain Twitch username, e.g. `ninja`, or a pasted channel URL — both work). If more than one Twitch app is visible to you, pick which one that server uses at the top of the page
+4. Existing streamer entries can be edited (username, channel, custom ping message) via the ✏️ button, not just deleted and re-added
 
-The bot checks every 3 minutes if registered streamers go live.
+The bot checks every 3 minutes if registered streamers go live and posts a go-live embed once — not again on every subsequent check while they stay live.
 
 ---
 
 ## Free Stuff & Deals Setup
 
-No API key required. In the dashboard under **Server → 🎁 Free Stuff**:
+No API key required. In the dashboard under **Server → 🎁 Free Stuff**, free games and paid-but-discounted deals are configured independently — each with its own channel and its own platform selection, and each stays off until a channel is picked for it.
 
-| Platform | Source | Interval |
-|---|---|---|
-| Epic Games | Official Epic API | Thursdays (new free games) |
-| Steam | CheapShark API | Every 2h |
-| GOG | CheapShark API | Every 2h |
-| Humble Bundle | CheapShark API | Every 2h |
+| Platform | Free games | Deals | Source |
+|---|---|---|---|
+| Epic Games | ✅ | — | Official Epic API |
+| Steam | ✅ | ✅ | CheapShark API |
+| GOG | ✅ | ✅ | CheapShark API |
+| Humble Bundle | ✅ | ✅ | CheapShark API |
+| Fanatical | ✅ | ✅ | CheapShark API |
+| GreenManGaming | ✅ | ✅ | CheapShark API |
+| EA App | ✅ | — | GamerPower API |
+| Ubisoft Connect | ✅ | — | GamerPower API |
+| Battle.net | ✅ | — | GamerPower API |
+| itch.io | ✅ | — | GamerPower API |
 
-**Deals:** Optionally configure a max price (e.g. `5 €`) and minimum discount (e.g. `75%`). The bot will also post discounted games to the selected channel.
+Epic Games, EA App, Ubisoft Connect, Battle.net and itch.io have no public pricing API, so they only ever show up as free games, never as discounted deals. The bot checks every hour.
+
+**Deals:** Optionally configure a max price (e.g. `5 €`) and a minimum discount (e.g. `75%`) — only games meeting both conditions get posted.
 
 **Test button:** In the dashboard under **Server → 🎁 Free Stuff** you can send the current free games to the Discord channel on demand.
 
@@ -328,7 +333,9 @@ phobos-bot/
 │   │   ├── notifications.py  # Twitch live notifications
 │   │   ├── freestuff.py      # Free stuff & deals
 │   │   ├── auto_delete.py    # Auto-delete messages by channel
-│   │   └── temp_voice.py     # Join-to-Create temp voice channels
+│   │   ├── temp_voice.py     # Join-to-Create temp voice channels
+│   │   ├── scheduler.py      # Scheduled messages
+│   │   └── birthday.py       # Birthday congratulations
 │   └── templates/            # Jinja2 HTML templates
 ├── data/                     # SQLite database + secret key (auto-created, do not commit)
 └── data-*/                   # Additional instance databases (if using multi-instance)
@@ -398,25 +405,23 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **Dashboard** | Bot-Status, verbundene Server, Moderations-Statistiken — personalisiert pro Nutzer |
 | **Pro Server** | Konfiguration, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Twitch, Free Stuff, Log, Temp Voice, Geplant, Events, Geburtstage, Auto-Delete, Bot-Design |
 | **Server-Übersicht** | Alle verbundenen Server, Bot einladen |
-| **🔑 Tokens** | Mehrere Bot-Tokens verwalten – jeder Token startet einen eigenen Bot-Account, Hot-Reload ohne Neustart |
-| **👥 Benutzer** | Dashboard-Nutzer anlegen/löschen, Rolle und Server-Zugriff vergeben, **Backups erstellen & einspielen** |
-| **🎭 Rollen** | Eigene Rollen mit feingranularen Berechtigungen erstellen |
+| **🔑 Tokens** *(Admin)* | Mehrere Bot-Tokens verwalten – jeder Token startet einen eigenen Bot-Account, Hot-Reload ohne Neustart |
+| **👥 Benutzer** *(Admin)* | Dashboard-Nutzer anlegen/löschen, Rolle und Server-Zugriff vergeben, **Backups erstellen & einspielen** |
 | **🔐 Zwei-Faktor-Auth** | Optionale TOTP-2FA für den Dashboard-Login (Google Authenticator, Authy, etc.), mit einmaligen Backup-Codes |
 | **📊 Bot-Info** | Version, Uptime, Latenz, CPU/RAM, Hostname, OS |
-| **🔄 Updates** | Aktuelle Version prüfen, One-Click-Update von GitHub |
-| **🕐 Zeitzone** | Zeitzone für alle Zeitangaben im Dashboard konfigurieren |
-| **🟣 Twitch-API** | Twitch Client-ID und Secret global eintragen |
-| **📧 E-Mail / SMTP** | SMTP für Passwort-Reset konfigurieren |
+| **🔄 Updates** *(Admin)* | Aktuelle Version prüfen, One-Click-Update von GitHub |
+| **🕐 Zeitzone** *(Ändern: Admin)* | Zeitzone für alle Zeitangaben im Dashboard konfigurieren |
+| **🟣 Streaming-API** *(Admin)* | Eine oder mehrere Twitch-Apps (Client-ID + Secret) eintragen, optional für bestimmte Nutzer freigeben |
+| **📧 E-Mail / SMTP** *(Admin)* | SMTP für Passwort-Reset konfigurieren |
 
 ---
 
 ## Multi-Bot
 
-Phobos unterstützt **mehrere Bot-Accounts gleichzeitig**. Unter **Einstellungen → 🔑 Tokens** können beliebig viele Discord Bot-Tokens eingetragen werden. Jeder Token startet einen eigenen Bot-Account — Bots starten und stoppen **sofort** ohne Container-Neustart.
+Phobos unterstützt **mehrere Bot-Accounts gleichzeitig**. Unter **Einstellungen → 🔑 Tokens** (nur Admin) können beliebig viele Discord Bot-Tokens eingetragen werden. Jeder Token startet einen eigenen Bot-Account — Bots starten und stoppen **sofort** ohne Container-Neustart.
 
-- Normale Nutzer sehen und verwalten nur ihre eigenen Tokens
-- Admins sehen alle Tokens und können Nutzer beliebigen Tokens zuweisen
-- Token-Besitzer erhalten automatisch Zugriff auf die Server ihres Bots
+- Die Token-Verwaltung selbst ist Admin-only
+- Admins können Moderatoren einzelnen Bot-Tokens zuweisen — diese erhalten dadurch automatisch Zugriff auf die Server des jeweiligen Bots
 
 ---
 
@@ -427,14 +432,24 @@ services:
   bot:
     build: ./app
     container_name: ${BOT_CONTAINER_NAME:-Phobos-Bot}
+    restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
       - ./app:/app
       - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/repo
+    environment:
+      - TZ=Europe/Berlin
+      - PYTHONUNBUFFERED=1
+    mem_limit: ${MEM_LIMIT:-1g}
+    memswap_limit: ${MEM_LIMIT:-1g}
 ```
 
 > Läuft eine zweite vollständige Instanz (eigenes Dashboard + Bot-Prozess, z.B. auf Port 8081) auf demselben Server? In der `.env` `BOT_CONTAINER_NAME` auf einen Namen setzen, der zu diesem Bot passt (z.B. `SecondBot`), damit `docker ps` zeigt, welcher Container zu welchem Bot gehört — sonst heißt standardmäßig jede Instanz `Phobos-Bot` und sie sind auf den ersten Blick nicht zu unterscheiden.
+
+> Der `/var/run/docker.sock`-Mount erlaubt dem Dashboard direkten Zugriff auf die Docker Engine API (nötig für das One-Click-Update unter **Einstellungen → 🔄 Updates**). Der `.:/repo`-Mount gibt dem Container Zugriff auf das Git-Repository selbst, damit Updates den neuen Code per `git pull` holen können. Beide sind optional, falls Updates lieber manuell über die Server-Shell laufen sollen (`git pull` + `docker compose up -d --build`).
 
 ---
 
@@ -465,7 +480,7 @@ Sobald ein Mitglied den Trigger-Kanal betritt, erstellt der Bot einen eigenen Vo
 
 ## Auto-Delete
 
-Unter **Server → Auto-Delete** kann festgelegt werden, in welchen Kanälen Nachrichten automatisch nach einer bestimmten Zeit (5 Min. – 7 Tage) gelöscht werden. Änderungen gelten sofort ohne Neustart.
+Unter **Server → Auto-Delete** kann festgelegt werden, in welchen Kanälen Nachrichten automatisch nach einer bestimmten Zeit (5 Min. – 7 Tage) gelöscht werden. Änderungen gelten sofort ohne Neustart, und geplante Löschungen bleiben auch bei einem Bot-Neustart dazwischen erhalten. Der Bot braucht dafür die Berechtigung **Nachrichten verwalten** im jeweiligen Kanal.
 
 ---
 
@@ -531,26 +546,14 @@ Geloggte Ereignisse:
 
 ## Berechtigungssystem
 
+Bewusst einfach gehalten — nur zwei Rollen, keine konfigurierbaren Berechtigungssets:
+
 | Rolle | Rechte |
 |---|---|
-| **Admin** | Alles: Einstellungen, Benutzerverwaltung, alle Tokens, Bot-Design, Updates |
-| **Normal User** | Eigene Tokens, eigene Server |
-| **Custom-Rolle** | Frei konfigurierbar über **Einstellungen → Rollen** |
+| **Admin** | Alles: globale Einstellungen, Benutzerverwaltung, Bot-Tokens, Streaming-API-Zugangsdaten, SMTP, Updates, Bot-Design und jeder verbundene Server |
+| **Moderator** | Nur die Server, die ihm unter **Benutzer** explizit freigegeben wurden, oder automatisch über einen zugewiesenen Bot-Token. Manche rein lesbaren Seiten (z.B. Bot-Info) bleiben trotzdem sichtbar |
 
-### Custom-Rollen Berechtigungen
-
-| Flag | Zugriff auf |
-|---|---|
-| `Einstellungen` | Zeitzone, Twitch-API, SMTP |
-| `Tokens` | Eigene Bot-Tokens verwalten |
-| `Benutzer` | Benutzerverwaltung |
-| `Bots` | Bot-Info |
-| `Streaming` | Twitch-Benachrichtigungen |
-| `SMTP` | E-Mail-Einstellungen |
-| `Updates` | Update-Seite |
-| `Server` | Server-Konfiguration |
-
-Eine vorkonfigurierte **„Normal User"**-Rolle (Tokens + Server-Zugriff) wird beim ersten Start automatisch angelegt.
+Das allererste Konto (`admin` / `admin`, siehe Installation weiter unten) ist immer Admin. Es muss immer mindestens ein Admin existieren — das Dashboard verhindert das Herabstufen oder Löschen des letzten verbleibenden.
 
 ---
 
@@ -627,25 +630,34 @@ Danach: `docker compose up -d`
 1. Twitch-App auf [dev.twitch.tv](https://dev.twitch.tv/console/apps/create) erstellen
    - OAuth Redirect URL: `http://localhost`
    - Kategorie: `Chat Bot`
-2. Im Dashboard: **Einstellungen → 🟣 Twitch-API** → Client-ID + Secret eintragen
-3. Pro Server: **Server → 🟣 Twitch** → Streamer hinzufügen
+2. Im Dashboard (nur Admin): **Einstellungen → 🟣 Streaming-API** → Client-ID + Secret der App eintragen. Es können mehrere Twitch-Apps registriert werden — jede gehört dem Admin, der sie angelegt hat, und kann optional für bestimmte andere Nutzer freigegeben werden
+3. Pro Server: **Server → 🟣 Streaming** → Streamer hinzufügen (einfacher Twitch-Benutzername, z.B. `ninja`, oder ein eingefügter Kanal-Link — beides funktioniert). Sind mehrere Twitch-Apps für dich sichtbar, kann oben auf der Seite ausgewählt werden, welche dieser Server verwendet
+4. Bereits eingetragene Streamer lassen sich über den ✏️-Button bearbeiten (Benutzername, Kanal, eigene Ping-Nachricht), nicht nur löschen und neu anlegen
 
-Der Bot prüft alle 3 Minuten ob eingetragene Streamer live gehen.
+Der Bot prüft alle 3 Minuten ob eingetragene Streamer live gehen und postet dann einmalig ein Embed — nicht erneut bei jeder weiteren Prüfung solange der Stream weiterläuft.
 
 ---
 
 ## Free Stuff & Deals einrichten
 
-Kein API-Key nötig. Im Dashboard unter **Server → 🎁 Free Stuff**:
+Kein API-Key nötig. Im Dashboard unter **Server → 🎁 Free Stuff** laufen Gratis-Spiele und bezahlte-aber-reduzierte Angebote komplett unabhängig voneinander — jeweils mit eigenem Kanal und eigener Plattform-Auswahl, und beide bleiben aus bis dort ein Kanal ausgewählt wird.
 
-| Plattform | Quelle | Intervall |
-|---|---|---|
-| Epic Games | Offizielle Epic-API | Donnerstags (neue Gratis-Spiele) |
-| Steam | CheapShark API | Alle 2h |
-| GOG | CheapShark API | Alle 2h |
-| Humble Bundle | CheapShark API | Alle 2h |
+| Plattform | Gratis-Spiele | Angebote | Quelle |
+|---|---|---|---|
+| Epic Games | ✅ | — | Offizielle Epic-API |
+| Steam | ✅ | ✅ | CheapShark API |
+| GOG | ✅ | ✅ | CheapShark API |
+| Humble Bundle | ✅ | ✅ | CheapShark API |
+| Fanatical | ✅ | ✅ | CheapShark API |
+| GreenManGaming | ✅ | ✅ | CheapShark API |
+| EA App | ✅ | — | GamerPower API |
+| Ubisoft Connect | ✅ | — | GamerPower API |
+| Battle.net | ✅ | — | GamerPower API |
+| itch.io | ✅ | — | GamerPower API |
 
-**Angebote:** Optional Max-Preis (z.B. `5 €`) und Mindest-Rabatt (z.B. `75%`) konfigurierbar. Der Bot postet dann auch reduzierte Spiele in den gewählten Kanal.
+Epic Games, EA App, Ubisoft Connect, Battle.net und itch.io haben keine öffentliche Preis-API und tauchen deshalb nur als Gratis-Spiele auf, nie als Angebot. Der Bot prüft stündlich.
+
+**Angebote:** Optional Max-Preis (z.B. `5 €`) und Mindest-Rabatt (z.B. `75%`) konfigurierbar — nur Spiele, die beide Bedingungen erfüllen, werden gepostet.
 
 **Test-Button:** Im Dashboard unter **Server → 🎁 Free Stuff** können die aktuellen Gratis-Spiele auf Knopfdruck sofort in den Discord-Kanal gesendet werden.
 
@@ -687,7 +699,9 @@ phobos-bot/
 │   │   ├── notifications.py  # Twitch Live-Benachrichtigungen
 │   │   ├── freestuff.py      # Free Stuff & Deals
 │   │   ├── auto_delete.py    # Automatisches Löschen nach Zeit
-│   │   └── temp_voice.py     # Join-to-Create Temp-Voice-Kanäle
+│   │   ├── temp_voice.py     # Join-to-Create Temp-Voice-Kanäle
+│   │   ├── scheduler.py      # Geplante Nachrichten
+│   │   └── birthday.py       # Geburtstags-Glückwünsche
 │   └── templates/            # Jinja2 HTML-Templates
 ├── data/                     # SQLite-Datenbank + Secret-Key (auto-erstellt, nicht committen)
 └── data-*/                   # Weitere Instanz-Datenbanken (bei Multi-Instanz)
