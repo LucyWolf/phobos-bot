@@ -152,7 +152,11 @@ class Notifications(commands.Cog):
         embed.add_field(name="Zuschauer", value=str(stream.get("viewer_count", 0)), inline=True)
         thumb = stream.get("thumbnail_url", "").replace("{width}", "1280").replace("{height}", "720")
         if thumb:
-            embed.set_image(url=thumb)
+            # thumbnail_url is the same fixed URL every time this user goes live (no stream ID
+            # in it) — Discord caches fetched images per URL, so without a cache-buster a stale
+            # or broken fetch from a previous stream can keep showing up forever.
+            cache_bust = int(datetime.datetime.utcnow().timestamp())
+            embed.set_image(url=f"{thumb}?t={cache_bust}")
         embed.set_footer(text="Twitch • Live-Benachrichtigung")
         await channel.send(content=custom_msg or None, embed=embed)
 
