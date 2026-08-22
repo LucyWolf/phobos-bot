@@ -3618,6 +3618,23 @@ async def api_guilds(request: Request):
     return [{"id": str(g.id), "name": g.name, "members": g.member_count} for g in bot.guilds]
 
 
+# ── Internal (service-to-service, not part of the browser-facing API) ─────────
+# Lets a hosting platform that provisions this container keep the seeded admin's
+# password in sync with the customer's own account. Disabled unless INTERNAL_SYNC_KEY
+# is set, so plain self-hosted instances are unaffected.
+
+@web.post("/internal/sync-password")
+async def internal_sync_password(username: str = Form(...), password: str = Form(...), key: str = Form(...)):
+    expected_key = os.environ.get("INTERNAL_SYNC_KEY", "")
+    if not expected_key or not secrets.compare_digest(key, expected_key):
+        return JSONResponse({"ok": False}, status_code=403)
+    user = await db_one("SELECT id FROM users WHERE username=?", (username,))
+    if not user:
+        return JSONResponse({"ok": False, "error": "user not found"}, status_code=404)
+    await db_exec("UPDATE users SET password_hash=? WHERE id=?", (hash_pw(password), user["id"]))
+    return JSONResponse({"ok": True})
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────
 
 async def main():
@@ -3628,11 +3645,16 @@ async def main():
 
     user_count = (await db_one("SELECT COUNT(*) as c FROM users") or {}).get("c", 0)
     if user_count == 0:
+        seed_username = os.environ.get("SEED_ADMIN_USERNAME") or "admin"
+        seed_password = os.environ.get("SEED_ADMIN_PASSWORD") or "admin"
         await db_exec(
             "INSERT INTO users (username,password_hash,role) VALUES (?,?,?)",
-            ("admin", hash_pw("admin"), "admin"),
+            (seed_username, hash_pw(seed_password), "admin"),
         )
-        print("Standard-Admin erstellt: admin / admin")
+        if os.environ.get("SEED_ADMIN_PASSWORD"):
+            print(f"Standard-Admin erstellt: {seed_username} (Passwort via SEED_ADMIN_PASSWORD gesetzt)")
+        else:
+            print("Standard-Admin erstellt: admin / admin")
 
     server = uvicorn.Server(uvicorn.Config(web, host="0.0.0.0", port=8080, log_level="warning"))
     # Bot runs as independent background task — crashes there never kill the web server
