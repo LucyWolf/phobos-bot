@@ -316,7 +316,7 @@
   code { background: var(--bg); border: 1px solid var(--border); border-radius: 0.3rem; padding: 0.1rem 0.4rem; font-size: 0.8rem; font-family: monospace; }
 </style>
 </head>
-<body id="body">
+<body id="body"{% if sidebar_collapsed %} class="collapsed"{% endif %}>
 
 <div id="sidebar">
   <div class="sidebar-header">
@@ -331,7 +331,7 @@
       <span class="label">{{ tr.nav_dashboard }}</span>
     </a>
 
-    <div class="nav-group {% if active in ['settings','users','bot_update','bot_info','notif_settings','smtp','servers','tokens'] %}open{% endif %}" id="nav-group-settings">
+    <div class="nav-group {% if active in ['settings','users','bot_update','bot_info','notif_settings','smtp','servers','tokens'] or nav_settings_open %}open{% endif %}" id="nav-group-settings">
       <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn-header{% endif %}"
            onclick="toggleNavGroup('settings')" title="{{ tr.nav_settings }}">
         <span class="icon">⚙️</span>
@@ -420,28 +420,24 @@
 </div>
 
 <script>
+  function _saveUiState(field, value) {
+    const body = new URLSearchParams();
+    body.set(field, value ? '1' : '0');
+    fetch('/profile/ui-state', { method: 'POST', body, cache: 'no-store' }).catch(() => {});
+  }
+
   function toggleSidebar() {
     const body = document.getElementById('body');
     const collapsed = body.classList.toggle('collapsed');
-    localStorage.setItem('phobos_sidebar', collapsed ? '1' : '0');
-  }
-  if (localStorage.getItem('phobos_sidebar') === '1') {
-    document.getElementById('body').classList.add('collapsed');
+    _saveUiState('sidebar_collapsed', collapsed);
   }
 
   function toggleNavGroup(id) {
     const grp = document.getElementById('nav-group-' + id);
     if (!grp) return;
     const isOpen = grp.classList.toggle('open');
-    localStorage.setItem('phobos_ng_' + id, isOpen ? '1' : '0');
+    if (id === 'settings') _saveUiState('nav_settings_open', isOpen);
   }
-  // Restore nav group states from localStorage
-  document.querySelectorAll('[id^="nav-group-"]').forEach(grp => {
-    const key = grp.id.replace('nav-group-', '');
-    if (!grp.classList.contains('open') && localStorage.getItem('phobos_ng_' + key) === '1') {
-      grp.classList.add('open');
-    }
-  });
 
   // Update check — runs on load and every 5 minutes
   function runUpdateCheck(force) {
