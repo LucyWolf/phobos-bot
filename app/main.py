@@ -413,6 +413,8 @@ def session(request: Request) -> dict:
         "user_tz": request.session.get("user_tz", "Europe/Berlin"),
         "tr": get_tr(lang),
         "has_avatar": bool(uid and (AVATARS_DIR / f"{uid}.jpg").exists()),
+        "sidebar_collapsed": request.session.get("sidebar_collapsed", False),
+        "nav_settings_open": request.session.get("nav_settings_open", False),
     }
 
 
@@ -503,6 +505,8 @@ async def _complete_login(request: Request, user: dict) -> None:
     request.session["lang"] = user.get("language") or "de"
     user_tz = user.get("timezone") or await get_config("timezone") or "Europe/Berlin"
     request.session["user_tz"] = user_tz
+    request.session["sidebar_collapsed"] = bool(user.get("sidebar_collapsed"))
+    request.session["nav_settings_open"] = bool(user.get("nav_settings_open"))
 
 
 def _totp_lock_remaining_minutes(user: dict) -> int:
@@ -684,6 +688,25 @@ async def profile_prefs_save(
     request.session["lang"] = lang
     request.session["user_tz"] = timezone
     return RedirectResponse("/profile?success=Einstellungen+gespeichert", status_code=302)
+
+
+@web.post("/profile/ui-state")
+async def profile_ui_state_save(
+    request: Request,
+    sidebar_collapsed: str = Form(None),
+    nav_settings_open: str = Form(None),
+):
+    if r := auth_redirect(request): return r
+    uid = request.session.get("user_id")
+    if sidebar_collapsed is not None:
+        val = sidebar_collapsed == "1"
+        await db_exec("UPDATE users SET sidebar_collapsed=? WHERE id=?", (int(val), uid))
+        request.session["sidebar_collapsed"] = val
+    if nav_settings_open is not None:
+        val = nav_settings_open == "1"
+        await db_exec("UPDATE users SET nav_settings_open=? WHERE id=?", (int(val), uid))
+        request.session["nav_settings_open"] = val
+    return JSONResponse({"ok": True})
 
 
 @web.post("/profile/password")
