@@ -107,6 +107,24 @@
 <!-- TAB: Spam-Schutz (Auto-Mod)                                         -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-automod">
+
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="toggleWpInfo()" title="Was ist das?"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="wp-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:300px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">Wie funktionieren Kategorien?</div>
+    <div style="color:var(--muted);line-height:1.6;">
+      Jede Kategorie ist ein eigener "➕"-Button beim Feld "Verbotene Wörter". Ein Klick darauf
+      fügt ihre Wörter hinzu, ohne bereits vorhandene Wörter zu ersetzen.
+      Kategorien unten bearbeiten oder löschen wirkt sich nicht rückwirkend auf ein schon
+      gespeichertes "Verbotene Wörter"-Feld aus — nur der nächste Klick auf "➕" verwendet
+      den neuen Stand.
+    </div>
+  </div>
+</div>
+
 <form method="post" action="/servers/{{ guild.id }}">
 <input type="hidden" name="tab" value="automod">
   <div class="card">
@@ -155,25 +173,7 @@
 </form>
 
 <div class="card" style="margin-top:1rem;">
-  <div class="feat-header" style="display:flex;align-items:center;gap:0.4rem;">
-    🗂️ Wortlisten-Kategorien
-    <span style="position:relative;">
-      <button type="button" onclick="toggleWpInfo()" title="Was ist das?"
-        style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
-      <div id="wp-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.3rem;
-           background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.75rem 1rem;
-           font-size:0.78rem;min-width:280px;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-weight:400;">
-        <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">Wie funktionieren Kategorien?</div>
-        <div style="color:var(--muted);line-height:1.6;">
-          Jede Kategorie ist ein eigener "➕"-Button oben im Formular. Ein Klick darauf fügt ihre
-          Wörter zum "Verbotene Wörter"-Feld hinzu, ohne bereits vorhandene Wörter zu ersetzen.
-          Kategorien hier direkt bearbeiten oder löschen wirkt sich nicht rückwirkend auf ein
-          schon gespeichertes "Verbotene Wörter"-Feld aus — nur der nächste Klick auf "➕"
-          verwendet den neuen Stand.
-        </div>
-      </div>
-    </span>
-  </div>
+  <div class="feat-header">🗂️ Wortlisten-Kategorien</div>
   <p class="hint" style="margin-bottom:1rem;">Direkt bearbeiten und mit 💾 speichern.</p>
 
   {% for p in automod_presets %}
