@@ -206,6 +206,8 @@ docker compose up -d --build
 
 The dashboard is available on port `8080`.
 
+> **Raspberry Pi:** Runs on Raspberry Pi OS (both 64-bit/`aarch64` and 32-bit/`armv7`), same `docker compose up -d --build` command. A couple of Python dependencies (`psutil`, and `bcrypt`/`Pillow` on 32-bit) have no prebuilt wheel for ARM and get compiled from source during the build — the first build takes noticeably longer than on a regular PC/server (several minutes, more on an older Pi), later builds are unaffected since the image layer gets cached.
+
 ### First Start
 
 1. Open `http://server-ip:8080`
@@ -571,6 +573,8 @@ docker compose up -d --build
 ```
 
 Dashboard ist auf Port `8080` erreichbar.
+
+> **Raspberry Pi:** Läuft auf Raspberry Pi OS (64-bit/`aarch64` und 32-bit/`armv7`), gleicher Befehl `docker compose up -d --build`. Ein paar Python-Abhängigkeiten (`psutil`, sowie auf 32-bit zusätzlich `bcrypt`/`Pillow`) haben kein fertiges Wheel für ARM und werden beim Bauen aus dem Quellcode kompiliert — der erste Build dauert dadurch spürbar länger als auf einem normalen PC/Server (mehrere Minuten, auf älteren Pi-Modellen mehr), spätere Builds sind davon nicht betroffen da die Image-Schicht gecacht wird.
 
 ### Erster Start
 
