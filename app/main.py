@@ -3297,7 +3297,7 @@ _TAB_TEXT_KEYS = {
         "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",
     ],
     "leveling": [
-        "level_channel", "leveling_channel_mode", "leveling_voice_xp_per_min", "leveling_role_mode",
+        "level_channel", "leveling_voice_xp_per_min", "leveling_role_mode",
         "leveling_curve_quad", "leveling_curve_linear", "leveling_curve_base",
         "leveling_voice_curve_quad", "leveling_voice_curve_linear", "leveling_voice_curve_base",
     ],

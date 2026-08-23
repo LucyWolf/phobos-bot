@@ -144,11 +144,10 @@ class Leveling(commands.Cog):
         if enabled != "1":
             return
 
-        if await get_guild_config(message.guild.id, "leveling_channel_mode") == "specific":
-            allowed_raw = await get_guild_config(message.guild.id, "leveling_channels") or ""
-            allowed = {c.strip() for c in allowed_raw.split(",") if c.strip()}
-            if str(message.channel.id) not in allowed:
-                return
+        allowed_raw = await get_guild_config(message.guild.id, "leveling_channels") or ""
+        allowed = {c.strip() for c in allowed_raw.split(",") if c.strip()}
+        if allowed and str(message.channel.id) not in allowed:
+            return
 
         key = (message.guild.id, message.author.id)
         if key in self._cooldowns:

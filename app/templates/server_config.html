@@ -249,24 +249,17 @@ document.addEventListener('click', function(e) {
     <option value="">— Aktueller Kanal —</option>
     {% for ch in channels %}<option value="{{ ch.id }}" {% if cfg.get('level_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
   </select>
-  <label>{{ tr.leveling_channel_mode_label }}</label>
-  <select name="leveling_channel_mode" id="lvl-mode-select">
-    <option value="all" {% if cfg.get('leveling_channel_mode', 'all') == 'all' %}selected{% endif %}>{{ tr.leveling_mode_all }}</option>
-    <option value="specific" {% if cfg.get('leveling_channel_mode') == 'specific' %}selected{% endif %}>{{ tr.leveling_mode_specific }}</option>
-  </select>
-  <div id="lvl-channels-wrap" style="{% if cfg.get('leveling_channel_mode') != 'specific' %}display:none;{% endif %}margin-top:0.75rem;">
-    <label>{{ tr.leveling_channels_label }}</label>
-    <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
-      <select id="lvl-channel-picker" style="flex:1;margin:0;">
-        {% for ch in channels %}<option value="{{ ch.id }}">#{{ ch.name }}</option>{% endfor %}
-      </select>
-      <button type="button" class="btn btn-secondary" onclick="addLvlChannel()" style="padding:0.4rem 0.6rem;" title="{{ tr.btn_add }}">➕</button>
-    </div>
-    <div id="lvl-channels-list" style="margin-bottom:0.5rem;"></div>
-    <select name="leveling_channels" id="lvl-channels-select" multiple style="display:none;">
-      {% for ch in channels %}<option value="{{ ch.id }}" {% if ch.id in leveling_channels %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
+  <label>{{ tr.leveling_channels_label }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.leveling_channels_hint }}</span></label>
+  <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
+    <select id="lvl-channel-picker" style="flex:1;margin:0;">
+      {% for ch in channels %}<option value="{{ ch.id }}">#{{ ch.name }}</option>{% endfor %}
     </select>
+    <button type="button" class="btn btn-secondary" onclick="addLvlChannel()" style="padding:0.4rem 0.6rem;" title="{{ tr.btn_add }}">➕</button>
   </div>
+  <div id="lvl-channels-list" style="margin-bottom:0.5rem;"></div>
+  <select name="leveling_channels" id="lvl-channels-select" multiple style="display:none;">
+    {% for ch in channels %}<option value="{{ ch.id }}" {% if ch.id in leveling_channels %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
+  </select>
   <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);">
     <label style="display:block;margin-bottom:0.25rem;">{{ tr.leveling_curve_title }}</label>
     <p class="hint" style="margin-top:0;margin-bottom:0.75rem;">{{ tr.leveling_curve_hint }}</p>
@@ -353,13 +346,6 @@ document.addEventListener('click', function(e) {
 </div>
 
 <script>
-const lvlModeSelect = document.getElementById('lvl-mode-select');
-if (lvlModeSelect) {
-  lvlModeSelect.addEventListener('change', function() {
-    document.getElementById('lvl-channels-wrap').style.display = this.value === 'specific' ? '' : 'none';
-  });
-}
-
 function renderLvlChannelsList() {
   const select = document.getElementById('lvl-channels-select');
   const list = document.getElementById('lvl-channels-list');
