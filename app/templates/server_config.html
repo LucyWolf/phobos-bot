@@ -109,42 +109,36 @@
 <div class="tab-pane" id="pane-automod">
 
 <div style="position:relative;margin-bottom:1.25rem;">
-  <button type="button" onclick="toggleWpInfo()" title="Was ist das?"
+  <button type="button" onclick="toggleWpInfo()" title="{{ tr.automod_info_tooltip }}"
     style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
   <div id="wp-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
        background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
        font-size:0.78rem;min-width:300px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
-    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">Wie funktionieren Kategorien?</div>
-    <div style="color:var(--muted);line-height:1.6;">
-      Jede Kategorie ist ein eigener "➕"-Button beim Feld "Verbotene Wörter". Ein Klick darauf
-      fügt ihre Wörter hinzu, ohne bereits vorhandene Wörter zu ersetzen.
-      Kategorien unten bearbeiten oder löschen wirkt sich nicht rückwirkend auf ein schon
-      gespeichertes "Verbotene Wörter"-Feld aus — nur der nächste Klick auf "➕" verwendet
-      den neuen Stand.
-    </div>
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.automod_info_title }}</div>
+    <div style="color:var(--muted);line-height:1.6;">{{ tr.automod_info_body }}</div>
   </div>
 </div>
 
 <form method="post" action="/servers/{{ guild.id }}">
 <input type="hidden" name="tab" value="automod">
   <div class="card">
-    <div class="feat-header">🛡️ Spam-Schutz / Auto-Moderation</div>
+    <div class="feat-header">{{ tr.automod_title }}</div>
     <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
-      <input type="checkbox" name="automod_enabled" value="1" {% if cfg.get('automod_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> Auto-Mod aktivieren
+      <input type="checkbox" name="automod_enabled" value="1" {% if cfg.get('automod_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> {{ tr.automod_enable_label }}
     </label>
     <div class="grid-2">
       <div>
-        <label>Spam-Schwelle <span style="color:var(--muted);font-size:0.75rem">(Nachrichten im Zeitfenster)</span></label>
+        <label>{{ tr.automod_threshold_label }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.automod_threshold_hint }}</span></label>
         <input type="number" name="automod_spam_threshold" value="{{ cfg.get('automod_spam_threshold', '5') }}" min="2" max="30">
       </div>
       <div>
-        <label>Spam-Zeitfenster <span style="color:var(--muted);font-size:0.75rem">(Sekunden)</span></label>
+        <label>{{ tr.automod_window_label }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.automod_window_hint }}</span></label>
         <input type="number" name="automod_spam_window" value="{{ cfg.get('automod_spam_window', '5') }}" min="1" max="60">
       </div>
     </div>
     <div class="grid-2">
       <div>
-        <label>Aktion bei Verstoß</label>
+        <label>{{ tr.automod_action_label }}</label>
         <select name="automod_action">
           {% for opt in ['warn','timeout','kick','ban'] %}
           <option value="{{ opt }}" {% if cfg.get('automod_action', 'warn') == opt %}selected{% endif %}>{{ opt }}</option>
@@ -152,62 +146,62 @@
         </select>
       </div>
       <div>
-        <label>Timeout-Dauer <span style="color:var(--muted);font-size:0.75rem">(Minuten, nur bei Aktion "timeout")</span></label>
+        <label>{{ tr.automod_timeout_label }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.automod_timeout_hint }}</span></label>
         <input type="number" name="automod_timeout_minutes" value="{{ cfg.get('automod_timeout_minutes', '5') }}" min="1" max="40320">
       </div>
     </div>
     <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
-      <input type="checkbox" name="automod_links" value="1" {% if cfg.get('automod_links') == '1' %}checked{% endif %} style="width:auto;margin:0;"> Links blockieren
+      <input type="checkbox" name="automod_links" value="1" {% if cfg.get('automod_links') == '1' %}checked{% endif %} style="width:auto;margin:0;"> {{ tr.automod_links_label }}
     </label>
-    <label>Verbotene Wörter <span style="color:var(--muted);font-size:0.75rem">(kommagetrennt)</span></label>
+    <label>{{ tr.automod_words_label }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.automod_words_hint }}</span></label>
     <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.5rem;">
       {% for p in automod_presets %}
       <button type="button" class="btn btn-secondary" style="font-size:0.72rem;padding:0.25rem 0.6rem;" data-words="{{ p.words }}" onclick="addWordPreset(this.dataset.words)">➕ {{ p.label }}</button>
       {% endfor %}
     </div>
-    <input type="text" name="automod_banned_words" id="automod-banned-words" value="{{ cfg.get('automod_banned_words', '') }}" placeholder="wort1, wort2, wort3" style="margin-bottom:1rem;">
-    <label>Warn-Nachricht <span style="color:var(--muted);font-size:0.75rem">(Platzhalter: {server}, {reason})</span></label>
+    <input type="text" name="automod_banned_words" id="automod-banned-words" value="{{ cfg.get('automod_banned_words', '') }}" placeholder="{{ tr.automod_words_placeholder }}" style="margin-bottom:1rem;">
+    <label>{{ tr.automod_warn_label }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.automod_warn_hint }}</span></label>
     <input type="text" name="automod_warn_message" value="{{ cfg.get('automod_warn_message', '⚠️ **{server}**: {reason}') }}" placeholder="⚠️ **{server}**: {reason}">
   </div>
-  <button type="submit" class="btn btn-primary">💾 Speichern</button>
+  <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
 </form>
 
 <div class="card" style="margin-top:1rem;">
-  <div class="feat-header">🗂️ Wortlisten-Kategorien</div>
-  <p class="hint" style="margin-bottom:1rem;">Direkt bearbeiten und mit 💾 speichern.</p>
+  <div class="feat-header">{{ tr.automod_categories_title }}</div>
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.automod_categories_hint }}</p>
 
   {% for p in automod_presets %}
   <div style="display:flex;gap:0.5rem;align-items:end;margin-bottom:0.6rem;">
     <form method="post" action="/servers/{{ guild.id }}/automod-presets/edit/{{ p.id }}" style="display:flex;gap:0.5rem;align-items:end;flex:1;margin:0;">
       <div style="flex:1;min-width:100px;">
-        <label style="font-size:0.72rem;">Name</label>
+        <label style="font-size:0.72rem;">{{ tr.label_name }}</label>
         <input type="text" name="label" value="{{ p.label }}" required style="margin:0;">
       </div>
       <div style="flex:2;min-width:160px;">
-        <label style="font-size:0.72rem;">Wörter</label>
+        <label style="font-size:0.72rem;">{{ tr.automod_words_label }}</label>
         <input type="text" name="words" value="{{ p.words }}" required style="margin:0;">
       </div>
-      <button type="submit" class="btn btn-secondary" style="padding:0.4rem 0.6rem;" title="Speichern">💾</button>
+      <button type="submit" class="btn btn-secondary" style="padding:0.4rem 0.6rem;" title="{{ tr.btn_save }}">💾</button>
     </form>
     <form method="post" action="/servers/{{ guild.id }}/automod-presets/delete/{{ p.id }}" style="margin:0;"
-          onsubmit="return confirm({{ ('Kategorie „' ~ p.label ~ '“ wirklich löschen?') | js }})">
-      <button class="btn btn-danger" type="submit" title="Löschen">🗑</button>
+          onsubmit="return confirm({{ tr.automod_confirm_delete_category.replace('{name}', p.label) | js }})">
+      <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">🗑</button>
     </form>
   </div>
   {% else %}
-  <p style="font-size:0.83rem;color:var(--muted);">Noch keine Kategorien angelegt.</p>
+  <p style="font-size:0.83rem;color:var(--muted);">{{ tr.automod_categories_empty }}</p>
   {% endfor %}
 
   <form method="post" action="/servers/{{ guild.id }}/automod-presets/create" style="display:flex;gap:0.5rem;align-items:end;margin-top:0.5rem;padding-top:0.75rem;border-top:1px solid var(--border);">
     <div style="flex:1;min-width:100px;">
-      <label style="font-size:0.72rem;">Name</label>
-      <input type="text" name="label" placeholder="z.B. Beleidigungen" required style="margin:0;">
+      <label style="font-size:0.72rem;">{{ tr.label_name }}</label>
+      <input type="text" name="label" placeholder="{{ tr.automod_category_name_placeholder }}" required style="margin:0;">
     </div>
     <div style="flex:2;min-width:160px;">
-      <label style="font-size:0.72rem;">Wörter</label>
-      <input type="text" name="words" placeholder="wort1, wort2, wort3" required style="margin:0;">
+      <label style="font-size:0.72rem;">{{ tr.automod_words_label }}</label>
+      <input type="text" name="words" placeholder="{{ tr.automod_words_placeholder }}" required style="margin:0;">
     </div>
-    <button type="submit" class="btn btn-primary" style="padding:0.4rem 0.6rem;" title="Hinzufügen">➕</button>
+    <button type="submit" class="btn btn-primary" style="padding:0.4rem 0.6rem;" title="{{ tr.btn_add }}">➕</button>
   </form>
 </div>
 </div>
