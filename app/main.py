@@ -3296,7 +3296,10 @@ _TAB_TEXT_KEYS = {
         "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
         "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",
     ],
-    "leveling": ["level_channel", "leveling_channel_mode", "leveling_voice_xp_per_min", "leveling_role_mode"],
+    "leveling": [
+        "level_channel", "leveling_channel_mode", "leveling_voice_xp_per_min", "leveling_role_mode",
+        "leveling_curve_quad", "leveling_curve_linear", "leveling_curve_base",
+    ],
     "automod": [
         "automod_spam_threshold", "automod_spam_window", "automod_timeout_minutes",
         "automod_banned_words", "automod_action", "automod_warn_message",
@@ -3343,6 +3346,11 @@ async def server_config_save(request: Request, guild_id: int):
         ("automod_spam_window", 1, 60, "Spam-Zeitfenster"),
         ("automod_timeout_minutes", 1, 40320, "Timeout-Dauer"),  # Discord's max timeout is 28 days
         ("leveling_voice_xp_per_min", 1, 100, "Voice-XP pro Minute"),
+        # base must stay >= 1 - with quad=linear=base=0, xp_for_level(level) would always be 0
+        # and level_from_xp() would loop forever on any non-negative xp.
+        ("leveling_curve_quad", 0, 1000, "Level-Kurve (quadratisch)"),
+        ("leveling_curve_linear", 0, 10000, "Level-Kurve (linear)"),
+        ("leveling_curve_base", 1, 100000, "Level-Kurve (Basis-XP)"),
     ]
     for field, lo, hi, label in numeric_fields:
         value = str(form.get(field, "")).strip()

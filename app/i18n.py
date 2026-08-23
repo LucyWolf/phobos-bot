@@ -303,6 +303,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "leveling_role_select_label":  "Rolle",
         "leveling_roles_empty":        "Noch keine Level-Rollen angelegt.",
         "leveling_role_confirm_delete": "Level-Rolle für Level {level} wirklich entfernen?",
+        "leveling_curve_title":        "XP-Kurve",
+        "leveling_curve_hint":         "Wie viel XP für jedes Level nötig ist: Basis-XP + linearer Faktor × Level + quadratischer Faktor × Level². Gilt gemeinsam für Text- und Voice-XP.",
+        "leveling_curve_base_label":   "Basis-XP",
+        "leveling_curve_linear_label": "Linearer Faktor",
+        "leveling_curve_quad_label":   "Quadratischer Faktor",
         # Lang toggle label (shows the OTHER language to switch to)
         "lang_switch":        "🇬🇧 EN",
     },
@@ -610,6 +615,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "leveling_role_select_label":  "Role",
         "leveling_roles_empty":        "No level roles created yet.",
         "leveling_role_confirm_delete": "Really remove the level role for level {level}?",
+        "leveling_curve_title":        "XP curve",
+        "leveling_curve_hint":         "How much XP each level needs: base XP + linear factor × level + quadratic factor × level². Applies to text and voice XP together.",
+        "leveling_curve_base_label":   "Base XP",
+        "leveling_curve_linear_label": "Linear factor",
+        "leveling_curve_quad_label":   "Quadratic factor",
         # Lang toggle label
         "lang_switch":        "🇩🇪 DE",
     },

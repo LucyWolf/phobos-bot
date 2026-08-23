@@ -5,14 +5,14 @@ from discord.ext import commands, tasks
 from database import db_one, db_rows, db_exec, get_guild_config
 
 
-def xp_for_level(level: int) -> int:
-    return 5 * (level ** 2) + 50 * level + 100
+def xp_for_level(level: int, quad: int = 5, linear: int = 50, base: int = 100) -> int:
+    return quad * (level ** 2) + linear * level + base
 
 
-def level_from_xp(xp: int) -> int:
+def level_from_xp(xp: int, quad: int = 5, linear: int = 50, base: int = 100) -> int:
     level = 0
-    while xp >= xp_for_level(level):
-        xp -= xp_for_level(level)
+    while xp >= xp_for_level(level, quad, linear, base):
+        xp -= xp_for_level(level, quad, linear, base)
         level += 1
     return level
 
@@ -26,7 +26,22 @@ class Leveling(commands.Cog):
     def cog_unload(self):
         self.voice_xp_loop.cancel()
 
+    async def _get_curve(self, guild_id: int) -> tuple[int, int, int]:
+        # Same shared xp->level curve feeds both text and voice XP, since they both just add
+        # to the one levels.xp total - tuning it here affects leveling speed for both at once.
+        defaults = (5, 50, 100)
+        keys = ("leveling_curve_quad", "leveling_curve_linear", "leveling_curve_base")
+        values = []
+        for key, default in zip(keys, defaults):
+            raw = await get_guild_config(guild_id, key)
+            try:
+                values.append(int(raw) if raw else default)
+            except ValueError:
+                values.append(default)
+        return tuple(values)
+
     async def _add_xp(self, member: discord.Member, xp_gain: int, count_message: bool, count_voice_minute: bool):
+        quad, linear, base = await self._get_curve(member.guild.id)
         # Atomic upsert-increment instead of read-modify-write: on_message and voice_xp_loop
         # can both grant XP to the same member around the same time (e.g. someone chatting
         # while sitting in voice right as the per-minute tick fires), and a plain
@@ -37,7 +52,7 @@ class Leveling(commands.Cog):
             "xp = levels.xp + excluded.xp, "
             "messages = levels.messages + excluded.messages, "
             "voice_minutes = levels.voice_minutes + excluded.voice_minutes",
-            (member.id, member.guild.id, xp_gain, level_from_xp(xp_gain),
+            (member.id, member.guild.id, xp_gain, level_from_xp(xp_gain, quad, linear, base),
              1 if count_message else 0, 1 if count_voice_minute else 0),
         )
         row = await db_one(
@@ -46,7 +61,7 @@ class Leveling(commands.Cog):
         )
         if not row:
             return
-        new_level = level_from_xp(row["xp"])
+        new_level = level_from_xp(row["xp"], quad, linear, base)
         if new_level != row["level"]:
             await db_exec(
                 "UPDATE levels SET level=? WHERE user_id=? AND guild_id=?",
@@ -165,8 +180,9 @@ class Leveling(commands.Cog):
         if not row:
             await interaction.response.send_message(f"{member.mention} hat noch keine XP.", ephemeral=True)
             return
-        needed = xp_for_level(row["level"])
-        xp_in_level = row["xp"] - sum(xp_for_level(i) for i in range(row["level"]))
+        quad, linear, base = await self._get_curve(interaction.guild_id)
+        needed = xp_for_level(row["level"], quad, linear, base)
+        xp_in_level = row["xp"] - sum(xp_for_level(i, quad, linear, base) for i in range(row["level"]))
         embed = discord.Embed(title=f"Rang von {member.display_name}", color=0x7c3aed)
         embed.add_field(name="Level", value=str(row["level"]))
         embed.add_field(name="XP", value=f"{xp_in_level} / {needed}")
@@ -196,7 +212,8 @@ class Leveling(commands.Cog):
     @app_commands.command(name="setxp", description="XP eines Mitglieds setzen (Admin)")
     @app_commands.default_permissions(administrator=True)
     async def setxp(self, interaction: discord.Interaction, member: discord.Member, xp: int):
-        level = level_from_xp(xp)
+        quad, linear, base = await self._get_curve(interaction.guild_id)
+        level = level_from_xp(xp, quad, linear, base)
         await db_exec(
             "INSERT INTO levels (user_id,guild_id,xp,level,messages) VALUES (?,?,?,?,0) ON CONFLICT(user_id,guild_id) DO UPDATE SET xp=excluded.xp, level=excluded.level",
             (member.id, interaction.guild_id, xp, level),
