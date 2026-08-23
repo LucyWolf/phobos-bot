@@ -18,7 +18,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **Moderation** | `/kick` `/ban` `/unban` `/timeout` `/warn` `/warnings` `/clearwarns` `/clear` |
 | **Leveling / XP** | `/rank` `/leaderboard` `/setxp` — configurable XP per message, level-up channel |
 | **Welcome** | Auto join/leave messages, auto-role assignment, **generated welcome card image** with custom colors |
-| **Auto-Moderation** | Spam protection, link filter, word filter |
+| **Auto-Moderation** | Configurable spam threshold/window, link filter, word filter with editable quick-add categories, configurable action (warn/timeout/kick/ban) |
 | **Reaction Roles** | `/reactionrole-add` `/reactionrole-remove` `/reactionrole-list` |
 | **Event Logging** | Join/leave, bans, roles, messages, voice — **shows who deleted a message** via audit log, bulk-delete detection, exclude channels |
 | **Custom Commands** | `/addcommand` `/delcommand` `/commands` |
@@ -37,7 +37,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | Section | Function |
 |---|---|
 | **Dashboard** | Bot status, connected servers, moderation statistics — personalized per user |
-| **Per Server** | Config, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Twitch, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, Birthdays, Auto-Delete, Bot Design |
+| **Per Server** | Config, Spam Protection, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Twitch, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, Birthdays, Auto-Delete, Bot Design |
 | **Server List** | All connected servers, invite bot |
 | **🔑 Tokens** *(Admin)* | Manage multiple bot tokens — each token runs its own bot account, hot-reload without restart |
 | **👥 Users** *(Admin)* | Create/delete dashboard users, assign roles and server access, **download & restore backups** |
@@ -109,6 +109,22 @@ Under **Server → Temp Voice** you can set up **Join-to-Create** channels:
 3. Optionally set a **user limit** and **category**
 
 When a member joins the trigger channel, the bot creates a private voice channel and moves them into it. When the last member leaves, the channel is deleted automatically.
+
+---
+
+## Spam Protection / Auto-Moderation
+
+Under **Server → 🛡️ Spam-Schutz** (its own tab, separate from general config):
+
+- **Spam threshold & time window** — e.g. flag a member after 5 messages within 5 seconds, both configurable
+- **Link filter** — blocks messages containing URLs or Discord invites
+- **Word filter** — blocks messages containing any banned word, matched on whole-word boundaries (so a banned word like "ass" won't trigger on "class")
+- **Action on violation** — warn (logged to `/warnings`), timeout (configurable duration, up to Discord's 28-day max), kick, or ban
+- **Custom warning DM** — sent to the member on every violation, with `{server}`/`{reason}` placeholders
+
+Members with the **Manage Messages** permission are always exempt.
+
+**Word-list categories:** instead of typing banned words from scratch, quick-add buttons above the words field insert a whole category at once (without removing what's already there). Categories are fully editable per server — create, rename, edit their words, or delete them under "🗂️ Wortlisten-Kategorien" further down the same tab. A few starter categories (spam phrases, fake-Nitro bait, crypto scams, Nazi references) are pre-filled on first use — feel free to edit or delete them.
 
 ---
 
@@ -326,7 +342,7 @@ phobos-bot/
 │   │   ├── moderation.py
 │   │   ├── leveling.py
 │   │   ├── welcome.py      # Welcome card image generation
-│   │   ├── automod.py
+│   │   ├── automod.py      # Spam/link/word filtering
 │   │   ├── reaction_roles.py
 │   │   ├── logging_cog.py  # Event logging with audit log
 │   │   ├── custom_commands.py
@@ -386,7 +402,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **Moderation** | `/kick` `/ban` `/unban` `/timeout` `/warn` `/warnings` `/clearwarns` `/clear` |
 | **Leveling / XP** | `/rank` `/leaderboard` `/setxp` — konfigurierbares XP pro Nachricht, Level-Up-Kanal |
 | **Willkommen** | Automatische Beitrittsnachrichten, Verlassensnachrichten, Auto-Rolle, **generierte Willkommenskarte** mit anpassbaren Farben |
-| **Auto-Moderation** | Spam-Schutz, Link-Filter, Wort-Filter |
+| **Auto-Moderation** | Einstellbare Spam-Schwelle/-Zeitfenster, Link-Filter, Wort-Filter mit bearbeitbaren Schnellauswahl-Kategorien, einstellbare Aktion (warn/timeout/kick/ban) |
 | **Reaction Roles** | `/reactionrole-add` `/reactionrole-remove` `/reactionrole-list` |
 | **Event-Logging** | Beitritt/Verlassen, Bans, Rollen, Nachrichten, Voice — **zeigt wer eine Nachricht gelöscht hat** via Audit-Log, Massenlöschungs-Erkennung, Kanäle ausschließen |
 | **Eigene Commands** | `/addcommand` `/delcommand` `/commands` |
@@ -405,7 +421,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | Bereich | Funktion |
 |---|---|
 | **Dashboard** | Bot-Status, verbundene Server, Moderations-Statistiken — personalisiert pro Nutzer |
-| **Pro Server** | Konfiguration, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Twitch, Free Stuff, Log, Temp Voice, Geplant, Events, Geburtstage, Auto-Delete, Bot-Design |
+| **Pro Server** | Konfiguration, Spam-Schutz, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Twitch, Free Stuff, Log, Temp Voice, Geplant, Events, Geburtstage, Auto-Delete, Bot-Design |
 | **Server-Übersicht** | Alle verbundenen Server, Bot einladen |
 | **🔑 Tokens** *(Admin)* | Mehrere Bot-Tokens verwalten – jeder Token startet einen eigenen Bot-Account, Hot-Reload ohne Neustart |
 | **👥 Benutzer** *(Admin)* | Dashboard-Nutzer anlegen/löschen, Rolle und Server-Zugriff vergeben, **Backups erstellen & einspielen** |
@@ -477,6 +493,22 @@ Unter **Server → Temp Voice** können **Join-to-Create**-Kanäle eingerichtet 
 3. Optional **Nutzer-Limit** und **Kategorie** setzen
 
 Sobald ein Mitglied den Trigger-Kanal betritt, erstellt der Bot einen eigenen Voice-Kanal und verschiebt die Person hinein. Wenn das letzte Mitglied den Kanal verlässt, wird er automatisch gelöscht.
+
+---
+
+## Spam-Schutz / Auto-Moderation
+
+Unter **Server → 🛡️ Spam-Schutz** (eigener Reiter, getrennt von der allgemeinen Konfiguration):
+
+- **Spam-Schwelle & Zeitfenster** — z.B. ab 5 Nachrichten in 5 Sekunden, beides einstellbar
+- **Link-Filter** — blockiert Nachrichten mit URLs oder Discord-Einladungen
+- **Wort-Filter** — blockiert Nachrichten mit verbotenen Wörtern, matcht auf ganze Wörter (ein verbotenes Wort wie "ass" löst also nicht bei "Class" aus)
+- **Aktion bei Verstoß** — Warnung (landet in `/warnings`), Timeout (Dauer einstellbar, bis zu Discords 28-Tage-Maximum), Kick oder Bann
+- **Eigene Warn-DM** — wird bei jedem Verstoß an das Mitglied gesendet, mit `{server}`/`{reason}`-Platzhaltern
+
+Mitglieder mit der Berechtigung **Nachrichten verwalten** sind immer ausgenommen.
+
+**Wortlisten-Kategorien:** statt verbotene Wörter von Hand einzutippen, fügen Schnellauswahl-Buttons über dem Wörter-Feld eine ganze Kategorie auf einmal hinzu (ohne Vorhandenes zu ersetzen). Kategorien sind pro Server frei bearbeitbar — anlegen, umbenennen, Wörter ändern oder löschen unter "🗂️ Wortlisten-Kategorien" weiter unten im selben Reiter. Ein paar Start-Kategorien (Spam-Floskeln, Nitro-Köder, Krypto-Scam, NS-Bezüge) sind beim ersten Aufruf schon vorausgefüllt — können aber frei angepasst oder gelöscht werden.
 
 ---
 
@@ -694,7 +726,7 @@ phobos-bot/
 │   │   ├── moderation.py
 │   │   ├── leveling.py
 │   │   ├── welcome.py        # Willkommenskarte (Pillow-Bildgenerierung)
-│   │   ├── automod.py
+│   │   ├── automod.py        # Spam-/Link-/Wort-Filter
 │   │   ├── reaction_roles.py
 │   │   ├── logging_cog.py    # Event-Logging mit Audit-Log
 │   │   ├── custom_commands.py
