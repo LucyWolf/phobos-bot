@@ -33,7 +33,10 @@ class AutoMod(commands.Cog):
         threshold = await get_guild_config(message.guild.id, "automod_spam_threshold")
         if not threshold:
             return False
-        threshold = int(threshold)
+        try:
+            threshold = int(threshold)
+        except ValueError:
+            return False
         key = (message.guild.id, message.author.id)
         now = time.time()
         history = self._spam.get(key, [])
@@ -70,7 +73,7 @@ class AutoMod(commands.Cog):
         banned = [w.strip().lower() for w in words_raw.split(",") if w.strip()]
         content = message.content.lower()
         for word in banned:
-            if word in content:
+            if re.search(rf"\b{re.escape(word)}\b", content):
                 try:
                     await message.delete()
                 except Exception:

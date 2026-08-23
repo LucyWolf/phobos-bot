@@ -3262,6 +3262,16 @@ async def server_config_save(request: Request, guild_id: int):
                 f"/servers/{guild_id}?tab=config&error=Ungültiger+Kanal+({key})", status_code=302
             )
 
+    spam_threshold = str(form.get("automod_spam_threshold", "")).strip()
+    if spam_threshold:
+        try:
+            if not (2 <= int(spam_threshold) <= 30):
+                raise ValueError
+        except ValueError:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=config&error=Ungültiger+Spam-Schwellenwert", status_code=302
+            )
+
     text_keys = [
         "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
         "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",
