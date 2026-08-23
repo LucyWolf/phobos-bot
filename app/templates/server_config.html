@@ -256,7 +256,14 @@ document.addEventListener('click', function(e) {
   </select>
   <div id="lvl-channels-wrap" style="{% if cfg.get('leveling_channel_mode') != 'specific' %}display:none;{% endif %}margin-top:0.75rem;">
     <label>{{ tr.leveling_channels_label }}</label>
-    <select name="leveling_channels" multiple style="height:7rem;">
+    <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
+      <select id="lvl-channel-picker" style="flex:1;margin:0;">
+        {% for ch in channels %}<option value="{{ ch.id }}">#{{ ch.name }}</option>{% endfor %}
+      </select>
+      <button type="button" class="btn btn-secondary" onclick="addLvlChannel()" style="padding:0.4rem 0.6rem;" title="{{ tr.btn_add }}">➕</button>
+    </div>
+    <div id="lvl-channels-list" style="margin-bottom:0.5rem;"></div>
+    <select name="leveling_channels" id="lvl-channels-select" multiple style="display:none;">
       {% for ch in channels %}<option value="{{ ch.id }}" {% if ch.id in leveling_channels %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
     </select>
   </div>
@@ -352,6 +359,40 @@ if (lvlModeSelect) {
     document.getElementById('lvl-channels-wrap').style.display = this.value === 'specific' ? '' : 'none';
   });
 }
+
+function renderLvlChannelsList() {
+  const select = document.getElementById('lvl-channels-select');
+  const list = document.getElementById('lvl-channels-list');
+  if (!select || !list) return;
+  list.innerHTML = '';
+  for (const opt of select.options) {
+    if (!opt.selected) continue;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0;border-bottom:1px solid var(--border);';
+    const label = document.createElement('span');
+    label.textContent = opt.textContent;
+    label.style.cssText = 'flex:1;font-size:0.85rem;';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-danger';
+    btn.style.cssText = 'font-size:0.7rem;padding:0.15rem 0.4rem;';
+    btn.textContent = '✕';
+    btn.onclick = function() { opt.selected = false; renderLvlChannelsList(); };
+    row.appendChild(label);
+    row.appendChild(btn);
+    list.appendChild(row);
+  }
+}
+function addLvlChannel() {
+  const picker = document.getElementById('lvl-channel-picker');
+  const select = document.getElementById('lvl-channels-select');
+  if (!picker || !select) return;
+  for (const opt of select.options) {
+    if (opt.value === picker.value) opt.selected = true;
+  }
+  renderLvlChannelsList();
+}
+renderLvlChannelsList();
 </script>
 
 <div class="card" style="padding:0;overflow:hidden;">
