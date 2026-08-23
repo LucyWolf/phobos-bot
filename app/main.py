@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import datetime
 import email.mime.text
 import io
@@ -1593,7 +1594,12 @@ async def bot_info_page(request: Request):
 # ── Update Check ──────────────────────────────────────────────────────────────
 
 _UPDATE_CACHE: dict = {"latest": None, "at": None}
-_GITHUB_VERSION_URL = "https://raw.githubusercontent.com/LucyWolf/phobos-bot/main/app/VERSION"
+# The GitHub Contents API is used instead of raw.githubusercontent.com because the latter
+# sits behind a CDN that caches responses for up to 5 minutes REGARDLESS of query strings
+# (a cache-busting ?t=... param does not defeat it, verified directly) - with this project's
+# frequent version bumps, the update check could stay stuck on a stale VERSION for minutes
+# after every single push. The Contents API caches for only 60s and reflects new commits fast.
+_GITHUB_VERSION_URL = "https://api.github.com/repos/LucyWolf/phobos-bot/contents/app/VERSION?ref=main"
 
 
 def _ver_tuple(v: str):
@@ -1610,8 +1616,13 @@ async def check_latest_version(force: bool = False) -> str | None:
         return _UPDATE_CACHE["latest"]
     try:
         def _fetch():
-            with urllib.request.urlopen(_GITHUB_VERSION_URL, timeout=5) as r:
-                return r.read().decode().strip()
+            req = urllib.request.Request(
+                _GITHUB_VERSION_URL,
+                headers={"Accept": "application/vnd.github.v3+json"},
+            )
+            with urllib.request.urlopen(req, timeout=5) as r:
+                data = _djson.loads(r.read().decode())
+            return base64.b64decode(data["content"]).decode().strip()
         latest = await asyncio.get_event_loop().run_in_executor(None, _fetch)
         _UPDATE_CACHE["latest"] = latest
         _UPDATE_CACHE["at"] = now
