@@ -1,4 +1,3 @@
-import math
 import random
 import discord
 from discord import app_commands
@@ -28,28 +27,33 @@ class Leveling(commands.Cog):
         self.voice_xp_loop.cancel()
 
     async def _add_xp(self, member: discord.Member, xp_gain: int, count_message: bool, count_voice_minute: bool):
+        # Atomic upsert-increment instead of read-modify-write: on_message and voice_xp_loop
+        # can both grant XP to the same member around the same time (e.g. someone chatting
+        # while sitting in voice right as the per-minute tick fires), and a plain
+        # SELECT-then-UPDATE would let one of the two grants silently overwrite the other.
+        await db_exec(
+            "INSERT INTO levels (user_id, guild_id, xp, level, messages, voice_minutes) VALUES (?,?,?,?,?,?) "
+            "ON CONFLICT(user_id, guild_id) DO UPDATE SET "
+            "xp = levels.xp + excluded.xp, "
+            "messages = levels.messages + excluded.messages, "
+            "voice_minutes = levels.voice_minutes + excluded.voice_minutes",
+            (member.id, member.guild.id, xp_gain, level_from_xp(xp_gain),
+             1 if count_message else 0, 1 if count_voice_minute else 0),
+        )
         row = await db_one(
-            "SELECT xp, level, messages, voice_minutes FROM levels WHERE user_id=? AND guild_id=?",
+            "SELECT xp, level FROM levels WHERE user_id=? AND guild_id=?",
             (member.id, member.guild.id),
         )
-        if row:
-            new_xp = row["xp"] + xp_gain
-            new_msgs = row["messages"] + (1 if count_message else 0)
-            new_voice = row["voice_minutes"] + (1 if count_voice_minute else 0)
-            new_level = level_from_xp(new_xp)
+        if not row:
+            return
+        new_level = level_from_xp(row["xp"])
+        if new_level != row["level"]:
             await db_exec(
-                "UPDATE levels SET xp=?, level=?, messages=?, voice_minutes=? WHERE user_id=? AND guild_id=?",
-                (new_xp, new_level, new_msgs, new_voice, member.id, member.guild.id),
+                "UPDATE levels SET level=? WHERE user_id=? AND guild_id=?",
+                (new_level, member.id, member.guild.id),
             )
             if new_level > row["level"]:
                 await self._announce_levelup(member, new_level)
-        else:
-            new_level = level_from_xp(xp_gain)
-            await db_exec(
-                "INSERT INTO levels (user_id,guild_id,xp,level,messages,voice_minutes) VALUES (?,?,?,?,?,?)",
-                (member.id, member.guild.id, xp_gain, new_level,
-                 1 if count_message else 0, 1 if count_voice_minute else 0),
-            )
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
