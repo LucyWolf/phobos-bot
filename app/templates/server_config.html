@@ -146,6 +146,7 @@
       <button type="button" class="btn btn-secondary" style="font-size:0.72rem;padding:0.25rem 0.6rem;" onclick="addWordPreset('spam')">➕ Spam-Floskeln</button>
       <button type="button" class="btn btn-secondary" style="font-size:0.72rem;padding:0.25rem 0.6rem;" onclick="addWordPreset('nitro')">➕ Nitro-Köder</button>
       <button type="button" class="btn btn-secondary" style="font-size:0.72rem;padding:0.25rem 0.6rem;" onclick="addWordPreset('krypto')">➕ Krypto-Scam</button>
+      <button type="button" class="btn btn-secondary" style="font-size:0.72rem;padding:0.25rem 0.6rem;" onclick="addWordPreset('ns')">➕ NS-Bezüge</button>
     </div>
     <input type="text" name="automod_banned_words" id="automod-banned-words" value="{{ cfg.get('automod_banned_words', '') }}" placeholder="wort1, wort2, wort3" style="margin-bottom:1rem;">
     <label>Warn-Nachricht <span style="color:var(--muted);font-size:0.75rem">(Platzhalter: {server}, {reason})</span></label>
@@ -160,6 +161,7 @@ const WORD_PRESETS = {
   spam: "kostenlos gewinnen, jetzt klicken, garantiert gewinnen, schnell geld verdienen",
   nitro: "kostenloser nitro, gratis nitro, nitro generator, free nitro",
   krypto: "bitcoin verdoppeln, krypto investment, garantierter gewinn, airdrop claim",
+  ns: "hitler, nazi, hakenkreuz",
 };
 function addWordPreset(key) {
   const input = document.getElementById('automod-banned-words');
