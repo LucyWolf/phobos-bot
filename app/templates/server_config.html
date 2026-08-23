@@ -237,6 +237,18 @@ document.addEventListener('click', function(e) {
 <!-- TAB: Leveling                                                       -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-leveling">
+
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="toggleLvlInfo()" title="{{ tr.leveling_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="lvl-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:300px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.leveling_info_title }}</div>
+    <div style="color:var(--muted);line-height:1.6;">{{ tr.leveling_info_body }}</div>
+  </div>
+</div>
+
 <form method="post" action="/servers/{{ guild.id }}">
 <input type="hidden" name="tab" value="leveling">
 <div class="card">
@@ -345,7 +357,47 @@ document.addEventListener('click', function(e) {
   </form>
 </div>
 
+<div class="card" style="margin-top:1rem;">
+  <div class="feat-header">{{ tr.leveling_rewards_title }}</div>
+  {% if level_rewards %}
+  {% for lrw in level_rewards %}
+  <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.6rem;">
+    <span class="badge" style="background:var(--accent-light);color:#a78bfa;">Lvl {{ lrw.level }}</span>
+    <span style="flex:1;font-size:0.85rem;">{{ lrw.reward }}</span>
+    <form method="post" action="/servers/{{ guild.id }}/level-rewards/delete/{{ lrw.id }}" style="margin:0;"
+          onsubmit="return confirm({{ tr.leveling_reward_confirm_delete.replace('{level}', lrw.level|string) | js }})">
+      <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">🗑</button>
+    </form>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p style="font-size:0.83rem;color:var(--muted);">{{ tr.leveling_rewards_empty }}</p>
+  {% endif %}
+
+  <form method="post" action="/servers/{{ guild.id }}/level-rewards/add" style="display:flex;gap:0.5rem;align-items:end;margin-top:0.5rem;padding-top:0.75rem;border-top:1px solid var(--border);">
+    <div style="min-width:80px;">
+      <label style="font-size:0.72rem;">{{ tr.leveling_role_level_label }}</label>
+      <input type="number" name="level" min="1" max="1000" required style="margin:0;">
+    </div>
+    <div style="flex:1;">
+      <label style="font-size:0.72rem;">{{ tr.leveling_reward_select_label }}</label>
+      <input type="text" name="reward" placeholder="{{ tr.leveling_reward_placeholder }}" required style="margin:0;">
+    </div>
+    <button type="submit" class="btn btn-primary" style="padding:0.4rem 0.6rem;" title="{{ tr.btn_add }}">➕</button>
+  </form>
+</div>
+
 <script>
+function toggleLvlInfo() {
+  const box = document.getElementById('lvl-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('lvl-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleLvlInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
 function renderLvlChannelsList() {
   const select = document.getElementById('lvl-channels-select');
   const list = document.getElementById('lvl-channels-list');

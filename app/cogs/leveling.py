@@ -197,6 +197,16 @@ class Leveling(commands.Cog):
             description=f"{member.mention} hat **{label} {level}** erreicht!",
             color=0x7c3aed,
         )
+        # Rewards are exact-level matches, not "everything up to this level" like level roles -
+        # a reward is a one-off, manually-fulfilled prize (Nitro, a game key, ...), not a
+        # persistent state the bot can check for "already has it" the way it can with roles, so
+        # re-announcing every earlier still-eligible reward on a later level-up would repeat it.
+        reward = await db_one(
+            "SELECT reward FROM level_rewards WHERE guild_id=? AND level=?",
+            (member.guild.id, level),
+        )
+        if reward:
+            embed.add_field(name="🎁 Belohnung", value=reward["reward"], inline=False)
         try:
             await channel.send(embed=embed)
         except Exception as e:

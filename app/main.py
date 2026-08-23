@@ -3162,6 +3162,11 @@ async def server_config(
         ro = guild.get_role(int(lr["role_id"]))
         lr["role_name"] = ro.name if ro else "?"
 
+    # Level rewards
+    level_rewards = await db_rows(
+        "SELECT * FROM level_rewards WHERE guild_id=? ORDER BY level", (str(guild_id),)
+    )
+
     # Reaction roles
     rr_list = await db_rows("SELECT * FROM reaction_roles WHERE guild_id=? ORDER BY id", (guild_id,))
     for rr in rr_list:
@@ -3268,6 +3273,7 @@ async def server_config(
         "automod_presets": automod_presets,
         "leveling_channels": leveling_channels,
         "level_roles": level_roles,
+        "level_rewards": level_rewards,
         "auto_delete_entries": await db_rows(
             "SELECT * FROM auto_delete_channels WHERE guild_id=?", (str(guild_id),)
         ),
@@ -3464,6 +3470,48 @@ async def level_role_delete(request: Request, guild_id: int, role_row_id: int):
         "DELETE FROM level_roles WHERE id=? AND guild_id=?", (role_row_id, str(guild_id))
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=leveling&success=Level-Rolle+entfernt", status_code=303)
+
+
+# ── Level rewards ────────────────────────────────────────────────────────────
+# Free-text prizes (Discord Nitro, a game key, a subscription, ...) tied to a level - purely
+# informational, the bot only announces them, fulfillment is always manual/off-platform.
+
+@web.post("/servers/{guild_id}/level-rewards/add")
+async def level_reward_add(request: Request, guild_id: int, level: str = Form(...), reward: str = Form(...)):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
+    reward = reward.strip()
+    if not reward:
+        return RedirectResponse(f"/servers/{guild_id}?tab=leveling&error=Belohnung+erforderlich", status_code=302)
+    try:
+        level_int = int(level)
+        if not (1 <= level_int <= 1000):
+            raise ValueError
+    except ValueError:
+        return RedirectResponse(f"/servers/{guild_id}?tab=leveling&error=Ungültiges+Level", status_code=302)
+    try:
+        await db_exec(
+            "INSERT INTO level_rewards (guild_id, level, reward) VALUES (?,?,?)",
+            (str(guild_id), level_int, reward),
+        )
+    except Exception:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=leveling&error=Für+dieses+Level+ist+schon+eine+Belohnung+vergeben",
+            status_code=302,
+        )
+    return RedirectResponse(f"/servers/{guild_id}?tab=leveling&success=Belohnung+hinzugefügt", status_code=303)
+
+
+@web.post("/servers/{guild_id}/level-rewards/delete/{reward_row_id}")
+async def level_reward_delete(request: Request, guild_id: int, reward_row_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
+    await db_exec(
+        "DELETE FROM level_rewards WHERE id=? AND guild_id=?", (reward_row_id, str(guild_id))
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=leveling&success=Belohnung+entfernt", status_code=303)
 
 
 # ── Ticket Panels ────────────────────────────────────────────────────────────
