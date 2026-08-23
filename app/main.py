@@ -3152,6 +3152,7 @@ async def server_config(
     voice_channels = [{"id": str(c.id), "name": c.name} for c in guild.voice_channels]
     roles = [{"id": str(ro.id), "name": ro.name} for ro in guild.roles if not ro.is_default()]
     categories = [{"id": str(c.id), "name": c.name} for c in guild.categories]
+    leveling_channels = [c.strip() for c in cfg.get("leveling_channels", "").split(",") if c.strip()]
 
     # Reaction roles
     rr_list = await db_rows("SELECT * FROM reaction_roles WHERE guild_id=? ORDER BY id", (guild_id,))
@@ -3257,6 +3258,7 @@ async def server_config(
         "subs": subs, "twitch_configured": twitch_configured,
         "all_users": all_users, "server_perms": server_perms,
         "automod_presets": automod_presets,
+        "leveling_channels": leveling_channels,
         "auto_delete_entries": await db_rows(
             "SELECT * FROM auto_delete_channels WHERE guild_id=?", (str(guild_id),)
         ),
@@ -3285,7 +3287,7 @@ _TAB_TEXT_KEYS = {
         "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
         "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",
     ],
-    "leveling": ["level_channel"],
+    "leveling": ["level_channel", "leveling_channel_mode"],
     "automod": [
         "automod_spam_threshold", "automod_spam_window", "automod_timeout_minutes",
         "automod_banned_words", "automod_action", "automod_warn_message",
@@ -3347,6 +3349,10 @@ async def server_config_save(request: Request, guild_id: int):
         await set_guild_config(guild_id, key, str(form.get(key, "")))
     for key in _TAB_CHECKBOX_KEYS[tab]:
         await set_guild_config(guild_id, key, "1" if form.get(key) else "0")
+    if tab == "leveling":
+        # Multi-select, needs form.getlist() - can't go through the generic single-value loop above.
+        leveling_channels = ",".join(c for c in form.getlist("leveling_channels") if c in valid_channel_ids)
+        await set_guild_config(guild_id, "leveling_channels", leveling_channels)
     return RedirectResponse(f"/servers/{guild_id}?tab={tab}&saved=true", status_code=303)
 
 

@@ -249,10 +249,30 @@ document.addEventListener('click', function(e) {
     <option value="">— Aktueller Kanal —</option>
     {% for ch in channels %}<option value="{{ ch.id }}" {% if cfg.get('level_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
   </select>
+  <label>{{ tr.leveling_channel_mode_label }}</label>
+  <select name="leveling_channel_mode" id="lvl-mode-select">
+    <option value="all" {% if cfg.get('leveling_channel_mode', 'all') == 'all' %}selected{% endif %}>{{ tr.leveling_mode_all }}</option>
+    <option value="specific" {% if cfg.get('leveling_channel_mode') == 'specific' %}selected{% endif %}>{{ tr.leveling_mode_specific }}</option>
+  </select>
+  <div id="lvl-channels-wrap" style="{% if cfg.get('leveling_channel_mode') != 'specific' %}display:none;{% endif %}margin-top:0.75rem;">
+    <label>{{ tr.leveling_channels_label }}</label>
+    <select name="leveling_channels" multiple style="height:7rem;">
+      {% for ch in channels %}<option value="{{ ch.id }}" {% if ch.id in leveling_channels %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
+    </select>
+  </div>
   <p class="hint">15–25 XP pro Nachricht · 60s Cooldown · Formel: 5n² + 50n + 100 · Commands: /rank /leaderboard /setxp</p>
   <button type="submit" class="btn btn-primary">💾 Speichern</button>
 </div>
 </form>
+
+<script>
+const lvlModeSelect = document.getElementById('lvl-mode-select');
+if (lvlModeSelect) {
+  lvlModeSelect.addEventListener('change', function() {
+    document.getElementById('lvl-channels-wrap').style.display = this.value === 'specific' ? '' : 'none';
+  });
+}
+</script>
 
 <div class="card" style="padding:0;overflow:hidden;">
   {% if leaderboard %}

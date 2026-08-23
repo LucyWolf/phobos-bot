@@ -288,6 +288,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "automod_categories_empty":   "Noch keine Kategorien angelegt.",
         "automod_category_name_placeholder": "z.B. Beleidigungen",
         "automod_confirm_delete_category": "Kategorie „{name}“ wirklich löschen?",
+        # Leveling channel scope
+        "leveling_channel_mode_label": "XP-Kanäle",
+        "leveling_mode_all":           "Alle Kanäle",
+        "leveling_mode_specific":      "Nur bestimmte Kanäle",
+        "leveling_channels_label":     "Kanäle auswählen",
         # Lang toggle label (shows the OTHER language to switch to)
         "lang_switch":        "🇬🇧 EN",
     },
@@ -580,6 +585,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "automod_categories_empty":   "No categories created yet.",
         "automod_category_name_placeholder": "e.g. Insults",
         "automod_confirm_delete_category": "Really delete category \"{name}\"?",
+        # Leveling channel scope
+        "leveling_channel_mode_label": "XP channels",
+        "leveling_mode_all":           "All channels",
+        "leveling_mode_specific":      "Only specific channels",
+        "leveling_channels_label":     "Select channels",
         # Lang toggle label
         "lang_switch":        "🇩🇪 DE",
     },
