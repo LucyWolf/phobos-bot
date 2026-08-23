@@ -15,15 +15,6 @@
   .rank-medal { font-size:1rem; }
   .empty-state { text-align:center; padding:2.5rem; color:var(--muted); font-size:0.9rem; }
   code { background:var(--bg); border:1px solid var(--border); border-radius:0.3rem; padding:0.1rem 0.4rem; font-size:0.8rem; font-family:monospace; }
-  .sub-item { padding:0.7rem 0; border-bottom:1px solid var(--border); }
-  .sub-item:last-child { border-bottom:none; padding-bottom:0; }
-  .sub-row { display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; }
-  .sub-name { font-weight:700; font-size:0.9rem; flex:1; min-width:120px; }
-  .sub-msg { font-size:0.75rem; color:var(--muted); flex:2; min-width:200px; }
-  .sub-edit-row { display:none; margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border); }
-  .sub-edit-row.open { display:block; }
-  .add-form { margin-top:1.1rem; padding-top:1.1rem; border-top:1px solid var(--border); }
-  .form-row { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:0.75rem; }
 </style>
 
 {% from '_server_subnav.html' import server_subnav %}
@@ -164,57 +155,60 @@
 </form>
 
 <div class="card" style="margin-top:1rem;">
-  <div class="feat-header">🗂️ Wortlisten-Kategorien verwalten</div>
-  <p class="hint" style="margin-bottom:1rem;">Kategorien für die "➕"-Buttons oben — hier anlegen, bearbeiten oder löschen.</p>
+  <div class="feat-header" style="display:flex;align-items:center;gap:0.4rem;">
+    🗂️ Wortlisten-Kategorien
+    <span style="position:relative;">
+      <button type="button" onclick="toggleWpInfo()" title="Was ist das?"
+        style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+      <div id="wp-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.3rem;
+           background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.75rem 1rem;
+           font-size:0.78rem;min-width:280px;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-weight:400;">
+        <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">Wie funktionieren Kategorien?</div>
+        <div style="color:var(--muted);line-height:1.6;">
+          Jede Kategorie ist ein eigener "➕"-Button oben im Formular. Ein Klick darauf fügt ihre
+          Wörter zum "Verbotene Wörter"-Feld hinzu, ohne bereits vorhandene Wörter zu ersetzen.
+          Kategorien hier direkt bearbeiten oder löschen wirkt sich nicht rückwirkend auf ein
+          schon gespeichertes "Verbotene Wörter"-Feld aus — nur der nächste Klick auf "➕"
+          verwendet den neuen Stand.
+        </div>
+      </div>
+    </span>
+  </div>
+  <p class="hint" style="margin-bottom:1rem;">Direkt bearbeiten und mit 💾 speichern.</p>
 
   {% for p in automod_presets %}
-  <div class="sub-item">
-    <div class="sub-row">
-      <div class="sub-name">{{ p.label }}</div>
-      <div class="sub-msg">{{ p.words }}</div>
-      <button type="button" onclick="togglePresetEdit({{ p.id }})"
-              class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;">✏️ Bearbeiten</button>
-      <form method="post" action="/servers/{{ guild.id }}/automod-presets/delete/{{ p.id }}" style="margin:0"
-            onsubmit="return confirm({{ ('Kategorie „' ~ p.label ~ '“ wirklich löschen?') | js }})">
-        <button class="btn btn-danger" type="submit">🗑</button>
-      </form>
-    </div>
-    <div class="sub-edit-row" id="preset-edit-{{ p.id }}">
-      <form method="post" action="/servers/{{ guild.id }}/automod-presets/edit/{{ p.id }}">
-        <div class="form-row">
-          <div>
-            <label>Name</label>
-            <input type="text" name="label" value="{{ p.label }}" required>
-          </div>
-          <div>
-            <label>Wörter (kommagetrennt)</label>
-            <input type="text" name="words" value="{{ p.words }}" required>
-          </div>
-        </div>
-        <button type="submit" class="btn btn-primary" style="font-size:0.82rem;">💾 Speichern</button>
-      </form>
-    </div>
+  <div style="display:flex;gap:0.5rem;align-items:end;margin-bottom:0.6rem;">
+    <form method="post" action="/servers/{{ guild.id }}/automod-presets/edit/{{ p.id }}" style="display:flex;gap:0.5rem;align-items:end;flex:1;margin:0;">
+      <div style="flex:1;min-width:100px;">
+        <label style="font-size:0.72rem;">Name</label>
+        <input type="text" name="label" value="{{ p.label }}" required style="margin:0;">
+      </div>
+      <div style="flex:2;min-width:160px;">
+        <label style="font-size:0.72rem;">Wörter</label>
+        <input type="text" name="words" value="{{ p.words }}" required style="margin:0;">
+      </div>
+      <button type="submit" class="btn btn-secondary" style="padding:0.4rem 0.6rem;" title="Speichern">💾</button>
+    </form>
+    <form method="post" action="/servers/{{ guild.id }}/automod-presets/delete/{{ p.id }}" style="margin:0;"
+          onsubmit="return confirm({{ ('Kategorie „' ~ p.label ~ '“ wirklich löschen?') | js }})">
+      <button class="btn btn-danger" type="submit" title="Löschen">🗑</button>
+    </form>
   </div>
   {% else %}
   <p style="font-size:0.83rem;color:var(--muted);">Noch keine Kategorien angelegt.</p>
   {% endfor %}
 
-  <div class="add-form">
-    <div class="section-label" style="margin-bottom:0.75rem;">Neue Kategorie</div>
-    <form method="post" action="/servers/{{ guild.id }}/automod-presets/create">
-      <div class="form-row">
-        <div>
-          <label>Name</label>
-          <input type="text" name="label" placeholder="z.B. Beleidigungen" required>
-        </div>
-        <div>
-          <label>Wörter (kommagetrennt)</label>
-          <input type="text" name="words" placeholder="wort1, wort2, wort3" required>
-        </div>
-      </div>
-      <button type="submit" class="btn btn-primary">➕ Hinzufügen</button>
-    </form>
-  </div>
+  <form method="post" action="/servers/{{ guild.id }}/automod-presets/create" style="display:flex;gap:0.5rem;align-items:end;margin-top:0.5rem;padding-top:0.75rem;border-top:1px solid var(--border);">
+    <div style="flex:1;min-width:100px;">
+      <label style="font-size:0.72rem;">Name</label>
+      <input type="text" name="label" placeholder="z.B. Beleidigungen" required style="margin:0;">
+    </div>
+    <div style="flex:2;min-width:160px;">
+      <label style="font-size:0.72rem;">Wörter</label>
+      <input type="text" name="words" placeholder="wort1, wort2, wort3" required style="margin:0;">
+    </div>
+    <button type="submit" class="btn btn-primary" style="padding:0.4rem 0.6rem;" title="Hinzufügen">➕</button>
+  </form>
 </div>
 </div>
 
@@ -232,10 +226,16 @@ function addWordPreset(words) {
   }
   input.value = existing.join(', ');
 }
-function togglePresetEdit(id) {
-  const el = document.getElementById('preset-edit-' + id);
-  if (el) el.classList.toggle('open');
+function toggleWpInfo() {
+  const box = document.getElementById('wp-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
 }
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('wp-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleWpInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
 </script>
 
 
