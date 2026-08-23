@@ -260,6 +260,13 @@ document.addEventListener('click', function(e) {
       {% for ch in channels %}<option value="{{ ch.id }}" {% if ch.id in leveling_channels %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
     </select>
   </div>
+  <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);">
+    <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
+      <input type="checkbox" name="leveling_voice_enabled" value="1" {% if cfg.get('leveling_voice_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> {{ tr.leveling_voice_enabled_label }}
+    </label>
+    <label>{{ tr.leveling_voice_rate_label }}</label>
+    <input type="number" name="leveling_voice_xp_per_min" value="{{ cfg.get('leveling_voice_xp_per_min', '5') }}" min="1" max="100">
+  </div>
   <p class="hint">15–25 XP pro Nachricht · 60s Cooldown · Formel: 5n² + 50n + 100 · Commands: /rank /leaderboard /setxp</p>
   <button type="submit" class="btn btn-primary">💾 Speichern</button>
 </div>

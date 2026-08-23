@@ -293,6 +293,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "leveling_mode_all":           "Alle Kanäle",
         "leveling_mode_specific":      "Nur bestimmte Kanäle",
         "leveling_channels_label":     "Kanäle auswählen",
+        "leveling_voice_enabled_label": "Voice-XP aktivieren",
+        "leveling_voice_rate_label":   "XP pro Minute in Voice",
         # Lang toggle label (shows the OTHER language to switch to)
         "lang_switch":        "🇬🇧 EN",
     },
@@ -590,6 +592,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "leveling_mode_all":           "All channels",
         "leveling_mode_specific":      "Only specific channels",
         "leveling_channels_label":     "Select channels",
+        "leveling_voice_enabled_label": "Enable voice XP",
+        "leveling_voice_rate_label":   "XP per minute in voice",
         # Lang toggle label
         "lang_switch":        "🇩🇪 DE",
     },

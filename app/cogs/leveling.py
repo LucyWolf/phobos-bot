@@ -2,7 +2,7 @@ import math
 import random
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 from database import db_one, db_rows, db_exec, get_guild_config
 
 
@@ -22,6 +22,34 @@ class Leveling(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self._cooldowns: dict = {}
+        self.voice_xp_loop.start()
+
+    def cog_unload(self):
+        self.voice_xp_loop.cancel()
+
+    async def _add_xp(self, member: discord.Member, xp_gain: int, count_message: bool, count_voice_minute: bool):
+        row = await db_one(
+            "SELECT xp, level, messages, voice_minutes FROM levels WHERE user_id=? AND guild_id=?",
+            (member.id, member.guild.id),
+        )
+        if row:
+            new_xp = row["xp"] + xp_gain
+            new_msgs = row["messages"] + (1 if count_message else 0)
+            new_voice = row["voice_minutes"] + (1 if count_voice_minute else 0)
+            new_level = level_from_xp(new_xp)
+            await db_exec(
+                "UPDATE levels SET xp=?, level=?, messages=?, voice_minutes=? WHERE user_id=? AND guild_id=?",
+                (new_xp, new_level, new_msgs, new_voice, member.id, member.guild.id),
+            )
+            if new_level > row["level"]:
+                await self._announce_levelup(member, new_level)
+        else:
+            new_level = level_from_xp(xp_gain)
+            await db_exec(
+                "INSERT INTO levels (user_id,guild_id,xp,level,messages,voice_minutes) VALUES (?,?,?,?,?,?)",
+                (member.id, member.guild.id, xp_gain, new_level,
+                 1 if count_message else 0, 1 if count_voice_minute else 0),
+            )
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -44,34 +72,43 @@ class Leveling(commands.Cog):
         self.bot.loop.call_later(60, lambda: self._cooldowns.pop(key, None))
 
         xp_gain = random.randint(15, 25)
-        row = await db_one(
-            "SELECT xp, level, messages FROM levels WHERE user_id=? AND guild_id=?",
-            (message.author.id, message.guild.id),
-        )
-        if row:
-            new_xp = row["xp"] + xp_gain
-            new_msgs = row["messages"] + 1
-            new_level = level_from_xp(new_xp)
-            await db_exec(
-                "UPDATE levels SET xp=?, level=?, messages=? WHERE user_id=? AND guild_id=?",
-                (new_xp, new_level, new_msgs, message.author.id, message.guild.id),
-            )
-            if new_level > row["level"]:
-                await self._announce_levelup(message, new_level)
-        else:
-            new_level = level_from_xp(xp_gain)
-            await db_exec(
-                "INSERT INTO levels (user_id,guild_id,xp,level,messages) VALUES (?,?,?,?,1)",
-                (message.author.id, message.guild.id, xp_gain, new_level),
-            )
+        await self._add_xp(message.author, xp_gain, count_message=True, count_voice_minute=False)
 
-    async def _announce_levelup(self, message: discord.Message, level: int):
-        channel_id = await get_guild_config(message.guild.id, "level_channel")
-        channel = self.bot.get_channel(int(channel_id)) if channel_id else message.channel
+    @tasks.loop(minutes=1)
+    async def voice_xp_loop(self):
+        # Scans live voice-channel membership every minute rather than tracking join/leave
+        # events ourselves - simpler, can't desync from Discord's actual state, and a missed
+        # tick (e.g. bot restart) only ever costs at most one minute of XP, never a whole session.
+        for guild in list(self.bot.guilds):
+            try:
+                if await get_guild_config(guild.id, "leveling_enabled") != "1":
+                    continue
+                if await get_guild_config(guild.id, "leveling_voice_enabled") != "1":
+                    continue
+                rate_raw = await get_guild_config(guild.id, "leveling_voice_xp_per_min")
+                try:
+                    xp_gain = int(rate_raw) if rate_raw else 5
+                except ValueError:
+                    xp_gain = 5
+                for vc in guild.voice_channels:
+                    for member in vc.members:
+                        if member.bot:
+                            continue
+                        await self._add_xp(member, xp_gain, count_message=False, count_voice_minute=True)
+            except Exception as e:
+                print(f"[Leveling] voice XP error in guild {guild.id}: {e}")
+
+    @voice_xp_loop.before_loop
+    async def _before_voice_loop(self):
+        await self.bot.wait_until_ready()
+
+    async def _announce_levelup(self, member: discord.Member, level: int):
+        channel_id = await get_guild_config(member.guild.id, "level_channel")
+        channel = self.bot.get_channel(int(channel_id)) if channel_id else member.guild.system_channel
         if channel:
             embed = discord.Embed(
                 title="Level Up! 🎉",
-                description=f"{message.author.mention} hat **Level {level}** erreicht!",
+                description=f"{member.mention} hat **Level {level}** erreicht!",
                 color=0x7c3aed,
             )
             await channel.send(embed=embed)
@@ -80,7 +117,7 @@ class Leveling(commands.Cog):
     async def rank(self, interaction: discord.Interaction, member: discord.Member = None):
         member = member or interaction.user
         row = await db_one(
-            "SELECT xp, level, messages FROM levels WHERE user_id=? AND guild_id=?",
+            "SELECT xp, level, messages, voice_minutes FROM levels WHERE user_id=? AND guild_id=?",
             (member.id, interaction.guild_id),
         )
         if not row:
@@ -92,6 +129,7 @@ class Leveling(commands.Cog):
         embed.add_field(name="Level", value=str(row["level"]))
         embed.add_field(name="XP", value=f"{xp_in_level} / {needed}")
         embed.add_field(name="Nachrichten", value=str(row["messages"]))
+        embed.add_field(name="Voice-Minuten", value=str(row["voice_minutes"]))
         embed.set_thumbnail(url=member.display_avatar.url)
         await interaction.response.send_message(embed=embed)
 

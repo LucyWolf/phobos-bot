@@ -3287,7 +3287,7 @@ _TAB_TEXT_KEYS = {
         "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
         "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",
     ],
-    "leveling": ["level_channel", "leveling_channel_mode"],
+    "leveling": ["level_channel", "leveling_channel_mode", "leveling_voice_xp_per_min"],
     "automod": [
         "automod_spam_threshold", "automod_spam_window", "automod_timeout_minutes",
         "automod_banned_words", "automod_action", "automod_warn_message",
@@ -3296,7 +3296,7 @@ _TAB_TEXT_KEYS = {
 }
 _TAB_CHECKBOX_KEYS = {
     "config": ["welcome_card_enabled"],
-    "leveling": ["leveling_enabled"],
+    "leveling": ["leveling_enabled", "leveling_voice_enabled"],
     "automod": ["automod_enabled", "automod_links"],
     "birthday": [],
 }
@@ -3329,12 +3329,13 @@ async def server_config_save(request: Request, guild_id: int):
             )
 
     # (form key, min, max, error label)
-    automod_numeric_fields = [
+    numeric_fields = [
         ("automod_spam_threshold", 2, 30, "Spam-Schwellenwert"),
         ("automod_spam_window", 1, 60, "Spam-Zeitfenster"),
         ("automod_timeout_minutes", 1, 40320, "Timeout-Dauer"),  # Discord's max timeout is 28 days
+        ("leveling_voice_xp_per_min", 1, 100, "Voice-XP pro Minute"),
     ]
-    for field, lo, hi, label in automod_numeric_fields:
+    for field, lo, hi, label in numeric_fields:
         value = str(form.get(field, "")).strip()
         if value:
             try:
