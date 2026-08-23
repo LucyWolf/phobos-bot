@@ -3123,6 +3123,17 @@ async def leaderboard_page(request: Request, guild_id: str = ""):
 
 # ── Server Config ─────────────────────────────────────────────────────────────
 
+# Seeded once per guild the first time its automod tab is loaded (see server_config below) -
+# after that, these live in automod_word_presets and are fully user-editable, this list is
+# never referenced again.
+_AUTOMOD_DEFAULT_PRESETS = [
+    ("Spam-Floskeln", "kostenlos gewinnen, jetzt klicken, garantiert gewinnen, schnell geld verdienen"),
+    ("Nitro-Köder", "kostenloser nitro, gratis nitro, nitro generator, free nitro"),
+    ("Krypto-Scam", "bitcoin verdoppeln, krypto investment, garantierter gewinn, airdrop claim"),
+    ("NS-Bezüge", "hitler, nazi, hakenkreuz"),
+]
+
+
 @web.get("/servers/{guild_id}", response_class=HTMLResponse)
 async def server_config(
     request: Request, guild_id: int,
@@ -3218,6 +3229,19 @@ async def server_config(
     )
     server_perms = {p["user_id"] for p in perm_rows}
 
+    # Seeded once per guild, tracked separately from "table is empty" - otherwise a user who
+    # deliberately deletes every preset would see the defaults silently reappear on next load.
+    if not await get_guild_config(guild_id, "automod_presets_seeded"):
+        for label, words in _AUTOMOD_DEFAULT_PRESETS:
+            await db_exec(
+                "INSERT INTO automod_word_presets (guild_id, label, words) VALUES (?,?,?)",
+                (str(guild_id), label, words),
+            )
+        await set_guild_config(guild_id, "automod_presets_seeded", "1")
+    automod_presets = await db_rows(
+        "SELECT * FROM automod_word_presets WHERE guild_id=? ORDER BY id", (str(guild_id),)
+    )
+
     return templates.TemplateResponse("server_config.html", {
         **session(request), "request": request,
         "guild": {"id": str(guild.id), "name": guild.name,
@@ -3232,6 +3256,7 @@ async def server_config(
         "ticket_panels": ticket_panels, "ticket_list": ticket_list, "ga_list": ga_list,
         "subs": subs, "twitch_configured": twitch_configured,
         "all_users": all_users, "server_perms": server_perms,
+        "automod_presets": automod_presets,
         "auto_delete_entries": await db_rows(
             "SELECT * FROM auto_delete_channels WHERE guild_id=?", (str(guild_id),)
         ),
@@ -3323,6 +3348,51 @@ async def server_config_save(request: Request, guild_id: int):
     for key in _TAB_CHECKBOX_KEYS[tab]:
         await set_guild_config(guild_id, key, "1" if form.get(key) else "0")
     return RedirectResponse(f"/servers/{guild_id}?tab={tab}&saved=true", status_code=303)
+
+
+# ── Auto-Mod word-list presets ──────────────────────────────────────────────────
+
+@web.post("/servers/{guild_id}/automod-presets/create")
+async def automod_preset_create(request: Request, guild_id: int, label: str = Form(...), words: str = Form(...)):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
+    label = label.strip()
+    words = words.strip()
+    if not label or not words:
+        return RedirectResponse(f"/servers/{guild_id}?tab=automod&error=Name+und+Wörter+erforderlich", status_code=302)
+    await db_exec(
+        "INSERT INTO automod_word_presets (guild_id, label, words) VALUES (?,?,?)",
+        (str(guild_id), label, words),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=automod&success=Kategorie+erstellt", status_code=303)
+
+
+@web.post("/servers/{guild_id}/automod-presets/edit/{preset_id}")
+async def automod_preset_edit(request: Request, guild_id: int, preset_id: int, label: str = Form(...), words: str = Form(...)):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
+    label = label.strip()
+    words = words.strip()
+    if not label or not words:
+        return RedirectResponse(f"/servers/{guild_id}?tab=automod&error=Name+und+Wörter+erforderlich", status_code=302)
+    await db_exec(
+        "UPDATE automod_word_presets SET label=?, words=? WHERE id=? AND guild_id=?",
+        (label, words, preset_id, str(guild_id)),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=automod&success=Kategorie+aktualisiert", status_code=303)
+
+
+@web.post("/servers/{guild_id}/automod-presets/delete/{preset_id}")
+async def automod_preset_delete(request: Request, guild_id: int, preset_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
+    await db_exec(
+        "DELETE FROM automod_word_presets WHERE id=? AND guild_id=?", (preset_id, str(guild_id))
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=automod&success=Kategorie+gelöscht", status_code=303)
 
 
 # ── Ticket Panels ────────────────────────────────────────────────────────────

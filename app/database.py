@@ -272,6 +272,14 @@ async def init_db():
             )
         """)
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS automod_word_presets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                label TEXT NOT NULL,
+                words TEXT NOT NULL
+            )
+        """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS temp_voice_config (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL,
