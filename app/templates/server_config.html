@@ -142,7 +142,7 @@
       <input type="checkbox" name="automod_links" value="1" {% if cfg.get('automod_links') == '1' %}checked{% endif %} style="width:auto;margin:0;"> Links blockieren
     </label>
     <label>Verbotene Wörter <span style="color:var(--muted);font-size:0.75rem">(kommagetrennt)</span></label>
-    <input type="text" name="automod_banned_words" value="{{ cfg.get('automod_banned_words', '') }}" placeholder="wort1, wort2, wort3" style="margin-bottom:1rem;">
+    <input type="text" name="automod_banned_words" value="{{ cfg.get('automod_banned_words', 'kostenlos gewinnen, jetzt klicken, gratis nitro') }}" placeholder="wort1, wort2, wort3" style="margin-bottom:1rem;">
     <label>Warn-Nachricht <span style="color:var(--muted);font-size:0.75rem">(Platzhalter: {server}, {reason})</span></label>
     <input type="text" name="automod_warn_message" value="{{ cfg.get('automod_warn_message', '⚠️ **{server}**: {reason}') }}" placeholder="⚠️ **{server}**: {reason}">
   </div>
