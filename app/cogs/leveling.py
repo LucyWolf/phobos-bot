@@ -109,13 +109,17 @@ class Leveling(commands.Cog):
     async def _announce_levelup(self, member: discord.Member, level: int):
         channel_id = await get_guild_config(member.guild.id, "level_channel")
         channel = self.bot.get_channel(int(channel_id)) if channel_id else member.guild.system_channel
-        if channel:
-            embed = discord.Embed(
-                title="Level Up! 🎉",
-                description=f"{member.mention} hat **Level {level}** erreicht!",
-                color=0x7c3aed,
-            )
+        if not channel:
+            return
+        embed = discord.Embed(
+            title="Level Up! 🎉",
+            description=f"{member.mention} hat **Level {level}** erreicht!",
+            color=0x7c3aed,
+        )
+        try:
             await channel.send(embed=embed)
+        except Exception as e:
+            print(f"[Leveling] level-up announcement failed for {member} in guild {member.guild.id}: {e}")
 
     @app_commands.command(name="rank", description="Deinen Rang und XP anzeigen")
     async def rank(self, interaction: discord.Interaction, member: discord.Member = None):
