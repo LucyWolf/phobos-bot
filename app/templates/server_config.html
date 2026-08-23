@@ -142,13 +142,39 @@
       <input type="checkbox" name="automod_links" value="1" {% if cfg.get('automod_links') == '1' %}checked{% endif %} style="width:auto;margin:0;"> Links blockieren
     </label>
     <label>Verbotene Wörter <span style="color:var(--muted);font-size:0.75rem">(kommagetrennt)</span></label>
-    <input type="text" name="automod_banned_words" value="{{ cfg.get('automod_banned_words', 'kostenlos gewinnen, jetzt klicken, gratis nitro') }}" placeholder="wort1, wort2, wort3" style="margin-bottom:1rem;">
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.5rem;">
+      <button type="button" class="btn btn-secondary" style="font-size:0.72rem;padding:0.25rem 0.6rem;" onclick="addWordPreset('spam')">➕ Spam-Floskeln</button>
+      <button type="button" class="btn btn-secondary" style="font-size:0.72rem;padding:0.25rem 0.6rem;" onclick="addWordPreset('nitro')">➕ Nitro-Köder</button>
+      <button type="button" class="btn btn-secondary" style="font-size:0.72rem;padding:0.25rem 0.6rem;" onclick="addWordPreset('krypto')">➕ Krypto-Scam</button>
+    </div>
+    <input type="text" name="automod_banned_words" id="automod-banned-words" value="{{ cfg.get('automod_banned_words', '') }}" placeholder="wort1, wort2, wort3" style="margin-bottom:1rem;">
     <label>Warn-Nachricht <span style="color:var(--muted);font-size:0.75rem">(Platzhalter: {server}, {reason})</span></label>
     <input type="text" name="automod_warn_message" value="{{ cfg.get('automod_warn_message', '⚠️ **{server}**: {reason}') }}" placeholder="⚠️ **{server}**: {reason}">
   </div>
   <button type="submit" class="btn btn-primary">💾 Speichern</button>
 </form>
 </div>
+
+<script>
+const WORD_PRESETS = {
+  spam: "kostenlos gewinnen, jetzt klicken, garantiert gewinnen, schnell geld verdienen",
+  nitro: "kostenloser nitro, gratis nitro, nitro generator, free nitro",
+  krypto: "bitcoin verdoppeln, krypto investment, garantierter gewinn, airdrop claim",
+};
+function addWordPreset(key) {
+  const input = document.getElementById('automod-banned-words');
+  if (!input || !WORD_PRESETS[key]) return;
+  const existing = input.value.split(',').map(w => w.trim()).filter(Boolean);
+  const existingLower = existing.map(w => w.toLowerCase());
+  for (const word of WORD_PRESETS[key].split(',').map(w => w.trim())) {
+    if (!existingLower.includes(word.toLowerCase())) {
+      existing.push(word);
+      existingLower.push(word.toLowerCase());
+    }
+  }
+  input.value = existing.join(', ');
+}
+</script>
 
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
