@@ -3262,22 +3262,30 @@ async def server_config_save(request: Request, guild_id: int):
                 f"/servers/{guild_id}?tab=config&error=Ungültiger+Kanal+({key})", status_code=302
             )
 
-    spam_threshold = str(form.get("automod_spam_threshold", "")).strip()
-    if spam_threshold:
-        try:
-            if not (2 <= int(spam_threshold) <= 30):
-                raise ValueError
-        except ValueError:
-            return RedirectResponse(
-                f"/servers/{guild_id}?tab=config&error=Ungültiger+Spam-Schwellenwert", status_code=302
-            )
+    # (form key, min, max, error label)
+    automod_numeric_fields = [
+        ("automod_spam_threshold", 2, 30, "Spam-Schwellenwert"),
+        ("automod_spam_window", 1, 60, "Spam-Zeitfenster"),
+        ("automod_timeout_minutes", 1, 40320, "Timeout-Dauer"),  # Discord's max timeout is 28 days
+    ]
+    for field, lo, hi, label in automod_numeric_fields:
+        value = str(form.get(field, "")).strip()
+        if value:
+            try:
+                if not (lo <= int(value) <= hi):
+                    raise ValueError
+            except ValueError:
+                return RedirectResponse(
+                    f"/servers/{guild_id}?tab=config&error=Ungültiger+Wert+({label})", status_code=302
+                )
 
     text_keys = [
         "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
         "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",
         "birthday_channel", "birthday_message",
         "level_channel",
-        "automod_spam_threshold", "automod_banned_words", "automod_action",
+        "automod_spam_threshold", "automod_spam_window", "automod_timeout_minutes",
+        "automod_banned_words", "automod_action", "automod_warn_message",
         "ticket_support_role", "ticket_category",
     ]
     checkbox_keys = ["leveling_enabled", "automod_enabled", "automod_links", "welcome_card_enabled"]

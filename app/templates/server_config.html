@@ -104,9 +104,15 @@
     </label>
     <div class="grid-2">
       <div>
-        <label>Spam-Schwelle <span style="color:var(--muted);font-size:0.75rem">(Nachrichten in 5s)</span></label>
+        <label>Spam-Schwelle <span style="color:var(--muted);font-size:0.75rem">(Nachrichten im Zeitfenster)</span></label>
         <input type="number" name="automod_spam_threshold" value="{{ cfg.get('automod_spam_threshold', '5') }}" min="2" max="30">
       </div>
+      <div>
+        <label>Spam-Zeitfenster <span style="color:var(--muted);font-size:0.75rem">(Sekunden)</span></label>
+        <input type="number" name="automod_spam_window" value="{{ cfg.get('automod_spam_window', '5') }}" min="1" max="60">
+      </div>
+    </div>
+    <div class="grid-2">
       <div>
         <label>Aktion bei Verstoß</label>
         <select name="automod_action">
@@ -115,12 +121,18 @@
           {% endfor %}
         </select>
       </div>
+      <div>
+        <label>Timeout-Dauer <span style="color:var(--muted);font-size:0.75rem">(Minuten, nur bei Aktion "timeout")</span></label>
+        <input type="number" name="automod_timeout_minutes" value="{{ cfg.get('automod_timeout_minutes', '5') }}" min="1" max="40320">
+      </div>
     </div>
     <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
       <input type="checkbox" name="automod_links" value="1" {% if cfg.get('automod_links') == '1' %}checked{% endif %} style="width:auto;margin:0;"> Links blockieren
     </label>
     <label>Verbotene Wörter <span style="color:var(--muted);font-size:0.75rem">(kommagetrennt)</span></label>
-    <input type="text" name="automod_banned_words" value="{{ cfg.get('automod_banned_words', '') }}" placeholder="wort1, wort2, wort3">
+    <input type="text" name="automod_banned_words" value="{{ cfg.get('automod_banned_words', '') }}" placeholder="wort1, wort2, wort3" style="margin-bottom:1rem;">
+    <label>Warn-Nachricht <span style="color:var(--muted);font-size:0.75rem">(Platzhalter: {server}, {reason})</span></label>
+    <input type="text" name="automod_warn_message" value="{{ cfg.get('automod_warn_message', '⚠️ **{server}**: {reason}') }}" placeholder="⚠️ **{server}**: {reason}">
   </div>
 
   <button type="submit" class="btn btn-primary">💾 Speichern</button>

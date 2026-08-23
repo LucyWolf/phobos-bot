@@ -1,3 +1,4 @@
+import datetime
 import re
 import time
 import discord
@@ -37,10 +38,15 @@ class AutoMod(commands.Cog):
             threshold = int(threshold)
         except ValueError:
             return False
+        window_raw = await get_guild_config(message.guild.id, "automod_spam_window")
+        try:
+            window = int(window_raw) if window_raw else 5
+        except ValueError:
+            window = 5
         key = (message.guild.id, message.author.id)
         now = time.time()
         history = self._spam.get(key, [])
-        history = [t for t in history if now - t < 5]
+        history = [t for t in history if now - t < window]
         history.append(now)
         self._spam[key] = history
         if len(history) >= threshold:
@@ -85,8 +91,11 @@ class AutoMod(commands.Cog):
         action = await get_guild_config(message.guild.id, "automod_action") or "warn"
         member = message.author
         bot_member = message.guild.me
+        msg_template = await get_guild_config(message.guild.id, "automod_warn_message") \
+            or "⚠️ **{server}**: {reason}"
+        dm_text = msg_template.replace("{server}", message.guild.name).replace("{reason}", reason)
         try:
-            await member.send(f"⚠️ **{message.guild.name}**: {reason}")
+            await member.send(dm_text)
         except Exception:
             pass
         try:
@@ -96,8 +105,12 @@ class AutoMod(commands.Cog):
                     (member.id, message.guild.id, bot_member.id, reason),
                 )
             elif action == "timeout":
-                import datetime
-                until = discord.utils.utcnow() + datetime.timedelta(minutes=5)
+                timeout_raw = await get_guild_config(message.guild.id, "automod_timeout_minutes")
+                try:
+                    timeout_minutes = int(timeout_raw) if timeout_raw else 5
+                except ValueError:
+                    timeout_minutes = 5
+                until = discord.utils.utcnow() + datetime.timedelta(minutes=timeout_minutes)
                 await member.timeout(until, reason=reason)
             elif action == "kick":
                 await member.kick(reason=reason)
