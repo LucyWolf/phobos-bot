@@ -261,6 +261,24 @@ document.addEventListener('click', function(e) {
     </select>
   </div>
   <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);">
+    <label style="display:block;margin-bottom:0.25rem;">{{ tr.leveling_curve_title }}</label>
+    <p class="hint" style="margin-top:0;margin-bottom:0.75rem;">{{ tr.leveling_curve_hint }}</p>
+    <div class="grid-2" style="grid-template-columns:1fr 1fr 1fr;">
+      <div>
+        <label style="font-size:0.72rem;">{{ tr.leveling_curve_base_label }}</label>
+        <input type="number" name="leveling_curve_base" value="{{ cfg.get('leveling_curve_base', '100') }}" min="1" max="100000">
+      </div>
+      <div>
+        <label style="font-size:0.72rem;">{{ tr.leveling_curve_linear_label }}</label>
+        <input type="number" name="leveling_curve_linear" value="{{ cfg.get('leveling_curve_linear', '50') }}" min="0" max="10000">
+      </div>
+      <div>
+        <label style="font-size:0.72rem;">{{ tr.leveling_curve_quad_label }}</label>
+        <input type="number" name="leveling_curve_quad" value="{{ cfg.get('leveling_curve_quad', '5') }}" min="0" max="1000">
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);">
     <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
       <input type="checkbox" name="leveling_voice_enabled" value="1" {% if cfg.get('leveling_voice_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> {{ tr.leveling_voice_enabled_label }}
     </label>
@@ -280,24 +298,6 @@ document.addEventListener('click', function(e) {
       <div>
         <label style="font-size:0.72rem;">{{ tr.leveling_curve_quad_label }}</label>
         <input type="number" name="leveling_voice_curve_quad" value="{{ cfg.get('leveling_voice_curve_quad', '5') }}" min="0" max="1000">
-      </div>
-    </div>
-  </div>
-  <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);">
-    <label style="display:block;margin-bottom:0.25rem;">{{ tr.leveling_curve_title }}</label>
-    <p class="hint" style="margin-top:0;margin-bottom:0.75rem;">{{ tr.leveling_curve_hint }}</p>
-    <div class="grid-2" style="grid-template-columns:1fr 1fr 1fr;">
-      <div>
-        <label style="font-size:0.72rem;">{{ tr.leveling_curve_base_label }}</label>
-        <input type="number" name="leveling_curve_base" value="{{ cfg.get('leveling_curve_base', '100') }}" min="1" max="100000">
-      </div>
-      <div>
-        <label style="font-size:0.72rem;">{{ tr.leveling_curve_linear_label }}</label>
-        <input type="number" name="leveling_curve_linear" value="{{ cfg.get('leveling_curve_linear', '50') }}" min="0" max="10000">
-      </div>
-      <div>
-        <label style="font-size:0.72rem;">{{ tr.leveling_curve_quad_label }}</label>
-        <input type="number" name="leveling_curve_quad" value="{{ cfg.get('leveling_curve_quad', '5') }}" min="0" max="1000">
       </div>
     </div>
   </div>
