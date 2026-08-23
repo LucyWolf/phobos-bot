@@ -267,10 +267,49 @@ document.addEventListener('click', function(e) {
     <label>{{ tr.leveling_voice_rate_label }}</label>
     <input type="number" name="leveling_voice_xp_per_min" value="{{ cfg.get('leveling_voice_xp_per_min', '5') }}" min="1" max="100">
   </div>
+  <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);">
+    <label>{{ tr.leveling_role_mode_label }}</label>
+    <select name="leveling_role_mode">
+      <option value="stack" {% if cfg.get('leveling_role_mode', 'stack') == 'stack' %}selected{% endif %}>{{ tr.leveling_role_mode_stack }}</option>
+      <option value="replace" {% if cfg.get('leveling_role_mode') == 'replace' %}selected{% endif %}>{{ tr.leveling_role_mode_replace }}</option>
+    </select>
+  </div>
   <p class="hint">15–25 XP pro Nachricht · 60s Cooldown · Formel: 5n² + 50n + 100 · Commands: /rank /leaderboard /setxp</p>
   <button type="submit" class="btn btn-primary">💾 Speichern</button>
 </div>
 </form>
+
+<div class="card" style="margin-top:1rem;">
+  <div class="feat-header">{{ tr.leveling_roles_title }}</div>
+  {% if level_roles %}
+  {% for lr in level_roles %}
+  <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.6rem;">
+    <span class="badge" style="background:var(--accent-light);color:#a78bfa;">Lvl {{ lr.level }}</span>
+    <span style="flex:1;font-size:0.85rem;">{{ lr.role_name }}</span>
+    <form method="post" action="/servers/{{ guild.id }}/level-roles/delete/{{ lr.id }}" style="margin:0;"
+          onsubmit="return confirm({{ tr.leveling_role_confirm_delete.replace('{level}', lr.level|string) | js }})">
+      <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">🗑</button>
+    </form>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p style="font-size:0.83rem;color:var(--muted);">{{ tr.leveling_roles_empty }}</p>
+  {% endif %}
+
+  <form method="post" action="/servers/{{ guild.id }}/level-roles/add" style="display:flex;gap:0.5rem;align-items:end;margin-top:0.5rem;padding-top:0.75rem;border-top:1px solid var(--border);">
+    <div style="min-width:80px;">
+      <label style="font-size:0.72rem;">{{ tr.leveling_role_level_label }}</label>
+      <input type="number" name="level" min="1" max="1000" required style="margin:0;">
+    </div>
+    <div style="flex:1;">
+      <label style="font-size:0.72rem;">{{ tr.leveling_role_select_label }}</label>
+      <select name="role_id" required style="margin:0;">
+        {% for ro in roles %}<option value="{{ ro.id }}">{{ ro.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary" style="padding:0.4rem 0.6rem;" title="{{ tr.btn_add }}">➕</button>
+  </form>
+</div>
 
 <script>
 const lvlModeSelect = document.getElementById('lvl-mode-select');

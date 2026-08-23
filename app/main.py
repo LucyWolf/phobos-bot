@@ -3154,6 +3154,14 @@ async def server_config(
     categories = [{"id": str(c.id), "name": c.name} for c in guild.categories]
     leveling_channels = [c.strip() for c in cfg.get("leveling_channels", "").split(",") if c.strip()]
 
+    # Level roles
+    level_roles = await db_rows(
+        "SELECT * FROM level_roles WHERE guild_id=? ORDER BY level", (str(guild_id),)
+    )
+    for lr in level_roles:
+        ro = guild.get_role(int(lr["role_id"]))
+        lr["role_name"] = ro.name if ro else "?"
+
     # Reaction roles
     rr_list = await db_rows("SELECT * FROM reaction_roles WHERE guild_id=? ORDER BY id", (guild_id,))
     for rr in rr_list:
@@ -3259,6 +3267,7 @@ async def server_config(
         "all_users": all_users, "server_perms": server_perms,
         "automod_presets": automod_presets,
         "leveling_channels": leveling_channels,
+        "level_roles": level_roles,
         "auto_delete_entries": await db_rows(
             "SELECT * FROM auto_delete_channels WHERE guild_id=?", (str(guild_id),)
         ),
@@ -3287,7 +3296,7 @@ _TAB_TEXT_KEYS = {
         "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
         "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",
     ],
-    "leveling": ["level_channel", "leveling_channel_mode", "leveling_voice_xp_per_min"],
+    "leveling": ["level_channel", "leveling_channel_mode", "leveling_voice_xp_per_min", "leveling_role_mode"],
     "automod": [
         "automod_spam_threshold", "automod_spam_window", "automod_timeout_minutes",
         "automod_banned_words", "automod_action", "automod_warn_message",
@@ -3400,6 +3409,49 @@ async def automod_preset_delete(request: Request, guild_id: int, preset_id: int)
         "DELETE FROM automod_word_presets WHERE id=? AND guild_id=?", (preset_id, str(guild_id))
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=automod&success=Kategorie+gelöscht", status_code=303)
+
+
+# ── Level roles ──────────────────────────────────────────────────────────────
+
+@web.post("/servers/{guild_id}/level-roles/add")
+async def level_role_add(request: Request, guild_id: int, level: str = Form(...), role_id: str = Form(...)):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    valid_role_ids = {str(ro.id) for ro in guild.roles if not ro.is_default()}
+    if role_id not in valid_role_ids:
+        return RedirectResponse(f"/servers/{guild_id}?tab=leveling&error=Ungültige+Rolle", status_code=302)
+    try:
+        level_int = int(level)
+        if not (1 <= level_int <= 1000):
+            raise ValueError
+    except ValueError:
+        return RedirectResponse(f"/servers/{guild_id}?tab=leveling&error=Ungültiges+Level", status_code=302)
+    try:
+        await db_exec(
+            "INSERT INTO level_roles (guild_id, level, role_id) VALUES (?,?,?)",
+            (str(guild_id), level_int, role_id),
+        )
+    except Exception:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=leveling&error=Für+dieses+Level+ist+schon+eine+Rolle+vergeben",
+            status_code=302,
+        )
+    return RedirectResponse(f"/servers/{guild_id}?tab=leveling&success=Level-Rolle+hinzugefügt", status_code=303)
+
+
+@web.post("/servers/{guild_id}/level-roles/delete/{role_row_id}")
+async def level_role_delete(request: Request, guild_id: int, role_row_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
+    await db_exec(
+        "DELETE FROM level_roles WHERE id=? AND guild_id=?", (role_row_id, str(guild_id))
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=leveling&success=Level-Rolle+entfernt", status_code=303)
 
 
 # ── Ticket Panels ────────────────────────────────────────────────────────────

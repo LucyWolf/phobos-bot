@@ -54,6 +54,40 @@ class Leveling(commands.Cog):
             )
             if new_level > row["level"]:
                 await self._announce_levelup(member, new_level)
+                await self._sync_level_roles(member, new_level)
+
+    async def _sync_level_roles(self, member: discord.Member, new_level: int):
+        rows = await db_rows(
+            "SELECT level, role_id FROM level_roles WHERE guild_id=? ORDER BY level",
+            (member.guild.id,),
+        )
+        eligible = [r for r in rows if r["level"] <= new_level]
+        if not eligible:
+            return
+        mode = await get_guild_config(member.guild.id, "leveling_role_mode") or "stack"
+        try:
+            if mode == "replace":
+                target = eligible[-1]
+                keep_role_id = int(target["role_id"])
+                to_remove = [
+                    r for r in member.roles
+                    if r.id in {int(x["role_id"]) for x in rows} and r.id != keep_role_id
+                ]
+                if to_remove:
+                    await member.remove_roles(*to_remove, reason="Level-Rolle aktualisiert")
+                target_role = member.guild.get_role(keep_role_id)
+                if target_role and target_role not in member.roles:
+                    await member.add_roles(target_role, reason=f"Level {new_level} erreicht")
+            else:
+                to_add = []
+                for r in eligible:
+                    role = member.guild.get_role(int(r["role_id"]))
+                    if role and role not in member.roles:
+                        to_add.append(role)
+                if to_add:
+                    await member.add_roles(*to_add, reason=f"Level {new_level} erreicht")
+        except Exception as e:
+            print(f"[Leveling] role sync failed for {member} in guild {member.guild.id}: {e}")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):

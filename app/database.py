@@ -280,6 +280,15 @@ async def init_db():
             )
         """)
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS level_roles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                level INTEGER NOT NULL,
+                role_id TEXT NOT NULL,
+                UNIQUE(guild_id, level)
+            )
+        """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS temp_voice_config (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL,
