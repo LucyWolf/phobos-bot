@@ -3299,6 +3299,7 @@ _TAB_TEXT_KEYS = {
     "leveling": [
         "level_channel", "leveling_channel_mode", "leveling_voice_xp_per_min", "leveling_role_mode",
         "leveling_curve_quad", "leveling_curve_linear", "leveling_curve_base",
+        "leveling_voice_curve_quad", "leveling_voice_curve_linear", "leveling_voice_curve_base",
     ],
     "automod": [
         "automod_spam_threshold", "automod_spam_window", "automod_timeout_minutes",
@@ -3351,6 +3352,9 @@ async def server_config_save(request: Request, guild_id: int):
         ("leveling_curve_quad", 0, 1000, "Level-Kurve (quadratisch)"),
         ("leveling_curve_linear", 0, 10000, "Level-Kurve (linear)"),
         ("leveling_curve_base", 1, 100000, "Level-Kurve (Basis-XP)"),
+        ("leveling_voice_curve_quad", 0, 1000, "Voice-Level-Kurve (quadratisch)"),
+        ("leveling_voice_curve_linear", 0, 10000, "Voice-Level-Kurve (linear)"),
+        ("leveling_voice_curve_base", 1, 100000, "Voice-Level-Kurve (Basis-XP)"),
     ]
     for field, lo, hi, label in numeric_fields:
         value = str(form.get(field, "")).strip()

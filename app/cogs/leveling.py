@@ -4,6 +4,11 @@ from discord import app_commands
 from discord.ext import commands, tasks
 from database import db_one, db_rows, db_exec, get_guild_config
 
+_CURVE_KEYS = {
+    "text": ("leveling_curve_quad", "leveling_curve_linear", "leveling_curve_base"),
+    "voice": ("leveling_voice_curve_quad", "leveling_voice_curve_linear", "leveling_voice_curve_base"),
+}
+
 
 def xp_for_level(level: int, quad: int = 5, linear: int = 50, base: int = 100) -> int:
     return quad * (level ** 2) + linear * level + base
@@ -26,13 +31,12 @@ class Leveling(commands.Cog):
     def cog_unload(self):
         self.voice_xp_loop.cancel()
 
-    async def _get_curve(self, guild_id: int) -> tuple[int, int, int]:
-        # Same shared xp->level curve feeds both text and voice XP, since they both just add
-        # to the one levels.xp total - tuning it here affects leveling speed for both at once.
+    async def _get_curve(self, guild_id: int, kind: str) -> tuple[int, int, int]:
+        # Text and voice XP are now fully separate progressions (own totals, own levels, own
+        # curve) - only the underlying xp->level math is shared between them.
         defaults = (5, 50, 100)
-        keys = ("leveling_curve_quad", "leveling_curve_linear", "leveling_curve_base")
         values = []
-        for key, default in zip(keys, defaults):
+        for key, default in zip(_CURVE_KEYS[kind], defaults):
             raw = await get_guild_config(guild_id, key)
             try:
                 values.append(int(raw) if raw else default)
@@ -40,20 +44,15 @@ class Leveling(commands.Cog):
                 values.append(default)
         return tuple(values)
 
-    async def _add_xp(self, member: discord.Member, xp_gain: int, count_message: bool, count_voice_minute: bool):
-        quad, linear, base = await self._get_curve(member.guild.id)
-        # Atomic upsert-increment instead of read-modify-write: on_message and voice_xp_loop
-        # can both grant XP to the same member around the same time (e.g. someone chatting
-        # while sitting in voice right as the per-minute tick fires), and a plain
-        # SELECT-then-UPDATE would let one of the two grants silently overwrite the other.
+    async def _add_text_xp(self, member: discord.Member, xp_gain: int):
+        quad, linear, base = await self._get_curve(member.guild.id, "text")
+        # Atomic upsert-increment instead of read-modify-write, so concurrent grants (e.g. two
+        # messages processed close together) can't lose one of the two XP amounts.
         await db_exec(
-            "INSERT INTO levels (user_id, guild_id, xp, level, messages, voice_minutes) VALUES (?,?,?,?,?,?) "
+            "INSERT INTO levels (user_id, guild_id, xp, level, messages) VALUES (?,?,?,?,?) "
             "ON CONFLICT(user_id, guild_id) DO UPDATE SET "
-            "xp = levels.xp + excluded.xp, "
-            "messages = levels.messages + excluded.messages, "
-            "voice_minutes = levels.voice_minutes + excluded.voice_minutes",
-            (member.id, member.guild.id, xp_gain, level_from_xp(xp_gain, quad, linear, base),
-             1 if count_message else 0, 1 if count_voice_minute else 0),
+            "xp = levels.xp + excluded.xp, messages = levels.messages + excluded.messages",
+            (member.id, member.guild.id, xp_gain, level_from_xp(xp_gain, quad, linear, base), 1),
         )
         row = await db_one(
             "SELECT xp, level FROM levels WHERE user_id=? AND guild_id=?",
@@ -68,15 +67,48 @@ class Leveling(commands.Cog):
                 (new_level, member.id, member.guild.id),
             )
             if new_level > row["level"]:
-                await self._announce_levelup(member, new_level)
-                await self._sync_level_roles(member, new_level)
+                await self._announce_levelup(member, new_level, "text")
+                await self._sync_level_roles(member)
 
-    async def _sync_level_roles(self, member: discord.Member, new_level: int):
+    async def _add_voice_xp(self, member: discord.Member, xp_gain: int):
+        quad, linear, base = await self._get_curve(member.guild.id, "voice")
+        await db_exec(
+            "INSERT INTO levels (user_id, guild_id, voice_xp, voice_level, voice_minutes) VALUES (?,?,?,?,?) "
+            "ON CONFLICT(user_id, guild_id) DO UPDATE SET "
+            "voice_xp = levels.voice_xp + excluded.voice_xp, "
+            "voice_minutes = levels.voice_minutes + excluded.voice_minutes",
+            (member.id, member.guild.id, xp_gain, level_from_xp(xp_gain, quad, linear, base), 1),
+        )
+        row = await db_one(
+            "SELECT voice_xp, voice_level FROM levels WHERE user_id=? AND guild_id=?",
+            (member.id, member.guild.id),
+        )
+        if not row:
+            return
+        new_level = level_from_xp(row["voice_xp"], quad, linear, base)
+        if new_level != row["voice_level"]:
+            await db_exec(
+                "UPDATE levels SET voice_level=? WHERE user_id=? AND guild_id=?",
+                (new_level, member.id, member.guild.id),
+            )
+            if new_level > row["voice_level"]:
+                await self._announce_levelup(member, new_level, "voice")
+                await self._sync_level_roles(member)
+
+    async def _sync_level_roles(self, member: discord.Member):
+        # Level roles react to whichever of text/voice level is higher - reached either way.
+        row = await db_one(
+            "SELECT level, voice_level FROM levels WHERE user_id=? AND guild_id=?",
+            (member.id, member.guild.id),
+        )
+        if not row:
+            return
+        effective_level = max(row["level"], row["voice_level"])
         rows = await db_rows(
             "SELECT level, role_id FROM level_roles WHERE guild_id=? ORDER BY level",
             (member.guild.id,),
         )
-        eligible = [r for r in rows if r["level"] <= new_level]
+        eligible = [r for r in rows if r["level"] <= effective_level]
         if not eligible:
             return
         mode = await get_guild_config(member.guild.id, "leveling_role_mode") or "stack"
@@ -92,7 +124,7 @@ class Leveling(commands.Cog):
                     await member.remove_roles(*to_remove, reason="Level-Rolle aktualisiert")
                 target_role = member.guild.get_role(keep_role_id)
                 if target_role and target_role not in member.roles:
-                    await member.add_roles(target_role, reason=f"Level {new_level} erreicht")
+                    await member.add_roles(target_role, reason=f"Level {effective_level} erreicht")
             else:
                 to_add = []
                 for r in eligible:
@@ -100,7 +132,7 @@ class Leveling(commands.Cog):
                     if role and role not in member.roles:
                         to_add.append(role)
                 if to_add:
-                    await member.add_roles(*to_add, reason=f"Level {new_level} erreicht")
+                    await member.add_roles(*to_add, reason=f"Level {effective_level} erreicht")
         except Exception as e:
             print(f"[Leveling] role sync failed for {member} in guild {member.guild.id}: {e}")
 
@@ -125,7 +157,7 @@ class Leveling(commands.Cog):
         self.bot.loop.call_later(60, lambda: self._cooldowns.pop(key, None))
 
         xp_gain = random.randint(15, 25)
-        await self._add_xp(message.author, xp_gain, count_message=True, count_voice_minute=False)
+        await self._add_text_xp(message.author, xp_gain)
 
     @tasks.loop(minutes=1)
     async def voice_xp_loop(self):
@@ -147,7 +179,7 @@ class Leveling(commands.Cog):
                     for member in vc.members:
                         if member.bot:
                             continue
-                        await self._add_xp(member, xp_gain, count_message=False, count_voice_minute=True)
+                        await self._add_voice_xp(member, xp_gain)
             except Exception as e:
                 print(f"[Leveling] voice XP error in guild {guild.id}: {e}")
 
@@ -155,14 +187,15 @@ class Leveling(commands.Cog):
     async def _before_voice_loop(self):
         await self.bot.wait_until_ready()
 
-    async def _announce_levelup(self, member: discord.Member, level: int):
+    async def _announce_levelup(self, member: discord.Member, level: int, kind: str):
         channel_id = await get_guild_config(member.guild.id, "level_channel")
         channel = self.bot.get_channel(int(channel_id)) if channel_id else member.guild.system_channel
         if not channel:
             return
+        label = "Voice-Level" if kind == "voice" else "Level"
         embed = discord.Embed(
             title="Level Up! 🎉",
-            description=f"{member.mention} hat **Level {level}** erreicht!",
+            description=f"{member.mention} hat **{label} {level}** erreicht!",
             color=0x7c3aed,
         )
         try:
@@ -174,24 +207,30 @@ class Leveling(commands.Cog):
     async def rank(self, interaction: discord.Interaction, member: discord.Member = None):
         member = member or interaction.user
         row = await db_one(
-            "SELECT xp, level, messages, voice_minutes FROM levels WHERE user_id=? AND guild_id=?",
+            "SELECT xp, level, messages, voice_xp, voice_level, voice_minutes FROM levels "
+            "WHERE user_id=? AND guild_id=?",
             (member.id, interaction.guild_id),
         )
         if not row:
             await interaction.response.send_message(f"{member.mention} hat noch keine XP.", ephemeral=True)
             return
-        quad, linear, base = await self._get_curve(interaction.guild_id)
-        needed = xp_for_level(row["level"], quad, linear, base)
-        xp_in_level = row["xp"] - sum(xp_for_level(i, quad, linear, base) for i in range(row["level"]))
+        tquad, tlinear, tbase = await self._get_curve(interaction.guild_id, "text")
+        vquad, vlinear, vbase = await self._get_curve(interaction.guild_id, "voice")
+        text_needed = xp_for_level(row["level"], tquad, tlinear, tbase)
+        text_in_level = row["xp"] - sum(xp_for_level(i, tquad, tlinear, tbase) for i in range(row["level"]))
+        voice_needed = xp_for_level(row["voice_level"], vquad, vlinear, vbase)
+        voice_in_level = row["voice_xp"] - sum(xp_for_level(i, vquad, vlinear, vbase) for i in range(row["voice_level"]))
         embed = discord.Embed(title=f"Rang von {member.display_name}", color=0x7c3aed)
-        embed.add_field(name="Level", value=str(row["level"]))
-        embed.add_field(name="XP", value=f"{xp_in_level} / {needed}")
+        embed.add_field(name="Text-Level", value=str(row["level"]))
+        embed.add_field(name="Text-XP", value=f"{text_in_level} / {text_needed}")
         embed.add_field(name="Nachrichten", value=str(row["messages"]))
+        embed.add_field(name="Voice-Level", value=str(row["voice_level"]))
+        embed.add_field(name="Voice-XP", value=f"{voice_in_level} / {voice_needed}")
         embed.add_field(name="Voice-Minuten", value=str(row["voice_minutes"]))
         embed.set_thumbnail(url=member.display_avatar.url)
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="leaderboard", description="Top 10 nach XP")
+    @app_commands.command(name="leaderboard", description="Top 10 nach Text-XP")
     async def leaderboard(self, interaction: discord.Interaction):
         rows = await db_rows(
             "SELECT user_id, level, xp FROM levels WHERE guild_id=? ORDER BY xp DESC LIMIT 10",
@@ -210,15 +249,30 @@ class Leveling(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="setxp", description="XP eines Mitglieds setzen (Admin)")
+    @app_commands.describe(track="text oder voice")
+    @app_commands.choices(track=[
+        app_commands.Choice(name="Text", value="text"),
+        app_commands.Choice(name="Voice", value="voice"),
+    ])
     @app_commands.default_permissions(administrator=True)
-    async def setxp(self, interaction: discord.Interaction, member: discord.Member, xp: int):
-        quad, linear, base = await self._get_curve(interaction.guild_id)
+    async def setxp(self, interaction: discord.Interaction, member: discord.Member, xp: int, track: str = "text"):
+        quad, linear, base = await self._get_curve(interaction.guild_id, track)
         level = level_from_xp(xp, quad, linear, base)
-        await db_exec(
-            "INSERT INTO levels (user_id,guild_id,xp,level,messages) VALUES (?,?,?,?,0) ON CONFLICT(user_id,guild_id) DO UPDATE SET xp=excluded.xp, level=excluded.level",
-            (member.id, interaction.guild_id, xp, level),
+        if track == "voice":
+            await db_exec(
+                "INSERT INTO levels (user_id,guild_id,voice_xp,voice_level) VALUES (?,?,?,?) "
+                "ON CONFLICT(user_id,guild_id) DO UPDATE SET voice_xp=excluded.voice_xp, voice_level=excluded.voice_level",
+                (member.id, interaction.guild_id, xp, level),
+            )
+        else:
+            await db_exec(
+                "INSERT INTO levels (user_id,guild_id,xp,level) VALUES (?,?,?,?) "
+                "ON CONFLICT(user_id,guild_id) DO UPDATE SET xp=excluded.xp, level=excluded.level",
+                (member.id, interaction.guild_id, xp, level),
+            )
+        await interaction.response.send_message(
+            f"{member.mention} hat jetzt {xp} {track}-XP (Level {level}).", ephemeral=True
         )
-        await interaction.response.send_message(f"{member.mention} hat jetzt {xp} XP (Level {level}).", ephemeral=True)
 
 
 async def setup(bot):
