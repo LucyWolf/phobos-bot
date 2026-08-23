@@ -3239,6 +3239,31 @@ async def server_config(
     })
 
 
+# pane-config, pane-leveling, pane-automod and pane-birthday all post to the same
+# /servers/{guild_id} route via separate <form>s, one per tab. Each form carries a hidden
+# "tab" field so this route only ever writes the keys that tab actually owns — writing every
+# key regardless of which form was submitted would silently blank out every OTHER tab's
+# settings on every single save (e.g. saving Leveling would reset Auto-Mod/Welcome to empty).
+_TAB_TEXT_KEYS = {
+    "config": [
+        "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
+        "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",
+    ],
+    "leveling": ["level_channel"],
+    "automod": [
+        "automod_spam_threshold", "automod_spam_window", "automod_timeout_minutes",
+        "automod_banned_words", "automod_action", "automod_warn_message",
+    ],
+    "birthday": ["birthday_channel", "birthday_message"],
+}
+_TAB_CHECKBOX_KEYS = {
+    "config": ["welcome_card_enabled"],
+    "leveling": ["leveling_enabled"],
+    "automod": ["automod_enabled", "automod_links"],
+    "birthday": [],
+}
+
+
 @web.post("/servers/{guild_id}")
 async def server_config_save(request: Request, guild_id: int):
     if r := auth_redirect(request): return r
@@ -3248,6 +3273,9 @@ async def server_config_save(request: Request, guild_id: int):
     if not guild:
         return RedirectResponse("/servers", status_code=302)
     form = await request.form()
+    tab = str(form.get("tab", "config"))
+    if tab not in _TAB_TEXT_KEYS:
+        tab = "config"
 
     # Channel-valued keys are validated against the guild's own channels before saving -
     # some are resolved later via a global bot.get_channel() (not guild-scoped), so an
@@ -3259,7 +3287,7 @@ async def server_config_save(request: Request, guild_id: int):
         value = str(form.get(key, ""))
         if value and value not in valid_channel_ids:
             return RedirectResponse(
-                f"/servers/{guild_id}?tab=config&error=Ungültiger+Kanal+({key})", status_code=302
+                f"/servers/{guild_id}?tab={tab}&error=Ungültiger+Kanal+({key})", status_code=302
             )
 
     # (form key, min, max, error label)
@@ -3276,24 +3304,14 @@ async def server_config_save(request: Request, guild_id: int):
                     raise ValueError
             except ValueError:
                 return RedirectResponse(
-                    f"/servers/{guild_id}?tab=config&error=Ungültiger+Wert+({label})", status_code=302
+                    f"/servers/{guild_id}?tab={tab}&error=Ungültiger+Wert+({label})", status_code=302
                 )
 
-    text_keys = [
-        "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
-        "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",
-        "birthday_channel", "birthday_message",
-        "level_channel",
-        "automod_spam_threshold", "automod_spam_window", "automod_timeout_minutes",
-        "automod_banned_words", "automod_action", "automod_warn_message",
-        "ticket_support_role", "ticket_category",
-    ]
-    checkbox_keys = ["leveling_enabled", "automod_enabled", "automod_links", "welcome_card_enabled"]
-    for key in text_keys:
+    for key in _TAB_TEXT_KEYS[tab]:
         await set_guild_config(guild_id, key, str(form.get(key, "")))
-    for key in checkbox_keys:
+    for key in _TAB_CHECKBOX_KEYS[tab]:
         await set_guild_config(guild_id, key, "1" if form.get(key) else "0")
-    return RedirectResponse(f"/servers/{guild_id}?tab=config&saved=true", status_code=303)
+    return RedirectResponse(f"/servers/{guild_id}?tab={tab}&saved=true", status_code=303)
 
 
 # ── Ticket Panels ────────────────────────────────────────────────────────────

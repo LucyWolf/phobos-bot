@@ -1,6 +1,7 @@
 {% macro server_subnav(guild_id, active_page='') %}
 <div class="server-subnav">
   <a href="/servers/{{ guild_id }}?tab=config"     class="ssnav-item {% if active_page == 'config' %}active{% endif %}">⚙️ Config</a>
+  <a href="/servers/{{ guild_id }}?tab=automod"    class="ssnav-item {% if active_page == 'automod' %}active{% endif %}">🛡️ Spam-Schutz</a>
   <a href="/servers/{{ guild_id }}?tab=leveling"   class="ssnav-item {% if active_page == 'leveling' %}active{% endif %}">🏆 Leveling</a>
   <a href="/servers/{{ guild_id }}?tab=rr"         class="ssnav-item {% if active_page == 'rr' %}active{% endif %}">🎭 Reaction Roles</a>
   <a href="/servers/{{ guild_id }}?tab=commands"   class="ssnav-item {% if active_page == 'commands' %}active{% endif %}">📢 Commands</a>

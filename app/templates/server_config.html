@@ -31,6 +31,7 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-config">
 <form method="post" action="/servers/{{ guild.id }}">
+<input type="hidden" name="tab" value="config">
 
   <div class="card">
     <div class="feat-header">💬 Willkommensnachrichten</div>
@@ -97,8 +98,19 @@
     </div>
   </div>
 
+  <button type="submit" class="btn btn-primary">💾 Speichern</button>
+</form>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Spam-Schutz (Auto-Mod)                                         -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-automod">
+<form method="post" action="/servers/{{ guild.id }}">
+<input type="hidden" name="tab" value="automod">
   <div class="card">
-    <div class="feat-header">🛡️ Auto-Moderation</div>
+    <div class="feat-header">🛡️ Spam-Schutz / Auto-Moderation</div>
     <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
       <input type="checkbox" name="automod_enabled" value="1" {% if cfg.get('automod_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> Auto-Mod aktivieren
     </label>
@@ -134,7 +146,6 @@
     <label>Warn-Nachricht <span style="color:var(--muted);font-size:0.75rem">(Platzhalter: {server}, {reason})</span></label>
     <input type="text" name="automod_warn_message" value="{{ cfg.get('automod_warn_message', '⚠️ **{server}**: {reason}') }}" placeholder="⚠️ **{server}**: {reason}">
   </div>
-
   <button type="submit" class="btn btn-primary">💾 Speichern</button>
 </form>
 </div>
@@ -145,6 +156,7 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-leveling">
 <form method="post" action="/servers/{{ guild.id }}">
+<input type="hidden" name="tab" value="leveling">
 <div class="card">
   <div class="feat-header">⭐ Leveling &amp; XP</div>
   <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
@@ -1088,6 +1100,7 @@ document.addEventListener('click', function(e) {
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-birthday">
 <form method="post" action="/servers/{{ guild.id }}">
+<input type="hidden" name="tab" value="birthday">
 <div class="card">
   <div class="feat-header">🎂 Geburtstags-System</div>
   <p class="hint" style="margin-bottom:1rem;">
@@ -1236,7 +1249,7 @@ document.addEventListener('click', function(e) {
 </script>
 
 <script>
-const TABS = ['config','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete'];
+const TABS = ['config','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {
