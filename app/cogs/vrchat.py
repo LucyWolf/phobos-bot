@@ -109,9 +109,17 @@ class VRChat(commands.Cog):
                         return None
                     async with session.get(f"{API_BASE}/groups/{group_id}/instances") as resp2:
                         if resp2.status != 200:
+                            print(f"[VRChat] HTTP {resp2.status} beim Abrufen der Instanzen "
+                                  f"(Gruppe {group_id}) - Gruppen-ID korrekt und öffentlich einsehbar?")
                             return None
                         return await resp2.json(content_type=None)
                 if resp.status != 200:
+                    # No log for 401/403 here - already handled above, this is any other
+                    # unexpected status (404 = falsche/gelöschte Gruppen-ID, 429 = rate limit,
+                    # 5xx = VRChat-Ausfall). Silently returning None here made a wrong group ID -
+                    # the single most likely first-time mistake - completely undiagnosable.
+                    print(f"[VRChat] HTTP {resp.status} beim Abrufen der Instanzen "
+                          f"(Gruppe {group_id}) - Gruppen-ID korrekt und öffentlich einsehbar?")
                     return None
                 return await resp.json(content_type=None)
         except Exception as e:
@@ -139,7 +147,12 @@ class VRChat(commands.Cog):
 
     async def _poll_group(self, guild: discord.Guild, row: dict):
         instances = await self._get_group_instances(row["group_id"])
+        if instances is None:
+            return  # already logged inside _get_group_instances
         if not isinstance(instances, list):
+            # 200 OK but an unexpected JSON shape (e.g. an error object instead of a list) -
+            # _get_group_instances only validates the HTTP status, not the payload shape.
+            print(f"[VRChat] Unerwartete Antwort (kein Array) für Gruppe {row['group_id']}: {instances!r:.200}")
             return
 
         # The exact instance-identifier field isn't confirmed against a live account yet -
