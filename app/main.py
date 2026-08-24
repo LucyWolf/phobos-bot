@@ -30,7 +30,7 @@ import discord
 import psutil
 from cogs.tickets import OpenTicketView as _TicketView
 from cogs.leveling import xp_for_level as _xp_for_level
-from cogs.vrchat import vrchat_login as _vrchat_login
+from cogs.vrchat import vrchat_login as _vrchat_login, USER_AGENT as _VRCHAT_USER_AGENT
 from i18n import get_tr
 import uvicorn
 from discord.ext import commands
@@ -2873,7 +2873,7 @@ async def vrchat_settings_save(
 async def vrchat_test(request: Request):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
-    async with aiohttp.ClientSession(headers={"User-Agent": "PhobosBot/1.0 (Discord bot VRChat integration)"}) as session:
+    async with aiohttp.ClientSession(headers={"User-Agent": _VRCHAT_USER_AGENT}) as session:
         ok, message = await _vrchat_login(session)
     if ok:
         qs = urllib.parse.urlencode({"test_ok": "true", "test_msg": message})
