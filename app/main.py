@@ -3453,6 +3453,28 @@ async def automod_preset_delete(request: Request, guild_id: int, preset_id: int)
 
 # ── Level roles ──────────────────────────────────────────────────────────────
 
+async def _retroactive_level_role_sync(guild_id: int, level_int: int):
+    # A newly added level-role should also reach members who already qualify, not just show up
+    # on their next level-up - otherwise the "catches up on skipped levels" guarantee only holds
+    # going forward. Runs as a background task (see call site) so adding a role doesn't block the
+    # dashboard on however many Discord API calls a big member list turns into.
+    b = bot._bot_for_guild(guild_id)
+    if not b:
+        return
+    cog = b.get_cog("Leveling")
+    guild = b.get_guild(guild_id)
+    if not cog or not guild:
+        return
+    rows = await db_rows(
+        "SELECT user_id FROM levels WHERE guild_id=? AND (level>=? OR voice_level>=?)",
+        (guild_id, level_int, level_int),
+    )
+    for row in rows:
+        member = guild.get_member(row["user_id"])
+        if member:
+            await cog._sync_level_roles(member)
+
+
 @web.post("/servers/{guild_id}/level-roles/add")
 async def level_role_add(request: Request, guild_id: int, level: str = Form(...), role_id: str = Form(...)):
     if r := auth_redirect(request): return r
@@ -3480,6 +3502,7 @@ async def level_role_add(request: Request, guild_id: int, level: str = Form(...)
             f"/servers/{guild_id}?tab=leveling&error=Für+dieses+Level+ist+schon+eine+Rolle+vergeben",
             status_code=302,
         )
+    asyncio.create_task(_retroactive_level_role_sync(guild_id, level_int))
     return RedirectResponse(f"/servers/{guild_id}?tab=leveling&success=Level-Rolle+hinzugefügt", status_code=303)
 
 
