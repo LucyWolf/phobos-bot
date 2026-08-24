@@ -3624,7 +3624,10 @@ async def level_reward_delete(request: Request, guild_id: int, reward_row_id: in
 # roles/rewards above - one guild can watch several VRChat groups at once.
 
 @web.post("/servers/{guild_id}/vrchat-groups/add")
-async def vrchat_group_add(request: Request, guild_id: int, group_id: str = Form(...), channel_id: str = Form(...)):
+async def vrchat_group_add(
+    request: Request, guild_id: int,
+    group_id: str = Form(...), channel_id: str = Form(...), label: str = Form(""),
+):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
@@ -3641,8 +3644,8 @@ async def vrchat_group_add(request: Request, guild_id: int, group_id: str = Form
         )
     try:
         await db_exec(
-            "INSERT INTO vrchat_groups (guild_id, group_id, channel_id) VALUES (?,?,?)",
-            (str(guild_id), group_id, channel_id),
+            "INSERT INTO vrchat_groups (guild_id, group_id, channel_id, label) VALUES (?,?,?,?)",
+            (str(guild_id), group_id, channel_id, label.strip()),
         )
     except Exception:
         return RedirectResponse(

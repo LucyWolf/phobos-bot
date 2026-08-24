@@ -1532,10 +1532,13 @@ document.addEventListener('click', function(e) {
   {% if vrchat_groups %}
   {% for vg in vrchat_groups %}
   <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.6rem;">
-    <span class="badge" style="background:var(--accent-light);color:#a78bfa;font-family:monospace;font-size:0.72rem;">{{ vg.group_id[:16] }}…</span>
-    <span style="flex:1;font-size:0.85rem;">#{{ vg.channel_name }}</span>
+    <span style="flex:1;font-size:0.85rem;min-width:0;">
+      <span style="font-weight:600;">{{ vg.label if vg.label else vg.group_id[:16] + '…' }}</span>
+      <span style="color:var(--muted);font-family:monospace;font-size:0.72rem;margin-left:0.4rem;">{{ vg.group_id[:16] }}…</span>
+      <span style="color:var(--muted);"> · #{{ vg.channel_name }}</span>
+    </span>
     <form method="post" action="/servers/{{ guild.id }}/vrchat-groups/delete/{{ vg.id }}" style="margin:0;"
-          onsubmit="return confirm({{ tr.vrchat_group_confirm_delete.replace('{group}', vg.group_id) | js }})">
+          onsubmit="return confirm({{ tr.vrchat_group_confirm_delete.replace('{group}', vg.label if vg.label else vg.group_id) | js }})">
       <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">🗑</button>
     </form>
   </div>
@@ -1544,8 +1547,12 @@ document.addEventListener('click', function(e) {
   <p style="font-size:0.83rem;color:var(--muted);">{{ tr.vrchat_groups_empty }}</p>
   {% endif %}
 
-  <form method="post" action="/servers/{{ guild.id }}/vrchat-groups/add" style="display:flex;gap:0.5rem;align-items:end;margin-top:0.5rem;padding-top:0.75rem;border-top:1px solid var(--border);">
-    <div style="flex:1;">
+  <form method="post" action="/servers/{{ guild.id }}/vrchat-groups/add" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:end;margin-top:0.5rem;padding-top:0.75rem;border-top:1px solid var(--border);">
+    <div style="min-width:140px;">
+      <label style="font-size:0.72rem;">{{ tr.vrchat_group_name_label }}</label>
+      <input type="text" name="label" placeholder="z.B. Testkammer" style="margin:0;">
+    </div>
+    <div style="flex:1;min-width:220px;">
       <label style="font-size:0.72rem;">{{ tr.vrchat_group_id_label }} <span style="color:var(--muted);">{{ tr.vrchat_group_id_hint }}</span></label>
       <input type="text" name="group_id" placeholder="grp_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required style="margin:0;">
     </div>

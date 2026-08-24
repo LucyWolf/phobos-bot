@@ -425,6 +425,7 @@ async def init_db():
             "ALTER TABLE levels ADD COLUMN voice_minutes INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE levels ADD COLUMN voice_xp INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE levels ADD COLUMN voice_level INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE vrchat_groups ADD COLUMN label TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)
