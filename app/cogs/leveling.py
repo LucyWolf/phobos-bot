@@ -191,7 +191,7 @@ class Leveling(commands.Cog):
         channel = self.bot.get_channel(int(channel_id)) if channel_id else member.guild.system_channel
         if not channel:
             return
-        label = "Voice-Level" if kind == "voice" else "Level"
+        label = "Voice-Level" if kind == "voice" else "Chat-Level"
         embed = discord.Embed(
             title="Level Up! 🎉",
             description=f"{member.mention} hat **{label} {level}** erreicht!",
@@ -230,8 +230,8 @@ class Leveling(commands.Cog):
         voice_needed = xp_for_level(row["voice_level"], vquad, vlinear, vbase)
         voice_in_level = row["voice_xp"] - sum(xp_for_level(i, vquad, vlinear, vbase) for i in range(row["voice_level"]))
         embed = discord.Embed(title=f"Rang von {member.display_name}", color=0x7c3aed)
-        embed.add_field(name="Text-Level", value=str(row["level"]))
-        embed.add_field(name="Text-XP", value=f"{text_in_level} / {text_needed}")
+        embed.add_field(name="Chat-Level", value=str(row["level"]))
+        embed.add_field(name="Chat-XP", value=f"{text_in_level} / {text_needed}")
         embed.add_field(name="Nachrichten", value=str(row["messages"]))
         embed.add_field(name="Voice-Level", value=str(row["voice_level"]))
         embed.add_field(name="Voice-XP", value=f"{voice_in_level} / {voice_needed}")
@@ -239,7 +239,7 @@ class Leveling(commands.Cog):
         embed.set_thumbnail(url=member.display_avatar.url)
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="leaderboard", description="Top 10 nach Text-XP")
+    @app_commands.command(name="leaderboard", description="Top 10 nach Chat-XP")
     async def leaderboard(self, interaction: discord.Interaction):
         rows = await db_rows(
             "SELECT user_id, level, xp FROM levels WHERE guild_id=? ORDER BY xp DESC LIMIT 10",
