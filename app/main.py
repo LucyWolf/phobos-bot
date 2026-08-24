@@ -3238,6 +3238,14 @@ async def server_config(
         "SELECT * FROM level_rewards WHERE guild_id=? ORDER BY level", (str(guild_id),)
     )
 
+    # VRChat groups
+    vrchat_groups = await db_rows(
+        "SELECT * FROM vrchat_groups WHERE guild_id=? ORDER BY id", (str(guild_id),)
+    )
+    for vg in vrchat_groups:
+        ch = guild.get_channel(int(vg["channel_id"]))
+        vg["channel_name"] = ch.name if ch else "?"
+
     # Reaction roles
     rr_list = await db_rows("SELECT * FROM reaction_roles WHERE guild_id=? ORDER BY id", (guild_id,))
     for rr in rr_list:
@@ -3345,6 +3353,7 @@ async def server_config(
         "leveling_channels": leveling_channels,
         "level_roles": level_roles,
         "level_rewards": level_rewards,
+        "vrchat_groups": vrchat_groups,
         "auto_delete_entries": await db_rows(
             "SELECT * FROM auto_delete_channels WHERE guild_id=?", (str(guild_id),)
         ),
@@ -3383,7 +3392,7 @@ _TAB_TEXT_KEYS = {
         "automod_banned_words", "automod_action", "automod_warn_message",
     ],
     "birthday": ["birthday_channel", "birthday_message"],
-    "vrchat": ["vrchat_group_id", "vrchat_channel"],
+    "vrchat": [],
 }
 _TAB_CHECKBOX_KEYS = {
     "config": ["welcome_card_enabled"],
@@ -3411,7 +3420,7 @@ async def server_config_save(request: Request, guild_id: int):
     # some are resolved later via a global bot.get_channel() (not guild-scoped), so an
     # unvalidated ID here could otherwise make the bot post into a channel in a different
     # guild served by the same token.
-    channel_keys = ["welcome_channel", "leave_channel", "birthday_channel", "level_channel", "vrchat_channel"]
+    channel_keys = ["welcome_channel", "leave_channel", "birthday_channel", "level_channel"]
     valid_channel_ids = {str(c.id) for c in guild.text_channels}
     for key in channel_keys:
         value = str(form.get(key, ""))
@@ -3608,6 +3617,49 @@ async def level_reward_delete(request: Request, guild_id: int, reward_row_id: in
         "DELETE FROM level_rewards WHERE id=? AND guild_id=?", (reward_row_id, str(guild_id))
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=leveling&success=Belohnung+entfernt", status_code=303)
+
+
+# ── VRChat groups ────────────────────────────────────────────────────────────
+# Multiple (group, channel) pairs per guild, same list-with-add/delete shape as level
+# roles/rewards above - one guild can watch several VRChat groups at once.
+
+@web.post("/servers/{guild_id}/vrchat-groups/add")
+async def vrchat_group_add(request: Request, guild_id: int, group_id: str = Form(...), channel_id: str = Form(...)):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    valid_channel_ids = {str(c.id) for c in guild.text_channels}
+    if channel_id not in valid_channel_ids:
+        return RedirectResponse(f"/servers/{guild_id}?tab=vrchat&error=Ungültiger+Kanal", status_code=302)
+    group_id = group_id.strip()
+    if not group_id.startswith("grp_"):
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=vrchat&error=Gruppen-ID+muss+mit+grp_+beginnen", status_code=302
+        )
+    try:
+        await db_exec(
+            "INSERT INTO vrchat_groups (guild_id, group_id, channel_id) VALUES (?,?,?)",
+            (str(guild_id), group_id, channel_id),
+        )
+    except Exception:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=vrchat&error=Diese+Gruppe+ist+schon+eingetragen", status_code=302
+        )
+    return RedirectResponse(f"/servers/{guild_id}?tab=vrchat&success=Gruppe+hinzugefügt", status_code=303)
+
+
+@web.post("/servers/{guild_id}/vrchat-groups/delete/{group_row_id}")
+async def vrchat_group_delete(request: Request, guild_id: int, group_row_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
+    await db_exec(
+        "DELETE FROM vrchat_groups WHERE id=? AND guild_id=?", (group_row_id, str(guild_id))
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=vrchat&success=Gruppe+entfernt", status_code=303)
 
 
 # ── Ticket Panels ────────────────────────────────────────────────────────────

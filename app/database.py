@@ -298,6 +298,16 @@ async def init_db():
             )
         """)
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS vrchat_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                group_id TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                known_instances TEXT NOT NULL DEFAULT '',
+                UNIQUE(guild_id, group_id)
+            )
+        """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS temp_voice_config (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL,

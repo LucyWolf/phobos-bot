@@ -3,7 +3,7 @@ import discord
 import pyotp
 from discord.ext import commands, tasks
 
-from database import get_config, get_guild_config, set_guild_config
+from database import db_exec, db_rows, get_config, get_guild_config
 
 # VRChat requires a descriptive User-Agent on every request or it rejects them outright.
 API_BASE = "https://api.vrchat.cloud/api/1"
@@ -112,39 +112,46 @@ class VRChat(commands.Cog):
             try:
                 if await get_guild_config(guild.id, "vrchat_enabled") != "1":
                     continue
-                group_id = (await get_guild_config(guild.id, "vrchat_group_id") or "").strip()
-                if not group_id:
-                    continue
-                channel_id = await get_guild_config(guild.id, "vrchat_channel")
-                if not channel_id:
-                    continue
-
-                instances = await self._get_group_instances(group_id)
-                if not isinstance(instances, list):
-                    continue
-
-                # The exact instance-identifier field isn't confirmed against a live account
-                # yet - falling back from id to location covers either shape the API returns.
-                current = {
-                    str(i.get("id") or i.get("location") or ""): i
-                    for i in instances if isinstance(i, dict) and (i.get("id") or i.get("location"))
-                }
-                known_raw = await get_guild_config(guild.id, "vrchat_known_instances") or ""
-                known_ids = {x.strip() for x in known_raw.split(",") if x.strip()}
-                new_ids = set(current.keys()) - known_ids
-
-                if new_ids:
-                    channel = self.bot.get_channel(int(channel_id))
-                    if channel:
-                        for inst_id in new_ids:
-                            try:
-                                await self._announce(channel, current[inst_id])
-                            except Exception as e:
-                                print(f"[VRChat] Ankündigung fehlgeschlagen (Guild {guild.id}): {e}")
-
-                await set_guild_config(guild.id, "vrchat_known_instances", ",".join(current.keys()))
+                groups = await db_rows(
+                    "SELECT * FROM vrchat_groups WHERE guild_id=?", (str(guild.id),)
+                )
+                for row in groups:
+                    # Per-group, not just per-guild: one group's API hiccup shouldn't cost the
+                    # other groups this same guild is watching their poll for this tick too.
+                    try:
+                        await self._poll_group(guild, row)
+                    except Exception as e:
+                        print(f"[VRChat] Fehler bei Gruppe {row['group_id']} (Guild {guild.id}): {e}")
             except Exception as e:
                 print(f"[VRChat] Fehler in Guild {guild.id}: {e}")
+
+    async def _poll_group(self, guild: discord.Guild, row: dict):
+        instances = await self._get_group_instances(row["group_id"])
+        if not isinstance(instances, list):
+            return
+
+        # The exact instance-identifier field isn't confirmed against a live account yet -
+        # falling back from id to location covers either shape the API returns.
+        current = {
+            str(i.get("id") or i.get("location") or ""): i
+            for i in instances if isinstance(i, dict) and (i.get("id") or i.get("location"))
+        }
+        known_ids = {x.strip() for x in (row["known_instances"] or "").split(",") if x.strip()}
+        new_ids = set(current.keys()) - known_ids
+
+        if new_ids:
+            channel = self.bot.get_channel(int(row["channel_id"]))
+            if channel:
+                for inst_id in new_ids:
+                    try:
+                        await self._announce(channel, current[inst_id])
+                    except Exception as e:
+                        print(f"[VRChat] Ankündigung fehlgeschlagen (Guild {guild.id}): {e}")
+
+        await db_exec(
+            "UPDATE vrchat_groups SET known_instances=? WHERE id=?",
+            (",".join(current.keys()), row["id"]),
+        )
 
     @vrchat_loop.before_loop
     async def _before_loop(self):

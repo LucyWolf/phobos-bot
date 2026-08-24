@@ -325,6 +325,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "vrchat_group_id_hint": "(z.B. grp_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)",
         "vrchat_channel_label": "Ankündigungs-Kanal",
         "vrchat_settings_hint": "Der VRChat-Account (Login, 2FA) wird zentral unter Einstellungen → VRChat eingerichtet.",
+        "vrchat_groups_title": "🌐 Beobachtete Gruppen",
+        "vrchat_groups_empty": "Noch keine Gruppe eingetragen.",
+        "vrchat_group_confirm_delete": "Gruppe {group} wirklich entfernen?",
         # Lang toggle label (shows the OTHER language to switch to)
         "lang_switch":        "🇬🇧 EN",
     },
@@ -654,6 +657,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "vrchat_group_id_hint": "(e.g. grp_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)",
         "vrchat_channel_label": "Announcement channel",
         "vrchat_settings_hint": "The VRChat account (login, 2FA) is set up centrally under Settings → VRChat.",
+        "vrchat_groups_title": "🌐 Watched groups",
+        "vrchat_groups_empty": "No group added yet.",
+        "vrchat_group_confirm_delete": "Really remove group {group}?",
         # Lang toggle label
         "lang_switch":        "🇩🇪 DE",
     },
