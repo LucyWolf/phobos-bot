@@ -1499,6 +1499,56 @@ document.addEventListener('click', function(e) {
 </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: VRChat                                                          -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-vrchat">
+
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="toggleVrcInfo()" title="{{ tr.vrchat_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="vrc-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:300px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.vrchat_info_title }}</div>
+    <div style="color:var(--muted);line-height:1.6;">{{ tr.vrchat_info_body }}</div>
+  </div>
+</div>
+
+<form method="post" action="/servers/{{ guild.id }}">
+<input type="hidden" name="tab" value="vrchat">
+<div class="card">
+  <div class="feat-header">🌐 VRChat</div>
+  <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
+    <input type="checkbox" name="vrchat_enabled" value="1" {% if cfg.get('vrchat_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> {{ tr.vrchat_enabled_label }}
+  </label>
+  <label>{{ tr.vrchat_group_id_label }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.vrchat_group_id_hint }}</span></label>
+  <input type="text" name="vrchat_group_id" value="{{ cfg.get('vrchat_group_id', '') }}" placeholder="grp_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+  <label>{{ tr.vrchat_channel_label }}</label>
+  <select name="vrchat_channel">
+    <option value="">— {{ tr.vrchat_channel_label }} —</option>
+    {% for c in channels %}<option value="{{ c.id }}" {% if cfg.get('vrchat_channel') == c.id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
+  </select>
+  <p class="hint" style="margin-top:0.75rem;">{{ tr.vrchat_settings_hint }}</p>
+  <button type="submit" class="btn btn-primary" style="margin-top:0.75rem;">💾 Speichern</button>
+</div>
+</form>
+
+</div>
+
+<script>
+function toggleVrcInfo() {
+  const box = document.getElementById('vrc-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('vrc-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleVrcInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+</script>
+
 <script>
 function toggleAdInfo() {
   const box = document.getElementById('ad-info-box');
@@ -1513,7 +1563,7 @@ document.addEventListener('click', function(e) {
 </script>
 
 <script>
-const TABS = ['config','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete'];
+const TABS = ['config','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete','vrchat'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} – VRChat{% endblock %}
+{% block page_title %}🌐 VRChat{% endblock %}
+
+{% block content %}
+{% if saved %}<div class="alert alert-success">✅ Gespeichert.</div>{% endif %}
+{% if test_ok %}<div class="alert alert-success">✅ {{ test_msg }}</div>{% endif %}
+{% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
+
+<div class="card" style="max-width:560px;">
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.3rem;">VRChat-Konfiguration</div>
+  <p class="hint" style="margin-bottom:1.25rem;">
+    Ein VRChat-Account, mit dem der Bot sich einloggt, um Gruppen-Instanzen abzufragen ("Lobby ist offen"-Ankündigungen).
+    Kein offizielles API-Feature von VRChat, funktioniert über den normalen Account-Login – experimentell.
+  </p>
+  <form method="post" action="/settings/vrchat">
+    <label>VRChat-Benutzername</label>
+    <input type="text" name="vrchat_username" value="{{ vrchat_username }}" placeholder="BotAccountName">
+    <label>Passwort <span style="color:var(--muted);font-size:0.72rem">({% if vrchat_has_password %}gesetzt – {% endif %}leer lassen = nicht ändern)</span></label>
+    <input type="password" name="vrchat_password" placeholder="••••••••">
+    <label>TOTP-Secret (2FA) <span style="color:var(--muted);font-size:0.72rem">({% if vrchat_has_totp %}gesetzt – {% endif %}leer lassen = nicht ändern)</span></label>
+    <input type="text" name="vrchat_totp_secret" placeholder="z.B. JBSWY3DPEHPK3PXP">
+    <button type="submit" class="btn btn-primary">💾 Speichern</button>
+  </form>
+</div>
+
+<div class="card" style="max-width:560px; margin-top:1rem;">
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.85rem;">🧪 Login testen</div>
+  <form method="post" action="/settings/vrchat/test">
+    <button type="submit" class="btn btn-secondary">Jetzt testen</button>
+  </form>
+</div>
+
+<div class="card" style="max-width:560px; margin-top:1rem; background:rgba(124,58,237,0.05); border-color:rgba(124,58,237,0.2);">
+  <div style="font-weight:700;font-size:0.88rem;margin-bottom:0.6rem;">Account einrichten</div>
+  <p class="hint">
+    1. Am besten einen eigenen VRChat-Account nur für den Bot anlegen, nicht den Haupt-Account.<br>
+    2. In den VRChat-Account-Einstellungen 2-Faktor-Authentifizierung per <strong>Authenticator-App</strong> aktivieren
+       (nicht Email-Code – der lässt sich nicht automatisieren).<br>
+    3. Beim Einrichten der 2FA wird ein Secret/QR-Code angezeigt – das rohe Secret (nicht den QR-Code) hier eintragen.<br>
+    4. Auf "Jetzt testen" klicken, um den Login zu prüfen.
+  </p>
+</div>
+{% endblock %}

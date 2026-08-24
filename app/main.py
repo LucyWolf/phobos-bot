@@ -23,12 +23,14 @@ from typing import Optional
 
 from PIL import Image
 
+import aiohttp
 import aiosqlite
 import bcrypt
 import discord
 import psutil
 from cogs.tickets import OpenTicketView as _TicketView
 from cogs.leveling import xp_for_level as _xp_for_level
+from cogs.vrchat import vrchat_login as _vrchat_login
 from i18n import get_tr
 import uvicorn
 from discord.ext import commands
@@ -128,6 +130,7 @@ COGS = [
     "cogs.temp_voice",
     "cogs.scheduler",
     "cogs.birthday",
+    "cogs.vrchat",
 ]
 
 
@@ -2827,6 +2830,52 @@ async def smtp_test(request: Request, test_email: str = Form(...)):
         return RedirectResponse(f"/settings?error={urllib.parse.quote(str(e))}", status_code=302)
 
 
+# ── VRChat Settings ────────────────────────────────────────────────────────────
+# One shared, bot-owned VRChat account used to poll group instances for every guild that
+# enables the feature - VRChat has no app-level API keys like Twitch, only real account login.
+
+@web.get("/settings/vrchat", response_class=HTMLResponse)
+async def vrchat_settings_page(request: Request, saved: bool = False, error: str = "", test_ok: bool = False, test_msg: str = ""):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    return templates.TemplateResponse("settings_vrchat.html", {
+        **session(request), "request": request,
+        "guilds": await _guild_list(request), "token_set": await _token_configured(), "active": "vrchat_settings",
+        "vrchat_username": await get_config("vrchat_username") or "",
+        "vrchat_has_password": bool(await get_config("vrchat_password")),
+        "vrchat_has_totp": bool(await get_config("vrchat_totp_secret")),
+        "saved": saved, "error": error, "test_ok": test_ok, "test_msg": test_msg,
+    })
+
+
+@web.post("/settings/vrchat")
+async def vrchat_settings_save(
+    request: Request,
+    vrchat_username: str = Form(""), vrchat_password: str = Form(""), vrchat_totp_secret: str = Form(""),
+):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    await set_config("vrchat_username", vrchat_username.strip())
+    if vrchat_password.strip():
+        await set_config("vrchat_password", vrchat_password.strip())
+    if vrchat_totp_secret.strip():
+        await set_config("vrchat_totp_secret", vrchat_totp_secret.strip().replace(" ", ""))
+    return RedirectResponse("/settings/vrchat?saved=true", status_code=302)
+
+
+@web.post("/settings/vrchat/test")
+async def vrchat_test(request: Request):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    async with aiohttp.ClientSession(headers={"User-Agent": "PhobosBot/1.0 (Discord bot VRChat integration)"}) as session:
+        ok, message = await _vrchat_login(session)
+    if ok:
+        qs = urllib.parse.urlencode({"test_ok": "true", "test_msg": message})
+    else:
+        qs = urllib.parse.urlencode({"error": message})
+    return RedirectResponse(f"/settings/vrchat?{qs}", status_code=302)
+
+
 # ── Token Management ──────────────────────────────────────────────────────────
 
 @web.get("/settings/tokens", response_class=HTMLResponse)
@@ -3334,11 +3383,13 @@ _TAB_TEXT_KEYS = {
         "automod_banned_words", "automod_action", "automod_warn_message",
     ],
     "birthday": ["birthday_channel", "birthday_message"],
+    "vrchat": ["vrchat_group_id", "vrchat_channel"],
 }
 _TAB_CHECKBOX_KEYS = {
     "config": ["welcome_card_enabled"],
     "leveling": ["leveling_enabled", "leveling_voice_enabled"],
     "automod": ["automod_enabled", "automod_links"],
+    "vrchat": ["vrchat_enabled"],
     "birthday": [],
 }
 
@@ -3360,7 +3411,7 @@ async def server_config_save(request: Request, guild_id: int):
     # some are resolved later via a global bot.get_channel() (not guild-scoped), so an
     # unvalidated ID here could otherwise make the bot post into a channel in a different
     # guild served by the same token.
-    channel_keys = ["welcome_channel", "leave_channel", "birthday_channel", "level_channel"]
+    channel_keys = ["welcome_channel", "leave_channel", "birthday_channel", "level_channel", "vrchat_channel"]
     valid_channel_ids = {str(c.id) for c in guild.text_channels}
     for key in channel_keys:
         value = str(form.get(key, ""))

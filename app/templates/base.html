@@ -372,6 +372,12 @@
         </a>
         {% endif %}
         {% if role == 'admin' %}
+        <a href="/settings/vrchat" class="nav-item nav-sub {% if active == 'vrchat_settings' %}active{% endif %}">
+          <span class="icon">🌐</span>
+          <span class="label">{{ tr.nav_vrchat }}</span>
+        </a>
+        {% endif %}
+        {% if role == 'admin' %}
         <a href="/bot/update" class="nav-item nav-sub {% if active == 'bot_update' %}active{% endif %}" id="nav-update-link">
           <span class="icon">🔄</span>
           <span class="label">{{ tr.nav_updates }} <span id="nav-update-badge" style="display:none;background:#f59e0b;color:#000;font-size:0.6rem;font-weight:700;border-radius:999px;padding:0.1rem 0.4rem;margin-left:0.3rem;">NEU</span></span>
