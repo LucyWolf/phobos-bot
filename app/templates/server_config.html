@@ -437,7 +437,7 @@ renderLvlChannelsList();
   {% if leaderboard %}
   <div class="table-wrap">
     <table>
-      <thead><tr><th>#</th><th>Nutzer</th><th>Level</th><th>XP</th><th>Nachrichten</th></tr></thead>
+      <thead><tr><th>#</th><th>Nutzer</th><th>Level</th><th>XP</th><th>Nachrichten</th><th>Voice-Level</th><th>Voice-XP</th><th>Voice-Minuten</th></tr></thead>
       <tbody>
         {% for e in leaderboard %}
         <tr>
@@ -448,6 +448,9 @@ renderLvlChannelsList();
           <td><span class="badge" style="background:var(--accent-light);color:#a78bfa">{{ e.level }}</span></td>
           <td>{{ e.xp }}</td>
           <td style="color:var(--muted)">{{ e.messages }}</td>
+          <td><span class="badge" style="background:var(--accent-light);color:#a78bfa">{{ e.voice_level }}</span></td>
+          <td>{{ e.voice_xp }}</td>
+          <td style="color:var(--muted)">{{ e.voice_minutes }}</td>
         </tr>
         {% endfor %}
       </tbody>

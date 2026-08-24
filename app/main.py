@@ -28,6 +28,7 @@ import bcrypt
 import discord
 import psutil
 from cogs.tickets import OpenTicketView as _TicketView
+from cogs.leveling import xp_for_level as _xp_for_level
 from i18n import get_tr
 import uvicorn
 from discord.ext import commands
@@ -3086,6 +3087,21 @@ async def server_leave(request: Request, guild_id: int):
 
 # ── Leaderboard ───────────────────────────────────────────────────────────────
 
+async def _guild_text_curve(guild_id: int) -> tuple[int, int, int]:
+    # Mirrors cogs.leveling.Leveling._get_curve("text") - kept independent since this route
+    # doesn't have a cog instance to call, just the same three config keys and defaults.
+    defaults = (5, 50, 100)
+    keys = ("leveling_curve_quad", "leveling_curve_linear", "leveling_curve_base")
+    values = []
+    for key, default in zip(keys, defaults):
+        raw = await get_guild_config(guild_id, key)
+        try:
+            values.append(int(raw) if raw else default)
+        except ValueError:
+            values.append(default)
+    return tuple(values)
+
+
 @web.get("/leaderboard", response_class=HTMLResponse)
 async def leaderboard_page(request: Request, guild_id: str = ""):
     if r := auth_redirect(request): return r
@@ -3106,11 +3122,17 @@ async def leaderboard_page(request: Request, guild_id: str = ""):
             lb = await db_rows(
                 "SELECT * FROM levels WHERE guild_id=? ORDER BY xp DESC LIMIT 50", (int(guild_id),)
             )
+            quad, linear, base = await _guild_text_curve(int(guild_id))
             for i, e in enumerate(lb, 1):
                 m = guild.get_member(e["user_id"])
                 e["username"] = str(m) if m else f"#{e['user_id']}"
                 e["avatar"] = str(m.display_avatar.url) if m else None
                 e["rank"] = i
+                needed = _xp_for_level(e["level"], quad, linear, base)
+                in_level = e["xp"] - sum(_xp_for_level(lv, quad, linear, base) for lv in range(e["level"]))
+                e["xp_needed"] = needed
+                e["xp_in_level"] = in_level
+                e["pct"] = min(int(in_level * 100 / needed), 100) if needed else 0
             leaderboard = lb
 
     return templates.TemplateResponse("leaderboard.html", {
