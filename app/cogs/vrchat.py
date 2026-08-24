@@ -69,6 +69,15 @@ class VRChat(commands.Cog):
             self._session = aiohttp.ClientSession(headers={"User-Agent": USER_AGENT})
         return self._session
 
+    async def reset_session(self):
+        """Drops the current login/cookies so the next poll re-authenticates from scratch -
+        called after /settings/vrchat saves new credentials, otherwise this cog would keep
+        using the old account's still-valid session until it happens to expire on its own."""
+        self._logged_in = False
+        if self._session and not self._session.closed:
+            await self._session.close()
+        self._session = None
+
     async def _login(self) -> bool:
         session = await self._get_session()
         ok, message = await vrchat_login(session)
@@ -90,8 +99,11 @@ class VRChat(commands.Cog):
             return None
         try:
             async with session.get(f"{API_BASE}/groups/{group_id}/instances") as resp:
-                if resp.status == 401:
-                    # Session cookie expired - one fresh login + retry before giving up.
+                if resp.status in (401, 403):
+                    # Session cookie expired - one fresh login + retry before giving up. 403 is
+                    # included alongside 401 since it isn't confirmed which one VRChat actually
+                    # uses for an expired session (not verified against a live account) - worst
+                    # case a real permission error just costs one wasted extra login attempt.
                     self._logged_in = False
                     if not await self._login():
                         return None
@@ -139,18 +151,24 @@ class VRChat(commands.Cog):
         known_ids = {x.strip() for x in (row["known_instances"] or "").split(",") if x.strip()}
         new_ids = set(current.keys()) - known_ids
 
+        # Only instances still open from last poll (unaffected either way) plus ones we just
+        # confirmed announcing count as "known" - one that fails to send (missing channel, a
+        # Discord API hiccup) stays out so it's retried next tick instead of silently lost,
+        # matching how the Twitch cog defers its own live=1 update until after a successful send.
+        confirmed = set(current.keys()) & known_ids
         if new_ids:
             channel = self.bot.get_channel(int(row["channel_id"]))
             if channel:
                 for inst_id in new_ids:
                     try:
                         await self._announce(channel, current[inst_id])
+                        confirmed.add(inst_id)
                     except Exception as e:
                         print(f"[VRChat] Ankündigung fehlgeschlagen (Guild {guild.id}): {e}")
 
         await db_exec(
             "UPDATE vrchat_groups SET known_instances=? WHERE id=?",
-            (",".join(current.keys()), row["id"]),
+            (",".join(confirmed), row["id"]),
         )
 
     @vrchat_loop.before_loop

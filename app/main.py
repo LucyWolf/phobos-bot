@@ -2860,6 +2860,12 @@ async def vrchat_settings_save(
         await set_config("vrchat_password", vrchat_password.strip())
     if vrchat_totp_secret.strip():
         await set_config("vrchat_totp_secret", vrchat_totp_secret.strip().replace(" ", ""))
+    # Without this, a cog that's already logged in keeps using the old account's still-valid
+    # session until it happens to expire on its own - new credentials wouldn't take effect.
+    for b in bot._bots.values():
+        cog = b.get_cog("VRChat")
+        if cog:
+            await cog.reset_session()
     return RedirectResponse("/settings/vrchat?saved=true", status_code=302)
 
 
