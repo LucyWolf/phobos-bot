@@ -628,7 +628,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "leveling_reward_confirm_delete": "Really remove the reward for level {level}?",
         "leveling_info_tooltip":       "What is this?",
         "leveling_info_title":         "How does leveling work?",
-        "leveling_info_body":          "Chat messages and time spent in voice channels grant XP separately, each with its own curve and level. XP-channels let you restrict chat XP to specific channels (empty = all channels count). Level roles are assigned automatically as soon as EITHER the chat or the voice level reaches the threshold. Level rewards (e.g. Discord Nitro, a game) are plain text — the bot announces them when the level is reached, fulfillment itself happens manually outside the bot.",
+        "leveling_info_body":          "Chat messages and time spent in voice channels grant XP separately, each with its own curve and level. The XP channels setting lets you restrict chat XP to specific channels (empty = all channels count). Level roles are assigned automatically as soon as EITHER the chat or the voice level reaches the threshold. Level rewards (e.g. Discord Nitro, a game) are plain text — the bot announces them when the level is reached, fulfillment itself happens manually outside the bot.",
         "leveling_curve_title":        "Chat XP curve",
         "leveling_curve_hint":         "How much XP each level needs: base XP + linear factor × level + quadratic factor × level². Applies to the chat level only.",
         "leveling_curve_base_label":   "Base XP",
