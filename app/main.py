@@ -3654,6 +3654,37 @@ async def vrchat_group_add(
     return RedirectResponse(f"/servers/{guild_id}?tab=vrchat&success=Gruppe+hinzugefügt", status_code=303)
 
 
+@web.post("/servers/{guild_id}/vrchat-groups/edit/{group_row_id}")
+async def vrchat_group_edit(
+    request: Request, guild_id: int, group_row_id: int,
+    group_id: str = Form(...), channel_id: str = Form(...), label: str = Form(""),
+):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    valid_channel_ids = {str(c.id) for c in guild.text_channels}
+    if channel_id not in valid_channel_ids:
+        return RedirectResponse(f"/servers/{guild_id}?tab=vrchat&error=Ungültiger+Kanal", status_code=302)
+    group_id = group_id.strip()
+    if not group_id.startswith("grp_"):
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=vrchat&error=Gruppen-ID+muss+mit+grp_+beginnen", status_code=302
+        )
+    try:
+        await db_exec(
+            "UPDATE vrchat_groups SET group_id=?, channel_id=?, label=? WHERE id=? AND guild_id=?",
+            (group_id, channel_id, label.strip(), group_row_id, str(guild_id)),
+        )
+    except Exception:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=vrchat&error=Diese+Gruppe+ist+schon+eingetragen", status_code=302
+        )
+    return RedirectResponse(f"/servers/{guild_id}?tab=vrchat&success=Gruppe+aktualisiert", status_code=303)
+
+
 @web.post("/servers/{guild_id}/vrchat-groups/delete/{group_row_id}")
 async def vrchat_group_delete(request: Request, guild_id: int, group_row_id: int):
     if r := auth_redirect(request): return r

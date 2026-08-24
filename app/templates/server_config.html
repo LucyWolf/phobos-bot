@@ -1531,12 +1531,24 @@ document.addEventListener('click', function(e) {
   <div class="feat-header">{{ tr.vrchat_groups_title }}</div>
   {% if vrchat_groups %}
   {% for vg in vrchat_groups %}
-  <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.6rem;">
-    <span style="flex:1;font-size:0.85rem;min-width:0;">
-      <span style="font-weight:600;">{{ vg.label if vg.label else vg.group_id[:16] + '…' }}</span>
-      <span style="color:var(--muted);font-family:monospace;font-size:0.72rem;margin-left:0.4rem;">{{ vg.group_id[:16] }}…</span>
-      <span style="color:var(--muted);"> · #{{ vg.channel_name }}</span>
-    </span>
+  <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:end;margin-bottom:0.6rem;">
+    <form method="post" action="/servers/{{ guild.id }}/vrchat-groups/edit/{{ vg.id }}" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:end;flex:1;margin:0;">
+      <div style="min-width:120px;">
+        <label style="font-size:0.72rem;">{{ tr.vrchat_group_name_label }}</label>
+        <input type="text" name="label" value="{{ vg.label }}" placeholder="z.B. Testkammer" style="margin:0;">
+      </div>
+      <div style="flex:1;min-width:220px;">
+        <label style="font-size:0.72rem;">{{ tr.vrchat_group_id_label }}</label>
+        <input type="text" name="group_id" value="{{ vg.group_id }}" required style="margin:0;font-family:monospace;font-size:0.78rem;">
+      </div>
+      <div style="min-width:160px;">
+        <label style="font-size:0.72rem;">{{ tr.vrchat_channel_label }}</label>
+        <select name="channel_id" required style="margin:0;">
+          {% for c in channels %}<option value="{{ c.id }}" {% if vg.channel_id == c.id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-secondary" style="padding:0.4rem 0.6rem;" title="{{ tr.btn_save }}">💾</button>
+    </form>
     <form method="post" action="/servers/{{ guild.id }}/vrchat-groups/delete/{{ vg.id }}" style="margin:0;"
           onsubmit="return confirm({{ tr.vrchat_group_confirm_delete.replace('{group}', vg.label if vg.label else vg.group_id) | js }})">
       <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">🗑</button>
