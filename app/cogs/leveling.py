@@ -253,14 +253,14 @@ class Leveling(commands.Cog):
         for i, r in enumerate(rows):
             prefix = medals[i] if i < 3 else f"`{i+1}.`"
             user = self.bot.get_user(r["user_id"]) or f"<@{r['user_id']}>"
-            lines.append(f"{prefix} **{user}** — Level {r['level']} ({r['xp']} XP)")
+            lines.append(f"{prefix} **{user}** — Chat-Level {r['level']} ({r['xp']} XP)")
         embed = discord.Embed(title="🏆 Leaderboard", description="\n".join(lines), color=0x7c3aed)
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="setxp", description="XP eines Mitglieds setzen (Admin)")
-    @app_commands.describe(track="text oder voice")
+    @app_commands.describe(track="chat oder voice")
     @app_commands.choices(track=[
-        app_commands.Choice(name="Text", value="text"),
+        app_commands.Choice(name="Chat", value="text"),
         app_commands.Choice(name="Voice", value="voice"),
     ])
     @app_commands.default_permissions(administrator=True)
@@ -279,8 +279,9 @@ class Leveling(commands.Cog):
                 "ON CONFLICT(user_id,guild_id) DO UPDATE SET xp=excluded.xp, level=excluded.level",
                 (member.id, interaction.guild_id, xp, level),
             )
+        label = "Voice" if track == "voice" else "Chat"
         await interaction.response.send_message(
-            f"{member.mention} hat jetzt {xp} {track}-XP (Level {level}).", ephemeral=True
+            f"{member.mention} hat jetzt {xp} {label}-XP ({label}-Level {level}).", ephemeral=True
         )
 
 
