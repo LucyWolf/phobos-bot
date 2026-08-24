@@ -47,12 +47,15 @@ class Leveling(commands.Cog):
     async def _add_text_xp(self, member: discord.Member, xp_gain: int):
         quad, linear, base = await self._get_curve(member.guild.id, "text")
         # Atomic upsert-increment instead of read-modify-write, so concurrent grants (e.g. two
-        # messages processed close together) can't lose one of the two XP amounts.
+        # messages processed close together) can't lose one of the two XP amounts. New rows
+        # always start at level 0 (not the pre-computed target level) so the comparison below
+        # sees a real change and fires the level-up announcement/role sync - a low-base curve
+        # can easily grant enough XP in a single message to clear level 1+ on a brand-new row.
         await db_exec(
-            "INSERT INTO levels (user_id, guild_id, xp, level, messages) VALUES (?,?,?,?,?) "
+            "INSERT INTO levels (user_id, guild_id, xp, level, messages) VALUES (?,?,?,0,?) "
             "ON CONFLICT(user_id, guild_id) DO UPDATE SET "
             "xp = levels.xp + excluded.xp, messages = levels.messages + excluded.messages",
-            (member.id, member.guild.id, xp_gain, level_from_xp(xp_gain, quad, linear, base), 1),
+            (member.id, member.guild.id, xp_gain, 1),
         )
         row = await db_one(
             "SELECT xp, level FROM levels WHERE user_id=? AND guild_id=?",
@@ -72,12 +75,13 @@ class Leveling(commands.Cog):
 
     async def _add_voice_xp(self, member: discord.Member, xp_gain: int):
         quad, linear, base = await self._get_curve(member.guild.id, "voice")
+        # New rows start at voice_level 0, same reasoning as _add_text_xp - see comment there.
         await db_exec(
-            "INSERT INTO levels (user_id, guild_id, voice_xp, voice_level, voice_minutes) VALUES (?,?,?,?,?) "
+            "INSERT INTO levels (user_id, guild_id, voice_xp, voice_level, voice_minutes) VALUES (?,?,?,0,?) "
             "ON CONFLICT(user_id, guild_id) DO UPDATE SET "
             "voice_xp = levels.voice_xp + excluded.voice_xp, "
             "voice_minutes = levels.voice_minutes + excluded.voice_minutes",
-            (member.id, member.guild.id, xp_gain, level_from_xp(xp_gain, quad, linear, base), 1),
+            (member.id, member.guild.id, xp_gain, 1),
         )
         row = await db_one(
             "SELECT voice_xp, voice_level FROM levels WHERE user_id=? AND guild_id=?",
