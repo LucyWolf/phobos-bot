@@ -3120,7 +3120,7 @@ async def leaderboard_page(request: Request, guild_id: str = ""):
             selected_guild = {"id": str(guild.id), "name": guild.name,
                               "icon": str(guild.icon.url) if guild.icon else None}
             lb = await db_rows(
-                "SELECT * FROM levels WHERE guild_id=? ORDER BY xp DESC LIMIT 50", (int(guild_id),)
+                "SELECT * FROM levels WHERE guild_id=? ORDER BY xp DESC, voice_xp DESC LIMIT 50", (int(guild_id),)
             )
             quad, linear, base = await _guild_text_curve(int(guild_id))
             for i, e in enumerate(lb, 1):
@@ -3204,7 +3204,7 @@ async def server_config(
 
     # Leaderboard
     lb = await db_rows(
-        "SELECT * FROM levels WHERE guild_id=? ORDER BY xp DESC LIMIT 20", (guild_id,)
+        "SELECT * FROM levels WHERE guild_id=? ORDER BY xp DESC, voice_xp DESC LIMIT 20", (guild_id,)
     )
     for i, e in enumerate(lb, 1):
         m = guild.get_member(e["user_id"])

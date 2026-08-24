@@ -257,7 +257,7 @@ class Leveling(commands.Cog):
     @app_commands.command(name="leaderboard", description="Top 10 nach Chat-XP")
     async def leaderboard(self, interaction: discord.Interaction):
         rows = await db_rows(
-            "SELECT user_id, level, xp FROM levels WHERE guild_id=? ORDER BY xp DESC LIMIT 10",
+            "SELECT user_id, level, xp FROM levels WHERE guild_id=? ORDER BY xp DESC, voice_xp DESC LIMIT 10",
             (interaction.guild_id,),
         )
         if not rows:
