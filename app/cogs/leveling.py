@@ -150,8 +150,13 @@ class Leveling(commands.Cog):
 
         allowed_raw = await get_guild_config(message.guild.id, "leveling_channels") or ""
         allowed = {c.strip() for c in allowed_raw.split(",") if c.strip()}
-        if allowed and str(message.channel.id) not in allowed:
-            return
+        if allowed:
+            # A message inside a thread reports the thread's own ID as message.channel.id, not
+            # its parent's - the XP-channel picker only lists top-level text channels, so without
+            # this a thread under an allowed channel would silently never grant XP.
+            scope_id = message.channel.parent_id if isinstance(message.channel, discord.Thread) else message.channel.id
+            if str(scope_id) not in allowed:
+                return
 
         key = (message.guild.id, message.author.id)
         if key in self._cooldowns:
