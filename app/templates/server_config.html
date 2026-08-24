@@ -1499,100 +1499,6 @@ document.addEventListener('click', function(e) {
 </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════ -->
-<!-- TAB: VRChat                                                          -->
-<!-- ═══════════════════════════════════════════════════════════════════ -->
-<div class="tab-pane" id="pane-vrchat">
-
-<div style="position:relative;margin-bottom:1.25rem;">
-  <button type="button" onclick="toggleVrcInfo()" title="{{ tr.vrchat_info_tooltip }}"
-    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
-  <div id="vrc-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
-       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
-       font-size:0.78rem;min-width:300px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
-    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.vrchat_info_title }}</div>
-    <div style="color:var(--muted);line-height:1.6;">{{ tr.vrchat_info_body }}</div>
-  </div>
-</div>
-
-<form method="post" action="/servers/{{ guild.id }}">
-<input type="hidden" name="tab" value="vrchat">
-<div class="card">
-  <div class="feat-header">🌐 VRChat</div>
-  <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
-    <input type="checkbox" name="vrchat_enabled" value="1" {% if cfg.get('vrchat_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> {{ tr.vrchat_enabled_label }}
-  </label>
-  <p class="hint" style="margin-bottom:0.75rem;">{{ tr.vrchat_settings_hint }}</p>
-  <button type="submit" class="btn btn-primary">💾 Speichern</button>
-</div>
-</form>
-
-<div class="card" style="margin-top:1rem;">
-  <div class="feat-header">{{ tr.vrchat_groups_title }}</div>
-  {% if vrchat_groups %}
-  {% for vg in vrchat_groups %}
-  <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:end;margin-bottom:0.6rem;">
-    <form method="post" action="/servers/{{ guild.id }}/vrchat-groups/edit/{{ vg.id }}" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:end;flex:1;margin:0;">
-      <div style="min-width:120px;">
-        <label style="font-size:0.72rem;">{{ tr.vrchat_group_name_label }}</label>
-        <input type="text" name="label" value="{{ vg.label }}" placeholder="z.B. Testkammer" style="margin:0;">
-      </div>
-      <div style="flex:1;min-width:220px;">
-        <label style="font-size:0.72rem;">{{ tr.vrchat_group_id_label }}</label>
-        <input type="text" name="group_id" value="{{ vg.group_id }}" required style="margin:0;font-family:monospace;font-size:0.78rem;">
-      </div>
-      <div style="min-width:160px;">
-        <label style="font-size:0.72rem;">{{ tr.vrchat_channel_label }}</label>
-        <select name="channel_id" required style="margin:0;">
-          {% for c in channels %}<option value="{{ c.id }}" {% if vg.channel_id == c.id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
-        </select>
-      </div>
-      <button type="submit" class="btn btn-secondary" style="padding:0.4rem 0.6rem;" title="{{ tr.btn_save }}">💾</button>
-    </form>
-    <form method="post" action="/servers/{{ guild.id }}/vrchat-groups/delete/{{ vg.id }}" style="margin:0;"
-          onsubmit="return confirm({{ tr.vrchat_group_confirm_delete.replace('{group}', vg.label if vg.label else vg.group_id) | js }})">
-      <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">🗑</button>
-    </form>
-  </div>
-  {% endfor %}
-  {% else %}
-  <p style="font-size:0.83rem;color:var(--muted);">{{ tr.vrchat_groups_empty }}</p>
-  {% endif %}
-
-  <form method="post" action="/servers/{{ guild.id }}/vrchat-groups/add" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:end;margin-top:0.5rem;padding-top:0.75rem;border-top:1px solid var(--border);">
-    <div style="min-width:140px;">
-      <label style="font-size:0.72rem;">{{ tr.vrchat_group_name_label }}</label>
-      <input type="text" name="label" placeholder="z.B. Testkammer" style="margin:0;">
-    </div>
-    <div style="flex:1;min-width:220px;">
-      <label style="font-size:0.72rem;">{{ tr.vrchat_group_id_label }} <span style="color:var(--muted);">{{ tr.vrchat_group_id_hint }}</span></label>
-      <input type="text" name="group_id" placeholder="grp_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required style="margin:0;">
-    </div>
-    <div style="min-width:160px;">
-      <label style="font-size:0.72rem;">{{ tr.vrchat_channel_label }}</label>
-      <select name="channel_id" required style="margin:0;">
-        {% for c in channels %}<option value="{{ c.id }}">#{{ c.name }}</option>{% endfor %}
-      </select>
-    </div>
-    <button type="submit" class="btn btn-primary" style="padding:0.4rem 0.6rem;" title="{{ tr.btn_add }}">➕</button>
-  </form>
-</div>
-
-</div>
-
-<script>
-function toggleVrcInfo() {
-  const box = document.getElementById('vrc-info-box');
-  box.style.display = box.style.display === 'none' ? '' : 'none';
-}
-document.addEventListener('click', function(e) {
-  const box = document.getElementById('vrc-info-box');
-  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleVrcInfo()"]')) {
-    box.style.display = 'none';
-  }
-});
-</script>
-
 <script>
 function toggleAdInfo() {
   const box = document.getElementById('ad-info-box');
@@ -1607,7 +1513,7 @@ document.addEventListener('click', function(e) {
 </script>
 
 <script>
-const TABS = ['config','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete','vrchat'];
+const TABS = ['config','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {

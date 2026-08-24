@@ -23,14 +23,12 @@ from typing import Optional
 
 from PIL import Image
 
-import aiohttp
 import aiosqlite
 import bcrypt
 import discord
 import psutil
 from cogs.tickets import OpenTicketView as _TicketView
 from cogs.leveling import xp_for_level as _xp_for_level
-from cogs.vrchat import vrchat_login as _vrchat_login, USER_AGENT as _VRCHAT_USER_AGENT
 from i18n import get_tr
 import uvicorn
 from discord.ext import commands
@@ -130,7 +128,6 @@ COGS = [
     "cogs.temp_voice",
     "cogs.scheduler",
     "cogs.birthday",
-    "cogs.vrchat",
 ]
 
 
@@ -2830,58 +2827,6 @@ async def smtp_test(request: Request, test_email: str = Form(...)):
         return RedirectResponse(f"/settings?error={urllib.parse.quote(str(e))}", status_code=302)
 
 
-# ── VRChat Settings ────────────────────────────────────────────────────────────
-# One shared, bot-owned VRChat account used to poll group instances for every guild that
-# enables the feature - VRChat has no app-level API keys like Twitch, only real account login.
-
-@web.get("/settings/vrchat", response_class=HTMLResponse)
-async def vrchat_settings_page(request: Request, saved: bool = False, error: str = "", test_ok: bool = False, test_msg: str = ""):
-    if r := auth_redirect(request): return r
-    if r := admin_redirect(request): return r
-    return templates.TemplateResponse("settings_vrchat.html", {
-        **session(request), "request": request,
-        "guilds": await _guild_list(request), "token_set": await _token_configured(), "active": "vrchat_settings",
-        "vrchat_username": await get_config("vrchat_username") or "",
-        "vrchat_has_password": bool(await get_config("vrchat_password")),
-        "vrchat_has_totp": bool(await get_config("vrchat_totp_secret")),
-        "saved": saved, "error": error, "test_ok": test_ok, "test_msg": test_msg,
-    })
-
-
-@web.post("/settings/vrchat")
-async def vrchat_settings_save(
-    request: Request,
-    vrchat_username: str = Form(""), vrchat_password: str = Form(""), vrchat_totp_secret: str = Form(""),
-):
-    if r := auth_redirect(request): return r
-    if r := admin_redirect(request): return r
-    await set_config("vrchat_username", vrchat_username.strip())
-    if vrchat_password.strip():
-        await set_config("vrchat_password", vrchat_password.strip())
-    if vrchat_totp_secret.strip():
-        await set_config("vrchat_totp_secret", vrchat_totp_secret.strip().replace(" ", ""))
-    # Without this, a cog that's already logged in keeps using the old account's still-valid
-    # session until it happens to expire on its own - new credentials wouldn't take effect.
-    for b in bot._bots.values():
-        cog = b.get_cog("VRChat")
-        if cog:
-            await cog.reset_session()
-    return RedirectResponse("/settings/vrchat?saved=true", status_code=302)
-
-
-@web.post("/settings/vrchat/test")
-async def vrchat_test(request: Request):
-    if r := auth_redirect(request): return r
-    if r := admin_redirect(request): return r
-    async with aiohttp.ClientSession(headers={"User-Agent": _VRCHAT_USER_AGENT}) as session:
-        ok, message = await _vrchat_login(session)
-    if ok:
-        qs = urllib.parse.urlencode({"test_ok": "true", "test_msg": message})
-    else:
-        qs = urllib.parse.urlencode({"error": message})
-    return RedirectResponse(f"/settings/vrchat?{qs}", status_code=302)
-
-
 # ── Token Management ──────────────────────────────────────────────────────────
 
 @web.get("/settings/tokens", response_class=HTMLResponse)
@@ -3244,14 +3189,6 @@ async def server_config(
         "SELECT * FROM level_rewards WHERE guild_id=? ORDER BY level", (str(guild_id),)
     )
 
-    # VRChat groups
-    vrchat_groups = await db_rows(
-        "SELECT * FROM vrchat_groups WHERE guild_id=? ORDER BY id", (str(guild_id),)
-    )
-    for vg in vrchat_groups:
-        ch = guild.get_channel(int(vg["channel_id"]))
-        vg["channel_name"] = ch.name if ch else "?"
-
     # Reaction roles
     rr_list = await db_rows("SELECT * FROM reaction_roles WHERE guild_id=? ORDER BY id", (guild_id,))
     for rr in rr_list:
@@ -3359,7 +3296,6 @@ async def server_config(
         "leveling_channels": leveling_channels,
         "level_roles": level_roles,
         "level_rewards": level_rewards,
-        "vrchat_groups": vrchat_groups,
         "auto_delete_entries": await db_rows(
             "SELECT * FROM auto_delete_channels WHERE guild_id=?", (str(guild_id),)
         ),
@@ -3398,13 +3334,11 @@ _TAB_TEXT_KEYS = {
         "automod_banned_words", "automod_action", "automod_warn_message",
     ],
     "birthday": ["birthday_channel", "birthday_message"],
-    "vrchat": [],
 }
 _TAB_CHECKBOX_KEYS = {
     "config": ["welcome_card_enabled"],
     "leveling": ["leveling_enabled", "leveling_voice_enabled"],
     "automod": ["automod_enabled", "automod_links"],
-    "vrchat": ["vrchat_enabled"],
     "birthday": [],
 }
 
@@ -3623,83 +3557,6 @@ async def level_reward_delete(request: Request, guild_id: int, reward_row_id: in
         "DELETE FROM level_rewards WHERE id=? AND guild_id=?", (reward_row_id, str(guild_id))
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=leveling&success=Belohnung+entfernt", status_code=303)
-
-
-# ── VRChat groups ────────────────────────────────────────────────────────────
-# Multiple (group, channel) pairs per guild, same list-with-add/delete shape as level
-# roles/rewards above - one guild can watch several VRChat groups at once.
-
-@web.post("/servers/{guild_id}/vrchat-groups/add")
-async def vrchat_group_add(
-    request: Request, guild_id: int,
-    group_id: str = Form(...), channel_id: str = Form(...), label: str = Form(""),
-):
-    if r := auth_redirect(request): return r
-    if not await _guild_access(request, guild_id):
-        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
-    guild = bot.get_guild(guild_id)
-    if not guild:
-        return RedirectResponse("/servers", status_code=302)
-    valid_channel_ids = {str(c.id) for c in guild.text_channels}
-    if channel_id not in valid_channel_ids:
-        return RedirectResponse(f"/servers/{guild_id}?tab=vrchat&error=Ungültiger+Kanal", status_code=302)
-    group_id = group_id.strip()
-    if not group_id.startswith("grp_"):
-        return RedirectResponse(
-            f"/servers/{guild_id}?tab=vrchat&error=Gruppen-ID+muss+mit+grp_+beginnen", status_code=302
-        )
-    try:
-        await db_exec(
-            "INSERT INTO vrchat_groups (guild_id, group_id, channel_id, label) VALUES (?,?,?,?)",
-            (str(guild_id), group_id, channel_id, label.strip()),
-        )
-    except Exception:
-        return RedirectResponse(
-            f"/servers/{guild_id}?tab=vrchat&error=Diese+Gruppe+ist+schon+eingetragen", status_code=302
-        )
-    return RedirectResponse(f"/servers/{guild_id}?tab=vrchat&success=Gruppe+hinzugefügt", status_code=303)
-
-
-@web.post("/servers/{guild_id}/vrchat-groups/edit/{group_row_id}")
-async def vrchat_group_edit(
-    request: Request, guild_id: int, group_row_id: int,
-    group_id: str = Form(...), channel_id: str = Form(...), label: str = Form(""),
-):
-    if r := auth_redirect(request): return r
-    if not await _guild_access(request, guild_id):
-        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
-    guild = bot.get_guild(guild_id)
-    if not guild:
-        return RedirectResponse("/servers", status_code=302)
-    valid_channel_ids = {str(c.id) for c in guild.text_channels}
-    if channel_id not in valid_channel_ids:
-        return RedirectResponse(f"/servers/{guild_id}?tab=vrchat&error=Ungültiger+Kanal", status_code=302)
-    group_id = group_id.strip()
-    if not group_id.startswith("grp_"):
-        return RedirectResponse(
-            f"/servers/{guild_id}?tab=vrchat&error=Gruppen-ID+muss+mit+grp_+beginnen", status_code=302
-        )
-    try:
-        await db_exec(
-            "UPDATE vrchat_groups SET group_id=?, channel_id=?, label=? WHERE id=? AND guild_id=?",
-            (group_id, channel_id, label.strip(), group_row_id, str(guild_id)),
-        )
-    except Exception:
-        return RedirectResponse(
-            f"/servers/{guild_id}?tab=vrchat&error=Diese+Gruppe+ist+schon+eingetragen", status_code=302
-        )
-    return RedirectResponse(f"/servers/{guild_id}?tab=vrchat&success=Gruppe+aktualisiert", status_code=303)
-
-
-@web.post("/servers/{guild_id}/vrchat-groups/delete/{group_row_id}")
-async def vrchat_group_delete(request: Request, guild_id: int, group_row_id: int):
-    if r := auth_redirect(request): return r
-    if not await _guild_access(request, guild_id):
-        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
-    await db_exec(
-        "DELETE FROM vrchat_groups WHERE id=? AND guild_id=?", (group_row_id, str(guild_id))
-    )
-    return RedirectResponse(f"/servers/{guild_id}?tab=vrchat&success=Gruppe+entfernt", status_code=303)
 
 
 # ── Ticket Panels ────────────────────────────────────────────────────────────

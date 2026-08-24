@@ -298,16 +298,6 @@ async def init_db():
             )
         """)
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS vrchat_groups (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                guild_id TEXT NOT NULL,
-                group_id TEXT NOT NULL,
-                channel_id TEXT NOT NULL,
-                known_instances TEXT NOT NULL DEFAULT '',
-                UNIQUE(guild_id, group_id)
-            )
-        """)
-        await db.execute("""
             CREATE TABLE IF NOT EXISTS temp_voice_config (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL,
@@ -425,7 +415,6 @@ async def init_db():
             "ALTER TABLE levels ADD COLUMN voice_minutes INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE levels ADD COLUMN voice_xp INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE levels ADD COLUMN voice_level INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE vrchat_groups ADD COLUMN label TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)
