@@ -187,7 +187,13 @@ class Leveling(commands.Cog):
                     for member in vc.members:
                         if member.bot:
                             continue
-                        await self._add_voice_xp(member, xp_gain)
+                        # Per-member, not just per-guild: one member's XP grant raising (e.g. a
+                        # transient DB error) shouldn't cost every other member still in voice in
+                        # this same guild their XP for this tick too.
+                        try:
+                            await self._add_voice_xp(member, xp_gain)
+                        except Exception as e:
+                            print(f"[Leveling] voice XP error for {member} in guild {guild.id}: {e}")
             except Exception as e:
                 print(f"[Leveling] voice XP error in guild {guild.id}: {e}")
 
