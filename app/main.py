@@ -2140,12 +2140,19 @@ async def auto_delete_save(request: Request, guild_id: str, channel_id: str = Fo
         delay_int = int(delay_seconds)
     except (ValueError, TypeError):
         delay_int = 0
-    if delay_int > 0:
-        await db_exec(
-            "INSERT INTO auto_delete_channels (guild_id, channel_id, delay_seconds) VALUES (?,?,?) "
-            "ON CONFLICT(guild_id, channel_id) DO UPDATE SET delay_seconds=excluded.delay_seconds",
-            (guild_id, channel_id, delay_int),
+    if delay_int <= 0:
+        # Used to silently save nothing here while still reporting "Gespeichert" — an
+        # empty/invalid/zero delay is a form mistake, not a valid setting, so say so instead
+        # of pretending it worked. (Turning an *existing* entry off has its own ✕ button
+        # in the table above — this form is only for adding a new channel.)
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=autodelete&error=Ungültige+Verzögerung", status_code=302
         )
+    await db_exec(
+        "INSERT INTO auto_delete_channels (guild_id, channel_id, delay_seconds) VALUES (?,?,?) "
+        "ON CONFLICT(guild_id, channel_id) DO UPDATE SET delay_seconds=excluded.delay_seconds",
+        (guild_id, channel_id, delay_int),
+    )
     await _reload_auto_delete()
     return RedirectResponse(f"/servers/{guild_id}?tab=autodelete&success=Gespeichert", status_code=302)
 
