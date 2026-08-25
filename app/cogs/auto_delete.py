@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from database import db_rows, db_exec, db_insert
 
 
@@ -10,6 +10,10 @@ class AutoDelete(commands.Cog):
         self.bot = bot
         self._configs: dict = {}  # {guild_id: {channel_id: delay_seconds}}
         self._tasks: dict = {}    # {pending_id: asyncio.Task}
+        self._retry_stuck.start()
+
+    def cog_unload(self):
+        self._retry_stuck.cancel()
 
     async def _load_configs(self):
         rows = await db_rows("SELECT guild_id, channel_id, delay_seconds FROM auto_delete_channels")
@@ -24,6 +28,24 @@ class AutoDelete(commands.Cog):
     async def on_ready(self):
         await self._load_configs()
         await self._resume_pending()
+
+    @tasks.loop(minutes=30)
+    async def _retry_stuck(self):
+        # A deletion that failed for a persistent reason (e.g. missing "Manage Messages")
+        # deliberately isn't removed from auto_delete_pending so it can be retried - but the
+        # only other place that retried it was on_ready, which fires on an actual reconnect,
+        # not on any regular schedule. On a stable connection that could be days away, leaving
+        # a permanently-failing message stuck (and invisible) indefinitely. _resume_pending()
+        # already skips anything currently in self._tasks, so calling it here is safe - it
+        # only ever picks up rows that aren't actively scheduled.
+        try:
+            await self._resume_pending()
+        except Exception as e:
+            print(f"[AutoDelete] retry loop error: {e}")
+
+    @_retry_stuck.before_loop
+    async def _before_retry(self):
+        await self.bot.wait_until_ready()
 
     async def _resume_pending(self):
         # Deletions scheduled before a restart only lived in memory (asyncio.sleep) and were
@@ -81,8 +103,9 @@ class AutoDelete(commands.Cog):
                 # Could be a real, persistent problem (e.g. missing "Manage Messages") or just
                 # this bot instance dying mid-reconnect (_run_single_bot rebuilds a fresh Bot +
                 # cog on every reconnect, not only on a full process restart) — either way we
-                # can't confirm the message is actually gone, so leave the row for a retry on
-                # the next on_ready instead of deleting it here.
+                # can't confirm the message is actually gone, so leave the row alone instead of
+                # deleting it here; _retry_stuck picks it back up on its next tick (on_ready
+                # would too, but that's not something to rely on for a timely retry).
                 print(f"[AutoDelete] delete failed for message {message_id} in channel {channel_id}: {e}")
                 return
             await db_exec("DELETE FROM auto_delete_pending WHERE id=?", (pending_id,))
