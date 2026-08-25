@@ -1452,9 +1452,9 @@ document.addEventListener('click', function(e) {
       <td style="padding:0.5rem;">#{{ ch_name }}</td>
       <td style="padding:0.5rem;">
         {% set s = e.delay_seconds %}
-        {% if s < 3600 %}{{ (s // 60) }} Minuten
-        {% elif s < 86400 %}{{ (s // 3600) }} Stunden
-        {% else %}{{ (s // 86400) }} Tage{% endif %}
+        {% if s < 3600 %}{{ s // 60 }} Minute{{ 'n' if (s // 60) != 1 else '' }}
+        {% elif s < 86400 %}{{ s // 3600 }} Stunde{{ 'n' if (s // 3600) != 1 else '' }}
+        {% else %}{{ s // 86400 }} Tag{{ 'e' if (s // 86400) != 1 else '' }}{% endif %}
       </td>
       <td style="padding:0.5rem;text-align:right;">
         <form method="post" action="/servers/{{ guild.id }}/auto-delete/delete/{{ e.id }}" style="margin:0;">
