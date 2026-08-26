@@ -222,6 +222,14 @@ docker compose up -d --build
 
 The dashboard is available on port `8080`.
 
+> **Does this need to be reachable from the internet?** No. The bot itself only ever makes
+> *outbound* connections to Discord — it works fine behind a normal home router with no port
+> forwarding at all. The dashboard only needs to be reachable from whatever device(s) you
+> actually use it from: a local IP (`http://192.168.x.x:8080`) is enough if that's just your
+> own network. Public reachability (port forwarding + a domain, see
+> [Nginx Proxy Manager](#nginx-proxy-manager) below) only matters if other moderators need to
+> reach the dashboard from a *different* network than the one it's running on.
+
 > **Raspberry Pi:** Supported on **Pi 3, 4 and 5**, running Raspberry Pi OS in either 64-bit (`aarch64`) or 32-bit (`armv7`) — same `docker compose up -d --build` command. A couple of Python dependencies (`psutil`, and `bcrypt`/`Pillow` on 32-bit) have no prebuilt wheel for ARM and get compiled from source during the build — the first build takes noticeably longer than on a regular PC/server (several minutes, more on an older Pi), later builds are unaffected since the image layer gets cached. **Pi Zero / Pi 1** (`armv6`) are not guaranteed — the Python base image this project builds on doesn't publish a dedicated armv6 build, and such old hardware would likely struggle with the bot's workload regardless.
 
 ### Android (Termux) — no Docker required
@@ -642,6 +650,14 @@ docker compose up -d --build
 ```
 
 Dashboard ist auf Port `8080` erreichbar.
+
+> **Muss das aus dem Internet erreichbar sein?** Nein. Der Bot selbst baut nur *ausgehende*
+> Verbindungen zu Discord auf — läuft problemlos hinter einem normalen Heimrouter, ganz ohne
+> Portfreigabe. Das Dashboard muss nur von den Geräten aus erreichbar sein, von denen du es
+> tatsächlich nutzt: eine lokale IP (`http://192.168.x.x:8080`) reicht, wenn das nur dein
+> eigenes Netzwerk ist. Öffentliche Erreichbarkeit (Portfreigabe + Domain, siehe
+> [Nginx Proxy Manager](#nginx-proxy-manager-1) weiter unten) braucht's nur, wenn andere Mods
+> das Dashboard aus einem *anderen* Netzwerk erreichen sollen als dem, in dem es läuft.
 
 > **Raspberry Pi:** Unterstützt auf **Pi 3, 4 und 5**, mit Raspberry Pi OS in 64-bit (`aarch64`) oder 32-bit (`armv7`) — gleicher Befehl `docker compose up -d --build`. Ein paar Python-Abhängigkeiten (`psutil`, sowie auf 32-bit zusätzlich `bcrypt`/`Pillow`) haben kein fertiges Wheel für ARM und werden beim Bauen aus dem Quellcode kompiliert — der erste Build dauert dadurch spürbar länger als auf einem normalen PC/Server (mehrere Minuten, auf älteren Pi-Modellen mehr), spätere Builds sind davon nicht betroffen da die Image-Schicht gecacht wird. **Pi Zero / Pi 1** (`armv6`) sind nicht garantiert — das Python-Basis-Image dieses Projekts hat kein eigenes armv6-Build, und so alte Hardware wäre mit der Bot-Last vermutlich ohnehin überfordert.
 
