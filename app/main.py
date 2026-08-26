@@ -26,7 +26,12 @@ from PIL import Image
 import aiosqlite
 import bcrypt
 import discord
-import psutil
+try:
+    import psutil
+except ImportError:
+    # No prebuilt Android wheel and no C toolchain available under Chaquopy - the rest of the
+    # bot doesn't need it, only get_system_stats() below (the Bot-Info dashboard page) does.
+    psutil = None
 from cogs.tickets import OpenTicketView as _TicketView
 from cogs.leveling import xp_for_level as _xp_for_level
 from i18n import get_tr
@@ -1483,28 +1488,34 @@ def _cgroup_ram() -> tuple[int, int] | None:
 
 
 def get_system_stats() -> dict:
-    proc = psutil.Process()
     uptime = datetime.datetime.utcnow() - PROCESS_START
     h, rem = divmod(int(uptime.total_seconds()), 3600)
     m, s = divmod(rem, 60)
 
-    cg = _cgroup_ram()
-    if cg:
-        ram_used  = cg[0] // (1024 ** 2)
-        ram_total = cg[1] // (1024 ** 2)
-        ram_pct   = round(cg[0] / cg[1] * 100, 1)
-    else:
-        vm = psutil.virtual_memory()
-        ram_used  = vm.used  // (1024 ** 2)
-        ram_total = vm.total // (1024 ** 2)
-        ram_pct   = round(vm.percent, 1)
+    # 0 rather than None for all four - the template does numeric comparisons/min() on these
+    # (e.g. `{% if stats.cpu > 80 %}`) that would raise on None instead of just rendering "0%".
+    cpu = ram_used = ram_total = ram_pct = proc_ram = 0
+    if psutil:
+        proc = psutil.Process()
+        cg = _cgroup_ram()
+        if cg:
+            ram_used  = cg[0] // (1024 ** 2)
+            ram_total = cg[1] // (1024 ** 2)
+            ram_pct   = round(cg[0] / cg[1] * 100, 1)
+        else:
+            vm = psutil.virtual_memory()
+            ram_used  = vm.used  // (1024 ** 2)
+            ram_total = vm.total // (1024 ** 2)
+            ram_pct   = round(vm.percent, 1)
+        cpu = psutil.cpu_percent(interval=0.1)
+        proc_ram = proc.memory_info().rss // (1024 ** 2)
 
     return {
-        "cpu": psutil.cpu_percent(interval=0.1),
+        "cpu": cpu,
         "ram_used": ram_used,
         "ram_total": ram_total,
         "ram_pct": ram_pct,
-        "proc_ram": proc.memory_info().rss // (1024 ** 2),
+        "proc_ram": proc_ram,
         "uptime": f"{h}h {m}m {s}s",
         "latency": round(bot.latency * 1000, 1) if bot.is_ready() else None,
         "guild_count": len(bot.guilds),

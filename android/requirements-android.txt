@@ -1,0 +1,44 @@
+# Same as ../app/requirements.txt, with two exceptions - see app/build.gradle for the actual
+# install commands, this file only covers the rest of the list.
+#
+# - fastapi installed separately with --no-deps: fastapi==0.111.0 unconditionally depends on
+#   orjson, ujson, fastapi-cli, httpx and email_validator, none of which Phobos Bot's code
+#   actually imports, and orjson in particular has no prebuilt Android wheel and needs a full
+#   Rust-for-Android cross-compilation toolchain to build from source, which isn't set up here.
+#   Its two dependencies Phobos Bot's code actually needs (starlette, pydantic) are listed below
+#   explicitly instead.
+# - psutil left out entirely: C extension, no prebuilt Android wheel, and no C compiler
+#   available under Chaquopy to build it from source either. main.py already handles this - see
+#   the `try/except ImportError` around `import psutil` there. Only costs the Bot-Info
+#   dashboard page's CPU/RAM display (shows 0% there on Android), nothing else depends on it.
+# - bcrypt pinned to 3.1.7 instead of 4.2.1: bcrypt 4.x rewrote its native extension in Rust,
+#   and Chaquopy's package repo (chaquo.com/pypi-13.1) only has prebuilt Android wheels up to
+#   3.2.2, i.e. the last version before that rewrite - no Rust-for-Android toolchain is set up
+#   here either, same root cause as the fastapi/orjson situation above. This is safe: hashpw/
+#   checkpw/gensalt (all Phobos Bot actually calls) have had a stable, unchanged hash format
+#   across every bcrypt version - a hash created by 3.1.7 verifies fine against 4.2.1 and vice
+#   versa, so this doesn't affect compatibility with existing password hashes from a
+#   Docker/Termux install, or with hashes this Android build creates being read back elsewhere.
+# - Pillow pinned to 9.2.0 instead of 10.4.0, same reasoning: no prebuilt wheel for 10.4.0.
+#   Chaquopy's index does list a newer 11.0.0 wheel too, but pip's resolver didn't pick it up
+#   (its filename is lowercase "pillow-11.0.0-..." unlike every other version's "Pillow-..." -
+#   worth another look if this ever needs bumping) - 9.2.0 resolves correctly and only needs
+#   Android API 21+, well within this app's minSdk 26. Only used for welcome-card image
+#   generation and by qrcode below; the small subset of the PIL API this project uses
+#   (Image.open/new, drawing, save) hasn't changed between them.
+#
+# If app/requirements.txt changes, mirror the change here too (except these three lines).
+discord.py==2.3.2
+aiosqlite==0.19.0
+starlette>=0.37.2,<0.38.0
+pydantic>=1.7.4,<3.0.0,!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0
+typing-extensions>=4.8.0
+uvicorn==0.29.0
+jinja2==3.1.4
+markupsafe==2.1.5
+bcrypt==3.1.7
+itsdangerous==2.1.2
+python-multipart==0.0.9
+Pillow==9.2.0
+pyotp==2.9.0
+qrcode==7.4.2

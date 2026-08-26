@@ -267,7 +267,8 @@ dependency, check which Termux `pkg` package provides the missing native library
 
 Prefer an actual installable app over a terminal session? See [`android/README.md`](android/README.md)
 for a Chaquopy-based Android Studio project that packages the same bot as a real APK with a
-foreground service and a start/stop screen — bigger undertaking, also untested on real hardware.
+foreground service and a start/stop screen — verified to build successfully into a working
+`app-debug.apk`; installing and running it on an actual device is the part still unverified.
 
 ### First Start
 
@@ -698,8 +699,9 @@ fehlende native Bibliothek bereitstellt.
 
 Lieber eine echte installierbare App statt Terminal-Sitzung? Siehe [`android/README.md`](android/README.md)
 für ein Chaquopy-basiertes Android-Studio-Projekt, das denselben Bot als echte APK mit
-Foreground-Service und Start/Stop-Bildschirm verpackt — deutlich größeres Vorhaben, ebenfalls
-ungetestet an echter Hardware.
+Foreground-Service und Start/Stop-Bildschirm verpackt — der Build selbst läuft nachweislich
+erfolgreich durch und erzeugt eine funktionsfähige `app-debug.apk`; ungetestet ist nur noch, ob
+sie auf einem echten Gerät auch tatsächlich startet und läuft.
 
 ### Erster Start
 

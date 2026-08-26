@@ -23,11 +23,27 @@ android {
 
         python {
             buildPython "python3"
-            // Reuses the SAME Python source the Docker/Termux deployments run - no duplicated
-            // copy of the bot's code living in the Android project.
-            srcDirs = ["../../app"]
             pip {
-                install "-r", "../../app/requirements.txt"
+                // fastapi==0.111.0 unconditionally depends on orjson (Rust, no Android wheel,
+                // no Rust-for-Android toolchain set up here) plus ujson/fastapi-cli/httpx/
+                // email_validator that Phobos Bot's code doesn't use either - installed
+                // separately with --no-deps, its two dependencies actually needed are in
+                // requirements-android.txt instead. See that file's own comment for more.
+                options "--no-deps"
+                install "fastapi==0.111.0"
+                options()
+                install "-r", "../requirements-android.txt"
+            }
+        }
+    }
+
+    // Reuses the SAME Python source the Docker/Termux deployments run - no duplicated copy of
+    // the bot's code living in the Android project. Chaquopy source dirs are set here, not
+    // inside defaultConfig.python (that block is only for pip/buildPython).
+    sourceSets {
+        main {
+            python {
+                srcDirs = ["../../app"]
             }
         }
     }
