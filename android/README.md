@@ -122,9 +122,13 @@ before relying on that.
 
 ## Installing the built APK
 
-`app/build/outputs/apk/debug/app-debug.apk` is a debug-signed build — installable directly via
-`adb install app-debug.apk`, or by copying it to the phone and opening it (Android will prompt
-to allow installs from that source). No Play Store involved.
+Don't want to build it yourself? Pre-built APKs get published under
+[GitHub Releases](https://github.com/LucyWolf/phobos-bot/releases) (tagged `android-v<bot
+version>-debug`) — download `phobos-bot-debug.apk` from there.
+
+Otherwise, `app/build/outputs/apk/debug/app-debug.apk` is a debug-signed build — installable
+directly via `adb install app-debug.apk`, or by copying it to the phone and opening it (Android
+will prompt to allow installs from that source). No Play Store involved.
 
 ## What's deliberately NOT done here
 
