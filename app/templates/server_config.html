@@ -437,7 +437,7 @@ renderLvlChannelsList();
   {% if leaderboard %}
   <div class="table-wrap">
     <table>
-      <thead><tr><th>#</th><th>Nutzer</th><th>Chat-Level</th><th>Chat-XP</th><th>Nachrichten</th><th>Voice-Level</th><th>Voice-XP</th><th>Voice-Minuten</th></tr></thead>
+      <thead><tr><th>#</th><th>Nutzer</th><th>Chat-Level</th><th>Chat-XP</th><th>Nachrichten</th><th>Voice-Level</th><th>Voice-XP</th><th>Voice-Minuten</th><th></th></tr></thead>
       <tbody>
         {% for e in leaderboard %}
         <tr>
@@ -451,6 +451,12 @@ renderLvlChannelsList();
           <td><span class="badge" style="background:var(--accent-light);color:#a78bfa">{{ e.voice_level }}</span></td>
           <td>{{ e.voice_xp }}</td>
           <td style="color:var(--muted)">{{ e.voice_minutes }}</td>
+          <td style="text-align:right;">
+            <form method="post" action="/servers/{{ guild.id }}/levels/delete/{{ e.user_id }}" style="margin:0;"
+                  onsubmit="return confirm({{ tr.leveling_leaderboard_confirm_delete.replace('{user}', e.username) | js }})">
+              <button class="btn btn-danger" type="submit" style="padding:0.2rem 0.5rem;" title="{{ tr.btn_delete }}">🗑</button>
+            </form>
+          </td>
         </tr>
         {% endfor %}
       </tbody>

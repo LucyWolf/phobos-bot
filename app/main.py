@@ -3566,6 +3566,22 @@ async def level_reward_delete(request: Request, guild_id: int, reward_row_id: in
     return RedirectResponse(f"/servers/{guild_id}?tab=leveling&success=Belohnung+entfernt", status_code=303)
 
 
+# ── Reset a member's XP ──────────────────────────────────────────────────────
+# Wipes the whole row (chat + voice XP/level, message/voice-minute counters) - unlike
+# /setxp there's no way to reset just one track from the dashboard, matching how this is
+# presented in the leaderboard table as one combined "remove this member" action.
+
+@web.post("/servers/{guild_id}/levels/delete/{user_id}")
+async def levels_delete(request: Request, guild_id: int, user_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
+    await db_exec(
+        "DELETE FROM levels WHERE user_id=? AND guild_id=?", (user_id, guild_id)
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=leveling&success=XP+zurückgesetzt", status_code=303)
+
+
 # ── Ticket Panels ────────────────────────────────────────────────────────────
 
 @web.post("/servers/{guild_id}/tickets/panels/create")
