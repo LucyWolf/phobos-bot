@@ -1,0 +1,55 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "com.chaquo.python"
+}
+
+android {
+    namespace "com.phobosbot.androidhost"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.phobosbot.androidhost"
+        minSdk 26  // ForegroundServiceType (dataSync) needs 26+; most "old phones" clear this.
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+
+        ndk {
+            // arm64-v8a covers most phones from the last ~8 years, armeabi-v7a covers older
+            // 32-bit ones. x86_64 is only useful for testing in an emulator.
+            abiFilters "arm64-v8a", "armeabi-v7a", "x86_64"
+        }
+
+        python {
+            buildPython "python3"
+            // Reuses the SAME Python source the Docker/Termux deployments run - no duplicated
+            // copy of the bot's code living in the Android project.
+            srcDirs = ["../../app"]
+            pip {
+                install "-r", "../../app/requirements.txt"
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+dependencies {
+    implementation "androidx.core:core-ktx:1.12.0"
+    implementation "androidx.appcompat:appcompat:1.6.1"
+    implementation "com.google.android.material:material:1.11.0"
+}

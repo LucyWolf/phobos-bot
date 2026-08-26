@@ -257,6 +257,10 @@ here — update with `git pull` inside the `phobos-bot` folder instead, then res
 This path hasn't been tested on real hardware yet — if `pip install` fails compiling a
 dependency, check which Termux `pkg` package provides the missing native library first.
 
+Prefer an actual installable app over a terminal session? See [`android/README.md`](android/README.md)
+for a Chaquopy-based Android Studio project that packages the same bot as a real APK with a
+foreground service and a start/stop screen — bigger undertaking, also untested on real hardware.
+
 ### First Start
 
 1. Open `http://server-ip:8080`
@@ -675,6 +679,11 @@ greift hier nicht — stattdessen im `phobos-bot`-Ordner mit `git pull` aktualis
 Prozess neu starten. Dieser Weg ist noch nicht an echter Hardware getestet — falls `pip install`
 beim Kompilieren einer Abhängigkeit scheitert, zuerst prüfen welches Termux-`pkg`-Paket die
 fehlende native Bibliothek bereitstellt.
+
+Lieber eine echte installierbare App statt Terminal-Sitzung? Siehe [`android/README.md`](android/README.md)
+für ein Chaquopy-basiertes Android-Studio-Projekt, das denselben Bot als echte APK mit
+Foreground-Service und Start/Stop-Bildschirm verpackt — deutlich größeres Vorhaben, ebenfalls
+ungetestet an echter Hardware.
 
 ### Erster Start
 
