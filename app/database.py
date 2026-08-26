@@ -1,8 +1,14 @@
+import os
 import aiosqlite
 from pathlib import Path
 from typing import Optional
 
-DB_PATH = Path("/app/data/phobos.db")
+# Defaults to the Docker container path - override via PHOBOS_DB_PATH for non-Docker setups
+# (e.g. running directly under Termux on Android, where /app/data doesn't exist/isn't writable).
+DB_PATH = Path(os.environ.get("PHOBOS_DB_PATH", "/app/data/phobos.db"))
+# Harmless no-op under Docker (the volume mount already provides /app/data) - needed for a
+# non-Docker PHOBOS_DB_PATH pointing at a directory nothing else has created yet.
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
 async def db_rows(query: str, params: tuple = ()):

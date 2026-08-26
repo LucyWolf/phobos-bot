@@ -49,8 +49,12 @@ from database import (
 import totp
 
 VERSION = (Path(__file__).parent / "VERSION").read_text().strip()
-SECRET_KEY_PATH = Path("/app/data/secret.key")
-AVATARS_DIR = Path("/app/data/avatars")
+# Defaults to the Docker container path - override via PHOBOS_DATA_DIR for non-Docker setups
+# (e.g. running directly under Termux on Android, where /app/data doesn't exist/isn't writable).
+DATA_DIR = Path(os.environ.get("PHOBOS_DATA_DIR", "/app/data"))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+SECRET_KEY_PATH = DATA_DIR / "secret.key"
+AVATARS_DIR = DATA_DIR / "avatars"
 
 
 def load_secret_key() -> str:

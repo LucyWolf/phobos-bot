@@ -224,6 +224,39 @@ The dashboard is available on port `8080`.
 
 > **Raspberry Pi:** Supported on **Pi 3, 4 and 5**, running Raspberry Pi OS in either 64-bit (`aarch64`) or 32-bit (`armv7`) — same `docker compose up -d --build` command. A couple of Python dependencies (`psutil`, and `bcrypt`/`Pillow` on 32-bit) have no prebuilt wheel for ARM and get compiled from source during the build — the first build takes noticeably longer than on a regular PC/server (several minutes, more on an older Pi), later builds are unaffected since the image layer gets cached. **Pi Zero / Pi 1** (`armv6`) are not guaranteed — the Python base image this project builds on doesn't publish a dedicated armv6 build, and such old hardware would likely struggle with the bot's workload regardless.
 
+### Android (Termux) — no Docker required
+
+Android doesn't support Docker, so an old phone runs Phobos Bot as a plain Python process
+under [Termux](https://termux.dev/) instead of a container. Get Termux from
+[F-Droid](https://f-droid.org/packages/com.termux/) or its GitHub releases — the Play Store
+build is outdated and no longer maintained.
+
+```bash
+pkg update && pkg upgrade
+pkg install python git clang make rust libjpeg-turbo zlib openssl
+git clone https://github.com/LucyWolf/phobos-bot.git
+cd phobos-bot/app
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+export PHOBOS_DATA_DIR="$HOME/phobos-data"
+export PHOBOS_DB_PATH="$HOME/phobos-data/phobos.db"
+python main.py
+```
+
+The dashboard is then reachable at `http://<phone-ip>:8080` from any other device on the same
+network (find the phone's IP under Android's Wi-Fi settings). For 24/7 uptime:
+
+- Disable battery optimization for Termux (Android **Settings → Apps → Termux → Battery →
+  Unrestricted**) — otherwise Android kills the background process.
+- Install [Termux:Boot](https://f-droid.org/packages/com.termux.boot/) and drop a start script
+  under `~/.termux/boot/` to relaunch the bot automatically after a phone reboot.
+- Keep the phone charging and connected to Wi-Fi.
+
+The in-dashboard auto-updater (**Bot-Update** page) drives `docker compose` and doesn't apply
+here — update with `git pull` inside the `phobos-bot` folder instead, then restart the process.
+This path hasn't been tested on real hardware yet — if `pip install` fails compiling a
+dependency, check which Termux `pkg` package provides the missing native library first.
+
 ### First Start
 
 1. Open `http://server-ip:8080`
@@ -607,6 +640,41 @@ docker compose up -d --build
 Dashboard ist auf Port `8080` erreichbar.
 
 > **Raspberry Pi:** Unterstützt auf **Pi 3, 4 und 5**, mit Raspberry Pi OS in 64-bit (`aarch64`) oder 32-bit (`armv7`) — gleicher Befehl `docker compose up -d --build`. Ein paar Python-Abhängigkeiten (`psutil`, sowie auf 32-bit zusätzlich `bcrypt`/`Pillow`) haben kein fertiges Wheel für ARM und werden beim Bauen aus dem Quellcode kompiliert — der erste Build dauert dadurch spürbar länger als auf einem normalen PC/Server (mehrere Minuten, auf älteren Pi-Modellen mehr), spätere Builds sind davon nicht betroffen da die Image-Schicht gecacht wird. **Pi Zero / Pi 1** (`armv6`) sind nicht garantiert — das Python-Basis-Image dieses Projekts hat kein eigenes armv6-Build, und so alte Hardware wäre mit der Bot-Last vermutlich ohnehin überfordert.
+
+### Android (Termux) — ohne Docker
+
+Android unterstützt kein Docker, deshalb läuft Phobos Bot auf einem alten Handy als normaler
+Python-Prozess unter [Termux](https://termux.dev/) statt in einem Container. Termux gibt's über
+[F-Droid](https://f-droid.org/packages/com.termux/) oder die GitHub-Releases — die Play-Store-
+Version ist veraltet und wird nicht mehr gepflegt.
+
+```bash
+pkg update && pkg upgrade
+pkg install python git clang make rust libjpeg-turbo zlib openssl
+git clone https://github.com/LucyWolf/phobos-bot.git
+cd phobos-bot/app
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+export PHOBOS_DATA_DIR="$HOME/phobos-data"
+export PHOBOS_DB_PATH="$HOME/phobos-data/phobos.db"
+python main.py
+```
+
+Das Dashboard ist danach unter `http://<handy-ip>:8080` von jedem anderen Gerät im selben
+Netzwerk erreichbar (IP steht in Androids WLAN-Einstellungen). Für dauerhaften Betrieb:
+
+- Akku-Optimierung für Termux deaktivieren (Android **Einstellungen → Apps → Termux → Akku →
+  Uneingeschränkt**) — sonst killt Android den Hintergrundprozess.
+- [Termux:Boot](https://f-droid.org/packages/com.termux.boot/) installieren und ein Start-
+  Skript unter `~/.termux/boot/` ablegen, damit der Bot nach einem Neustart automatisch
+  wieder anläuft.
+- Handy dauerhaft am Ladekabel und im WLAN lassen.
+
+Der eingebaute Auto-Updater im Dashboard (**Bot-Update**-Seite) steuert `docker compose` und
+greift hier nicht — stattdessen im `phobos-bot`-Ordner mit `git pull` aktualisieren und den
+Prozess neu starten. Dieser Weg ist noch nicht an echter Hardware getestet — falls `pip install`
+beim Kompilieren einer Abhängigkeit scheitert, zuerst prüfen welches Termux-`pkg`-Paket die
+fehlende native Bibliothek bereitstellt.
 
 ### Erster Start
 
