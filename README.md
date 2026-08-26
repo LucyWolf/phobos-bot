@@ -9,6 +9,43 @@
 
 A self-hostable Discord bot with a full web dashboard. Open source, free, forever.
 
+<details>
+<summary><strong>Table of contents</strong></summary>
+
+- [Features](#features)
+  - [Bot Features](#bot-features)
+  - [Web Dashboard](#web-dashboard)
+- [Multi-Bot](#multi-bot)
+- [Docker Compose](#docker-compose)
+- [Welcome Card](#welcome-card)
+- [Temp Voice Channels](#temp-voice-channels)
+- [Spam Protection / Auto-Moderation](#spam-protection--auto-moderation)
+- [Auto-Delete](#auto-delete)
+- [Scheduled Messages](#scheduled-messages)
+- [Discord Events](#discord-events)
+- [Birthday System](#birthday-system)
+- [Backup & Restore](#backup--restore)
+- [Two-Factor Authentication](#two-factor-authentication)
+- [Event Logging](#event-logging)
+- [Permission System](#permission-system)
+- [Installation](#installation)
+  - [Requirements](#requirements)
+  - [Android (Termux) — no Docker required](#android-termux--no-docker-required)
+  - [First Start](#first-start)
+  - [Discord Developer Portal](#discord-developer-portal)
+- [Updates](#updates)
+  - [Automatic (via Dashboard)](#automatic-via-dashboard)
+  - [Manual (on the server)](#manual-on-the-server)
+  - [RAM Display](#ram-display)
+- [Twitch Notifications Setup](#twitch-notifications-setup)
+- [Free Stuff & Deals Setup](#free-stuff--deals-setup)
+- [Nginx Proxy Manager](#nginx-proxy-manager)
+- [Project Structure](#project-structure)
+- [Tech Stack](#tech-stack)
+- [A Note on This Project](#a-note-on-this-project)
+
+</details>
+
 ## Features
 
 ### Bot Features
@@ -438,6 +475,43 @@ I want to be honest here: this is AI-generated, and I make no claim to have writ
 # 🇩🇪 Deutsch
 
 Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, kostenlos, für immer.
+
+<details>
+<summary><strong>Inhaltsverzeichnis</strong></summary>
+
+- [Features](#features-1)
+  - [Bot-Funktionen](#bot-funktionen)
+  - [Web-Dashboard](#web-dashboard-1)
+- [Multi-Bot](#multi-bot-1)
+- [Docker Compose](#docker-compose-1)
+- [Willkommenskarte](#willkommenskarte)
+- [Temporäre Voice-Kanäle](#temporäre-voice-kanäle)
+- [Spam-Schutz / Auto-Moderation](#spam-schutz--auto-moderation)
+- [Auto-Delete](#auto-delete-1)
+- [Geplante Nachrichten](#geplante-nachrichten)
+- [Discord-Events](#discord-events-1)
+- [Geburtstags-System](#geburtstags-system)
+- [Backup & Wiederherstellen](#backup--wiederherstellen)
+- [Zwei-Faktor-Authentifizierung](#zwei-faktor-authentifizierung)
+- [Event-Logging](#event-logging-1)
+- [Berechtigungssystem](#berechtigungssystem)
+- [Installation](#installation-1)
+  - [Voraussetzungen](#voraussetzungen)
+  - [Android (Termux) — ohne Docker](#android-termux--ohne-docker)
+  - [Erster Start](#erster-start)
+  - [Discord Developer Portal](#discord-developer-portal-1)
+- [Updates](#updates-1)
+  - [Automatisch (über Dashboard)](#automatisch-über-dashboard)
+  - [Manuell (auf dem Server)](#manuell-auf-dem-server)
+  - [RAM-Anzeige konfigurieren](#ram-anzeige-konfigurieren)
+- [Twitch-Benachrichtigungen einrichten](#twitch-benachrichtigungen-einrichten)
+- [Free Stuff & Deals einrichten](#free-stuff--deals-einrichten)
+- [Nginx Proxy Manager](#nginx-proxy-manager-1)
+- [Projektstruktur](#projektstruktur)
+- [Technologie](#technologie)
+- [Eine Anmerkung zu diesem Projekt](#eine-anmerkung-zu-diesem-projekt)
+
+</details>
 
 ## Features
 
