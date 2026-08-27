@@ -38,7 +38,7 @@
     </div>
     <span class="api-id-badge">#{{ api.id }}</span>
     <button type="button" onclick="toggleApiEdit({{ api.id }})"
-            class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;">✏️ Bearbeiten</button>
+            class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="Einstellungen">⚙</button>
     <form method="post" action="/settings/notifications/delete/{{ api.id }}" style="margin:0"
           onsubmit="return confirm('API «{{ api.label }}» wirklich löschen?')">
       <button class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.5rem;">🗑</button>

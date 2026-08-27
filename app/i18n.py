@@ -32,7 +32,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "btn_add":            "➕ Hinzufügen",
         "btn_delete":         "Löschen",
         "btn_cancel":         "Abbrechen",
-        "btn_edit":           "Bearbeiten",
+        "btn_settings":       "Einstellungen",
         "btn_send":           "📤 Senden",
         # Common labels
         "label_name":         "Name",
@@ -160,7 +160,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "notif_settings_link_label":   "Einstellungen → Streaming-API",
         "notif_streamers_title":       "Eingetragene Streamer",
         "notif_live_now":              "Gerade live",
-        "notif_btn_edit":              "✏️ Bearbeiten",
         "notif_confirm_delete":        "Streamer „{name}“ wirklich löschen?",
         "notif_label_username":        "Twitch-Benutzername",
         "notif_label_display_name":    "Anzeigename (optional)",
@@ -353,7 +352,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "btn_add":            "➕ Add",
         "btn_delete":         "Delete",
         "btn_cancel":         "Cancel",
-        "btn_edit":           "Edit",
+        "btn_settings":       "Settings",
         "btn_send":           "📤 Send",
         # Common labels
         "label_name":         "Name",
@@ -481,7 +480,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "notif_settings_link_label":   "Settings → Streaming API",
         "notif_streamers_title":       "Registered streamers",
         "notif_live_now":              "Currently live",
-        "notif_btn_edit":              "✏️ Edit",
         "notif_confirm_delete":        "Really delete streamer \"{name}\"?",
         "notif_label_username":        "Twitch username",
         "notif_label_display_name":    "Display name (optional)",

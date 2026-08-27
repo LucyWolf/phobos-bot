@@ -87,7 +87,7 @@
         </div>
         {% if s.custom_message %}<div class="sub-msg">"{{ s.custom_message }}"</div>{% endif %}
         <button type="button" onclick="toggleSubEdit({{ s.id }})"
-                class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;">{{ tr.notif_btn_edit }}</button>
+                class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_settings }}">⚙</button>
         <form method="post" action="/servers/{{ guild_id }}/notifications/delete/{{ s.id }}" style="margin:0"
               onsubmit="return confirm({{ tr.notif_confirm_delete.replace('{name}', s.target_name or s.target) | js }})">
           <button class="btn btn-danger" type="submit">🗑</button>

@@ -636,7 +636,7 @@ renderLvlChannelsList();
           <td style="color:var(--muted);font-size:0.78rem;white-space:nowrap;">{{ p.created_at | dt }}</td>
           <td>
             <div style="display:flex;gap:0.3rem;justify-content:flex-end;">
-              <button class="btn btn-secondary" onclick="togglePanelEdit({{ p.id }})" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="Einstellungen">⚙</button>
+              <button class="btn btn-secondary" onclick="togglePanelEdit({{ p.id }})" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="{{ tr.btn_settings }}">⚙</button>
               {% if p.status == 'published' %}
               <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/unpublish" style="display:inline;">
                 <button class="btn btn-secondary" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="Deaktivieren">⏸</button>
@@ -1017,7 +1017,7 @@ document.addEventListener('click', function(e) {
       <td style="padding:0.5rem;">#{{ ch_name }}</td>
       <td style="padding:0.5rem;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ sm.message }}</td>
       <td style="padding:0.5rem;text-align:right;white-space:nowrap;">
-        <button type="button" class="btn btn-secondary" onclick="toggleScheduledEdit({{ sm.id }})" style="padding:0.2rem 0.6rem;font-size:0.78rem;" title="Bearbeiten">✎</button>
+        <button type="button" class="btn btn-secondary" onclick="toggleScheduledEdit({{ sm.id }})" style="padding:0.2rem 0.6rem;font-size:0.78rem;" title="{{ tr.btn_settings }}">⚙</button>
         <form method="post" action="/servers/{{ guild.id }}/scheduled/delete/{{ sm.id }}" style="margin:0;display:inline;">
           <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
         </form>
@@ -1158,7 +1158,7 @@ function toggleScheduledEdit(id) {
       <td style="padding:0.5rem;color:var(--muted);">{{ tr.get('events_status_' + ev.status.name, ev.status.name) }}</td>
       <td style="padding:0.5rem;text-align:right;white-space:nowrap;">
         {% if ev.status.name == 'scheduled' %}
-        <button type="button" class="btn btn-secondary" onclick="toggleEventEdit('{{ ev.id }}')" style="padding:0.2rem 0.6rem;font-size:0.78rem;" title="{{ tr.btn_edit }}">✎</button>
+        <button type="button" class="btn btn-secondary" onclick="toggleEventEdit('{{ ev.id }}')" style="padding:0.2rem 0.6rem;font-size:0.78rem;" title="{{ tr.btn_settings }}">⚙</button>
         {% endif %}
         <form method="post" action="/servers/{{ guild.id }}/events/delete/{{ ev.id }}" style="margin:0;display:inline;" onsubmit="return confirm({{ tr.events_confirm_delete.replace('{name}', ev.name) | js }})">
           <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
