@@ -25,6 +25,10 @@
          system installer for it via an ACTION_VIEW intent - that requires this permission
          from API 26+ (it's what actually gates "install from unknown sources" per-app). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Lets MainActivity prompt the user to exempt this app from Doze/App Standby battery
+         optimizations - locking the screen can otherwise get the whole foreground service
+         killed on some (especially budget/OEM-skinned) devices regardless of the wake lock. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:allowBackup="true"

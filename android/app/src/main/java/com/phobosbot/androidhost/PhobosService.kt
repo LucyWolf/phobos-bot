@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -32,6 +33,7 @@ class PhobosService : Service() {
     }
 
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
     private var started = false
 
     override fun onCreate() {
@@ -45,6 +47,15 @@ class PhobosService : Service() {
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PhobosBot::ServiceWakeLock")
         wakeLock?.acquire()
+
+        // Without this, Android's WiFi power-saving can drop the radio to a low-power state once
+        // the screen is off, which can make the dashboard (port 8080) unreachable from OTHER
+        // devices even though the bot process itself is still fine - the wake lock above only
+        // keeps the CPU running, not the WiFi radio at full power.
+        val wifiManager = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
+        @Suppress("DEPRECATION")
+        wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "PhobosBot::WifiLock")
+        wifiLock?.acquire()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -104,6 +115,7 @@ class PhobosService : Service() {
 
     override fun onDestroy() {
         wakeLock?.let { if (it.isHeld) it.release() }
+        wifiLock?.let { if (it.isHeld) it.release() }
         super.onDestroy()
     }
 

@@ -9,8 +9,10 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.media.MediaScannerConnection
 import android.provider.MediaStore
+import android.provider.Settings
 import android.text.format.Formatter
 import android.view.View
 import android.widget.Button
@@ -64,6 +66,7 @@ class MainActivity : AppCompatActivity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
             }
+            requestIgnoreBatteryOptimizations()
             val intent = Intent(this, PhobosService::class.java)
             ContextCompat.startForegroundService(this, intent)
         }
@@ -87,6 +90,26 @@ class MainActivity : AppCompatActivity() {
             } else {
                 saveCrashLogToDownloads()
             }
+        }
+    }
+
+    private fun requestIgnoreBatteryOptimizations() {
+        // Doze/App Standby (and especially aggressive OEM battery managers on cheap/skinned
+        // Android devices) can kill even a foreground service with a held wake lock once the
+        // screen locks - this asks the user to exempt the app via Android's own standard system
+        // dialog. Only asked once per app-start if not already granted; the service still starts
+        // either way, this just improves reliability rather than gating anything.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        if (pm.isIgnoringBatteryOptimizations(packageName)) return
+        try {
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:$packageName")
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            // Some OEM ROMs strip this system dialog entirely - nothing more to do here, the
+            // service still runs, just without this particular exemption.
         }
     }
 
