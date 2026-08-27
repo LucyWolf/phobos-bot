@@ -32,6 +32,16 @@
 #   that ships the full IANA tz database inside itself - no system tzdata to fall back on under
 #   Android like there would be on Docker/Termux. main.py/scheduler.py both fall back to
 #   `from pytz import timezone as ZoneInfo` when `import zoneinfo` fails.
+# - chaquopy-libjpeg / chaquopy-freetype added here only, not in app/requirements.txt: Pillow's
+#   own wheel metadata declares both as dependencies (they hold the actual libjpeg_chaquopy.so/
+#   libfreetype_chaquopy.so native libraries Pillow's _imaging.so dynamically links against),
+#   but Chaquopy 15.0.1's bundled pip predates pip 21.2's --platform/--python-version/--abi
+#   cross-platform-dependency-resolution safeguard - it silently resolves the requested package
+#   itself but drops native transitive dependencies like these instead of erroring or installing
+#   them. Confirmed live on the test device: PIL.Image import crashed with
+#   "ImportError: dlopen failed: library "libjpeg_chaquopy.so" not found" - the wheel itself
+#   really does not bundle it, .whl inspection confirmed it must come from this separate package.
+#   Must be listed explicitly for the same reason on any future Pillow-dependent addition.
 #
 # If app/requirements.txt changes, mirror the change here too (except these lines).
 discord.py==2.3.2
@@ -49,3 +59,5 @@ Pillow==9.2.0
 pyotp==2.9.0
 qrcode==7.4.2
 pytz
+chaquopy-libjpeg>=1.5.3
+chaquopy-freetype>=2.9.1
