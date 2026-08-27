@@ -1583,9 +1583,9 @@ def _os_display_string() -> str:
         try:
             from java import jclass
             version = jclass("android.os.Build$VERSION").RELEASE
-            return f"Android {version} (Linux {platform.release()})"
+            return f"Android {version}"
         except Exception:
-            return f"Android (Linux {platform.release()})"
+            return "Android"
     return f"{platform.system()} {platform.release()}"
 
 
