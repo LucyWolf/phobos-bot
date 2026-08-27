@@ -1,11 +1,14 @@
 package com.phobosbot.androidhost
 
+import android.content.ContentValues
 import android.content.Intent
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import android.text.format.Formatter
 import android.view.View
 import android.widget.Button
@@ -25,6 +28,17 @@ class MainActivity : AppCompatActivity() {
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* ignored:
             the service still runs without it, just without a visible notification on API 33+ */
+        }
+
+    private val storagePermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                saveCrashLogToDownloads()
+            } else {
+                val pathView = findViewById<TextView>(R.id.saveLogPathText)
+                pathView.text = "Speichern fehlgeschlagen - Berechtigung verweigert"
+                pathView.visibility = View.VISIBLE
+            }
         }
 
     private val statusHandler = Handler(Looper.getMainLooper())
@@ -54,28 +68,49 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.saveLogButton).setOnClickListener {
-            val text = findViewById<EditText>(R.id.crashLogText).text.toString()
-            // getExternalFilesDir(null) needs no storage permission on any API level and is
-            // visible via plain USB file transfer (MTP) from a PC under
-            // Android/data/com.phobosbot.androidhost/files/ - no clipboard, no other app on the
-            // phone, no adb needed to get the text off the device.
-            val dir = getExternalFilesDir(null)
-            val pathView = findViewById<TextView>(R.id.saveLogPathText)
-            if (dir == null) {
-                pathView.text = "Speichern fehlgeschlagen - kein externer Speicher verfügbar"
-                pathView.visibility = View.VISIBLE
-                return@setOnClickListener
+            // getExternalFilesDir(null) (Android/data/.../files/) is invisible to USB/MTP file
+            // browsers and on-device file managers since Android 11 - scoped storage hides it
+            // regardless of what the app writes there. The public Downloads folder stays
+            // visible on every version, but needs two different write paths: MediaStore on
+            // API 29+ (no permission needed), a direct File write + a runtime permission below.
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                ContextCompat.checkSelfPermission(
+                    this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                storagePermissionLauncher.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            } else {
+                saveCrashLogToDownloads()
             }
-            try {
+        }
+    }
+
+    private fun saveCrashLogToDownloads() {
+        val text = findViewById<EditText>(R.id.crashLogText).text.toString()
+        val pathView = findViewById<TextView>(R.id.saveLogPathText)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, "phobos-crash.txt")
+                    put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                }
+                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: throw Exception("MediaStore.insert() gab null zurück")
+                contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) }
+                    ?: throw Exception("openOutputStream() gab null zurück")
+                pathView.text = "Gespeichert: Downloads/phobos-crash.txt\n(per USB am PC im Downloads-Ordner zu finden)"
+            } else {
+                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                dir.mkdirs()
                 val file = File(dir, "phobos-crash.txt")
                 file.writeText(text)
-                pathView.text = "Gespeichert: ${file.absolutePath}\n(per USB am PC unter Android/data/com.phobosbot.androidhost/files/ zu finden)"
-                pathView.visibility = View.VISIBLE
-                Toast.makeText(this, "Gespeichert", Toast.LENGTH_SHORT).show()
-            } catch (e: Exception) {
-                pathView.text = "Speichern fehlgeschlagen: ${e.message}"
-                pathView.visibility = View.VISIBLE
+                pathView.text = "Gespeichert: ${file.absolutePath}\n(per USB am PC im Downloads-Ordner zu finden)"
             }
+            pathView.visibility = View.VISIBLE
+            Toast.makeText(this, "Gespeichert", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            pathView.text = "Speichern fehlgeschlagen: ${e.message}"
+            pathView.visibility = View.VISIBLE
         }
     }
 

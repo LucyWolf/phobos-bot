@@ -6,6 +6,12 @@
     <!-- Needed for WifiManager.getConnectionInfo() in MainActivity.getLocalIpAddress() -
          missing this caused an immediate crash on launch on the first real-device test. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Only needed on API < 29 to write the crash-log export into the public Downloads
+         folder (MediaStore handles this without a permission on API 29+). Capped with
+         maxSdkVersion so it's a no-op on newer Android and doesn't show as a requested
+         permission there. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- Android 14 (API 34) requires a specific foreground-service type. "dataSync" is the
