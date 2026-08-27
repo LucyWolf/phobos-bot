@@ -243,14 +243,12 @@ class MainActivity : AppCompatActivity() {
                 setDataAndType(uri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            val resolved = packageManager.queryIntentActivities(intent, 0)
-            dlog("queryIntentActivities found ${resolved.size} handler(s): " +
-                resolved.joinToString { it.activityInfo?.packageName ?: "?" })
-            if (resolved.isEmpty()) {
-                dlog("No activity can handle the install intent on this device/ROM - aborting.")
-                Toast.makeText(this, "Kein Installer für APKs auf diesem Gerät gefunden", Toast.LENGTH_LONG).show()
-                return
-            }
+            // NOT pre-checked via packageManager.queryIntentActivities() - that query doesn't
+            // get the URI read-permission grant that only startActivity() itself provides via
+            // FLAG_GRANT_READ_URI_PERMISSION, so it unreliably reports 0 handlers for content://
+            // URIs even when a real installer is about to handle it fine (confirmed live: v1.6.43
+            // logged exactly "0 handlers" here and aborted, even though the install would very
+            // likely have worked - this was the bug, not a genuinely missing installer).
             startActivity(intent)
             dlog("startActivity() returned without throwing.")
         } catch (e: Exception) {
