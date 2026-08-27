@@ -1,12 +1,29 @@
-# Same as ../app/requirements.txt, with two exceptions - see app/build.gradle for the actual
-# install commands, this file only covers the rest of the list.
+# Same as ../app/requirements.txt, PLUS every transitive dependency of every package below,
+# listed out explicitly. See app/build.gradle for the actual install commands, this file only
+# covers the rest of the list.
+#
+# Why every transitive dependency has to be spelled out here (found the hard way, one crash at
+# a time, via the on-device crash-log mechanism - see CLAUDE.md v1.6.33/1.6.34 for the first two):
+# Chaquopy 15.0.1 bundles a pip version that predates pip 21.2's safeguard around
+# --platform/--python-version/--abi installs (pip 21.2+ refuses to run at all in that mode
+# without --no-deps or --only-binary=:all:, specifically because cross-platform dependency
+# resolution doesn't work reliably - confirmed by literally running the same install command
+# Chaquopy uses, with a modern pip, and getting that exact refusal). Chaquopy's older pip just
+# lets it happen anyway: it installs exactly the packages named in this file and drops EVERY
+# transitive dependency of EVERY one of them silently, no error, no warning. So this file has to
+# be the full flattened dependency closure, not just the direct requirements - checked via each
+# package's own PyPI/Chaquopy METADATA `Requires-Dist` list, recursively, until nothing new turns
+# up (a small script diffing installed dist-info folders against declared Requires-Dist is faster
+# than finding each one by shipping another APK to the test device and waiting for the next
+# crash.log).
 #
 # - fastapi installed separately with --no-deps: fastapi==0.111.0 unconditionally depends on
 #   orjson, ujson, fastapi-cli, httpx and email_validator, none of which Phobos Bot's code
 #   actually imports, and orjson in particular has no prebuilt Android wheel and needs a full
 #   Rust-for-Android cross-compilation toolchain to build from source, which isn't set up here.
-#   Its two dependencies Phobos Bot's code actually needs (starlette, pydantic) are listed below
-#   explicitly instead.
+#   Its dependencies Phobos Bot's code actually needs (starlette, pydantic, uvicorn, jinja2,
+#   python-multipart, itsdangerous) are listed below explicitly instead - this one is a
+#   deliberate, curated exception, not a gap.
 # - psutil left out entirely: C extension, no prebuilt Android wheel, and no C compiler
 #   available under Chaquopy to build it from source either. main.py already handles this - see
 #   the `try/except ImportError` around `import psutil` there. Only costs the Bot-Info
@@ -19,35 +36,59 @@
 #   across every bcrypt version - a hash created by 3.1.7 verifies fine against 4.2.1 and vice
 #   versa, so this doesn't affect compatibility with existing password hashes from a
 #   Docker/Termux install, or with hashes this Android build creates being read back elsewhere.
+#   Needs `six` (its own runtime import, confirmed by a device crash log) - `cffi`, its other
+#   declared dependency, is build-time only (this wheel ships a precompiled _bcrypt.so that
+#   doesn't import cffi at runtime), so it's deliberately left out.
 # - Pillow pinned to 9.2.0 instead of 10.4.0, same reasoning: no prebuilt wheel for 10.4.0.
 #   Chaquopy's index does list a newer 11.0.0 wheel too, but pip's resolver didn't pick it up
 #   (its filename is lowercase "pillow-11.0.0-..." unlike every other version's "Pillow-..." -
 #   worth another look if this ever needs bumping) - 9.2.0 resolves correctly and only needs
-#   Android API 21+, well within this app's minSdk 26. Only used for welcome-card image
+#   Android API 21+, well within this app's minSdk 21. Only used for welcome-card image
 #   generation and by qrcode below; the small subset of the PIL API this project uses
-#   (Image.open/new, drawing, save) hasn't changed between them.
+#   (Image.open/new, drawing, save) hasn't changed between them. Needs chaquopy-libjpeg and
+#   chaquopy-freetype (see above) for its native libjpeg/freetype linkage.
+# - qrcode's own dependency `pypng` is deliberately NOT listed: it only backs qrcode's PyPNGImage
+#   factory, used solely as a fallback when Pillow isn't importable (verified by reading
+#   qrcode/main.py's make_image()) - since Pillow works here, qrcode always picks its PilImage
+#   factory instead and never touches pypng.
+# - pydantic pinned to 1.10.13 instead of an open-ended >=1.7.4,<3.0.0 range (which is what
+#   fastapi itself declares, and is what this file used to mirror): letting the resolver pick
+#   freely resolves to the latest 2.x, but pydantic 2.x's validation core (`pydantic-core`) is a
+#   compiled Rust extension with no prebuilt Android wheel and no Rust-for-Android toolchain set
+#   up here, same root cause as orjson/bcrypt 4.x above. 1.10.13 is the last 1.x release and ships
+#   a genuine pure-Python `py3-none-any` wheel (pydantic 1.x optionally Cython-compiles for speed,
+#   but always keeps a working pure-Python fallback build) - installs straight from real PyPI, no
+#   Chaquopy-specific wheel needed. Safe here: Phobos Bot's own code never imports pydantic
+#   directly (grepped, zero hits) - it's purely an internal implementation detail of
+#   fastapi/starlette's request validation, which both support pydantic 1.x and 2.x equally.
 # - pytz added here only, not in app/requirements.txt: Chaquopy bundles Python 3.8, which
 #   predates the stdlib zoneinfo module (3.9+) that main.py/scheduler.py import. pytz is a pure
 #   Python, universal-wheel package (installs from real PyPI, no Chaquopy-specific build needed)
 #   that ships the full IANA tz database inside itself - no system tzdata to fall back on under
 #   Android like there would be on Docker/Termux. main.py/scheduler.py both fall back to
 #   `from pytz import timezone as ZoneInfo` when `import zoneinfo` fails.
-# - chaquopy-libjpeg / chaquopy-freetype added here only, not in app/requirements.txt: Pillow's
-#   own wheel metadata declares both as dependencies (they hold the actual libjpeg_chaquopy.so/
-#   libfreetype_chaquopy.so native libraries Pillow's _imaging.so dynamically links against),
-#   but Chaquopy 15.0.1's bundled pip predates pip 21.2's --platform/--python-version/--abi
-#   cross-platform-dependency-resolution safeguard - it silently resolves the requested package
-#   itself but drops native transitive dependencies like these instead of erroring or installing
-#   them. Confirmed live on the test device: PIL.Image import crashed with
-#   "ImportError: dlopen failed: library "libjpeg_chaquopy.so" not found" - the wheel itself
-#   really does not bundle it, .whl inspection confirmed it must come from this separate package.
-#   Must be listed explicitly for the same reason on any future Pillow-dependent addition.
+# - Everything from `six` down to `h11` below exists purely to satisfy the transitive-dependency
+#   gap described above - none of it is imported by Phobos Bot's own code directly. Grouped by
+#   which top-level package needs it:
+#     six                                    - bcrypt
+#     aiohttp, multidict, yarl, frozenlist,
+#       aiosignal, attrs, async-timeout,
+#       charset-normalizer, idna             - discord.py (aiohttp is its HTTP/websocket layer;
+#                                              the rest are aiohttp's own transitive deps in turn)
+#     anyio, sniffio, exceptiongroup         - starlette (async primitives; exceptiongroup only
+#                                              because Chaquopy's Python 3.8 predates 3.11, which
+#                                              is when exceptiongroup became stdlib)
+#     click, h11                             - uvicorn (h11 is its actual HTTP/1.1 implementation)
+#   aiohttp/multidict/yarl/frozenlist are pinned to exact versions because those are the only (or
+#   the newest known-good) builds Chaquopy's package repo has prebuilt for Android; the rest are
+#   pure Python and installed unpinned/loosely-pinned straight from real PyPI, same as pytz.
 #
-# If app/requirements.txt changes, mirror the change here too (except these lines).
+# If app/requirements.txt changes, mirror the change here too (except the pinned-differently
+# lines above), and re-run the dependency-closure check for anything new.
 discord.py==2.3.2
 aiosqlite==0.19.0
 starlette>=0.37.2,<0.38.0
-pydantic>=1.7.4,<3.0.0,!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0
+pydantic==1.10.13
 typing-extensions>=4.8.0
 uvicorn==0.29.0
 jinja2==3.1.4
@@ -61,3 +102,26 @@ qrcode==7.4.2
 pytz
 chaquopy-libjpeg>=1.5.3
 chaquopy-freetype>=2.9.1
+
+# six / bcrypt
+six
+
+# aiohttp / discord.py
+aiohttp==3.8.1
+multidict==5.1.0
+yarl==1.4.2
+frozenlist==1.2.0
+aiosignal>=1.1.2
+attrs>=17.3.0
+async-timeout>=4.0.0a3,<5.0
+charset-normalizer>=2.0,<3.0
+idna>=2.0
+
+# anyio / starlette
+anyio>=3.4.0,<5
+sniffio>=1.1
+exceptiongroup
+
+# uvicorn
+click>=7.0
+h11>=0.8
