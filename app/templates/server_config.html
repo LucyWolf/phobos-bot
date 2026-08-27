@@ -904,31 +904,39 @@ function togglePanelEdit(id) {
   </p>
 
   {% if tempvoice_configs %}
-  <table style="width:100%;border-collapse:collapse;margin-bottom:1.25rem;">
-    <thead>
-      <tr style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;">
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Trigger-Kanal</th>
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Name-Vorlage</th>
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Limit</th>
-        <th style="padding:0.4rem 0.5rem;"></th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for tv in tempvoice_configs %}
-    {% set vc_name = voice_channels | selectattr('id','equalto',tv.trigger_channel_id) | map(attribute='name') | first | default(tv.trigger_channel_id) %}
-    <tr style="border-top:1px solid var(--border);font-size:0.85rem;">
-      <td style="padding:0.5rem;">🔊 {{ vc_name }}</td>
-      <td style="padding:0.5rem;">{{ tv.name_template }}</td>
-      <td style="padding:0.5rem;">{{ tv.user_limit if tv.user_limit else '∞' }}</td>
-      <td style="padding:0.5rem;text-align:right;">
-        <form method="post" action="/servers/{{ guild.id }}/tempvoice/delete/{{ tv.id }}" style="margin:0;">
-          <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
-        </form>
-      </td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <div style="margin-bottom:1.25rem;">
+  {% for tv in tempvoice_configs %}
+  <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:end;margin-bottom:0.6rem;padding-bottom:0.6rem;border-bottom:1px solid var(--border);">
+    <form method="post" action="/servers/{{ guild.id }}/tempvoice/edit/{{ tv.id }}" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:end;flex:1;margin:0;">
+      <div style="min-width:180px;">
+        <label style="font-size:0.72rem;">Trigger-Kanal</label>
+        <select name="trigger_channel_id" required style="margin:0;">
+          {% for vc in voice_channels %}<option value="{{ vc.id }}" {% if tv.trigger_channel_id == vc.id %}selected{% endif %}>🔊 {{ vc.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div style="min-width:160px;">
+        <label style="font-size:0.72rem;">Kategorie</label>
+        <select name="category_id" style="margin:0;">
+          <option value="">— Gleiche wie Trigger —</option>
+          {% for cat in categories %}<option value="{{ cat.id }}" {% if tv.category_id == cat.id %}selected{% endif %}>📁 {{ cat.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div style="flex:1;min-width:180px;">
+        <label style="font-size:0.72rem;">Name-Vorlage</label>
+        <input type="text" name="name_template" value="{{ tv.name_template }}" style="margin:0;">
+      </div>
+      <div style="min-width:90px;">
+        <label style="font-size:0.72rem;">Limit</label>
+        <input type="number" name="user_limit" value="{{ tv.user_limit }}" min="0" max="99" style="margin:0;">
+      </div>
+      <button type="submit" class="btn btn-secondary" style="padding:0.4rem 0.6rem;" title="Speichern">💾</button>
+    </form>
+    <form method="post" action="/servers/{{ guild.id }}/tempvoice/delete/{{ tv.id }}" style="margin:0;">
+      <button type="submit" class="btn btn-danger" style="padding:0.4rem 0.6rem;" title="Löschen">✕</button>
+    </form>
+  </div>
+  {% endfor %}
+  </div>
   {% endif %}
 
   <form method="post" action="/servers/{{ guild.id }}/tempvoice/add">

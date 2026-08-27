@@ -2484,7 +2484,7 @@ async def tempvoice_add(request: Request, guild_id: str):
     category = form.get("category_id", "")
     name_tpl = form.get("name_template", "{user}'s Channel") or "{user}'s Channel"
     try:
-        user_limit = int(form.get("user_limit") or 0)
+        user_limit = max(0, min(99, int(form.get("user_limit") or 0)))
     except (ValueError, TypeError):
         user_limit = 0
     if trigger:
@@ -2493,6 +2493,37 @@ async def tempvoice_add(request: Request, guild_id: str):
             (guild_id, trigger, category, name_tpl, user_limit),
         )
     return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&success=Gespeichert", status_code=302)
+
+@web.post("/servers/{guild_id}/tempvoice/edit/{config_id}")
+async def tempvoice_edit(request: Request, guild_id: str, config_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(int(guild_id))
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    trigger = form.get("trigger_channel_id", "")
+    category = form.get("category_id", "")
+    name_tpl = form.get("name_template", "{user}'s Channel") or "{user}'s Channel"
+    try:
+        user_limit = max(0, min(99, int(form.get("user_limit") or 0)))
+    except (ValueError, TypeError):
+        user_limit = 0
+    if trigger not in {str(c.id) for c in guild.voice_channels}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&error=Ungültiger+Kanal", status_code=302)
+    if category and category not in {str(c.id) for c in guild.categories}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&error=Ungültige+Kategorie", status_code=302)
+    try:
+        await db_exec(
+            "UPDATE temp_voice_config SET trigger_channel_id=?, category_id=?, name_template=?, user_limit=? "
+            "WHERE id=? AND guild_id=?",
+            (trigger, category, name_tpl, user_limit, config_id, guild_id),
+        )
+    except Exception:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tempvoice&error=Für+diesen+Kanal+existiert+schon+ein+Trigger", status_code=302
+        )
+    return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&success=Gespeichert", status_code=303)
 
 @web.post("/servers/{guild_id}/tempvoice/delete/{config_id}")
 async def tempvoice_delete(request: Request, guild_id: str, config_id: int):
