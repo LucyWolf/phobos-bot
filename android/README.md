@@ -20,6 +20,11 @@ The bot runs inside a foreground `Service` (`PhobosService.kt`) so Android doesn
 the background. `MainActivity` just starts/stops that service and shows the phone's local IP so
 you know where to point a browser.
 
+**Requires Android 7.0 (API 24) or newer** — Chaquopy's own documented minimum, not a limit
+chosen for this app specifically (see `app/build.gradle`'s `minSdk` comment). Older "spare
+phone in a drawer" hardware than that isn't supported; anything from roughly 2016 onward should
+be fine, covering most of what people actually have lying around.
+
 ## Prerequisites
 
 - Android Studio (a recent version), **or** just a JDK 17 + the Android SDK command-line tools

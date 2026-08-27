@@ -10,7 +10,12 @@ android {
 
     defaultConfig {
         applicationId "com.phobosbot.androidhost"
-        minSdk 26  // ForegroundServiceType (dataSync) needs 26+; most "old phones" clear this.
+        // 24 is Chaquopy's own hard floor (https://chaquo.com/chaquopy/doc/current/android.html:
+        // "Your project's minSdk must be at least 24"), not something chosen for this app. The
+        // API-26 NotificationChannel and API-33 POST_NOTIFICATIONS calls are already guarded by
+        // SDK_INT checks in PhobosService.kt/MainActivity.kt, and foregroundServiceType (API 29+)
+        // is simply ignored by older Android versions - none of those needed a higher floor here.
+        minSdk 24
         targetSdk 34
         versionCode 1
         versionName "1.0"
