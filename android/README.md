@@ -1,11 +1,12 @@
 # Phobos Bot — Android app (Chaquopy)
 
-**Status: builds successfully into a working APK.** Verified with a real `./gradlew
-assembleDebug` run (JDK 17, Android SDK, Gradle 8.4, Chaquopy 15.0.1) — the build completes and
-produces an installable `app-debug.apk` (~39 MB) containing the bot's actual Python code. What
-is **not** yet verified: installing and actually running it on a real device or emulator. If
-that turns up problems, they'll be Android-runtime issues (permissions, the foreground service,
-first-launch behavior), not build/packaging issues — those are now sorted out.
+**Status: confirmed working on real hardware.** Builds via `./gradlew assembleDebug` (JDK 17,
+Android SDK, Gradle 8.4, Chaquopy 15.0.1) into an installable `app-debug.apk` (~30 MB), and has
+been running end-to-end on an actual old Android 6 phone: the bot starts, connects to Discord,
+serves the dashboard, survives the screen being locked, shows live CPU/RAM stats, and can update
+itself in-place from a new APK triggered straight from the dashboard's Bot-Update page (see
+"Real-device findings" below). This has only been exercised on that one specific device/API
+level so far, not the full API 21–34 range this project targets.
 
 ## What this is
 
@@ -80,12 +81,13 @@ later will likely hit variations of the same issues.
 
 4. **`psutil==5.9.8` has no prebuilt Android wheel and needs `gcc` to build from source**,
    which isn't available under Chaquopy's build environment either. `psutil` is only used for
-   the Bot-Info dashboard page's CPU/RAM display — `app/main.py` now does
-   `try: import psutil / except ImportError: psutil = None`, and `get_system_stats()` falls
-   back to `0` for the psutil-derived fields when it's unavailable (not `None` — the template
-   does numeric comparisons like `{% if stats.cpu > 80 %}` that would raise on `None`). This
+   the Bot-Info dashboard page's CPU/RAM display — `app/main.py` does
+   `try: import psutil / except ImportError: psutil = None`. Rather than just falling back to
+   `0`, `get_system_stats()` has a `_proc_stats()` fallback that reads `/proc/meminfo`,
+   `/proc/stat` and `/proc/self/status` directly (the same files psutil itself reads on Linux
+   under the hood) - real numbers, not a placeholder, confirmed against the real device. This
    change is in the shared `app/` code but is a no-op for Docker/Termux, where psutil installs
-   fine.
+   fine and takes priority when present.
 
 5. **`bcrypt==4.2.1` and `Pillow==10.4.0` also have no prebuilt Android wheels** for those exact
    versions (bcrypt rewrote its native extension in Rust starting at 4.0; Pillow's wheel-build
@@ -107,15 +109,63 @@ for the package in question — `https://chaquo.com/pypi-13.1/<package-name-lowe
 which exact versions have a prebuilt Android wheel before assuming a rebuild-from-source (with
 all the toolchain problems that implies) is the only option.
 
-## What's still genuinely unverified
+## Real-device findings
 
-- **Never installed on a real device or emulator.** The APK builds and looks structurally
-  correct (contains `AndroidManifest.xml`, `classes.dex`, native libs for all three target
-  ABIs, and the bundled Python/bot source), but nothing has confirmed it actually launches,
-  that the foreground service survives backgrounding, or that the bot successfully connects to
-  Discord and serves the dashboard from a phone.
-- **`foregroundServiceType="dataSync"`** — still an educated guess for Android 14's stricter
-  enforcement, not confirmed against a real device.
+Getting from "builds" to "actually runs" on a real (old, low-end) phone surfaced a string of
+issues invisible from the build machine alone - worth knowing before touching this project
+again, since several of them would silently reappear if undone:
+
+- **Chaquopy bundles its own Python 3.8**, independent of `buildPython` (which only affects
+  build-machine tooling). Any code using Python 3.9+ syntax breaks at runtime, not build time:
+  builtin generic type hints (`dict[str, int]`, `list[str]`, `tuple[...]` etc., PEP 585) and the
+  `X | Y` union syntax (PEP 604) both raise `TypeError: 'type' object is not subscriptable` the
+  moment the module is imported. Fixed with `from __future__ import annotations` throughout the
+  shared `app/` code (defers all annotations to strings, never evaluated) - except a couple of
+  FastAPI route parameters whose types FastAPI actually inspects at runtime (`Form(...)` list
+  fields), which needed real `typing.List`/`typing.Optional` instead. `str.removeprefix()`
+  (3.9+) needed a manual replacement too.
+- **A pip version old enough to predate PEP 668-era cross-platform-install safeguards is bundled
+  by Chaquopy 15.0.1.** It silently drops transitive dependencies of anything installed via
+  `requirements-android.txt` instead of erroring - `discord.py` needed `aiohttp` (and aiohttp's
+  own dependency chain: `multidict`, `yarl`, `frozenlist`, `aiosignal`, `attrs`,
+  `async-timeout`, `charset-normalizer`, `idna`) spelled out explicitly, `starlette` needed
+  `anyio`/`sniffio`/`exceptiongroup`, `uvicorn` needed `click`/`h11`, `bcrypt` needed
+  `six`/`cffi`/`chaquopy-libffi`/`pycparser`, `Pillow` needed `chaquopy-libjpeg`/
+  `chaquopy-freetype`, `qrcode` needed `pypng` (its `PyPNGImage` fallback is only ever *used*
+  when Pillow is missing, but the *import* is unconditional - conditional use isn't the same as
+  conditional import). All now listed explicitly in `requirements-android.txt`, with comments
+  explaining why each one is there.
+- **`pydantic` resolving to its 2.x line pulls in `pydantic-core`, a Rust extension with no
+  prebuilt Android wheel and no toolchain here to build it.** Pinned to `pydantic==1.10.13`
+  instead (still pure Python, still has a universal wheel) - safe since Phobos Bot's own code
+  never imports pydantic directly.
+- **`Jinja2Templates(directory="templates")` (a relative path) silently broke under Chaquopy** -
+  the app's working directory isn't the same as under Docker, where it happened to coincidentally
+  match. Fixed with an absolute `Path(__file__).parent / "templates"` - a real, general
+  robustness fix, not an Android-only workaround.
+- **`versionCode` has to actually increase between builds**, or Android's installer treats a
+  newer APK as nothing to install - it'll show the install dialog but not really replace
+  anything. Now derived from `app/VERSION` at build time (see `app/build.gradle`) instead of
+  being a hand-maintained constant, so it's not possible to forget.
+- **`getExternalFilesDir(null)`/`filesDir` (private app storage) is invisible over USB (MTP)
+  since Android 11, and unreadable by *other* apps (like the system installer) on any Android
+  version** - two different restrictions, easy to conflate. Files meant to be picked up outside
+  the app (crash logs, the downloaded update APK before installing it) need the public Downloads
+  folder or `getExternalFilesDir()` respectively.
+- **A held `PowerManager.WakeLock` alone doesn't keep the WiFi radio at full power** - without an
+  additional `WifiManager.WifiLock`, the dashboard can become unreachable from other devices
+  once the screen locks even though the bot process itself is fine. Also added a prompt for
+  Doze/battery-optimization exemption (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) - some
+  budget/OEM-skinned Android builds kill foreground services on screen-lock regardless of either
+  of the above, which is outside what any app can fix from code; that needs a
+  manufacturer-specific "protected apps"/"autostart" setting found manually on the device.
+- **A full silent self-update (zero user interaction) isn't possible for a normal, non-system
+  app** - Android requires explicit confirmation to install anything from outside its own
+  package manager, by design, regardless of permissions requested. The one remaining manual step
+  in the in-app updater is that confirmation tap; going further would require Device Owner mode
+  (a real, more invasive setup: one-time ADB provisioning, generally requires no Google account
+  on the device, turns the phone into a "managed device") - not implemented, since it's a much
+  bigger commitment than what's needed to make this usable.
 - **Chaquopy licensing** for your specific use case (see below) — check yourself, terms change.
 
 ## Chaquopy licensing
@@ -128,13 +178,25 @@ before relying on that.
 
 ## Installing the built APK
 
-Don't want to build it yourself? Pre-built APKs get published under
-[GitHub Releases](https://github.com/LucyWolf/phobos-bot/releases) (tagged `android-v<bot
-version>-debug`) — download `phobos-bot-debug.apk` from there.
+Don't want to build it yourself? A pre-built APK is published under
+[GitHub Releases](https://github.com/LucyWolf/phobos-bot/releases), tag `android-v1.6.16-debug`
+- the tag name itself is intentionally not tied to a bot version (kept fixed), since the asset
+underneath it gets replaced on every Android-related commit; the release notes describe its
+actual current state.
 
 Otherwise, `app/build/outputs/apk/debug/app-debug.apk` is a debug-signed build — installable
 directly via `adb install app-debug.apk`, or by copying it to the phone and opening it (Android
 will prompt to allow installs from that source). No Play Store involved.
+
+## Updating
+
+Unlike Termux (which needs a manual `git pull` + restart), the dashboard's **Bot-Update** page
+works here too - it just does something different under the hood than the Docker/Termux `git`-
+based flow. On Android it downloads the latest `phobos-bot-debug.apk` from this repo's Releases
+straight to the phone and hands off to Android's own install prompt; confirming that one dialog
+is the only manual step (see "Real-device findings" above for why a fully silent update isn't
+possible without a much bigger Device Owner setup). `main.py` tells the two update paths apart
+via a `PHOBOS_PLATFORM=android` env var that `PhobosService.kt` sets before starting Python.
 
 ## What's deliberately NOT done here
 
@@ -142,5 +204,3 @@ will prompt to allow installs from that source). No Play Store involved.
   not real artwork.
 - **No release signing config** — this only produces Android Studio's own debug-signed builds
   for now.
-- **The Bot-Update dashboard page won't work** here any more than it does under Termux — it
-  drives `docker compose`. Updating means pulling the latest code and rebuilding the app.
