@@ -10,12 +10,14 @@ android {
 
     defaultConfig {
         applicationId "com.phobosbot.androidhost"
-        // 24 is Chaquopy's own hard floor (https://chaquo.com/chaquopy/doc/current/android.html:
-        // "Your project's minSdk must be at least 24"), not something chosen for this app. The
-        // API-26 NotificationChannel and API-33 POST_NOTIFICATIONS calls are already guarded by
-        // SDK_INT checks in PhobosService.kt/MainActivity.kt, and foregroundServiceType (API 29+)
-        // is simply ignored by older Android versions - none of those needed a higher floor here.
-        minSdk 24
+        // 24 is the CURRENT Chaquopy release's floor, but this project pins Chaquopy 15.0.1
+        // (see root build.gradle), whose own documented minimum is API 21
+        // (https://chaquo.com/chaquopy/doc/current/versions.html - the 24 floor was only
+        // introduced in a later Chaquopy release, 17.0). The API-26 NotificationChannel and
+        // API-33 POST_NOTIFICATIONS calls are already guarded by SDK_INT checks in
+        // PhobosService.kt/MainActivity.kt, and foregroundServiceType (API 29+) is simply
+        // ignored by older Android versions - nothing here needed a higher floor than 21.
+        minSdk 21
         targetSdk 34
         versionCode 1
         versionName "1.0"
