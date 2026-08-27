@@ -1572,6 +1572,23 @@ def _proc_stats():
         return None
 
 
+def _os_display_string() -> str:
+    # platform.system()/release() report the LINUX KERNEL underneath Android (e.g. "Linux
+    # 3.18.19"), which is technically accurate but reads like some ancient generic Linux distro
+    # rather than "this is a phone" - confusing on the Bot-Info page (confirmed live: exactly
+    # this confusion, on exactly this device). Chaquopy exposes the real Android APIs via its
+    # `java` bridge module (not importable outside Chaquopy, hence the local import + IS_ANDROID
+    # gate) - android.os.Build.VERSION.RELEASE is the actual Android version string ("6.0" etc.).
+    if IS_ANDROID:
+        try:
+            from java import jclass
+            version = jclass("android.os.Build$VERSION").RELEASE
+            return f"Android {version} (Linux {platform.release()})"
+        except Exception:
+            return f"Android (Linux {platform.release()})"
+    return f"{platform.system()} {platform.release()}"
+
+
 def get_system_stats() -> dict:
     uptime = datetime.datetime.utcnow() - PROCESS_START
     h, rem = divmod(int(uptime.total_seconds()), 3600)
@@ -1613,7 +1630,7 @@ def get_system_stats() -> dict:
         "guild_count": len(bot.guilds),
         "member_count": sum(g.member_count or 0 for g in bot.guilds),
         "hostname": platform.node(),
-        "os": f"{platform.system()} {platform.release()}",
+        "os": _os_display_string(),
         "python": platform.python_version(),
     }
 
