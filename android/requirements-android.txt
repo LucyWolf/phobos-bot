@@ -26,8 +26,14 @@
 #   Android API 21+, well within this app's minSdk 26. Only used for welcome-card image
 #   generation and by qrcode below; the small subset of the PIL API this project uses
 #   (Image.open/new, drawing, save) hasn't changed between them.
+# - pytz added here only, not in app/requirements.txt: Chaquopy bundles Python 3.8, which
+#   predates the stdlib zoneinfo module (3.9+) that main.py/scheduler.py import. pytz is a pure
+#   Python, universal-wheel package (installs from real PyPI, no Chaquopy-specific build needed)
+#   that ships the full IANA tz database inside itself - no system tzdata to fall back on under
+#   Android like there would be on Docker/Termux. main.py/scheduler.py both fall back to
+#   `from pytz import timezone as ZoneInfo` when `import zoneinfo` fails.
 #
-# If app/requirements.txt changes, mirror the change here too (except these three lines).
+# If app/requirements.txt changes, mirror the change here too (except these lines).
 discord.py==2.3.2
 aiosqlite==0.19.0
 starlette>=0.37.2,<0.38.0
@@ -42,3 +48,4 @@ python-multipart==0.0.9
 Pillow==9.2.0
 pyotp==2.9.0
 qrcode==7.4.2
+pytz

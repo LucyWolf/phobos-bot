@@ -8,7 +8,14 @@ import math
 import os
 import socket as _dsock
 from contextvars import ContextVar
-from zoneinfo import ZoneInfo
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    # Chaquopy (Android) bundles Python 3.8, which predates the stdlib zoneinfo module (3.9+).
+    # pytz is used instead there - pure Python, no native build needed, and it ships the full
+    # IANA tz database inside the package itself (there's no system tzdata to fall back on
+    # under Android, unlike Docker/Termux).
+    from pytz import timezone as ZoneInfo
 import platform
 import secrets
 import shutil
@@ -287,6 +294,13 @@ async def run_bot():
 # ── Web UI ────────────────────────────────────────────────────────────────────
 
 _request_tz: ContextVar[ZoneInfo] = ContextVar("request_tz", default=ZoneInfo("Europe/Berlin"))
+
+
+def _aware(dt_naive: datetime.datetime, tz) -> datetime.datetime:
+    """Attach a timezone to a naive datetime - correctly for both zoneinfo.ZoneInfo and pytz
+    (the Android fallback). Plain .replace(tzinfo=pytz_tz) gives wrong UTC offsets; pytz needs
+    .localize() instead. zoneinfo.ZoneInfo has no .localize, so this only branches under pytz."""
+    return tz.localize(dt_naive) if hasattr(tz, "localize") else dt_naive.replace(tzinfo=tz)
 
 
 def _fmt_dt(value) -> str:
@@ -2317,13 +2331,13 @@ async def events_create(request: Request, guild_id: int):
 
     tz = _request_tz.get()
     try:
-        start_dt = datetime.datetime.fromisoformat(start_at).replace(tzinfo=tz)
+        start_dt = _aware(datetime.datetime.fromisoformat(start_at), tz)
     except ValueError:
         return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Ungültiger+Startzeitpunkt", status_code=302)
     end_dt = None
     if end_at:
         try:
-            end_dt = datetime.datetime.fromisoformat(end_at).replace(tzinfo=tz)
+            end_dt = _aware(datetime.datetime.fromisoformat(end_at), tz)
         except ValueError:
             return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Ungültiger+Endzeitpunkt", status_code=302)
     if notify_end and not end_dt:
@@ -2414,13 +2428,13 @@ async def events_edit(request: Request, guild_id: int, event_id: int):
 
     tz = _request_tz.get()
     try:
-        start_dt = datetime.datetime.fromisoformat(start_at).replace(tzinfo=tz)
+        start_dt = _aware(datetime.datetime.fromisoformat(start_at), tz)
     except ValueError:
         return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Ungültiger+Startzeitpunkt", status_code=302)
     end_dt = None
     if end_at:
         try:
-            end_dt = datetime.datetime.fromisoformat(end_at).replace(tzinfo=tz)
+            end_dt = _aware(datetime.datetime.fromisoformat(end_at), tz)
         except ValueError:
             return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Ungültiger+Endzeitpunkt", status_code=302)
 
@@ -2466,7 +2480,7 @@ async def events_edit(request: Request, guild_id: int, event_id: int):
             new_send_dt = end_dt.astimezone(berlin_tz)
         else:
             try:
-                old_send_dt = datetime.datetime.fromisoformat(row["send_at"]).replace(tzinfo=berlin_tz)
+                old_send_dt = _aware(datetime.datetime.fromisoformat(row["send_at"]), berlin_tz)
             except ValueError:
                 continue
             offset = old_start_dt.astimezone(berlin_tz) - old_send_dt

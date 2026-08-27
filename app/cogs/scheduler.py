@@ -1,5 +1,10 @@
 import datetime
-from zoneinfo import ZoneInfo
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    # See main.py's import of the same name for why: Chaquopy (Android) bundles Python 3.8,
+    # which predates zoneinfo (3.9+); pytz is the pure-Python, self-contained substitute there.
+    from pytz import timezone as ZoneInfo
 
 import discord
 from discord.ext import commands, tasks
