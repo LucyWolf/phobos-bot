@@ -388,7 +388,7 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
 web.add_middleware(TZMiddleware)
 web.add_middleware(SessionValidityMiddleware)
 web.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="phobos_session")
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 def _js_attr(value) -> str:
     """JSON-encode value for embedding as a JS string literal inside a double-quoted HTML
     attribute (e.g. onclick="fn({{ value | js }})"). Safe regardless of Jinja autoescape,
