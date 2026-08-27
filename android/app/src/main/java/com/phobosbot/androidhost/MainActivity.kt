@@ -44,7 +44,8 @@ class MainActivity : AppCompatActivity() {
 
     private val statusHandler = Handler(Looper.getMainLooper())
     private var statusCheckRunnable: Runnable? = null
-    private var crashLogLoaded = false
+    private var loadedLogFile: String? = null
+    private var activeLogFilename = "phobos-crash.txt"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -92,18 +93,18 @@ class MainActivity : AppCompatActivity() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, "phobos-crash.txt")
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, activeLogFilename)
                     put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
                 }
                 val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                     ?: throw Exception("MediaStore.insert() gab null zurück")
                 contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) }
                     ?: throw Exception("openOutputStream() gab null zurück")
-                pathView.text = "Gespeichert: Downloads/phobos-crash.txt\n(per USB am PC im Downloads-Ordner zu finden)"
+                pathView.text = "Gespeichert: Downloads/$activeLogFilename\n(per USB am PC im Downloads-Ordner zu finden)"
             } else {
                 val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 dir.mkdirs()
-                val file = File(dir, "phobos-crash.txt")
+                val file = File(dir, activeLogFilename)
                 file.writeText(text)
                 // A direct File write like this doesn't touch the MediaStore index that USB/MTP
                 // relies on to show files to a connected PC - without an explicit scan, the file
@@ -157,35 +158,44 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 false
             }
-            // PhobosService writes these to filesDir so the actual crash reason can be shown
-            // directly in the app - there's no adb access to this test device to read logcat.
+            // PhobosService writes crash.log if the whole process dies; main.py's own global
+            // FastAPI exception handler writes web_errors.log for exceptions inside a single
+            // request, which DON'T kill the process (so crash.log alone would miss them - the
+            // dashboard just shows a plain "Internal Server Error" with nothing else to go on
+            // otherwise). Either way there's no adb access to this test device to read logcat.
             val crashLog = File(filesDir, "crash.log")
+            val webErrorsLog = File(filesDir, "web_errors.log")
             val startAttempted = File(filesDir, "start_attempted.log").exists()
+            // crash.log wins when both exist - a dead process is the more urgent problem.
+            val shownLog = if (crashLog.exists()) crashLog else if (webErrorsLog.exists()) webErrorsLog else null
 
             runOnUiThread {
                 val statusView = findViewById<TextView>(R.id.serverStatusText)
-                val crashView = findViewById<EditText>(R.id.crashLogText)
+                val logView = findViewById<EditText>(R.id.crashLogText)
                 val saveButton = findViewById<Button>(R.id.saveLogButton)
                 statusView.text = when {
+                    reachable && webErrorsLog.exists() -> "✅ Bot läuft (Port 8080 erreichbar) - aber mindestens ein Anfrage-Fehler unten"
                     reachable -> "✅ Bot läuft (Port 8080 lokal erreichbar)"
                     !startAttempted -> "⏳ Noch nicht gestartet - auf \"Start Bot\" tippen"
                     crashLog.exists() -> "❌ Abgestürzt - Fehler unten"
                     else -> "⏳ Startet noch… (oder hängt fest, falls das lange so bleibt)"
                 }
-                if (crashLog.exists()) {
-                    // Only populate once - this runs every 2s, and overwriting the EditText's
-                    // content while the user is scrolling/selecting text in it would be annoying.
-                    // The crash log itself is a static snapshot anyway, it won't change on its own.
-                    if (!crashLogLoaded) {
-                        crashView.setText(crashLog.readText())
-                        crashLogLoaded = true
+                if (shownLog != null) {
+                    // Only populate once per file - this runs every 2s, and overwriting the
+                    // EditText's content while the user is scrolling/selecting text in it would
+                    // be annoying. Re-populate if which file is being shown actually changes
+                    // (e.g. a request error appears while already looking at an old one).
+                    if (loadedLogFile != shownLog.name) {
+                        logView.setText(shownLog.readText())
+                        loadedLogFile = shownLog.name
+                        activeLogFilename = if (shownLog.name == "crash.log") "phobos-crash.txt" else "phobos-web-errors.txt"
                     }
-                    crashView.visibility = View.VISIBLE
+                    logView.visibility = View.VISIBLE
                     saveButton.visibility = View.VISIBLE
                 } else {
-                    crashView.visibility = View.GONE
+                    logView.visibility = View.GONE
                     saveButton.visibility = View.GONE
-                    crashLogLoaded = false
+                    loadedLogFile = null
                 }
             }
         }

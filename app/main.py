@@ -9,6 +9,7 @@ import json as _djson
 import math
 import os
 import socket as _dsock
+import traceback
 from contextvars import ContextVar
 try:
     from zoneinfo import ZoneInfo
@@ -366,6 +367,23 @@ class SessionValidityMiddleware(BaseHTTPMiddleware):
 
 
 web = FastAPI()
+
+
+@web.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    # A per-request exception here doesn't crash the whole process, so PhobosService's
+    # crash.log mechanism (Android's only way to see errors without adb/logcat) never sees it -
+    # write the same kind of traceback file for these too, so a plain "Internal Server Error" in
+    # the browser is diagnosable the same way a full process crash already is.
+    try:
+        with open(DATA_DIR / "web_errors.log", "a", encoding="utf-8") as f:
+            f.write(f"\n=== {datetime.datetime.now()}  {request.method} {request.url.path} ===\n")
+            f.write(traceback.format_exc())
+    except Exception:
+        pass
+    return Response("Internal Server Error", status_code=500)
+
+
 # TZMiddleware/SessionValidityMiddleware added first → inner (run after SessionMiddleware populates session)
 web.add_middleware(TZMiddleware)
 web.add_middleware(SessionValidityMiddleware)
