@@ -184,10 +184,21 @@ class MainActivity : AppCompatActivity() {
             // main.py) - triggered from the dashboard's Update page, on ANY device on the
             // network, but the actual download+install happens locally on this phone.
             val updateApk = File(filesDir, "update.apk")
+            // Launching the system installer backgrounds/pauses MainActivity, and on this old
+            // device Android sometimes actually destroys the Activity instance while it's not
+            // in front (rather than just pausing it) - the in-memory updateInstallTriggered flag
+            // resets on that recreation, so the dialog kept reappearing every time the user came
+            // back to the app ("wieder dann wieder dann wieder"). A real file survives that,
+            // an in-memory field doesn't. Comparing mtimes (not just existence) still lets a
+            // genuinely NEWER update.apk from a future update trigger a fresh install prompt.
+            val triggerMarker = File(filesDir, "update_install_triggered.marker")
+            val shouldTriggerInstall = updateApk.exists() &&
+                (!triggerMarker.exists() || triggerMarker.lastModified() < updateApk.lastModified())
 
             runOnUiThread {
-                if (updateApk.exists() && !updateInstallTriggered) {
+                if (shouldTriggerInstall && !updateInstallTriggered) {
                     updateInstallTriggered = true
+                    triggerMarker.writeText(java.util.Date().toString())
                     triggerApkInstall(updateApk)
                 }
                 val statusView = findViewById<TextView>(R.id.serverStatusText)

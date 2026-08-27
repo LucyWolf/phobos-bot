@@ -4,6 +4,16 @@ plugins {
     id "com.chaquo.python"
 }
 
+// Derived from the shared app/VERSION file (bumped on every commit that touches app/ or
+// android/ - see CLAUDE.md) so versionCode always increases across builds without needing to
+// remember a separate counter. This matters for real: a versionCode that doesn't increase means
+// Android's package installer doesn't treat a new APK as an actual update over what's already
+// installed - confirmed live (v1.6.1-1.6.45 all shipped with a hardcoded versionCode 1, and the
+// in-app update flow's install dialog kept reappearing without ever actually replacing the app).
+def botVersion = new File(rootDir, "../app/VERSION").text.trim()
+def (botMajor, botMinor, botPatch) = botVersion.tokenize(".").collect { it.toInteger() }
+def botVersionCode = botMajor * 1000000 + botMinor * 10000 + botPatch
+
 android {
     namespace "com.phobosbot.androidhost"
     compileSdk 34
@@ -19,8 +29,8 @@ android {
         // ignored by older Android versions - nothing here needed a higher floor than 21.
         minSdk 21
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        versionCode botVersionCode
+        versionName botVersion
 
         ndk {
             // arm64-v8a covers most phones from the last ~8 years, armeabi-v7a covers older
