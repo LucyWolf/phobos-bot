@@ -108,6 +108,8 @@ chaquopy-freetype>=2.9.1
 # six / cffi / bcrypt
 six
 cffi>=1.1
+chaquopy-libffi>=3.3
+pycparser
 
 # aiohttp / discord.py
 aiohttp==3.8.1
