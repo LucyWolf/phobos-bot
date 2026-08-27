@@ -2171,6 +2171,31 @@ async def auto_delete_save(request: Request, guild_id: str, channel_id: str = Fo
     await _reload_auto_delete()
     return RedirectResponse(f"/servers/{guild_id}?tab=autodelete&success=Gespeichert", status_code=302)
 
+@web.post("/servers/{guild_id}/auto-delete/edit/{entry_id}")
+async def auto_delete_edit(request: Request, guild_id: str, entry_id: int, channel_id: str = Form(""), delay_seconds: str = Form("")):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(int(guild_id))
+    if not guild or channel_id not in {str(c.id) for c in guild.text_channels}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=autodelete&error=Ungültiger+Kanal", status_code=302)
+    try:
+        delay_int = int(delay_seconds)
+    except (ValueError, TypeError):
+        delay_int = 0
+    if delay_int <= 0:
+        return RedirectResponse(f"/servers/{guild_id}?tab=autodelete&error=Ungültige+Verzögerung", status_code=302)
+    try:
+        await db_exec(
+            "UPDATE auto_delete_channels SET channel_id=?, delay_seconds=? WHERE id=? AND guild_id=?",
+            (channel_id, delay_int, entry_id, guild_id),
+        )
+    except Exception:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=autodelete&error=Für+diesen+Kanal+existiert+schon+eine+Regel", status_code=302
+        )
+    await _reload_auto_delete()
+    return RedirectResponse(f"/servers/{guild_id}?tab=autodelete&success=Gespeichert", status_code=303)
+
 @web.post("/servers/{guild_id}/auto-delete/delete/{entry_id}")
 async def auto_delete_remove(request: Request, guild_id: str, entry_id: int):
     if r := auth_redirect(request): return r

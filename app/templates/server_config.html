@@ -1500,9 +1500,38 @@ document.addEventListener('click', function(e) {
         {% elif s < 86400 %}{{ s // 3600 }} Stunde{{ 'n' if (s // 3600) != 1 else '' }}
         {% else %}{{ s // 86400 }} Tag{{ 'e' if (s // 86400) != 1 else '' }}{% endif %}
       </td>
-      <td style="padding:0.5rem;text-align:right;">
-        <form method="post" action="/servers/{{ guild.id }}/auto-delete/delete/{{ e.id }}" style="margin:0;">
-          <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
+      <td style="padding:0.5rem;text-align:right;white-space:nowrap;">
+        <button type="button" class="btn btn-secondary" onclick="toggleAdEdit({{ e.id }})" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="Einstellungen">⚙</button>
+        <form method="post" action="/servers/{{ guild.id }}/auto-delete/delete/{{ e.id }}" style="margin:0;display:inline;">
+          <button type="submit" class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="Löschen">✕</button>
+        </form>
+      </td>
+    </tr>
+    <tr id="ad-edit-{{ e.id }}" style="display:none;" class="panel-edit-row">
+      <td colspan="3" style="padding:1rem 1.25rem;">
+        <form method="post" action="/servers/{{ guild.id }}/auto-delete/edit/{{ e.id }}" style="display:grid;grid-template-columns:1fr 1fr auto;gap:0.75rem;align-items:end;margin:0;">
+          <div>
+            <label style="font-size:0.78rem;">Kanal</label>
+            <select name="channel_id" style="margin-bottom:0;">
+              {% for c in channels %}<option value="{{ c.id }}" {% if c.id == e.channel_id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:0.78rem;">Löschen nach</label>
+            <select name="delay_seconds" style="margin-bottom:0;">
+              <option value="300" {% if e.delay_seconds == 300 %}selected{% endif %}>5 Minuten</option>
+              <option value="600" {% if e.delay_seconds == 600 %}selected{% endif %}>10 Minuten</option>
+              <option value="1800" {% if e.delay_seconds == 1800 %}selected{% endif %}>30 Minuten</option>
+              <option value="3600" {% if e.delay_seconds == 3600 %}selected{% endif %}>1 Stunde</option>
+              <option value="7200" {% if e.delay_seconds == 7200 %}selected{% endif %}>2 Stunden</option>
+              <option value="21600" {% if e.delay_seconds == 21600 %}selected{% endif %}>6 Stunden</option>
+              <option value="43200" {% if e.delay_seconds == 43200 %}selected{% endif %}>12 Stunden</option>
+              <option value="86400" {% if e.delay_seconds == 86400 %}selected{% endif %}>24 Stunden</option>
+              <option value="172800" {% if e.delay_seconds == 172800 %}selected{% endif %}>2 Tage</option>
+              <option value="604800" {% if e.delay_seconds == 604800 %}selected{% endif %}>7 Tage</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">💾 Speichern</button>
         </form>
       </td>
     </tr>
@@ -1554,6 +1583,10 @@ document.addEventListener('click', function(e) {
     box.style.display = 'none';
   }
 });
+function toggleAdEdit(id) {
+  const row = document.getElementById('ad-edit-' + id);
+  if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
 </script>
 
 <script>
