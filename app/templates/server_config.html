@@ -185,7 +185,7 @@
     </form>
     <form method="post" action="/servers/{{ guild.id }}/automod-presets/delete/{{ p.id }}" style="margin:0;"
           onsubmit="return confirm({{ tr.automod_confirm_delete_category.replace('{name}', p.label) | js }})">
-      <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">🗑</button>
+      <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">✕</button>
     </form>
   </div>
   {% else %}
@@ -334,7 +334,7 @@ document.addEventListener('click', function(e) {
     <span style="flex:1;font-size:0.85rem;">{{ lr.role_name }}</span>
     <form method="post" action="/servers/{{ guild.id }}/level-roles/delete/{{ lr.id }}" style="margin:0;"
           onsubmit="return confirm({{ tr.leveling_role_confirm_delete.replace('{level}', lr.level|string) | js }})">
-      <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">🗑</button>
+      <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">✕</button>
     </form>
   </div>
   {% endfor %}
@@ -366,7 +366,7 @@ document.addEventListener('click', function(e) {
     <span style="flex:1;font-size:0.85rem;">{{ lrw.reward }}</span>
     <form method="post" action="/servers/{{ guild.id }}/level-rewards/delete/{{ lrw.id }}" style="margin:0;"
           onsubmit="return confirm({{ tr.leveling_reward_confirm_delete.replace('{level}', lrw.level|string) | js }})">
-      <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">🗑</button>
+      <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">✕</button>
     </form>
   </div>
   {% endfor %}
@@ -454,7 +454,7 @@ renderLvlChannelsList();
           <td style="text-align:right;">
             <form method="post" action="/servers/{{ guild.id }}/levels/delete/{{ e.user_id }}" style="margin:0;"
                   onsubmit="return confirm({{ tr.leveling_leaderboard_confirm_delete.replace('{user}', e.username) | js }})">
-              <button class="btn btn-danger" type="submit" style="padding:0.2rem 0.5rem;" title="{{ tr.btn_delete }}">🗑</button>
+              <button class="btn btn-danger" type="submit" style="padding:0.2rem 0.5rem;" title="{{ tr.btn_delete }}">✕</button>
             </form>
           </td>
         </tr>
@@ -491,7 +491,7 @@ renderLvlChannelsList();
           <td><span class="badge badge-moderator">{{ rr.role_name }}</span></td>
           <td>
             <form method="post" action="/servers/{{ guild.id }}/reaction_roles/{{ rr.id }}/delete" style="display:inline">
-              <button class="btn btn-danger" onclick="return confirm('Löschen?')">✕ Entfernen</button>
+              <button class="btn btn-danger" onclick="return confirm('Löschen?')" title="{{ tr.btn_delete }}">✕</button>
             </form>
           </td>
         </tr>
@@ -555,7 +555,7 @@ renderLvlChannelsList();
           <td style="color:var(--muted);max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.response }}</td>
           <td>
             <form method="post" action="/servers/{{ guild.id }}/commands/{{ c.id }}/delete" style="display:inline">
-              <button class="btn btn-danger" onclick="return confirm('Löschen?')">✕</button>
+              <button class="btn btn-danger" onclick="return confirm('Löschen?')" title="{{ tr.btn_delete }}">✕</button>
             </form>
           </td>
         </tr>
@@ -642,8 +642,8 @@ renderLvlChannelsList();
                 <button class="btn btn-secondary" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="Deaktivieren">⏸</button>
               </form>
               {% endif %}
-              <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/delete" style="display:inline;" onsubmit="return confirm('Panel «{{ p.name }}» wirklich löschen?')">
-                <button class="btn btn-danger" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="Löschen">✕</button>
+              <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/delete" style="display:inline;" onsubmit="return confirm({{ tr.tickets_panel_confirm_delete.replace('{name}', p.name) | js }})">
+                <button class="btn btn-danger" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="{{ tr.btn_delete }}">✕</button>
               </form>
             </div>
           </td>
@@ -727,12 +727,12 @@ renderLvlChannelsList();
           <td style="color:var(--muted);font-size:0.8rem">{{ t.created_at | dt }}</td>
           <td style="display:flex;gap:0.4rem;align-items:center;">
             <form method="post" action="/servers/{{ guild.id }}/tickets/{{ t.id }}/close"
-                  onsubmit="return confirm('Ticket von {{ t.username }} schließen und Kanal löschen?')" style="margin:0">
+                  onsubmit="return confirm({{ ('Ticket von ' ~ t.username ~ ' schließen und Kanal löschen?') | js }})" style="margin:0">
               <button class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.55rem;">✖ Schließen</button>
             </form>
             <form method="post" action="/servers/{{ guild.id }}/tickets/{{ t.id }}/delete"
                   onsubmit="return confirm('Ticket-Eintrag dauerhaft aus der Datenbank löschen?')" style="margin:0">
-              <button class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.5rem;">🗑</button>
+              <button class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.5rem;" title="{{ tr.btn_delete }}">✕</button>
             </form>
           </td>
         </tr>
@@ -841,7 +841,7 @@ function togglePanelEdit(id) {
           <td style="color:var(--muted);font-size:0.8rem">{{ wg.last }}</td>
           <td>
             <form method="post" action="/servers/{{ guild.id }}/warnings/{{ wg.user_id }}/clear" style="display:inline">
-              <button class="btn btn-danger" onclick="return confirm('Alle Warnungen für {{ wg.username }} löschen?')">✕ Löschen</button>
+              <button class="btn btn-danger" onclick="return confirm({{ tr.warnings_confirm_clear.replace('{user}', wg.username) | js }})" title="{{ tr.btn_delete }}">✕</button>
             </form>
           </td>
         </tr>

@@ -40,8 +40,8 @@
     <button type="button" onclick="toggleApiEdit({{ api.id }})"
             class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="Einstellungen">⚙</button>
     <form method="post" action="/settings/notifications/delete/{{ api.id }}" style="margin:0"
-          onsubmit="return confirm('API «{{ api.label }}» wirklich löschen?')">
-      <button class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.5rem;">🗑</button>
+          onsubmit="return confirm({{ ('API „' ~ api.label ~ '“ wirklich löschen?') | js }})">
+      <button class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.5rem;" title="Löschen">✕</button>
     </form>
   </div>
   <div style="font-size:0.8rem;color:var(--muted);">Client-ID: <code>{{ api.client_id[:12] }}…</code></div>
@@ -73,7 +73,7 @@
         <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
           <span style="font-size:0.82rem;">👤 {{ gu.username }}</span>
           <form method="post" action="/settings/notifications/{{ api.id }}/access/remove/{{ gu.id }}" style="margin:0">
-            <button class="btn btn-danger" style="font-size:0.7rem;padding:0.15rem 0.4rem;">✕</button>
+            <button class="btn btn-danger" style="font-size:0.7rem;padding:0.15rem 0.4rem;" title="Löschen">✕</button>
           </form>
         </div>
         {% endfor %}

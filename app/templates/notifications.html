@@ -90,7 +90,7 @@
                 class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_settings }}">⚙</button>
         <form method="post" action="/servers/{{ guild_id }}/notifications/delete/{{ s.id }}" style="margin:0"
               onsubmit="return confirm({{ tr.notif_confirm_delete.replace('{name}', s.target_name or s.target) | js }})">
-          <button class="btn btn-danger" type="submit">🗑</button>
+          <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">✕</button>
         </form>
       </div>
       <div class="sub-edit-row" id="sub-edit-{{ s.id }}">

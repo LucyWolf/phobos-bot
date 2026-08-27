@@ -83,8 +83,8 @@
             {% if u.username == username %}
             <span style="font-size:0.78rem; color:var(--muted);">Du</span>
             {% if admin_count > 1 %}
-            <form method="post" action="/users/delete/{{ u.id }}?next=/users" onsubmit="return confirm('Eigenes Konto \"{{ u.username }}\" wirklich löschen? Du wirst danach ausgeloggt.')" style="display:inline">
-              <button type="submit" class="btn btn-danger">✕ Löschen</button>
+            <form method="post" action="/users/delete/{{ u.id }}?next=/users" onsubmit="return confirm({{ ('Eigenes Konto „' ~ u.username ~ '“ wirklich löschen? Du wirst danach ausgeloggt.') | js }})" style="display:inline">
+              <button type="submit" class="btn btn-danger" title="Löschen">✕</button>
             </form>
             {% endif %}
             {% else %}
@@ -108,7 +108,7 @@
             <button type="button" onclick="togglePw({{ u.id }})"
                     class="btn btn-secondary" style="font-size:0.78rem; padding:0.25rem 0.6rem;" title="Passwort ändern">🔑</button>
             <form method="post" action="/users/{{ u.id }}/toggle-active" style="display:inline"
-                  onsubmit="return confirm('Konto {{ u.username }} {% if u.active %}deaktivieren{% else %}aktivieren{% endif %}?')">
+                  onsubmit="return confirm({{ ('Konto ' ~ u.username ~ ' ' ~ ('deaktivieren' if u.active else 'aktivieren') ~ '?') | js }})">
               <button type="submit" class="btn btn-secondary" style="font-size:0.78rem; padding:0.25rem 0.6rem;"
                       title="{% if u.active %}Deaktivieren{% else %}Aktivieren{% endif %}">
                 {% if u.active %}🚫{% else %}✅{% endif %}
@@ -116,8 +116,8 @@
             </form>
             <a href="/admin/backup/user/{{ u.id }}" class="btn btn-secondary"
                style="font-size:0.78rem;padding:0.25rem 0.6rem;" title="Backup herunterladen">💾</a>
-            <form method="post" action="/users/delete/{{ u.id }}?next=/users" onsubmit="return confirm('Benutzer {{ u.username }} wirklich löschen?')" style="display:inline">
-              <button type="submit" class="btn btn-danger">✕ Löschen</button>
+            <form method="post" action="/users/delete/{{ u.id }}?next=/users" onsubmit="return confirm({{ ('Benutzer „' ~ u.username ~ '“ wirklich löschen?') | js }})" style="display:inline">
+              <button type="submit" class="btn btn-danger" title="Löschen">✕</button>
             </form>
             {% endif %}
           </td>
