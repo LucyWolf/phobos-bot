@@ -12,6 +12,8 @@ import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import android.view.View
+import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
 import kotlin.concurrent.thread
@@ -86,12 +88,25 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 false
             }
+            // PhobosService writes these to filesDir so the actual crash reason can be shown
+            // directly in the app - there's no adb access to this test device to read logcat.
+            val crashLog = File(filesDir, "crash.log")
+            val startAttempted = File(filesDir, "start_attempted.log").exists()
+
             runOnUiThread {
                 val statusView = findViewById<TextView>(R.id.serverStatusText)
-                statusView.text = if (reachable) {
-                    "✅ Bot läuft (Port 8080 lokal erreichbar)"
+                val crashView = findViewById<TextView>(R.id.crashLogText)
+                statusView.text = when {
+                    reachable -> "✅ Bot läuft (Port 8080 lokal erreichbar)"
+                    !startAttempted -> "⏳ Noch nicht gestartet - auf \"Start Bot\" tippen"
+                    crashLog.exists() -> "❌ Abgestürzt - Fehler unten"
+                    else -> "⏳ Startet noch… (oder hängt fest, falls das lange so bleibt)"
+                }
+                if (crashLog.exists()) {
+                    crashView.text = crashLog.readText()
+                    crashView.visibility = View.VISIBLE
                 } else {
-                    "⏳ Nicht erreichbar - noch nicht gestartet, gestoppt, oder abgestürzt"
+                    crashView.visibility = View.GONE
                 }
             }
         }

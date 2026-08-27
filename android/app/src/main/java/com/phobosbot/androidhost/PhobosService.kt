@@ -12,6 +12,7 @@ import android.system.Os
 import androidx.core.app.NotificationCompat
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import java.io.File
 import kotlin.concurrent.thread
 
 /**
@@ -69,6 +70,11 @@ class PhobosService : Service() {
             Python.start(AndroidPlatform(applicationContext))
         }
 
+        // Marker written before even attempting to start - lets MainActivity tell "crashed and
+        // wrote a crash log" apart from "never got this far / still hanging with no log yet".
+        File(filesDir, "crash.log").delete()
+        File(filesDir, "start_attempted.log").writeText(java.util.Date().toString())
+
         // Runs on a background thread, not the service's own binder thread - main.py's
         // asyncio.run(main()) blocks forever serving the bot + dashboard, which would hang/ANR
         // if called directly on onStartCommand's calling thread.
@@ -79,9 +85,16 @@ class PhobosService : Service() {
                 // been invoked (`python main.py` under Docker/Termux too).
                 Python.getInstance().getModule("main")
             } catch (e: Exception) {
-                // Nothing else currently surfaces a crash here to the user beyond logcat - if
-                // this is genuinely used, consider updating the notification text on failure.
+                // Without adb access to the test device, logcat alone isn't reachable - write the
+                // full exception to a file MainActivity can read and display directly in the UI.
                 android.util.Log.e("PhobosService", "Bot process ended/crashed", e)
+                try {
+                    File(filesDir, "crash.log").writeText(
+                        "Crashed at ${java.util.Date()}\n\n${android.util.Log.getStackTraceString(e)}"
+                    )
+                } catch (writeError: Exception) {
+                    android.util.Log.e("PhobosService", "Couldn't even write crash.log", writeError)
+                }
             }
         }
     }
