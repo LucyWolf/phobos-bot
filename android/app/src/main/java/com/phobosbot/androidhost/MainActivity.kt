@@ -167,9 +167,17 @@ class MainActivity : AppCompatActivity() {
             // otherwise). Either way there's no adb access to this test device to read logcat.
             val crashLog = File(filesDir, "crash.log")
             val webErrorsLog = File(filesDir, "web_errors.log")
+            val updateDebugLog = File(filesDir, "update_debug.log")
             val startAttempted = File(filesDir, "start_attempted.log").exists()
             // crash.log wins when both exist - a dead process is the more urgent problem.
-            val shownLog = if (crashLog.exists()) crashLog else if (webErrorsLog.exists()) webErrorsLog else null
+            // update_debug.log is lowest priority - a rare diagnostic, not something that
+            // should hide a live crash/request error if one is also present.
+            val shownLog = when {
+                crashLog.exists() -> crashLog
+                webErrorsLog.exists() -> webErrorsLog
+                updateDebugLog.exists() -> updateDebugLog
+                else -> null
+            }
             // Written by main.py's Android update flow once the new APK is fully downloaded
             // (renamed into place only after a complete write - see _do_android_update in
             // main.py) - triggered from the dashboard's Update page, on ANY device on the
@@ -199,7 +207,11 @@ class MainActivity : AppCompatActivity() {
                     if (loadedLogFile != shownLog.name) {
                         logView.setText(shownLog.readText())
                         loadedLogFile = shownLog.name
-                        activeLogFilename = if (shownLog.name == "crash.log") "phobos-crash.txt" else "phobos-web-errors.txt"
+                        activeLogFilename = when (shownLog.name) {
+                            "crash.log" -> "phobos-crash.txt"
+                            "web_errors.log" -> "phobos-web-errors.txt"
+                            else -> "phobos-update-debug.txt"
+                        }
                     }
                     logView.visibility = View.VISIBLE
                     saveButton.visibility = View.VISIBLE
@@ -213,17 +225,36 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun triggerApkInstall(apkFile: File) {
+        // Writes every step to a file instead of relying on the user having noticed a Toast -
+        // the first attempt at this (v1.6.42) produced no visible effect at all and no dialog,
+        // with no way to tell from a Toast alone whether the Intent even fired, so this time
+        // there's an actual record to look at instead of guessing again.
+        val debugLog = File(filesDir, "update_debug.log")
+        fun dlog(msg: String) {
+            try {
+                debugLog.appendText("${java.util.Date()}  $msg\n")
+            } catch (e: Exception) { /* nothing more to do if even this fails */ }
+        }
         try {
+            dlog("triggerApkInstall() called, apk=${apkFile.absolutePath} size=${apkFile.length()}")
             val uri = FileProvider.getUriForFile(this, "com.phobosbot.androidhost.fileprovider", apkFile)
+            dlog("FileProvider URI resolved: $uri")
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
+            val resolved = packageManager.queryIntentActivities(intent, 0)
+            dlog("queryIntentActivities found ${resolved.size} handler(s): " +
+                resolved.joinToString { it.activityInfo?.packageName ?: "?" })
+            if (resolved.isEmpty()) {
+                dlog("No activity can handle the install intent on this device/ROM - aborting.")
+                Toast.makeText(this, "Kein Installer für APKs auf diesem Gerät gefunden", Toast.LENGTH_LONG).show()
+                return
+            }
             startActivity(intent)
+            dlog("startActivity() returned without throwing.")
         } catch (e: Exception) {
-            // Most likely REQUEST_INSTALL_PACKAGES not yet granted for this app - Android's own
-            // install flow normally redirects to the "allow this source" settings screen itself
-            // when that happens, but on some OEM builds it can throw instead of redirecting.
+            dlog("EXCEPTION: ${e.javaClass.simpleName}: ${e.message}\n${android.util.Log.getStackTraceString(e)}")
             Toast.makeText(this, "Installation konnte nicht gestartet werden: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
