@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 TRANSLATIONS: dict[str, dict[str, str]] = {
     "de": {
         # Sidebar – Einstellungen

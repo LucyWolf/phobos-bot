@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import base64
 import datetime
@@ -26,7 +28,7 @@ import tempfile
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from PIL import Image
 
@@ -2052,11 +2054,11 @@ DEAL_PLATFORMS = {"steam", "gog", "humble", "fanatical", "gmg"}  # only ones wit
 async def freestuff_save(
     request: Request, guild_id: str,
     channel_id: str = Form(""),
-    platforms: list[str] = Form(default=[]),
+    platforms: List[str] = Form(default=[]),
     deal_max_price: str = Form(""),
     deal_min_discount: str = Form("75"),
     deal_channel_id: str = Form(""),
-    deal_platforms: list[str] = Form(default=[]),
+    deal_platforms: List[str] = Form(default=[]),
 ):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
@@ -3109,7 +3111,7 @@ LOG_LIMIT_OPTIONS = (10, 50, 100, 200)
 
 
 @web.get("/servers/{guild_id}/log", response_class=HTMLResponse)
-async def server_log_page(request: Request, guild_id: str, success: str = "", error: str = "", limit: int | None = None):
+async def server_log_page(request: Request, guild_id: str, success: str = "", error: str = "", limit: Optional[int] = None):
     if r := auth_redirect(request): return r
     token_set = await _token_configured()
     guild = bot.get_guild(int(guild_id))

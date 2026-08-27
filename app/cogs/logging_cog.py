@@ -19,7 +19,7 @@ class Logging(commands.Cog):
         embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
         title = embed.title or ""
         icon = title.split()[0] if title else "📋"
-        label = title.removeprefix(icon).strip()
+        label = (title[len(icon):] if title.startswith(icon) else title).strip()
 
         try:
             await db_exec(
