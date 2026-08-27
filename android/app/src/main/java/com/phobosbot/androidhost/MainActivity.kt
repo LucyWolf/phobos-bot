@@ -2,6 +2,7 @@ package com.phobosbot.androidhost
 
 import android.content.ContentValues
 import android.content.Intent
+import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
@@ -236,19 +237,39 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) { /* nothing more to do if even this fails */ }
         }
         try {
-            dlog("triggerApkInstall() called, apk=${apkFile.absolutePath} size=${apkFile.length()}")
-            val uri = FileProvider.getUriForFile(this, "com.phobosbot.androidhost.fileprovider", apkFile)
-            dlog("FileProvider URI resolved: $uri")
+            dlog("triggerApkInstall() called, apk=${apkFile.absolutePath} size=${apkFile.length()}, SDK_INT=${Build.VERSION.SDK_INT}")
+            // v1.6.44's content:// attempt (via FileProvider) genuinely had 0 activities able to
+            // handle it - confirmed for real this time by ActivityNotFoundException, not just
+            // queryIntentActivities()'s earlier false negative. On this API 23 device, the
+            // installer apparently only registers for file:// URIs, not content:// - which is
+            // actually fine to use here: the file:// StrictMode restriction that content:// URIs
+            // exist to work around wasn't introduced until API 24, so a plain file:// Uri is
+            // still completely normal and unblocked on anything below that.
             val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    val uri = FileProvider.getUriForFile(this@MainActivity, "com.phobosbot.androidhost.fileprovider", apkFile)
+                    dlog("API >= 24: using FileProvider content:// URI: $uri")
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } else {
+                    // filesDir (internal storage) is sandboxed per-app at the Linux permission
+                    // level - the installer process can't read it via a raw file:// path no
+                    // matter the Android version, that's not what the API-24 content:// change
+                    // was even about. getExternalFilesDir() lives on the shared storage
+                    // partition instead - no runtime permission needed to write there on any
+                    // API level, and readable by other apps (like the installer) the way
+                    // anything under /storage/emulated/0/... normally is.
+                    val extDir = getExternalFilesDir(null)
+                        ?: throw Exception("Kein externer Speicher verfügbar für die Installationskopie")
+                    val extApk = File(extDir, "update.apk")
+                    apkFile.copyTo(extApk, overwrite = true)
+                    dlog("API < 24: copied to external storage: ${extApk.absolutePath}")
+                    val uri = Uri.fromFile(extApk)
+                    dlog("API < 24: using plain file:// URI: $uri")
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                }
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            // NOT pre-checked via packageManager.queryIntentActivities() - that query doesn't
-            // get the URI read-permission grant that only startActivity() itself provides via
-            // FLAG_GRANT_READ_URI_PERMISSION, so it unreliably reports 0 handlers for content://
-            // URIs even when a real installer is about to handle it fine (confirmed live: v1.6.43
-            // logged exactly "0 handlers" here and aborted, even though the install would very
-            // likely have worked - this was the bug, not a genuinely missing installer).
             startActivity(intent)
             dlog("startActivity() returned without throwing.")
         } catch (e: Exception) {
