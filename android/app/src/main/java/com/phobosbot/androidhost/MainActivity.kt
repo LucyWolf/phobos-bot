@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.media.MediaScannerConnection
 import android.provider.MediaStore
 import android.text.format.Formatter
 import android.view.View
@@ -104,6 +105,11 @@ class MainActivity : AppCompatActivity() {
                 dir.mkdirs()
                 val file = File(dir, "phobos-crash.txt")
                 file.writeText(text)
+                // A direct File write like this doesn't touch the MediaStore index that USB/MTP
+                // relies on to show files to a connected PC - without an explicit scan, the file
+                // sits on disk (visible to on-device file managers) but stays invisible over USB
+                // until Android happens to index it on its own, which can take a long time.
+                MediaScannerConnection.scanFile(this, arrayOf(file.absolutePath), null, null)
                 pathView.text = "Gespeichert: ${file.absolutePath}\n(per USB am PC im Downloads-Ordner zu finden)"
             }
             pathView.visibility = View.VISIBLE
