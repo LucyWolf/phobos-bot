@@ -49,10 +49,15 @@
 #   generation and by qrcode below; the small subset of the PIL API this project uses
 #   (Image.open/new, drawing, save) hasn't changed between them. Needs chaquopy-libjpeg and
 #   chaquopy-freetype (see above) for its native libjpeg/freetype linkage.
-# - qrcode's own dependency `pypng` is deliberately NOT listed: it only backs qrcode's PyPNGImage
-#   factory, used solely as a fallback when Pillow isn't importable (verified by reading
-#   qrcode/main.py's make_image()) - since Pillow works here, qrcode always picks its PilImage
-#   factory instead and never touches pypng.
+# - qrcode needs `pypng` too, and this took two device crashes to actually get right: first
+#   assumed (wrongly) that since qrcode/main.py's make_image() only USES PyPNGImage as a
+#   fallback when Pillow isn't importable, pypng wouldn't be needed here since Pillow works.
+#   Wrong distinction - qrcode/__init__.py unconditionally imports qrcode.main, which
+#   unconditionally imports qrcode.image.pure at module load time (`from qrcode.image.pure
+#   import PyPNGImage`), regardless of whether that factory is ever actually used at runtime.
+#   Conditional USE and conditional IMPORT are two different things - the crash log said
+#   "ModuleNotFoundError: No module named 'png'" straight out of qrcode/image/pure.py's own
+#   top-level `import png`, confirming it's a real unconditional import, not a lazy one.
 # - pydantic pinned to 1.10.13 instead of an open-ended >=1.7.4,<3.0.0 range (which is what
 #   fastapi itself declares, and is what this file used to mirror): letting the resolver pick
 #   freely resolves to the latest 2.x, but pydantic 2.x's validation core (`pydantic-core`) is a
@@ -130,3 +135,6 @@ exceptiongroup
 # uvicorn
 click>=7.0
 h11>=0.8
+
+# qrcode (unconditional import, not actually used - see comment above)
+pypng
