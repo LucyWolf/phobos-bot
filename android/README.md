@@ -1,11 +1,9 @@
 # Phobos Bot — Android app (Chaquopy)
 
-**Status: builds successfully into a working APK.** Verified with a real `./gradlew
-assembleDebug` run (JDK 17, Android SDK, Gradle 8.4, Chaquopy 15.0.1) — the build completes and
-produces an installable `app-debug.apk` (~39 MB) containing the bot's actual Python code. What
-is **not** yet verified: installing and actually running it on a real device or emulator. If
-that turns up problems, they'll be Android-runtime issues (permissions, the foreground service,
-first-launch behavior), not build/packaging issues — those are now sorted out.
+**Status: confirmed working on real hardware.** Builds successfully (`./gradlew assembleDebug`
+— JDK 17, Android SDK, Gradle 8.4, Chaquopy 15.0.1) into an installable `app-debug.apk`
+(~39 MB), and has now actually been installed and run on real devices, connecting to Discord
+and serving the dashboard as intended.
 
 ## What this is
 
@@ -101,16 +99,13 @@ for the package in question — `https://chaquo.com/pypi-13.1/<package-name-lowe
 which exact versions have a prebuilt Android wheel before assuming a rebuild-from-source (with
 all the toolchain problems that implies) is the only option.
 
-## What's still genuinely unverified
+## What's confirmed and what isn't
 
-- **Never installed on a real device or emulator.** The APK builds and looks structurally
-  correct (contains `AndroidManifest.xml`, `classes.dex`, native libs for all three target
-  ABIs, and the bundled Python/bot source), but nothing has confirmed it actually launches,
-  that the foreground service survives backgrounding, or that the bot successfully connects to
-  Discord and serves the dashboard from a phone.
-- **`foregroundServiceType="dataSync"`** — still an educated guess for Android 14's stricter
-  enforcement, not confirmed against a real device.
-- **Chaquopy licensing** for your specific use case (see below) — check yourself, terms change.
+- **Confirmed:** installs and runs on real devices, launches, connects to Discord, and serves
+  the dashboard as intended — including the foreground service and `dataSync` type, which held
+  up fine in practice.
+- **Chaquopy licensing** for your specific use case (see below) is still on you to check —
+  terms change, not something to take on faith from this doc.
 
 ## Chaquopy licensing
 
