@@ -1,5 +1,7 @@
 package com.phobosbot.androidhost
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -9,6 +11,7 @@ import android.os.Looper
 import android.text.format.Formatter
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -48,6 +51,13 @@ class MainActivity : AppCompatActivity() {
 
         stopButton.setOnClickListener {
             stopService(Intent(this, PhobosService::class.java))
+        }
+
+        findViewById<Button>(R.id.copyLogButton).setOnClickListener {
+            val text = findViewById<TextView>(R.id.crashLogText).text.toString()
+            val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("Phobos Bot Fehler", text))
+            Toast.makeText(this, "Kopiert", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -96,6 +106,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 val statusView = findViewById<TextView>(R.id.serverStatusText)
                 val crashView = findViewById<TextView>(R.id.crashLogText)
+                val copyButton = findViewById<Button>(R.id.copyLogButton)
                 statusView.text = when {
                     reachable -> "✅ Bot läuft (Port 8080 lokal erreichbar)"
                     !startAttempted -> "⏳ Noch nicht gestartet - auf \"Start Bot\" tippen"
@@ -105,8 +116,10 @@ class MainActivity : AppCompatActivity() {
                 if (crashLog.exists()) {
                     crashView.text = crashLog.readText()
                     crashView.visibility = View.VISIBLE
+                    copyButton.visibility = View.VISIBLE
                 } else {
                     crashView.visibility = View.GONE
+                    copyButton.visibility = View.GONE
                 }
             }
         }
