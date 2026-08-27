@@ -36,9 +36,11 @@
 #   across every bcrypt version - a hash created by 3.1.7 verifies fine against 4.2.1 and vice
 #   versa, so this doesn't affect compatibility with existing password hashes from a
 #   Docker/Termux install, or with hashes this Android build creates being read back elsewhere.
-#   Needs `six` (its own runtime import, confirmed by a device crash log) - `cffi`, its other
-#   declared dependency, is build-time only (this wheel ships a precompiled _bcrypt.so that
-#   doesn't import cffi at runtime), so it's deliberately left out.
+#   Needs `six` AND `cffi` (both confirmed as genuine runtime imports via device crash logs, one
+#   crash at a time - `from . import _bcrypt` loads a precompiled _bcrypt.so, but that .so was
+#   itself built in cffi's "API mode", which still dlopens cffi's own `_cffi_backend` compiled
+#   module at runtime to actually call into it; the assumption that a precompiled cffi extension
+#   has no runtime dependency on the cffi package was wrong).
 # - Pillow pinned to 9.2.0 instead of 10.4.0, same reasoning: no prebuilt wheel for 10.4.0.
 #   Chaquopy's index does list a newer 11.0.0 wheel too, but pip's resolver didn't pick it up
 #   (its filename is lowercase "pillow-11.0.0-..." unlike every other version's "Pillow-..." -
@@ -103,8 +105,9 @@ pytz
 chaquopy-libjpeg>=1.5.3
 chaquopy-freetype>=2.9.1
 
-# six / bcrypt
+# six / cffi / bcrypt
 six
+cffi>=1.1
 
 # aiohttp / discord.py
 aiohttp==3.8.1
