@@ -1938,6 +1938,42 @@ function retry() {
   else { addLine('❌  Timeout – bitte Container manuell neu starten.', 'err'); spin.style.display='none'; }
 }
 
+// Android: the OLD server doesn't go down on its own the instant the download finishes - it
+// keeps serving this exact page until the user actually confirms the install dialog and the OS
+// replaces the app. So "reachable" right now doesn't mean anything yet; this waits to actually
+// SEE the old process die first, and only treats a later reachable ping (the NEW build coming
+// back up) as the real "update finished" signal - otherwise it'd redirect immediately, before
+// the user has even tapped Install.
+let androidSawDown = false;
+let androidTries = 0;
+function waitForAndroidRestart() {
+  fetch('/ping', {cache:'no-store'})
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok && androidSawDown) {
+        addLine('✅  Neue Version läuft – weiterleiten…', 'ok');
+        setTimeout(() => { window.location = '/'; }, 1500);
+        return;
+      }
+      if (!d.ok) androidSawDown = true;
+      androidRetry();
+    })
+    .catch(() => { androidSawDown = true; androidRetry(); });
+}
+function androidRetry() {
+  androidTries++;
+  if (!androidSawDown) {
+    hint.textContent = '📲  Installationsdialog sollte auf dem Handy erschienen sein – bitte dort bestätigen.';
+  } else {
+    hint.textContent = 'Warte auf Neustart der App auf dem Handy… (' + androidTries + ')';
+    if (androidTries % 10 === 0) {
+      addLine('  ⏳  Alte Version beendet – App auf dem Handy öffnen und "Start Bot" tippen, falls nötig.', 'info');
+    }
+  }
+  if (androidTries < 300) setTimeout(waitForAndroidRestart, 2500);
+  else { addLine('❌  Timeout – App auf dem Handy öffnen und manuell starten.', 'err'); spin.style.display='none'; }
+}
+
 function poll() {
   fetch('/bot/update/status?offset=' + offset, {cache:'no-store'})
     .then(r => r.json())
@@ -1959,11 +1995,8 @@ function poll() {
         const cursor = log.querySelector('.cursor');
         if (cursor) cursor.remove();
         if (IS_ANDROID) {
-          // Nothing restarts here - the OLD code just keeps serving this same page until the
-          // Android install dialog (triggered by MainActivity, outside this HTTP request
-          // entirely) is confirmed and the app is relaunched. Polling for the server to go
-          // down would just wait forever, since on Android it never does.
-          hint.textContent = '📲  Installationsdialog sollte gleich auf dem Handy erscheinen – bitte dort bestätigen. Diese Seite bleibt bis dahin über den alten Bot erreichbar.';
+          hint.textContent = '📲  Installationsdialog sollte gleich auf dem Handy erscheinen – bitte dort bestätigen.';
+          setTimeout(waitForAndroidRestart, 2500);
         } else {
           setTimeout(waitForServer, 8000);
         }
@@ -1977,7 +2010,12 @@ function poll() {
         const cursor = log.querySelector('.cursor');
         if (cursor) cursor.remove();
         addLine('🚀  Verbindung unterbrochen – Server startet neu…', 'restart');
-        setTimeout(waitForServer, 8000);
+        if (IS_ANDROID) {
+          androidSawDown = true;
+          setTimeout(waitForAndroidRestart, 2500);
+        } else {
+          setTimeout(waitForServer, 8000);
+        }
       }
     });
 }
