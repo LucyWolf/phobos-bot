@@ -26,6 +26,7 @@ import smtplib
 import sys
 import tarfile
 import tempfile
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -1525,6 +1526,52 @@ def _cgroup_ram() -> tuple[int, int] | None:
     return None
 
 
+def _proc_stats():
+    """Fallback for get_system_stats() when psutil isn't available (Android/Chaquopy has no
+    prebuilt wheel and no C toolchain to build it) - reads the same /proc files psutil itself
+    reads on Linux under the hood, so this is genuine system data, not an approximation. Returns
+    None if /proc isn't readable (SELinux policy on some Android builds/versions could plausibly
+    block even these aggregate, no-other-app-info files - degrades to the 0-fallback if so)."""
+    try:
+        meminfo = {}
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            key, _, rest = line.partition(":")
+            meminfo[key] = int(rest.strip().split()[0])  # value is in kB
+        total_kb = meminfo["MemTotal"]
+        # MemAvailable is the modern, accurate "how much can actually be freed for use" figure
+        # (kernel 3.14+) - MemFree alone undercounts reclaimable cache/buffers as "used".
+        avail_kb = meminfo.get("MemAvailable", meminfo.get("MemFree", 0))
+        used_kb = total_kb - avail_kb
+
+        def _cpu_sample():
+            fields = Path("/proc/stat").read_text().splitlines()[0].split()[1:]
+            nums = [int(x) for x in fields]
+            idle = nums[3] + (nums[4] if len(nums) > 4 else 0)  # idle + iowait
+            return sum(nums), idle
+
+        total1, idle1 = _cpu_sample()
+        time.sleep(0.1)
+        total2, idle2 = _cpu_sample()
+        total_delta = total2 - total1
+        cpu_pct = round((1 - (idle2 - idle1) / total_delta) * 100, 1) if total_delta > 0 else 0
+
+        rss_kb = 0
+        for line in Path("/proc/self/status").read_text().splitlines():
+            if line.startswith("VmRSS:"):
+                rss_kb = int(line.split()[1])
+                break
+
+        return {
+            "cpu": cpu_pct,
+            "ram_used": used_kb // 1024,
+            "ram_total": total_kb // 1024,
+            "ram_pct": round(used_kb / total_kb * 100, 1) if total_kb else 0,
+            "proc_ram": rss_kb // 1024,
+        }
+    except Exception:
+        return None
+
+
 def get_system_stats() -> dict:
     uptime = datetime.datetime.utcnow() - PROCESS_START
     h, rem = divmod(int(uptime.total_seconds()), 3600)
@@ -1547,6 +1594,13 @@ def get_system_stats() -> dict:
             ram_pct   = round(vm.percent, 1)
         cpu = psutil.cpu_percent(interval=0.1)
         proc_ram = proc.memory_info().rss // (1024 ** 2)
+    else:
+        fallback = _proc_stats()
+        if fallback:
+            cpu, ram_used, ram_total, ram_pct, proc_ram = (
+                fallback["cpu"], fallback["ram_used"], fallback["ram_total"],
+                fallback["ram_pct"], fallback["proc_ram"],
+            )
 
     return {
         "cpu": cpu,
