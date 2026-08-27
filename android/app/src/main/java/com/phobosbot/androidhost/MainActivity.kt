@@ -62,18 +62,18 @@ class MainActivity : AppCompatActivity() {
 
         statusText.text = "Dashboard will be reachable at:\nhttp://${getLocalIpAddress()}:8080"
 
-        startButton.setOnClickListener {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-            }
-            requestIgnoreBatteryOptimizations()
-            val intent = Intent(this, PhobosService::class.java)
-            ContextCompat.startForegroundService(this, intent)
-        }
+        startButton.setOnClickListener { startBot() }
 
         stopButton.setOnClickListener {
             stopService(Intent(this, PhobosService::class.java))
         }
+
+        // Auto-start on every app open, not just on an explicit tap - the whole point of this
+        // app is running an always-on background service, forcing a manual tap every single
+        // time (including right after an in-app update finishes installing and the user reopens
+        // the app) was unnecessary friction. PhobosService.onStartCommand() already no-ops if
+        // it's already running (`started` flag), so this is safe to call unconditionally.
+        startBot()
 
         findViewById<Button>(R.id.saveLogButton).setOnClickListener {
             // getExternalFilesDir(null) (Android/data/.../files/) is invisible to USB/MTP file
@@ -91,6 +91,15 @@ class MainActivity : AppCompatActivity() {
                 saveCrashLogToDownloads()
             }
         }
+    }
+
+    private fun startBot() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+        requestIgnoreBatteryOptimizations()
+        val intent = Intent(this, PhobosService::class.java)
+        ContextCompat.startForegroundService(this, intent)
     }
 
     private fun requestIgnoreBatteryOptimizations() {
