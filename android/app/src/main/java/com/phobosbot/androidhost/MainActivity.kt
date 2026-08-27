@@ -19,6 +19,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -46,6 +47,7 @@ class MainActivity : AppCompatActivity() {
     private var statusCheckRunnable: Runnable? = null
     private var loadedLogFile: String? = null
     private var activeLogFilename = "phobos-crash.txt"
+    private var updateInstallTriggered = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -168,8 +170,17 @@ class MainActivity : AppCompatActivity() {
             val startAttempted = File(filesDir, "start_attempted.log").exists()
             // crash.log wins when both exist - a dead process is the more urgent problem.
             val shownLog = if (crashLog.exists()) crashLog else if (webErrorsLog.exists()) webErrorsLog else null
+            // Written by main.py's Android update flow once the new APK is fully downloaded
+            // (renamed into place only after a complete write - see _do_android_update in
+            // main.py) - triggered from the dashboard's Update page, on ANY device on the
+            // network, but the actual download+install happens locally on this phone.
+            val updateApk = File(filesDir, "update.apk")
 
             runOnUiThread {
+                if (updateApk.exists() && !updateInstallTriggered) {
+                    updateInstallTriggered = true
+                    triggerApkInstall(updateApk)
+                }
                 val statusView = findViewById<TextView>(R.id.serverStatusText)
                 val logView = findViewById<EditText>(R.id.crashLogText)
                 val saveButton = findViewById<Button>(R.id.saveLogButton)
@@ -198,6 +209,22 @@ class MainActivity : AppCompatActivity() {
                     loadedLogFile = null
                 }
             }
+        }
+    }
+
+    private fun triggerApkInstall(apkFile: File) {
+        try {
+            val uri = FileProvider.getUriForFile(this, "com.phobosbot.androidhost.fileprovider", apkFile)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            // Most likely REQUEST_INSTALL_PACKAGES not yet granted for this app - Android's own
+            // install flow normally redirects to the "allow this source" settings screen itself
+            // when that happens, but on some OEM builds it can throw instead of redirecting.
+            Toast.makeText(this, "Installation konnte nicht gestartet werden: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 

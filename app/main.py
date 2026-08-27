@@ -68,6 +68,10 @@ VERSION = (Path(__file__).parent / "VERSION").read_text().strip()
 # (e.g. running directly under Termux on Android, where /app/data doesn't exist/isn't writable).
 DATA_DIR = Path(os.environ.get("PHOBOS_DATA_DIR", "/app/data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+# Set by PhobosService.kt before starting Python - distinguishes the Android/Chaquopy build
+# from Termux (both use PHOBOS_DATA_DIR/PHOBOS_DB_PATH) since only Android needs the
+# APK-download update flow instead of the git-based one (no /repo, no git, no docker there).
+IS_ANDROID = os.environ.get("PHOBOS_PLATFORM") == "android"
 SECRET_KEY_PATH = DATA_DIR / "secret.key"
 AVATARS_DIR = DATA_DIR / "avatars"
 
@@ -1806,6 +1810,7 @@ async def bot_update_page(request: Request, success: str = "", error: str = ""):
         "active": "bot_update",
         "current_version": VERSION, "latest_version": latest,
         "update_available": update_available,
+        "is_android": IS_ANDROID,
         "success": success, "error": error,
     })
 
@@ -1886,6 +1891,7 @@ _UPDATE_IN_PROGRESS_HTML = """<!DOCTYPE html>
   <p class="hint" id="hint">Bitte warten – der Server startet automatisch neu.</p>
 </div>
 <script>
+const IS_ANDROID = __IS_ANDROID__;
 const log    = document.getElementById('log');
 const spin   = document.getElementById('spin');
 const hint   = document.getElementById('hint');
@@ -1952,7 +1958,15 @@ function poll() {
         restarting = true;
         const cursor = log.querySelector('.cursor');
         if (cursor) cursor.remove();
-        setTimeout(waitForServer, 8000);
+        if (IS_ANDROID) {
+          // Nothing restarts here - the OLD code just keeps serving this same page until the
+          // Android install dialog (triggered by MainActivity, outside this HTTP request
+          // entirely) is confirmed and the app is relaunched. Polling for the server to go
+          // down would just wait forever, since on Android it never does.
+          hint.textContent = '📲  Installationsdialog sollte gleich auf dem Handy erscheinen – bitte dort bestätigen. Diese Seite bleibt bis dahin über den alten Bot erreichbar.';
+        } else {
+          setTimeout(waitForServer, 8000);
+        }
       } else {
         setTimeout(poll, 600);
       }
@@ -1985,61 +1999,120 @@ async def bot_update_status(request: Request, offset: int = 0):
     })
 
 
+# The release TAG stays fixed forever (never renamed) while its one asset gets replaced on
+# every Android-related commit - see CLAUDE.md/android/README.md history - so this URL never
+# needs updating even as VERSION keeps climbing. Public repo, no auth needed to download it.
+_ANDROID_APK_URL = (
+    "https://github.com/LucyWolf/phobos-bot/releases/download/"
+    "android-v1.6.16-debug/phobos-bot-debug.apk"
+)
+
+
+async def _do_git_update():
+    global _update_status
+    _update_status = {"logs": [], "done": False, "error": ""}
+
+    async def _run(cmd: list, cwd: str | None = None) -> int:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        async for raw in proc.stdout:
+            line = raw.decode("utf-8", errors="replace").rstrip()
+            if line:
+                _ulog(line, "info")
+        return await proc.wait()
+
+    try:
+        _ulog("$ phobos-bot update — " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "cmd")
+
+        # Fetch latest commits
+        _ulog("$ git -C /repo fetch origin main", "cmd")
+        rc = await _run(["git", "-C", "/repo", "fetch", "origin", "main"])
+        if rc != 0:
+            raise RuntimeError(f"git fetch fehlgeschlagen (exit {rc})")
+
+        # Hard-reset to remote HEAD (handles any local drift)
+        _ulog("$ git -C /repo reset --hard origin/main", "cmd")
+        rc = await _run(["git", "-C", "/repo", "reset", "--hard", "origin/main"])
+        if rc != 0:
+            raise RuntimeError(f"git reset fehlgeschlagen (exit {rc})")
+        _ulog("  ✓  Code aktualisiert", "ok")
+
+        compose_dir = await asyncio.get_event_loop().run_in_executor(None, _get_compose_dir)
+        if compose_dir:
+            _ulog("$ docker-compose restart", "cmd")
+            rc = await _run(["docker-compose", "restart"], cwd=compose_dir)
+            _update_status["done"] = True
+        else:
+            _ulog("$ exec python " + " ".join(sys.argv), "cmd")
+            _ulog("  🚀  Server wird neu gestartet…", "restart")
+            _update_status["done"] = True
+            await asyncio.sleep(1)
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    except Exception as e:
+        _ulog(f"❌  Fehler: {e}", "err")
+        _update_status["error"] = str(e)[:300]
+
+
+async def _do_android_update():
+    global _update_status
+    _update_status = {"logs": [], "done": False, "error": ""}
+
+    def _download():
+        req = urllib.request.Request(_ANDROID_APK_URL, headers={"User-Agent": "phobos-bot"})
+        tmp_path = DATA_DIR / "update.apk.part"
+        apk_path = DATA_DIR / "update.apk"
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            total = int(resp.headers.get("Content-Length", 0))
+            written = 0
+            last_pct = -1
+            with open(tmp_path, "wb") as f:
+                while True:
+                    chunk = resp.read(262144)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    written += len(chunk)
+                    if total:
+                        pct = (written * 100) // total
+                        if pct != last_pct and pct % 10 == 0:
+                            _ulog(f"  {pct}%  ({written // 1024}KB / {total // 1024}KB)", "progress")
+                            last_pct = pct
+            if total and written != total:
+                tmp_path.unlink(missing_ok=True)
+                raise RuntimeError(f"Download unvollständig ({written}/{total} Bytes)")
+        # Renamed into place only once fully written - MainActivity's poll loop watches for
+        # update.apk specifically, so a half-downloaded file (still named .part) never
+        # accidentally triggers an install of a broken APK.
+        tmp_path.rename(apk_path)
+        return written
+
+    try:
+        _ulog("$ phobos-bot android-update — " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "cmd")
+        _ulog(f"$ curl -L -o update.apk {_ANDROID_APK_URL}", "cmd")
+        size = await asyncio.get_event_loop().run_in_executor(None, _download)
+        _ulog(f"  ✓  {size // 1024}KB heruntergeladen", "ok")
+        _ulog("  📲  Installationsdialog wird auf dem Handy geöffnet…", "restart")
+        _update_status["done"] = True
+    except Exception as e:
+        _ulog(f"❌  Fehler: {e}", "err")
+        _update_status["error"] = str(e)[:300]
+
+
 @web.post("/bot/update/apply")
 async def bot_update_apply(request: Request):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
 
-    async def _do_update():
-        global _update_status
-        _update_status = {"logs": [], "done": False, "error": ""}
-
-        async def _run(cmd: list, cwd: str | None = None) -> int:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd, cwd=cwd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-            async for raw in proc.stdout:
-                line = raw.decode("utf-8", errors="replace").rstrip()
-                if line:
-                    _ulog(line, "info")
-            return await proc.wait()
-
-        try:
-            _ulog("$ phobos-bot update — " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "cmd")
-
-            # Fetch latest commits
-            _ulog("$ git -C /repo fetch origin main", "cmd")
-            rc = await _run(["git", "-C", "/repo", "fetch", "origin", "main"])
-            if rc != 0:
-                raise RuntimeError(f"git fetch fehlgeschlagen (exit {rc})")
-
-            # Hard-reset to remote HEAD (handles any local drift)
-            _ulog("$ git -C /repo reset --hard origin/main", "cmd")
-            rc = await _run(["git", "-C", "/repo", "reset", "--hard", "origin/main"])
-            if rc != 0:
-                raise RuntimeError(f"git reset fehlgeschlagen (exit {rc})")
-            _ulog("  ✓  Code aktualisiert", "ok")
-
-            compose_dir = await asyncio.get_event_loop().run_in_executor(None, _get_compose_dir)
-            if compose_dir:
-                _ulog("$ docker-compose restart", "cmd")
-                rc = await _run(["docker-compose", "restart"], cwd=compose_dir)
-                _update_status["done"] = True
-            else:
-                _ulog("$ exec python " + " ".join(sys.argv), "cmd")
-                _ulog("  🚀  Server wird neu gestartet…", "restart")
-                _update_status["done"] = True
-                await asyncio.sleep(1)
-                os.execv(sys.executable, [sys.executable] + sys.argv)
-
-        except Exception as e:
-            _ulog(f"❌  Fehler: {e}", "err")
-            _update_status["error"] = str(e)[:300]
-
-    asyncio.create_task(_do_update())
-    return HTMLResponse(_UPDATE_IN_PROGRESS_HTML)
+    if IS_ANDROID:
+        asyncio.create_task(_do_android_update())
+    else:
+        asyncio.create_task(_do_git_update())
+    html = _UPDATE_IN_PROGRESS_HTML.replace("__IS_ANDROID__", "true" if IS_ANDROID else "false")
+    return HTMLResponse(html)
 
 
 # ── Free Stuff ────────────────────────────────────────────────────────────────

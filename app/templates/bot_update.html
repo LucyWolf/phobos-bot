@@ -62,10 +62,18 @@
     </form>
   </div>
   <div class="checked-at" id="checked-at"></div>
+  {% if is_android %}
+  <div class="restart-note" id="apply-note" style="display:none;">
+    Lädt die neue APK vom GitHub-Release herunter und öffnet danach den Android-
+    Installationsdialog — der muss auf dem Handy selbst bestätigt werden.<br>
+    Die Datenbank und alle Einstellungen bleiben unangetastet.
+  </div>
+  {% else %}
   <div class="restart-note" id="apply-note" style="display:none;">
     Lädt die neue Version von GitHub, überschreibt die Dateien und startet den Bot in-place neu.<br>
     Dauert ca. 10–30 Sekunden. Die Datenbank bleibt unangetastet.
   </div>
+  {% endif %}
 
   <a href="https://github.com/LucyWolf/phobos-bot/commits/main" target="_blank"
      style="display:inline-flex;align-items:center;gap:0.4rem;margin-top:1.1rem;font-size:0.8rem;color:var(--muted);text-decoration:none;">
@@ -73,6 +81,16 @@
   </a>
 </div>
 
+{% if is_android %}
+<div class="update-card">
+  <div class="section-label" style="margin-bottom:0.75rem;">Manuelles Update (immer möglich)</div>
+  <p class="restart-note">
+    Neueste APK von der
+    <a href="https://github.com/LucyWolf/phobos-bot/releases/tag/android-v1.6.16-debug" target="_blank">GitHub-Release-Seite</a>
+    herunterladen und über die installierte App installieren.
+  </p>
+</div>
+{% else %}
 <div class="update-card">
   <div class="section-label" style="margin-bottom:0.75rem;">Manuelles Update (immer möglich)</div>
   <div class="manual-steps">
@@ -82,6 +100,7 @@
   </div>
   <p class="restart-note">Auf dem Server ausführen — bei Änderungen an requirements.txt immer notwendig.</p>
 </div>
+{% endif %}
 
 <script>
   const current = '{{ current_version }}';

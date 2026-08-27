@@ -65,6 +65,9 @@ class PhobosService : Service() {
         val dataDir = filesDir.absolutePath
         Os.setenv("PHOBOS_DATA_DIR", dataDir, true)
         Os.setenv("PHOBOS_DB_PATH", "$dataDir/phobos.db", true)
+        // Lets main.py tell this build apart from Termux (which sets the same two vars above) -
+        // only Android needs the APK-download update flow instead of the git-based one.
+        Os.setenv("PHOBOS_PLATFORM", "android", true)
 
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(applicationContext))

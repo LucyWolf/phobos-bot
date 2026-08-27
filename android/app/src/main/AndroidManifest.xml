@@ -21,6 +21,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- For the in-app update flow: main.py downloads a new APK, MainActivity launches the
+         system installer for it via an ACTION_VIEW intent - that requires this permission
+         from API 26+ (it's what actually gates "install from unknown sources" per-app). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="true"
@@ -50,6 +54,19 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- Exposes the downloaded update APK (which lives in the app's private filesDir,
+             same as crash.log etc.) to the system installer via a content:// URI - required
+             since API 24, a plain file:// URI is blocked by StrictMode for other apps to read. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.phobosbot.androidhost.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 </manifest>
