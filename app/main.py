@@ -2124,7 +2124,7 @@ _ANDROID_APK_URL = (
 
 
 async def _do_git_update():
-    global _update_status
+    global _update_status, _update_running
     _update_status = {"logs": [], "done": False, "error": ""}
 
     async def _run(cmd: list, cwd: str | None = None) -> int:
@@ -2170,10 +2170,12 @@ async def _do_git_update():
     except Exception as e:
         _ulog(f"❌  Fehler: {e}", "err")
         _update_status["error"] = str(e)[:300]
+    finally:
+        _update_running = False
 
 
 async def _do_android_update():
-    global _update_status
+    global _update_status, _update_running
     _update_status = {"logs": [], "done": False, "error": ""}
 
     def _download():
@@ -2215,6 +2217,11 @@ async def _do_android_update():
     except Exception as e:
         _ulog(f"❌  Fehler: {e}", "err")
         _update_status["error"] = str(e)[:300]
+    finally:
+        _update_running = False
+
+
+_update_running = False
 
 
 @web.post("/bot/update/apply")
@@ -2222,10 +2229,19 @@ async def bot_update_apply(request: Request):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
 
-    if IS_ANDROID:
-        asyncio.create_task(_do_android_update())
-    else:
-        asyncio.create_task(_do_git_update())
+    # Without this, a double-click (or two people hitting "Jetzt updaten" on two devices at
+    # once) starts two concurrent updates that both reassign the shared `_update_status` global
+    # at the top of _do_git_update()/_do_android_update() - the second reassignment would
+    # silently swallow the first update's in-flight progress/done/error state, corrupting what
+    # gets shown to whichever page is still polling it. A second click while one is already
+    # running just re-attaches to the same in-progress update instead of starting a new one.
+    global _update_running
+    if not _update_running:
+        _update_running = True
+        if IS_ANDROID:
+            asyncio.create_task(_do_android_update())
+        else:
+            asyncio.create_task(_do_git_update())
     html = _UPDATE_IN_PROGRESS_HTML.replace("__IS_ANDROID__", "true" if IS_ANDROID else "false")
     return HTMLResponse(html)
 
