@@ -17,6 +17,8 @@
   .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:0.4rem; }
   .online { background:var(--success); box-shadow:0 0 6px var(--success); }
   .offline { background:var(--danger); }
+  .refresh-row { display:flex; align-items:center; gap:0.5rem; margin:1.5rem 0 0.75rem; }
+  .refresh-row select { background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:0.4rem; padding:0.25rem 0.5rem; font-size:0.8rem; }
 </style>
 
 <!-- Bot Status -->
@@ -36,40 +38,46 @@
   <div class="info-card">
     <div class="info-card-icon">⏱️</div>
     <div class="info-card-label">Laufzeit</div>
-    <div class="info-card-value" style="font-size:1rem;">{{ stats.uptime }}</div>
+    <div class="info-card-value" style="font-size:1rem;" id="stat-uptime">{{ stats.uptime }}</div>
   </div>
   <div class="info-card">
     <div class="info-card-icon">📡</div>
     <div class="info-card-label">Latenz (Discord)</div>
-    {% if stats.latency is not none %}
-    <div class="info-card-value" style="color:{% if stats.latency < 100 %}var(--success){% elif stats.latency < 250 %}#f59e0b{% else %}var(--danger){% endif %};">
-      {{ stats.latency }} ms
+    <div class="info-card-value" id="stat-latency"
+         style="color:{% if stats.latency is none %}var(--muted){% elif stats.latency < 100 %}var(--success){% elif stats.latency < 250 %}#f59e0b{% else %}var(--danger){% endif %};">
+      {{ stats.latency ~ " ms" if stats.latency is not none else "—" }}
     </div>
-    {% else %}
-    <div class="info-card-value" style="color:var(--muted);">—</div>
-    {% endif %}
   </div>
 </div>
 
-<div class="section-title">Leistung</div>
+<div class="refresh-row">
+  <span class="section-title" style="margin:0;">Leistung</span>
+  <select id="refresh-interval" onchange="setRefreshInterval(this.value)">
+    <option value="0">Aktualisierung: Aus</option>
+    <option value="5">Alle 5s</option>
+    <option value="10">Alle 10s</option>
+    <option value="30">Alle 30s</option>
+    <option value="60">Alle 60s</option>
+  </select>
+</div>
 <div class="info-grid">
   <div class="info-card">
     <div class="info-card-icon">⚙️</div>
     <div class="info-card-label">CPU</div>
-    <div class="info-card-value">{{ stats.cpu }}%</div>
-    <div class="bar-wrap"><div class="bar-fill" style="width:{{ [stats.cpu,100]|min }}%;{% if stats.cpu > 80 %}background:var(--danger);{% elif stats.cpu > 50 %}background:#f59e0b;{% endif %}"></div></div>
+    <div class="info-card-value" id="stat-cpu">{{ stats.cpu }}%</div>
+    <div class="bar-wrap"><div class="bar-fill" id="stat-cpu-bar" style="width:{{ [stats.cpu,100]|min }}%;{% if stats.cpu > 80 %}background:var(--danger);{% elif stats.cpu > 50 %}background:#f59e0b;{% endif %}"></div></div>
   </div>
   <div class="info-card">
     <div class="info-card-icon">🧠</div>
     <div class="info-card-label">RAM (System)</div>
-    <div class="info-card-value">{{ stats.ram_pct }}%</div>
-    <div class="info-card-sub">{{ stats.ram_used }} / {{ stats.ram_total }} MB</div>
-    <div class="bar-wrap"><div class="bar-fill" style="width:{{ [stats.ram_pct,100]|min }}%;{% if stats.ram_pct > 80 %}background:var(--danger);{% elif stats.ram_pct > 60 %}background:#f59e0b;{% endif %}"></div></div>
+    <div class="info-card-value" id="stat-ram-pct">{{ stats.ram_pct }}%</div>
+    <div class="info-card-sub" id="stat-ram-used">{{ stats.ram_used }} / {{ stats.ram_total }} MB</div>
+    <div class="bar-wrap"><div class="bar-fill" id="stat-ram-bar" style="width:{{ [stats.ram_pct,100]|min }}%;{% if stats.ram_pct > 80 %}background:var(--danger);{% elif stats.ram_pct > 60 %}background:#f59e0b;{% endif %}"></div></div>
   </div>
   <div class="info-card">
     <div class="info-card-icon">🤖</div>
     <div class="info-card-label">Bot RAM</div>
-    <div class="info-card-value" style="font-size:1.1rem;">{{ stats.proc_ram }} MB</div>
+    <div class="info-card-value" style="font-size:1.1rem;" id="stat-proc-ram">{{ stats.proc_ram }} MB</div>
     <div class="info-card-sub">Prozess-Speicher</div>
   </div>
 </div>
@@ -93,5 +101,68 @@
   </div>
 </div>
 
-<p class="hint" style="margin-top:0.5rem;">Daten werden beim Laden der Seite aktualisiert. Seite neu laden für aktuelle Werte.</p>
+<p class="hint" style="margin-top:0.5rem;" id="refresh-hint">Automatische Aktualisierung ist aus - Werte stammen vom Laden der Seite.</p>
+
+<script>
+  const REFRESH_KEY = 'phobos_stats_refresh_interval';
+  let refreshTimer = null;
+
+  function fmtLatencyColor(ms) {
+    if (ms === null) return 'var(--muted)';
+    if (ms < 100) return 'var(--success)';
+    if (ms < 250) return '#f59e0b';
+    return 'var(--danger)';
+  }
+  function barColor(pct, warnAt, dangerAt) {
+    if (pct > dangerAt) return 'var(--danger)';
+    if (pct > warnAt) return '#f59e0b';
+    return 'var(--accent)';
+  }
+
+  function refreshStats() {
+    fetch('/bot/info/stats', {cache: 'no-store'}).then(r => r.json()).then(s => {
+      document.getElementById('stat-cpu').textContent = s.cpu + '%';
+      const cpuBar = document.getElementById('stat-cpu-bar');
+      cpuBar.style.width = Math.min(s.cpu, 100) + '%';
+      cpuBar.style.background = barColor(s.cpu, 50, 80);
+
+      document.getElementById('stat-ram-pct').textContent = s.ram_pct + '%';
+      document.getElementById('stat-ram-used').textContent = s.ram_used + ' / ' + s.ram_total + ' MB';
+      const ramBar = document.getElementById('stat-ram-bar');
+      ramBar.style.width = Math.min(s.ram_pct, 100) + '%';
+      ramBar.style.background = barColor(s.ram_pct, 60, 80);
+
+      document.getElementById('stat-proc-ram').textContent = s.proc_ram + ' MB';
+      document.getElementById('stat-uptime').textContent = s.uptime;
+
+      const latEl = document.getElementById('stat-latency');
+      latEl.textContent = s.latency !== null ? s.latency + ' ms' : '—';
+      latEl.style.color = fmtLatencyColor(s.latency);
+    }).catch(() => {});
+  }
+
+  function setRefreshInterval(seconds, save = true) {
+    seconds = parseInt(seconds, 10) || 0;
+    if (save) localStorage.setItem(REFRESH_KEY, String(seconds));
+    document.getElementById('refresh-interval').value = String(seconds);
+    if (refreshTimer) clearInterval(refreshTimer);
+    if (seconds > 0) {
+      refreshTimer = setInterval(refreshStats, seconds * 1000);
+      document.getElementById('refresh-hint').textContent =
+        'Automatische Aktualisierung: alle ' + seconds + 's.';
+    } else {
+      document.getElementById('refresh-hint').textContent =
+        'Automatische Aktualisierung ist aus - Werte stammen vom Laden der Seite.';
+    }
+  }
+
+  // Per-browser preference, not per-account - a phone and a PC viewing the same dashboard
+  // may reasonably want different refresh rates, and this has no security/sync relevance.
+  let savedInterval = 10;
+  try {
+    const stored = localStorage.getItem(REFRESH_KEY);
+    if (stored !== null) savedInterval = parseInt(stored, 10) || 0;
+  } catch (e) { /* localStorage unavailable (private mode etc.) - just use the default */ }
+  setRefreshInterval(savedInterval, false);
+</script>
 {% endblock %}

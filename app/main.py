@@ -1699,6 +1699,12 @@ async def bot_info_page(request: Request):
     })
 
 
+@web.get("/bot/info/stats")
+async def bot_info_stats(request: Request):
+    if r := auth_redirect(request): return r
+    return JSONResponse(get_system_stats())
+
+
 # ── Update Check ──────────────────────────────────────────────────────────────
 
 _UPDATE_CACHE: dict = {"latest": None, "at": None}
