@@ -1,7 +1,5 @@
 package com.phobosbot.androidhost
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Intent
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -9,13 +7,14 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.format.Formatter
+import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import android.view.View
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -30,6 +29,7 @@ class MainActivity : AppCompatActivity() {
 
     private val statusHandler = Handler(Looper.getMainLooper())
     private var statusCheckRunnable: Runnable? = null
+    private var crashLogLoaded = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,11 +53,29 @@ class MainActivity : AppCompatActivity() {
             stopService(Intent(this, PhobosService::class.java))
         }
 
-        findViewById<Button>(R.id.copyLogButton).setOnClickListener {
-            val text = findViewById<TextView>(R.id.crashLogText).text.toString()
-            val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("Phobos Bot Fehler", text))
-            Toast.makeText(this, "Kopiert", Toast.LENGTH_SHORT).show()
+        findViewById<Button>(R.id.saveLogButton).setOnClickListener {
+            val text = findViewById<EditText>(R.id.crashLogText).text.toString()
+            // getExternalFilesDir(null) needs no storage permission on any API level and is
+            // visible via plain USB file transfer (MTP) from a PC under
+            // Android/data/com.phobosbot.androidhost/files/ - no clipboard, no other app on the
+            // phone, no adb needed to get the text off the device.
+            val dir = getExternalFilesDir(null)
+            val pathView = findViewById<TextView>(R.id.saveLogPathText)
+            if (dir == null) {
+                pathView.text = "Speichern fehlgeschlagen - kein externer Speicher verfügbar"
+                pathView.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
+            try {
+                val file = File(dir, "phobos-crash.txt")
+                file.writeText(text)
+                pathView.text = "Gespeichert: ${file.absolutePath}\n(per USB am PC unter Android/data/com.phobosbot.androidhost/files/ zu finden)"
+                pathView.visibility = View.VISIBLE
+                Toast.makeText(this, "Gespeichert", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                pathView.text = "Speichern fehlgeschlagen: ${e.message}"
+                pathView.visibility = View.VISIBLE
+            }
         }
     }
 
@@ -105,8 +123,8 @@ class MainActivity : AppCompatActivity() {
 
             runOnUiThread {
                 val statusView = findViewById<TextView>(R.id.serverStatusText)
-                val crashView = findViewById<TextView>(R.id.crashLogText)
-                val copyButton = findViewById<Button>(R.id.copyLogButton)
+                val crashView = findViewById<EditText>(R.id.crashLogText)
+                val saveButton = findViewById<Button>(R.id.saveLogButton)
                 statusView.text = when {
                     reachable -> "✅ Bot läuft (Port 8080 lokal erreichbar)"
                     !startAttempted -> "⏳ Noch nicht gestartet - auf \"Start Bot\" tippen"
@@ -114,12 +132,19 @@ class MainActivity : AppCompatActivity() {
                     else -> "⏳ Startet noch… (oder hängt fest, falls das lange so bleibt)"
                 }
                 if (crashLog.exists()) {
-                    crashView.text = crashLog.readText()
+                    // Only populate once - this runs every 2s, and overwriting the EditText's
+                    // content while the user is scrolling/selecting text in it would be annoying.
+                    // The crash log itself is a static snapshot anyway, it won't change on its own.
+                    if (!crashLogLoaded) {
+                        crashView.setText(crashLog.readText())
+                        crashLogLoaded = true
+                    }
                     crashView.visibility = View.VISIBLE
-                    copyButton.visibility = View.VISIBLE
+                    saveButton.visibility = View.VISIBLE
                 } else {
                     crashView.visibility = View.GONE
-                    copyButton.visibility = View.GONE
+                    saveButton.visibility = View.GONE
+                    crashLogLoaded = false
                 }
             }
         }
