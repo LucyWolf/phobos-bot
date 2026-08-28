@@ -17,8 +17,11 @@
   .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:0.4rem; }
   .online { background:var(--success); box-shadow:0 0 6px var(--success); }
   .offline { background:var(--danger); }
-  .refresh-row { display:flex; align-items:center; gap:0.5rem; margin:1.5rem 0 0.75rem; }
-  .refresh-row select { background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:0.4rem; padding:0.25rem 0.5rem; font-size:0.8rem; }
+  .refresh-row { display:flex; align-items:center; gap:0.6rem; margin:1.5rem 0 0.75rem; flex-wrap:wrap; }
+  .refresh-toggle { display:inline-flex; background:var(--bg); border:1px solid var(--border); border-radius:999px; padding:0.2rem; gap:0.15rem; }
+  .refresh-toggle button { background:transparent; border:none; color:var(--muted); font-size:0.72rem; font-weight:700; padding:0.3rem 0.7rem; border-radius:999px; cursor:pointer; transition:background 0.15s, color 0.15s; font-family:inherit; }
+  .refresh-toggle button:hover:not(.active) { color:var(--text); }
+  .refresh-toggle button.active { background:var(--accent); color:#fff; }
 </style>
 
 <!-- Bot Status -->
@@ -52,13 +55,13 @@
 
 <div class="refresh-row">
   <span class="section-title" style="margin:0;">Leistung</span>
-  <select id="refresh-interval" onchange="setRefreshInterval(this.value)">
-    <option value="0">Aktualisierung: Aus</option>
-    <option value="5">Alle 5s</option>
-    <option value="10">Alle 10s</option>
-    <option value="30">Alle 30s</option>
-    <option value="60">Alle 60s</option>
-  </select>
+  <div class="refresh-toggle" id="refresh-toggle">
+    <button type="button" data-val="0">Aus</button>
+    <button type="button" data-val="5">5s</button>
+    <button type="button" data-val="10">10s</button>
+    <button type="button" data-val="30">30s</button>
+    <button type="button" data-val="60">60s</button>
+  </div>
 </div>
 <div class="info-grid">
   <div class="info-card">
@@ -144,7 +147,9 @@
   function setRefreshInterval(seconds, save = true) {
     seconds = parseInt(seconds, 10) || 0;
     if (save) localStorage.setItem(REFRESH_KEY, String(seconds));
-    document.getElementById('refresh-interval').value = String(seconds);
+    document.querySelectorAll('#refresh-toggle button').forEach(btn => {
+      btn.classList.toggle('active', parseInt(btn.dataset.val, 10) === seconds);
+    });
     if (refreshTimer) clearInterval(refreshTimer);
     if (seconds > 0) {
       refreshTimer = setInterval(refreshStats, seconds * 1000);
@@ -155,6 +160,10 @@
         'Automatische Aktualisierung ist aus - Werte stammen vom Laden der Seite.';
     }
   }
+
+  document.querySelectorAll('#refresh-toggle button').forEach(btn => {
+    btn.addEventListener('click', () => setRefreshInterval(btn.dataset.val));
+  });
 
   // Per-browser preference, not per-account - a phone and a PC viewing the same dashboard
   // may reasonably want different refresh rates, and this has no security/sync relevance.
