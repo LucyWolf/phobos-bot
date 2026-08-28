@@ -118,8 +118,6 @@ services:
     memswap_limit: ${MEM_LIMIT:-1g}
 ```
 
-> Running a second full instance (separate dashboard + bot process, e.g. on port 8081) on the same server? Set `BOT_CONTAINER_NAME` in `.env` to something matching that bot (e.g. `SecondBot`) so `docker ps` shows which container belongs to which bot — otherwise it defaults to `Phobos-Bot` for every instance and they become impossible to tell apart at a glance.
-
 > The `/var/run/docker.sock` mount lets the dashboard talk to the Docker Engine API directly (needed for the one-click update feature under **Settings → 🔄 Updates**). The `.:/repo` mount gives the container access to the git repository itself so updates can fetch and hard-reset to the new code (`git fetch` + `git reset --hard origin/main`, not a plain `git pull` — this forcibly overwrites any local drift instead of risking a merge conflict). Both are optional if you're fine doing updates manually from the server shell instead (`git pull` + `docker compose up -d --build`).
 
 ---
@@ -590,8 +588,6 @@ services:
     mem_limit: ${MEM_LIMIT:-1g}
     memswap_limit: ${MEM_LIMIT:-1g}
 ```
-
-> Läuft eine zweite vollständige Instanz (eigenes Dashboard + Bot-Prozess, z.B. auf Port 8081) auf demselben Server? In der `.env` `BOT_CONTAINER_NAME` auf einen Namen setzen, der zu diesem Bot passt (z.B. `ZweiterBot`), damit `docker ps` zeigt, welcher Container zu welchem Bot gehört — sonst heißt standardmäßig jede Instanz `Phobos-Bot` und sie sind auf den ersten Blick nicht zu unterscheiden.
 
 > Der `/var/run/docker.sock`-Mount erlaubt dem Dashboard direkten Zugriff auf die Docker Engine API (nötig für das One-Click-Update unter **Einstellungen → 🔄 Updates**). Der `.:/repo`-Mount gibt dem Container Zugriff auf das Git-Repository selbst, damit Updates den neuen Code per `git fetch` + `git reset --hard origin/main` holen können (kein normales `git pull` — das würde bei lokalen Abweichungen mit einem Konflikt fehlschlagen, der harte Reset überschreibt stattdessen absichtlich alles). Beide sind optional, falls Updates lieber manuell über die Server-Shell laufen sollen (`git pull` + `docker compose up -d --build`).
 
