@@ -53,7 +53,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | Feature | Details |
 |---|---|
 | **Moderation** | `/kick` `/ban` `/unban` `/timeout` `/warn` `/warnings` `/clearwarns` `/clear` |
-| **Leveling / XP** | `/rank` `/leaderboard` `/setxp` — configurable XP per message, level-up channel |
+| **Leveling / XP** | `/rank` `/leaderboard` `/setxp` — configurable XP per message, level-up channel, auto-assign a role at a chosen level, optional custom reward text shown at a level |
 | **Welcome** | Auto join/leave messages, auto-role assignment, **generated welcome card image** with custom colors |
 | **Auto-Moderation** | Configurable spam threshold/window, link filter, word filter with editable quick-add categories, configurable action (warn/timeout/kick/ban) |
 | **Reaction Roles** | `/reactionrole-add` `/reactionrole-remove` `/reactionrole-list` |
@@ -526,7 +526,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | Feature | Details |
 |---|---|
 | **Moderation** | `/kick` `/ban` `/unban` `/timeout` `/warn` `/warnings` `/clearwarns` `/clear` |
-| **Leveling / XP** | `/rank` `/leaderboard` `/setxp` — konfigurierbares XP pro Nachricht, Level-Up-Kanal |
+| **Leveling / XP** | `/rank` `/leaderboard` `/setxp` — konfigurierbares XP pro Nachricht, Level-Up-Kanal, automatische Rollenvergabe ab einem gewählten Level, optionaler eigener Belohnungstext ab einem Level |
 | **Willkommen** | Automatische Beitrittsnachrichten, Verlassensnachrichten, Auto-Rolle, **generierte Willkommenskarte** mit anpassbaren Farben |
 | **Auto-Moderation** | Einstellbare Spam-Schwelle/-Zeitfenster, Link-Filter, Wort-Filter mit bearbeitbaren Schnellauswahl-Kategorien, einstellbare Aktion (warn/timeout/kick/ban) |
 | **Reaction Roles** | `/reactionrole-add` `/reactionrole-remove` `/reactionrole-list` |
