@@ -477,6 +477,8 @@ renderLvlChannelsList();
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-rr">
 
+<div class="feat-header" style="margin-bottom:1rem;">🏷️ Reaction Roles</div>
+
 {% if rr_list %}
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem;">
   <div class="table-wrap">
@@ -542,6 +544,8 @@ renderLvlChannelsList();
 <!-- TAB: Custom Commands                                                -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-commands">
+
+<div class="feat-header" style="margin-bottom:1rem;">📣 Custom Commands</div>
 
 {% if cmd_list %}
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem;">
@@ -759,6 +763,8 @@ function togglePanelEdit(id) {
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-giveaways">
 
+<div class="feat-header" style="margin-bottom:1rem;">🎉 Giveaways</div>
+
 {% if ga_list %}
 <div class="section-label" style="margin-bottom:0.6rem;">Aktive Giveaways</div>
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem;">
@@ -824,6 +830,7 @@ function togglePanelEdit(id) {
 <!-- TAB: Warnungen                                                      -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-warnings">
+<div class="feat-header" style="margin-bottom:1rem;">⚠️ Warnungen</div>
 <div class="card" style="padding:0;overflow:hidden;">
   {% if warn_groups %}
   <div class="table-wrap">
