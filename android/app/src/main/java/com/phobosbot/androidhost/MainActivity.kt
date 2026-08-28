@@ -332,6 +332,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun getLocalIpAddress(): String {
+        // WifiManager.connectionInfo.ipAddress is a known-flaky legacy API - confirmed live, it
+        // returned 0 ("<check Wi-Fi settings>") even while the bot was demonstrably reachable
+        // over that same WiFi connection. Enumerating network interfaces directly is the more
+        // reliable way to find the phone's actual LAN IP regardless of what WifiManager thinks.
+        try {
+            val interfaces = java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())
+            for (intf in interfaces) {
+                val addrs = java.util.Collections.list(intf.inetAddresses)
+                for (addr in addrs) {
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                        return addr.hostAddress ?: continue
+                    }
+                }
+            }
+        } catch (e: Exception) { /* fall through to the WifiManager attempt below */ }
+
         val wifiManager = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
         @Suppress("DEPRECATION")
         val ipInt = wifiManager.connectionInfo.ipAddress
