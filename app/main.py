@@ -2119,7 +2119,7 @@ async def bot_update_status(request: Request, offset: int = 0):
 # needs updating even as VERSION keeps climbing. Public repo, no auth needed to download it.
 _ANDROID_APK_URL = (
     "https://github.com/LucyWolf/phobos-bot/releases/download/"
-    "android-v1.6.16-debug/phobos-bot-debug.apk"
+    "android-v1.6.16-debug/phobos-bot.apk"
 )
 
 

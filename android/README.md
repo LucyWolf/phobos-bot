@@ -192,7 +192,7 @@ will prompt to allow installs from that source). No Play Store involved.
 
 Unlike Termux (which needs a manual `git pull` + restart), the dashboard's **Bot-Update** page
 works here too - it just does something different under the hood than the Docker/Termux `git`-
-based flow. On Android it downloads the latest `phobos-bot-debug.apk` from this repo's Releases
+based flow. On Android it downloads the latest `phobos-bot.apk` from this repo's Releases
 straight to the phone and hands off to Android's own install prompt; confirming that one dialog
 is the only manual step (see "Real-device findings" above for why a fully silent update isn't
 possible without a much bigger Device Owner setup). `main.py` tells the two update paths apart
