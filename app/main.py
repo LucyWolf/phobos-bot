@@ -3473,6 +3473,20 @@ _AUTOMOD_DEFAULT_PRESETS = [
 ]
 
 
+# Mirrors the labels in _server_subnav.html's ssnav-item links for the tabs that live inside
+# server_config.html itself (not the ones that are real separate pages, like Streaming/Log) -
+# keep both in sync if a tab is renamed. Used to show the active tab's own name in the page
+# header instead of a static guild name, since every tab switch here is a real page reload
+# (a plain <a href="?tab=..."> link, not client-side-only JS) and can render this correctly.
+_SERVER_CONFIG_TAB_LABELS = {
+    "config": "⚙️ Config", "automod": "🛡️ Spam-Schutz", "leveling": "🏆 Leveling",
+    "rr": "🎭 Reaction Roles", "commands": "📢 Commands", "tickets": "🎫 Tickets",
+    "giveaways": "🎉 Giveaways", "warnings": "⚠️ Warnungen", "users": "👥 Nutzer",
+    "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant", "events": "🗓️ Events",
+    "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
+}
+
+
 @web.get("/servers/{guild_id}", response_class=HTMLResponse)
 async def server_config(
     request: Request, guild_id: int,
@@ -3604,6 +3618,7 @@ async def server_config(
         "active": f"server_{guild_id}",
         "guilds": await _guild_list(request),
         "tab": tab, "error": error, "success": success,
+        "tab_label": _SERVER_CONFIG_TAB_LABELS.get(tab, _SERVER_CONFIG_TAB_LABELS["config"]),
         "rr_list": rr_list, "cmd_list": cmd_list,
         "leaderboard": lb, "warn_groups": warn_groups,
         "ticket_panels": ticket_panels, "ticket_list": ticket_list, "ga_list": ga_list,
