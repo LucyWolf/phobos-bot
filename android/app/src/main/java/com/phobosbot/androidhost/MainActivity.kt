@@ -56,11 +56,10 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val statusText = findViewById<TextView>(R.id.statusText)
         val startButton = findViewById<Button>(R.id.startButton)
         val stopButton = findViewById<Button>(R.id.stopButton)
 
-        statusText.text = "Dashboard will be reachable at:\nhttp://${getLocalIpAddress()}:8080"
+        updateIpText()
 
         startButton.setOnClickListener { startBot() }
 
@@ -228,6 +227,7 @@ class MainActivity : AppCompatActivity() {
                 (!triggerMarker.exists() || triggerMarker.lastModified() < updateApk.lastModified())
 
             runOnUiThread {
+                updateIpText()
                 if (shouldTriggerInstall && !updateInstallTriggered) {
                     updateInstallTriggered = true
                     triggerMarker.writeText(java.util.Date().toString())
@@ -319,6 +319,16 @@ class MainActivity : AppCompatActivity() {
             dlog("EXCEPTION: ${e.javaClass.simpleName}: ${e.message}\n${android.util.Log.getStackTraceString(e)}")
             Toast.makeText(this, "Installation konnte nicht gestartet werden: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun updateIpText() {
+        // Was previously read once in onCreate() and never again - a phone's WiFi IP can change
+        // overnight (DHCP lease renewal, a brief WiFi drop that reconnects with a new address),
+        // so a long-running app session could keep showing a now-wrong IP indefinitely even
+        // though the bot process itself is fine. Confirmed live: exactly this symptom ("Bot
+        // läuft" locally, but the dashboard wasn't reachable from another device overnight).
+        findViewById<TextView>(R.id.statusText).text =
+            "Dashboard will be reachable at:\nhttp://${getLocalIpAddress()}:8080"
     }
 
     private fun getLocalIpAddress(): String {
