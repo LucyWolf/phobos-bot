@@ -1484,22 +1484,21 @@ document.addEventListener('click', function(e) {
   <table style="width:100%;border-collapse:collapse;margin-bottom:1.25rem;">
     <thead>
       <tr style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;">
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Kanal</th>
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Löschen nach</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.autodelete_col_channel }}</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.autodelete_col_delete_after }}</th>
         <th style="padding:0.4rem 0.5rem;"></th>
       </tr>
     </thead>
     <tbody>
+    {% set dur_labels = {300: tr.autodelete_dur_5m, 600: tr.autodelete_dur_10m, 1800: tr.autodelete_dur_30m,
+      3600: tr.autodelete_dur_1h, 7200: tr.autodelete_dur_2h, 21600: tr.autodelete_dur_6h,
+      43200: tr.autodelete_dur_12h, 86400: tr.autodelete_dur_24h, 172800: tr.autodelete_dur_2d,
+      604800: tr.autodelete_dur_7d} %}
     {% for e in auto_delete_entries %}
     {% set ch_name = channels | selectattr('id','equalto',e.channel_id) | map(attribute='name') | first | default(e.channel_id) %}
     <tr style="border-top:1px solid var(--border);font-size:0.85rem;">
       <td style="padding:0.5rem;">#{{ ch_name }}</td>
-      <td style="padding:0.5rem;">
-        {% set s = e.delay_seconds %}
-        {% if s < 3600 %}{{ s // 60 }} Minute{{ 'n' if (s // 60) != 1 else '' }}
-        {% elif s < 86400 %}{{ s // 3600 }} Stunde{{ 'n' if (s // 3600) != 1 else '' }}
-        {% else %}{{ s // 86400 }} Tag{{ 'e' if (s // 86400) != 1 else '' }}{% endif %}
-      </td>
+      <td style="padding:0.5rem;">{{ dur_labels.get(e.delay_seconds, e.delay_seconds) }}</td>
       <td style="padding:0.5rem;text-align:right;white-space:nowrap;">
         <button type="button" class="btn btn-secondary" onclick="toggleAdEdit({{ e.id }})" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="Einstellungen">⚙</button>
         <form method="post" action="/servers/{{ guild.id }}/auto-delete/delete/{{ e.id }}" style="margin:0;display:inline;">
@@ -1511,24 +1510,24 @@ document.addEventListener('click', function(e) {
       <td colspan="3" style="padding:1rem 1.25rem;">
         <form method="post" action="/servers/{{ guild.id }}/auto-delete/edit/{{ e.id }}" style="display:grid;grid-template-columns:1fr 1fr auto;gap:0.75rem;align-items:end;margin:0;">
           <div>
-            <label style="font-size:0.78rem;">Kanal</label>
+            <label style="font-size:0.78rem;">{{ tr.autodelete_col_channel }}</label>
             <select name="channel_id" style="margin-bottom:0;">
               {% for c in channels %}<option value="{{ c.id }}" {% if c.id == e.channel_id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
             </select>
           </div>
           <div>
-            <label style="font-size:0.78rem;">Löschen nach</label>
+            <label style="font-size:0.78rem;">{{ tr.autodelete_col_delete_after }}</label>
             <select name="delay_seconds" style="margin-bottom:0;">
-              <option value="300" {% if e.delay_seconds == 300 %}selected{% endif %}>5 Minuten</option>
-              <option value="600" {% if e.delay_seconds == 600 %}selected{% endif %}>10 Minuten</option>
-              <option value="1800" {% if e.delay_seconds == 1800 %}selected{% endif %}>30 Minuten</option>
-              <option value="3600" {% if e.delay_seconds == 3600 %}selected{% endif %}>1 Stunde</option>
-              <option value="7200" {% if e.delay_seconds == 7200 %}selected{% endif %}>2 Stunden</option>
-              <option value="21600" {% if e.delay_seconds == 21600 %}selected{% endif %}>6 Stunden</option>
-              <option value="43200" {% if e.delay_seconds == 43200 %}selected{% endif %}>12 Stunden</option>
-              <option value="86400" {% if e.delay_seconds == 86400 %}selected{% endif %}>24 Stunden</option>
-              <option value="172800" {% if e.delay_seconds == 172800 %}selected{% endif %}>2 Tage</option>
-              <option value="604800" {% if e.delay_seconds == 604800 %}selected{% endif %}>7 Tage</option>
+              <option value="300" {% if e.delay_seconds == 300 %}selected{% endif %}>{{ tr.autodelete_dur_5m }}</option>
+              <option value="600" {% if e.delay_seconds == 600 %}selected{% endif %}>{{ tr.autodelete_dur_10m }}</option>
+              <option value="1800" {% if e.delay_seconds == 1800 %}selected{% endif %}>{{ tr.autodelete_dur_30m }}</option>
+              <option value="3600" {% if e.delay_seconds == 3600 %}selected{% endif %}>{{ tr.autodelete_dur_1h }}</option>
+              <option value="7200" {% if e.delay_seconds == 7200 %}selected{% endif %}>{{ tr.autodelete_dur_2h }}</option>
+              <option value="21600" {% if e.delay_seconds == 21600 %}selected{% endif %}>{{ tr.autodelete_dur_6h }}</option>
+              <option value="43200" {% if e.delay_seconds == 43200 %}selected{% endif %}>{{ tr.autodelete_dur_12h }}</option>
+              <option value="86400" {% if e.delay_seconds == 86400 %}selected{% endif %}>{{ tr.autodelete_dur_24h }}</option>
+              <option value="172800" {% if e.delay_seconds == 172800 %}selected{% endif %}>{{ tr.autodelete_dur_2d }}</option>
+              <option value="604800" {% if e.delay_seconds == 604800 %}selected{% endif %}>{{ tr.autodelete_dur_7d }}</option>
             </select>
           </div>
           <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">💾 Speichern</button>
@@ -1543,25 +1542,25 @@ document.addEventListener('click', function(e) {
   <form method="post" action="/servers/{{ guild.id }}/auto-delete/save" id="ad-form">
     <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:0.75rem;align-items:end;margin-bottom:0.75rem;" id="ad-rows">
       <div>
-        <label style="font-size:0.78rem;">Kanal</label>
+        <label style="font-size:0.78rem;">{{ tr.autodelete_col_channel }}</label>
         <select name="channel_id">
-          <option value="">— Kanal wählen —</option>
+          <option value="">{{ tr.autodelete_channel_placeholder }}</option>
           {% for c in channels %}<option value="{{ c.id }}">#{{ c.name }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label style="font-size:0.78rem;">Löschen nach</label>
+        <label style="font-size:0.78rem;">{{ tr.autodelete_col_delete_after }}</label>
         <select name="delay_seconds">
-          <option value="300">5 Minuten</option>
-          <option value="600">10 Minuten</option>
-          <option value="1800">30 Minuten</option>
-          <option value="3600">1 Stunde</option>
-          <option value="7200">2 Stunden</option>
-          <option value="21600">6 Stunden</option>
-          <option value="43200">12 Stunden</option>
-          <option value="86400" selected>24 Stunden</option>
-          <option value="172800">2 Tage</option>
-          <option value="604800">7 Tage</option>
+          <option value="300">{{ tr.autodelete_dur_5m }}</option>
+          <option value="600">{{ tr.autodelete_dur_10m }}</option>
+          <option value="1800">{{ tr.autodelete_dur_30m }}</option>
+          <option value="3600">{{ tr.autodelete_dur_1h }}</option>
+          <option value="7200">{{ tr.autodelete_dur_2h }}</option>
+          <option value="21600">{{ tr.autodelete_dur_6h }}</option>
+          <option value="43200">{{ tr.autodelete_dur_12h }}</option>
+          <option value="86400" selected>{{ tr.autodelete_dur_24h }}</option>
+          <option value="172800">{{ tr.autodelete_dur_2d }}</option>
+          <option value="604800">{{ tr.autodelete_dur_7d }}</option>
         </select>
       </div>
       <div style="padding-bottom:0.1rem;">
