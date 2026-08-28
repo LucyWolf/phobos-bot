@@ -31,7 +31,6 @@
 <input type="hidden" name="tab" value="config">
 
   <div class="card">
-    <div class="feat-header">💬 Willkommensnachrichten</div>
     <div class="grid-2">
       <div>
         <label>Willkommens-Kanal</label>
@@ -119,7 +118,6 @@
 <form method="post" action="/servers/{{ guild.id }}">
 <input type="hidden" name="tab" value="automod">
   <div class="card">
-    <div class="feat-header">{{ tr.automod_title }}</div>
     <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
       <input type="checkbox" name="automod_enabled" value="1" {% if cfg.get('automod_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> {{ tr.automod_enable_label }}
     </label>
@@ -249,7 +247,6 @@ document.addEventListener('click', function(e) {
 <form method="post" action="/servers/{{ guild.id }}">
 <input type="hidden" name="tab" value="leveling">
 <div class="card">
-  <div class="feat-header">⭐ Leveling &amp; XP</div>
   <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
     <input type="checkbox" name="leveling_enabled" value="1" {% if cfg.get('leveling_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> Leveling aktivieren
   </label>
@@ -474,8 +471,6 @@ renderLvlChannelsList();
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-rr">
 
-<div class="feat-header" style="margin-bottom:1rem;">🏷️ Reaction Roles</div>
-
 {% if rr_list %}
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem;">
   <div class="table-wrap">
@@ -541,8 +536,6 @@ renderLvlChannelsList();
 <!-- TAB: Custom Commands                                                -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-commands">
-
-<div class="feat-header" style="margin-bottom:1rem;">📣 Custom Commands</div>
 
 {% if cmd_list %}
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem;">
@@ -760,8 +753,6 @@ function togglePanelEdit(id) {
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-giveaways">
 
-<div class="feat-header" style="margin-bottom:1rem;">🎉 Giveaways</div>
-
 {% if ga_list %}
 <div class="section-label" style="margin-bottom:0.6rem;">Aktive Giveaways</div>
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem;">
@@ -827,7 +818,6 @@ function togglePanelEdit(id) {
 <!-- TAB: Warnungen                                                      -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-warnings">
-<div class="feat-header" style="margin-bottom:1rem;">⚠️ Warnungen</div>
 <div class="card" style="padding:0;overflow:hidden;">
   {% if warn_groups %}
   <div class="table-wrap">
@@ -868,7 +858,6 @@ function togglePanelEdit(id) {
 <div class="tab-pane" id="pane-users">
 {% if role == 'admin' %}
 <div class="card">
-  <div class="feat-header">👥 Dashboard-Benutzer – Serverzugriff</div>
   <p class="hint" style="margin-bottom:1rem;">Admins haben automatisch Zugriff auf alle Server. Moderatoren müssen explizit freigegeben werden.</p>
   {% for u in all_users %}
   <div style="display:flex;align-items:center;gap:0.75rem;padding:0.65rem 0;border-bottom:1px solid var(--border);">
@@ -901,7 +890,6 @@ function togglePanelEdit(id) {
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-tempvoice">
 <div class="card">
-  <div class="feat-header">🔊 Temporäre Voice-Kanäle</div>
   <p class="hint" style="margin-bottom:1rem;">
     Wenn ein Nutzer den Trigger-Kanal betritt, erstellt der Bot automatisch einen neuen Voice-Kanal.
     Sobald alle den Kanal verlassen, wird er wieder gelöscht.
@@ -1038,7 +1026,6 @@ function toggleTempvoiceEdit(id) {
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-scheduled">
 <div class="card">
-  <div class="feat-header">📅 Geplante Nachrichten</div>
   <p class="hint" style="margin-bottom:1rem;">Nachrichten werden automatisch zum gewählten Zeitpunkt in den Kanal gesendet.</p>
 
   {% if scheduled_messages %}
@@ -1166,7 +1153,6 @@ function toggleScheduledEdit(id) {
 </div>
 
 <div class="card">
-  <div class="feat-header">{{ tr.events_title }}</div>
   <p class="hint" style="margin-bottom:1rem;">{{ tr.events_hint }}</p>
 
   {% if events_list %}
@@ -1414,7 +1400,6 @@ document.addEventListener('click', function(e) {
 <form method="post" action="/servers/{{ guild.id }}">
 <input type="hidden" name="tab" value="birthday">
 <div class="card">
-  <div class="feat-header">🎂 Geburtstags-System</div>
   <p class="hint" style="margin-bottom:1rem;">
     Mitglieder tragen ihren Geburtstag mit <code>!geburtstag TT.MM</code> ein.
     Um 8:00 Uhr schickt der Bot automatisch eine Glückwunschnachricht.
@@ -1481,7 +1466,6 @@ document.addEventListener('click', function(e) {
 </div>
 
 <div class="card">
-  <div class="feat-header">{{ tr.autodelete_title }}</div>
   <p class="hint" style="margin-bottom:1rem;">{{ tr.autodelete_hint }}</p>
 
   {% if auto_delete_entries %}
