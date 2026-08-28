@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}{{ app_name }} – Free Stuff & Deals{% endblock %}
-{% block page_title %}{{ guild_name }}{% endblock %}
+{% block page_title %}🎁 Free Stuff & Deals{% endblock %}
 
 {% block content %}
 {% from '_server_subnav.html' import server_subnav %}
@@ -47,8 +47,6 @@
     </div>
   </div>
 </div>
-
-<div class="feat-header" style="margin-bottom:1rem;">🎁 Free Stuff &amp; Deals</div>
 
 {% if success %}<div class="alert alert-success" style="max-width:640px;">✅ {{ success }}</div>{% endif %}
 {% if error %}<div class="alert alert-error" style="max-width:640px;">❌ {{ error }}</div>{% endif %}

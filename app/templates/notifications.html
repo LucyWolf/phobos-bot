@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}{{ app_name }} – Streaming{% endblock %}
-{% block page_title %}{{ guild_name }}{% endblock %}
+{% block page_title %}📡 Streaming{% endblock %}
 
 {% block content %}
 {% from '_server_subnav.html' import server_subnav %}
@@ -40,8 +40,6 @@
     </div>
   </div>
 </div>
-
-<div class="feat-header" style="margin-bottom:1rem;">📡 Streaming</div>
 
 {% if success %}<div class="alert alert-success">✅ {{ tr.saved_ok }}</div>{% endif %}
 {% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}

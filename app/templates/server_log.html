@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ app_name }} – {{ tr.nav_log }} – {{ guild_name }}{% endblock %}
-{% block page_title %}{{ guild_name }}{% endblock %}
+{% block page_title %}{{ tr.log_page_title }}{% endblock %}
 
 {% block content %}
 {% from '_server_subnav.html' import server_subnav %}
@@ -53,8 +53,6 @@
     </div>
   </div>
 </div>
-
-<div class="feat-header" style="margin-bottom:1rem;">{{ tr.log_page_title }}</div>
 
 {% if success %}<div class="alert alert-success" style="max-width:660px;">✅ {{ tr.saved_ok }}</div>{% endif %}
 {% if error %}<div class="alert alert-error" style="max-width:660px;">❌ {{ error }}</div>{% endif %}
