@@ -1500,9 +1500,9 @@ document.addEventListener('click', function(e) {
       <td style="padding:0.5rem;">#{{ ch_name }}</td>
       <td style="padding:0.5rem;">{{ dur_labels.get(e.delay_seconds, e.delay_seconds) }}</td>
       <td style="padding:0.5rem;text-align:right;white-space:nowrap;">
-        <button type="button" class="btn btn-secondary" onclick="toggleAdEdit({{ e.id }})" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="Einstellungen">⚙</button>
+        <button type="button" class="btn btn-secondary" onclick="toggleAdEdit({{ e.id }})" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_settings }}">⚙</button>
         <form method="post" action="/servers/{{ guild.id }}/auto-delete/delete/{{ e.id }}" style="margin:0;display:inline;">
-          <button type="submit" class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="Löschen">✕</button>
+          <button type="submit" class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_delete }}">✕</button>
         </form>
       </td>
     </tr>
@@ -1530,7 +1530,7 @@ document.addEventListener('click', function(e) {
               <option value="604800" {% if e.delay_seconds == 604800 %}selected{% endif %}>{{ tr.autodelete_dur_7d }}</option>
             </select>
           </div>
-          <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">💾 Speichern</button>
+          <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
         </form>
       </td>
     </tr>
@@ -1564,7 +1564,7 @@ document.addEventListener('click', function(e) {
         </select>
       </div>
       <div style="padding-bottom:0.1rem;">
-        <button type="submit" class="btn btn-primary">➕ Hinzufügen</button>
+        <button type="submit" class="btn btn-primary">{{ tr.btn_add }}</button>
       </div>
     </div>
   </form>
