@@ -179,7 +179,7 @@ before relying on that.
 ## Installing the built APK
 
 Don't want to build it yourself? A pre-built APK is published under
-[GitHub Releases](https://github.com/LucyWolf/phobos-bot/releases), tag `android-v1.6.16-debug`
+[GitHub Releases](https://github.com/LucyWolf/phobos-bot/releases), tag `android-debug`
 - the tag name itself is intentionally not tied to a bot version (kept fixed), since the asset
 underneath it gets replaced on every Android-related commit; the release notes describe its
 actual current state.

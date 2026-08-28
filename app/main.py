@@ -2114,12 +2114,13 @@ async def bot_update_status(request: Request, offset: int = 0):
     })
 
 
-# The release TAG stays fixed forever (never renamed) while its one asset gets replaced on
-# every Android-related commit - see CLAUDE.md/android/README.md history - so this URL never
-# needs updating even as VERSION keeps climbing. Public repo, no auth needed to download it.
+# The release TAG stays fixed forever (deliberately not tied to a bot version, to avoid exactly
+# the confusion an earlier "android-v1.6.16-debug" tag name caused) while its one asset gets
+# replaced on every Android-related commit - see CLAUDE.md/android/README.md history - so this
+# URL never needs updating even as VERSION keeps climbing. Public repo, no auth needed.
 _ANDROID_APK_URL = (
     "https://github.com/LucyWolf/phobos-bot/releases/download/"
-    "android-v1.6.16-debug/phobos-bot.apk"
+    "android-debug/phobos-bot.apk"
 )
 
 
