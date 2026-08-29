@@ -3679,11 +3679,12 @@ async def server_config(
         "SELECT * FROM tickets WHERE guild_id=? AND status='open' ORDER BY created_at DESC",
         (guild_id,),
     )
+    _tr_tickets = get_tr(request.session.get("lang", "de"))
     for t in ticket_list:
         m = guild.get_member(t["user_id"])
         t["username"] = str(m) if m else f"#{t['user_id']}"
         ch = guild.get_channel(t["channel_id"])
-        t["channel_name"] = f"#{ch.name}" if ch else "Gelöscht"
+        t["channel_name"] = f"#{ch.name}" if ch else _tr_tickets["tickets_channel_deleted"]
 
     # Active giveaways
     ga_list = await db_rows(
