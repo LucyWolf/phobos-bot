@@ -59,6 +59,7 @@ class TempVoice(commands.Cog):
                     if cfg["category_id"]
                     else after.channel.category
                 )
+                ch = None
                 try:
                     ch = await guild.create_voice_channel(
                         name=name,
@@ -66,14 +67,30 @@ class TempVoice(commands.Cog):
                         user_limit=limit,
                         reason="Temp Voice",
                     )
-                    await member.move_to(ch)
+                    # Register as tracked BEFORE move_to, not after - if move_to fails (member
+                    # disconnects in the same instant, a permissions hiccup, ...) the channel
+                    # would otherwise exist but be untracked in both the DB and self._temp,
+                    # meaning it can never be cleaned up: the normal "delete if empty" cleanup
+                    # only fires reactively when someone LEAVES a tracked channel, which never
+                    # happens for a channel nobody ever successfully joined.
                     await db_exec(
                         "INSERT OR IGNORE INTO temp_voice_active (channel_id, guild_id, owner_id) VALUES (?,?,?)",
                         (str(ch.id), str(guild.id), str(member.id)),
                     )
                     self._temp.add(str(ch.id))
+                    await member.move_to(ch)
                 except Exception:
-                    pass
+                    # Something after channel creation failed (move_to, or even the tracking
+                    # db_exec/self._temp.add above) - checked directly on ch.members rather
+                    # than "is it in self._temp", since that step itself might be the one that
+                    # failed. discard()/DELETE are safe no-ops if it was never tracked.
+                    if ch is not None and len(ch.members) == 0:
+                        self._temp.discard(str(ch.id))
+                        await db_exec("DELETE FROM temp_voice_active WHERE channel_id=?", (str(ch.id),))
+                        try:
+                            await ch.delete(reason="Temp Voice - Beitritt fehlgeschlagen")
+                        except Exception:
+                            pass
 
         # ── Leaving a temp channel → delete if empty ─────────────────────────
         if before.channel and str(before.channel.id) in self._temp:
