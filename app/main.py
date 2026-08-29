@@ -4023,6 +4023,13 @@ async def tickets_panel_create(request: Request, guild_id: int, name: str = Form
     name = name.strip()
     if not name:
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Name+erforderlich", status_code=302)
+    if len(name) > 100:
+        # The name ends up as (part of) a Discord embed title ("{emoji} {name}") when the
+        # panel is published - Discord's hard limit there is 256 characters, and until now
+        # nothing enforced any limit here at all. A too-long name wouldn't just look bad, it
+        # would make /publish's channel.send() raise and (before this fix) crash the whole
+        # request with an unhandled 500 instead of a friendly error.
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Name+zu+lang+(max.+100+Zeichen)", status_code=302)
     await db_exec(
         "INSERT INTO ticket_panels (guild_id, name, button_label, description, emoji) VALUES (?,?,?,?,?)",
         (guild_id, name, "Ticket öffnen", "Klicke unten um ein Ticket zu öffnen.", "🎫"),
@@ -4047,6 +4054,14 @@ async def tickets_panel_update(
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Rolle", status_code=302)
     if category_id and category_id not in {str(c.id) for c in guild.categories}:
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Kategorie", status_code=302)
+    if len(name.strip()) > 100:
+        # Same reasoning as tickets_panel_create - ends up in the embed title.
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Name+zu+lang+(max.+100+Zeichen)", status_code=302)
+    if len(button_label.strip()) > 80:
+        # Discord's own hard limit for a button's label - exceeding it makes ch.send()/msg.edit()
+        # raise, which (before this fix) would have crashed /publish's request with an
+        # unhandled 500 instead of a friendly error.
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Button-Text+zu+lang+(max.+80+Zeichen)", status_code=302)
     panel_before = await db_one("SELECT * FROM ticket_panels WHERE id=? AND guild_id=?", (panel_id, guild_id))
     new_name = name.strip()
     new_label = button_label.strip() or "Ticket öffnen"
@@ -4138,8 +4153,16 @@ async def tickets_panel_publish(
         description=panel.get("description") or "Klicke unten um ein Ticket zu öffnen.",
         color=0x7C3AED,
     )
-    view = _TicketView(panel_id, label, emoji)
-    msg = await ch.send(embed=embed, view=view)
+    try:
+        view = _TicketView(panel_id, label, emoji)
+        msg = await ch.send(embed=embed, view=view)
+    except Exception as e:
+        # Nothing here was guarded before - an invalid emoji string (view construction itself
+        # can raise), a name/label that's since grown past Discord's title/button-label limits,
+        # or the bot simply missing "Embed Links"/"Send Messages" in the target channel would
+        # all have crashed this request with an unhandled 500 instead of a normal error redirect.
+        print(f"[Tickets] publish failed for panel {panel_id}: {e}")
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Veröffentlichen+fehlgeschlagen", status_code=302)
     b.add_view(view)
     await db_exec(
         "UPDATE ticket_panels SET status='published', channel_id=?, message_id=? WHERE id=?",

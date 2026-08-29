@@ -619,7 +619,7 @@ renderLvlChannelsList();
     <form method="post" action="/servers/{{ guild.id }}/tickets/panels/create" style="display:flex;gap:0.6rem;align-items:flex-end;flex-wrap:wrap;">
       <div style="flex:1;min-width:200px;">
         <label>{{ tr.tickets_panel_name_label }}</label>
-        <input type="text" name="name" placeholder="{{ tr.tickets_panel_name_placeholder }}" required style="margin-bottom:0;">
+        <input type="text" name="name" placeholder="{{ tr.tickets_panel_name_placeholder }}" required maxlength="100" style="margin-bottom:0;">
       </div>
       <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.tickets_btn_create }}</button>
     </form>
@@ -666,11 +666,11 @@ renderLvlChannelsList();
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
                 <div>
                   <label>{{ tr.label_name }}</label>
-                  <input type="text" name="name" value="{{ p.name }}" required style="margin-bottom:0;">
+                  <input type="text" name="name" value="{{ p.name }}" required maxlength="100" style="margin-bottom:0;">
                 </div>
                 <div>
                   <label>{{ tr.tickets_button_label_label }}</label>
-                  <input type="text" name="button_label" value="{{ p.button_label or 'Ticket öffnen' }}" style="margin-bottom:0;">
+                  <input type="text" name="button_label" value="{{ p.button_label or 'Ticket öffnen' }}" maxlength="80" style="margin-bottom:0;">
                 </div>
                 <div>
                   <label>{{ tr.tickets_emoji_label }}</label>
