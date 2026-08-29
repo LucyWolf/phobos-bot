@@ -11,8 +11,18 @@ class CloseTicketView(ui.View):
     @ui.button(label="Ticket schließen", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="close_ticket")
     async def close_ticket(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.send_message("Ticket wird geschlossen...", ephemeral=True)
+        try:
+            await interaction.channel.delete(reason=f"Ticket geschlossen von {interaction.user}")
+        except discord.NotFound:
+            pass
+        except Exception as e:
+            # Don't mark the ticket closed if we couldn't actually delete the channel (e.g.
+            # missing permission) - the DB would otherwise say "closed" while the channel is
+            # still sitting there, with no way to retry (the dashboard/close-command only
+            # surface tickets with status='open').
+            print(f"[Tickets] channel delete failed for {interaction.channel_id}: {e}")
+            return
         await db_exec("UPDATE tickets SET status='closed' WHERE channel_id=?", (interaction.channel_id,))
-        await interaction.channel.delete(reason=f"Ticket geschlossen von {interaction.user}")
 
 
 class PanelButton(ui.Button):
@@ -66,7 +76,9 @@ class PanelButton(ui.Button):
         category = None
         if panel.get("category_id"):
             try:
-                category = guild.get_channel(int(panel["category_id"]))
+                cat = guild.get_channel(int(panel["category_id"]))
+                if isinstance(cat, discord.CategoryChannel):
+                    category = cat
             except (ValueError, TypeError):
                 pass
 
@@ -84,27 +96,50 @@ class PanelButton(ui.Button):
                 pass
 
         slug = panel["name"].lower().replace(" ", "-")[:18]
-        channel = await guild.create_text_channel(
-            f"ticket-{slug}-{interaction.user.name[:10]}",
-            overwrites=overwrites,
-            category=category,
-            reason=f"Ticket von {interaction.user} – Panel: {panel['name']}",
-        )
-        await db_exec(
-            "INSERT INTO tickets (guild_id, channel_id, user_id, panel_id) VALUES (?,?,?,?)",
-            (guild.id, channel.id, interaction.user.id, panel_id),
-        )
+        channel = None
+        try:
+            channel = await guild.create_text_channel(
+                f"ticket-{slug}-{interaction.user.name[:10]}",
+                overwrites=overwrites,
+                category=category,
+                reason=f"Ticket von {interaction.user} – Panel: {panel['name']}",
+            )
+            await db_exec(
+                "INSERT INTO tickets (guild_id, channel_id, user_id, panel_id) VALUES (?,?,?,?)",
+                (guild.id, channel.id, interaction.user.id, panel_id),
+            )
 
-        embed = discord.Embed(
-            title=f"{panel.get('emoji', '🎫')} {panel['name']}",
-            description=(
-                f"Hallo {interaction.user.mention}!\n"
-                + (panel.get("description") or "Beschreibe dein Anliegen und wir helfen dir so schnell wie möglich.")
-            ),
-            color=0x7C3AED,
-        )
-        await channel.send(embed=embed, view=CloseTicketView())
-        await interaction.response.send_message(f"Ticket erstellt: {channel.mention}", ephemeral=True)
+            embed = discord.Embed(
+                title=f"{panel.get('emoji', '🎫')} {panel['name']}",
+                description=(
+                    f"Hallo {interaction.user.mention}!\n"
+                    + (panel.get("description") or "Beschreibe dein Anliegen und wir helfen dir so schnell wie möglich.")
+                ),
+                color=0x7C3AED,
+            )
+            await channel.send(embed=embed, view=CloseTicketView())
+            await interaction.response.send_message(f"Ticket erstellt: {channel.mention}", ephemeral=True)
+        except Exception as e:
+            # If channel creation itself fails (missing "Manage Channels" permission, guild
+            # hit Discord's 500-channel cap, invalid category) the interaction would otherwise
+            # never get a response at all ("This interaction failed" with no explanation). If
+            # a channel WAS created but a later step failed (DB insert, embed send), clean it
+            # up instead of leaving an orphaned, untracked channel behind - same lesson as the
+            # temp-voice orphaned-channel fix earlier in this project's history.
+            print(f"[Tickets] ticket creation failed for panel {panel_id}: {e}")
+            if channel is not None:
+                try:
+                    await db_exec("DELETE FROM tickets WHERE channel_id=?", (channel.id,))
+                except Exception:
+                    pass
+                try:
+                    await channel.delete(reason="Ticket-Erstellung fehlgeschlagen")
+                except Exception:
+                    pass
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "Ticket konnte nicht erstellt werden. Bitte kontaktiere einen Admin.", ephemeral=True
+                )
 
 
 class OpenTicketView(ui.View):
@@ -139,8 +174,14 @@ class Tickets(commands.Cog):
             await interaction.response.send_message("Dieser Kanal ist kein offenes Ticket.", ephemeral=True)
             return
         await interaction.response.send_message("Ticket wird geschlossen...")
+        try:
+            await interaction.channel.delete(reason=f"Ticket geschlossen von {interaction.user}")
+        except discord.NotFound:
+            pass
+        except Exception as e:
+            print(f"[Tickets] channel delete failed for {interaction.channel_id}: {e}")
+            return
         await db_exec("UPDATE tickets SET status='closed' WHERE channel_id=?", (interaction.channel_id,))
-        await interaction.channel.delete(reason=f"Ticket geschlossen von {interaction.user}")
 
 
 async def setup(bot):

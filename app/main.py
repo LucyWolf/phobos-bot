@@ -4031,6 +4031,13 @@ async def tickets_panel_update(
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    if support_role_id and support_role_id not in {str(ro.id) for ro in guild.roles}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Rolle", status_code=302)
+    if category_id and category_id not in {str(c.id) for c in guild.categories}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Kategorie", status_code=302)
     await db_exec(
         "UPDATE ticket_panels SET name=?, button_label=?, description=?, emoji=?, "
         "support_role_id=?, category_id=? WHERE id=? AND guild_id=?",
@@ -4125,19 +4132,25 @@ async def ticket_close(request: Request, guild_id: int, ticket_id: int):
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
     ticket = await db_one("SELECT * FROM tickets WHERE id=? AND guild_id=?", (ticket_id, guild_id))
-    if ticket:
-        b = bot._bot_for_guild(guild_id)
-        if b:
-            ch = b.get_channel(ticket["channel_id"])
-            if ch:
-                try:
-                    await ch.delete(reason="Ticket via Dashboard geschlossen")
-                except Exception:
-                    pass
-        await db_exec(
-            "UPDATE tickets SET status='closed' WHERE id=? AND guild_id=?",
-            (ticket_id, guild_id),
-        )
+    if not ticket:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ticket+nicht+gefunden", status_code=302)
+    b = bot._bot_for_guild(guild_id)
+    if not b:
+        # Without a live bot instance we can't tell whether the channel still exists, let
+        # alone delete it - marking the ticket closed anyway would leave the channel orphaned
+        # with no way to retry the deletion later (the dashboard ticket list only shows
+        # status='open' rows), same failure mode already fixed for giveaway_end_web.
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Bot+nicht+online", status_code=302)
+    ch = b.get_channel(ticket["channel_id"])
+    if ch:
+        try:
+            await ch.delete(reason="Ticket via Dashboard geschlossen")
+        except Exception:
+            pass
+    await db_exec(
+        "UPDATE tickets SET status='closed' WHERE id=? AND guild_id=?",
+        (ticket_id, guild_id),
+    )
     return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Ticket+geschlossen", status_code=302)
 
 
