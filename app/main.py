@@ -20,6 +20,7 @@ except ImportError:
     # under Android, unlike Docker/Termux).
     from pytz import timezone as ZoneInfo
 import platform
+import re
 import secrets
 import shutil
 import smtplib
@@ -942,6 +943,45 @@ _BACKUP_FEATURE_TABLES = [
     "level_roles", "level_rewards", "automod_word_presets",
 ]
 
+# Shared between the full-backup restore (/admin/backup/restore) and the per-server restore
+# (/servers/{guild_id}/backup/restore) - was previously defined inline inside backup_restore()
+# only, duplicating it for the new per-server path would have let the two drift out of sync.
+_BACKUP_TBL_INSERT = {
+    "reaction_roles":
+        "INSERT OR IGNORE INTO reaction_roles (guild_id,channel_id,message_id,emoji,role_id) VALUES (:guild_id,:channel_id,:message_id,:emoji,:role_id)",
+    "custom_commands":
+        "INSERT INTO custom_commands (guild_id,trigger,response) VALUES (:guild_id,:trigger,:response) ON CONFLICT(guild_id,trigger) DO UPDATE SET response=excluded.response",
+    "auto_delete_channels":
+        "INSERT INTO auto_delete_channels (guild_id,channel_id,delay_seconds) VALUES (:guild_id,:channel_id,:delay_seconds) ON CONFLICT(guild_id,channel_id) DO UPDATE SET delay_seconds=excluded.delay_seconds",
+    "temp_voice_config":
+        "INSERT INTO temp_voice_config (guild_id,trigger_channel_id,category_id,name_template,user_limit) VALUES (:guild_id,:trigger_channel_id,:category_id,:name_template,:user_limit) ON CONFLICT(guild_id,trigger_channel_id) DO UPDATE SET category_id=excluded.category_id,name_template=excluded.name_template,user_limit=excluded.user_limit",
+    "scheduled_messages":
+        "INSERT OR IGNORE INTO scheduled_messages (guild_id,channel_id,message,send_at,sent) VALUES (:guild_id,:channel_id,:message,:send_at,:sent)",
+    "notifications":
+        "INSERT OR IGNORE INTO notifications (guild_id,platform,discord_channel_id,target,target_name,last_id,live,custom_message) VALUES (:guild_id,:platform,:discord_channel_id,:target,:target_name,:last_id,0,:custom_message)",
+    "freestuff_channels":
+        "INSERT INTO freestuff_channels (guild_id,channel_id,platforms,deal_max_price,deal_min_discount,deal_channel_id,deal_platforms) VALUES (:guild_id,:channel_id,:platforms,:deal_max_price,:deal_min_discount,:deal_channel_id,:deal_platforms) ON CONFLICT(guild_id) DO UPDATE SET channel_id=excluded.channel_id,platforms=excluded.platforms,deal_max_price=excluded.deal_max_price,deal_min_discount=excluded.deal_min_discount,deal_channel_id=excluded.deal_channel_id,deal_platforms=excluded.deal_platforms",
+    "birthdays":
+        "INSERT OR REPLACE INTO birthdays (user_id,guild_id,birthday) VALUES (:user_id,:guild_id,:birthday)",
+    "warnings":
+        "INSERT OR IGNORE INTO warnings (user_id,guild_id,moderator_id,reason,timestamp) VALUES (:user_id,:guild_id,:moderator_id,:reason,:timestamp)",
+    # status/channel_id/message_id are deliberately NOT restored (left at their table
+    # defaults: 'draft' / '' / '') - a backed-up "published" panel could easily point at
+    # a Discord message that no longer exists by the time it's restored (channel/message
+    # deleted, days or weeks later). Same safety principle as notifications' live=0
+    # above: every restored panel comes back as an unpublished draft the admin has to
+    # consciously re-publish, rather than risk the bot creating tickets around a message
+    # that was never actually re-created.
+    "ticket_panels":
+        "INSERT INTO ticket_panels (guild_id,name,description,button_label,emoji,support_role_id,category_id) VALUES (:guild_id,:name,:description,:button_label,:emoji,:support_role_id,:category_id)",
+    "level_roles":
+        "INSERT OR IGNORE INTO level_roles (guild_id,level,role_id) VALUES (:guild_id,:level,:role_id)",
+    "level_rewards":
+        "INSERT OR IGNORE INTO level_rewards (guild_id,level,reward) VALUES (:guild_id,:level,:reward)",
+    "automod_word_presets":
+        "INSERT INTO automod_word_presets (guild_id,label,words) VALUES (:guild_id,:label,:words)",
+}
+
 
 async def _build_user_backup(target_user_id: int, exported_by: str) -> dict:
     user = await db_one("SELECT * FROM users WHERE id=?", (target_user_id,))
@@ -999,6 +1039,34 @@ async def _build_full_backup(exported_by: str) -> dict:
     }
     for tbl in _BACKUP_FEATURE_TABLES:
         data[tbl] = await db_rows(f"SELECT * FROM {tbl}")
+    return data
+
+
+async def _build_guild_backup(guild_id: int, exported_by: str) -> dict:
+    """Exports just one Discord server's own configuration - no dashboard users, tokens, or
+    other guilds' data. Meant to be portable: a restore can target ANY guild the admin
+    chooses, not just the one this was exported from, so guild_id is deliberately NOT baked
+    into the export as anything other than informational metadata."""
+    guild = bot.get_guild(guild_id)
+    gid_str = str(guild_id)
+    data: dict = {
+        "meta": {
+            "version": "1.0", "type": "guild",
+            "app_version": VERSION,
+            "exported_at": datetime.datetime.utcnow().isoformat(),
+            "exported_by": exported_by,
+            "source_guild_id": gid_str,
+            "source_guild_name": guild.name if guild else None,
+        },
+        "guild_configs": await db_rows(
+            "SELECT key, value FROM guild_configs WHERE guild_id=?", (guild_id,)
+        ),
+        "scheduled_messages": await db_rows(
+            "SELECT * FROM scheduled_messages WHERE guild_id=? AND sent=0", (gid_str,)
+        ),
+    }
+    for tbl in _BACKUP_FEATURE_TABLES:
+        data[tbl] = await db_rows(f"SELECT * FROM {tbl} WHERE guild_id=?", (gid_str,))
     return data
 
 
@@ -1156,42 +1224,7 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
 
         # 7. Feature tables
         _restored_presets_guilds: set = set()
-        _tbl_insert = {
-            "reaction_roles":
-                "INSERT OR IGNORE INTO reaction_roles (guild_id,channel_id,message_id,emoji,role_id) VALUES (:guild_id,:channel_id,:message_id,:emoji,:role_id)",
-            "custom_commands":
-                "INSERT INTO custom_commands (guild_id,trigger,response) VALUES (:guild_id,:trigger,:response) ON CONFLICT(guild_id,trigger) DO UPDATE SET response=excluded.response",
-            "auto_delete_channels":
-                "INSERT INTO auto_delete_channels (guild_id,channel_id,delay_seconds) VALUES (:guild_id,:channel_id,:delay_seconds) ON CONFLICT(guild_id,channel_id) DO UPDATE SET delay_seconds=excluded.delay_seconds",
-            "temp_voice_config":
-                "INSERT INTO temp_voice_config (guild_id,trigger_channel_id,category_id,name_template,user_limit) VALUES (:guild_id,:trigger_channel_id,:category_id,:name_template,:user_limit) ON CONFLICT(guild_id,trigger_channel_id) DO UPDATE SET category_id=excluded.category_id,name_template=excluded.name_template,user_limit=excluded.user_limit",
-            "scheduled_messages":
-                "INSERT OR IGNORE INTO scheduled_messages (guild_id,channel_id,message,send_at,sent) VALUES (:guild_id,:channel_id,:message,:send_at,:sent)",
-            "notifications":
-                "INSERT OR IGNORE INTO notifications (guild_id,platform,discord_channel_id,target,target_name,last_id,live,custom_message) VALUES (:guild_id,:platform,:discord_channel_id,:target,:target_name,:last_id,0,:custom_message)",
-            "freestuff_channels":
-                "INSERT INTO freestuff_channels (guild_id,channel_id,platforms,deal_max_price,deal_min_discount,deal_channel_id,deal_platforms) VALUES (:guild_id,:channel_id,:platforms,:deal_max_price,:deal_min_discount,:deal_channel_id,:deal_platforms) ON CONFLICT(guild_id) DO UPDATE SET channel_id=excluded.channel_id,platforms=excluded.platforms,deal_max_price=excluded.deal_max_price,deal_min_discount=excluded.deal_min_discount,deal_channel_id=excluded.deal_channel_id,deal_platforms=excluded.deal_platforms",
-            "birthdays":
-                "INSERT OR REPLACE INTO birthdays (user_id,guild_id,birthday) VALUES (:user_id,:guild_id,:birthday)",
-            "warnings":
-                "INSERT OR IGNORE INTO warnings (user_id,guild_id,moderator_id,reason,timestamp) VALUES (:user_id,:guild_id,:moderator_id,:reason,:timestamp)",
-            # status/channel_id/message_id are deliberately NOT restored (left at their table
-            # defaults: 'draft' / '' / '') - a backed-up "published" panel could easily point at
-            # a Discord message that no longer exists by the time it's restored (channel/message
-            # deleted, days or weeks later). Same safety principle as notifications' live=0
-            # above: every restored panel comes back as an unpublished draft the admin has to
-            # consciously re-publish, rather than risk the bot creating tickets around a message
-            # that was never actually re-created.
-            "ticket_panels":
-                "INSERT INTO ticket_panels (guild_id,name,description,button_label,emoji,support_role_id,category_id) VALUES (:guild_id,:name,:description,:button_label,:emoji,:support_role_id,:category_id)",
-            "level_roles":
-                "INSERT OR IGNORE INTO level_roles (guild_id,level,role_id) VALUES (:guild_id,:level,:role_id)",
-            "level_rewards":
-                "INSERT OR IGNORE INTO level_rewards (guild_id,level,reward) VALUES (:guild_id,:level,:reward)",
-            "automod_word_presets":
-                "INSERT INTO automod_word_presets (guild_id,label,words) VALUES (:guild_id,:label,:words)",
-        }
-        for tbl, sql in _tbl_insert.items():
+        for tbl, sql in _BACKUP_TBL_INSERT.items():
             rows = data.get(tbl, [])
             for row in rows:
                 try:
@@ -1236,6 +1269,96 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
     summary = ", ".join(restored) if restored else "Nichts"
     return RedirectResponse(
         f"/users?success=Backup+eingespielt:+{urllib.parse.quote(summary)}", status_code=302
+    )
+
+
+@web.get("/servers/{guild_id}/backup")
+async def server_backup_export(request: Request, guild_id: int):
+    if r := admin_redirect(request): return r
+    by = request.session.get("username", "admin")
+    data = await _build_guild_backup(guild_id, by)
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+    guild = bot.get_guild(guild_id)
+    # Sanitized for use in a filename - a guild name can contain characters (/, quotes, emoji)
+    # that would be awkward or invalid in one, unlike the guild_id fallback which is already
+    # filename-safe on its own.
+    name_part = re.sub(r"[^\w\-]+", "_", guild.name).strip("_") if guild else str(guild_id)
+    return _json_dl(data, f"backup_server_{name_part or guild_id}_{ts}.json")
+
+
+@web.post("/servers/{guild_id}/backup/restore")
+async def server_backup_restore(request: Request, guild_id: int, backup_file: UploadFile = File(...)):
+    if r := admin_redirect(request): return r
+    try:
+        raw = await backup_file.read()
+        data = _djson.loads(raw)
+    except Exception:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=config&error=Ungültige+Backup-Datei+(kein+gültiges+JSON)",
+            status_code=302,
+        )
+
+    meta = data.get("meta", {})
+    if meta.get("type") != "guild":
+        # Deliberately strict, not just "does it have a version" like the full-backup restore
+        # above - a full/user-type backup's feature-table rows span EVERY guild on the whole
+        # platform mixed together with no per-row grouping. Restoring one of those here would
+        # silently rewrite the guild_id on ALL of them to this one target guild, merging every
+        # other server's tickets/reaction-roles/etc. into it.
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=config&error=Das+ist+kein+Server-Backup+(falscher+Typ)",
+            status_code=302,
+        )
+
+    gid_str = str(guild_id)
+    restored: list[str] = []
+    restored_presets = False
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        for gc in data.get("guild_configs", []):
+            try:
+                await db.execute(
+                    "INSERT INTO guild_configs (guild_id,key,value) VALUES (?,?,?) "
+                    "ON CONFLICT(guild_id,key) DO UPDATE SET value=excluded.value",
+                    (guild_id, gc["key"], gc["value"]),
+                )
+            except Exception:
+                pass
+        if data.get("guild_configs"):
+            restored.append("Server-Konfiguration")
+
+        # Freely portable to any target guild (per explicit product decision) - every row's own
+        # guild_id from the export is intentionally ignored and overwritten with the URL's
+        # guild_id instead, rather than trusting whatever the file says. Reuses the exact same
+        # INSERT statements as the full-backup restore (_BACKUP_TBL_INSERT) so the two restore
+        # paths can't drift apart on how a given table is handled.
+        for tbl, sql in _BACKUP_TBL_INSERT.items():
+            rows = data.get(tbl, [])
+            for row in rows:
+                row = {**row, "guild_id": gid_str}
+                try:
+                    await db.execute(sql, row)
+                except Exception:
+                    pass
+            if rows:
+                restored.append(tbl.replace("_", " ").title())
+            if tbl == "automod_word_presets" and rows:
+                restored_presets = True
+
+        await db.commit()
+
+    if "auto_delete_channels" in data:
+        await _reload_auto_delete()
+    if restored_presets:
+        # Same fix as the full-backup restore above - without it, this guild would get the 4
+        # hardcoded starter presets seeded alongside these just-restored ones the first time
+        # its Auto-Mod tab is opened, if it's never been opened before.
+        await set_guild_config(guild_id, "automod_presets_seeded", "1")
+
+    summary = ", ".join(restored) if restored else "Nichts"
+    return RedirectResponse(
+        f"/servers/{guild_id}?tab=config&success=Server-Backup+eingespielt:+{urllib.parse.quote(summary)}",
+        status_code=302,
     )
 
 

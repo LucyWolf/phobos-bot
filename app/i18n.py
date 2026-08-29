@@ -31,6 +31,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "label_email":        "E-Mail",
         "label_avatar":       "Avatar",
         "saved_ok":           "Gespeichert.",
+        # Server Backup
+        "server_backup_title":   "🗄️ Server-Backup",
+        "server_backup_hint":    "Sichert nur die Konfiguration DIESES Servers (Reaction Roles, Commands, Tickets, Level-Rollen, Auto-Mod-Presets, Geplante Nachrichten, u.v.m.) — keine Dashboard-Benutzer oder Tokens. Eine wiederhergestellte Datei kann auf einen beliebigen Server angewendet werden, nicht nur den, aus dem sie stammt.",
+        "server_backup_download": "💾 Herunterladen",
+        "server_backup_file_label": "Backup-Datei (.json)",
+        "server_backup_restore_btn": "📂 Wiederherstellen",
         # Tokens
         # Settings
         # Users
@@ -544,6 +550,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "label_email":        "E-Mail",
         "label_avatar":       "Avatar",
         "saved_ok":           "Saved.",
+        # Server Backup
+        "server_backup_title":   "🗄️ Server Backup",
+        "server_backup_hint":    "Backs up only THIS server's own configuration (reaction roles, commands, tickets, level roles, Auto-Mod presets, scheduled messages, and more) — no dashboard users or tokens. A restored file can be applied to any server, not just the one it came from.",
+        "server_backup_download": "💾 Download",
+        "server_backup_file_label": "Backup file (.json)",
+        "server_backup_restore_btn": "📂 Restore",
         # Tokens
         # Settings
         # Users

@@ -21,6 +21,24 @@
 {% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
 {% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
 
+{% if role == 'admin' %}
+<div class="card" style="margin-bottom:1.25rem;">
+  <div class="feat-header" style="margin-bottom:0.5rem;">{{ tr.server_backup_title }}</div>
+  <p class="hint" style="margin-bottom:0.85rem;">{{ tr.server_backup_hint }}</p>
+  <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-end;">
+    <a href="/servers/{{ guild.id }}/backup" class="btn btn-secondary">{{ tr.server_backup_download }}</a>
+    <form method="post" action="/servers/{{ guild.id }}/backup/restore" enctype="multipart/form-data"
+          style="display:flex;gap:0.6rem;align-items:flex-end;flex-wrap:wrap;"
+          onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='⏳';">
+      <div style="margin:0;">
+        <label style="margin:0;">{{ tr.server_backup_file_label }}</label>
+        <input type="file" name="backup_file" accept=".json,application/json" required style="margin:0;">
+      </div>
+      <button type="submit" class="btn btn-primary">{{ tr.server_backup_restore_btn }}</button>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
