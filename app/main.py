@@ -1195,6 +1195,12 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
 
         await db.commit()
 
+    # auto_delete_channels rows written above bypass the AutoDelete cog's in-memory
+    # self._configs cache - without this, a restored config would silently stay inactive
+    # until the next bot reconnect (same reload the save/edit/delete routes already trigger).
+    if "auto_delete_channels" in data:
+        await _reload_auto_delete()
+
     summary = ", ".join(restored) if restored else "Nichts"
     return RedirectResponse(
         f"/users?success=Backup+eingespielt:+{urllib.parse.quote(summary)}", status_code=302
