@@ -71,9 +71,23 @@ class Giveaways(commands.Cog):
             await channel.send("Niemand hat am Giveaway teilgenommen.")
             return
 
-        winners_count = min(g["winners"], len(users))
-        winners = random.sample(users, winners_count)
+        # A reroll (giveaway_reroll resets ended=0 and calls this again) would otherwise be
+        # able to pick the exact same winner(s) again, since this only ever looked at who's
+        # currently reacted with no memory of who already won - defeating the actual point of
+        # rerolling (usually: the previous winner didn't respond, give someone else a chance).
+        # Exclude everyone recorded as a past winner of this giveaway, falling back to the full
+        # pool only if that would leave nobody left to pick from.
+        prev_winner_ids = {int(x) for x in (g.get("winner_ids") or "").split(",") if x.strip()}
+        pool = [u for u in users if u.id not in prev_winner_ids] or users
+
+        winners_count = min(g["winners"], len(pool))
+        winners = random.sample(pool, winners_count)
         mentions = " ".join(w.mention for w in winners)
+
+        await db_exec(
+            "UPDATE giveaways SET winner_ids=? WHERE id=?",
+            (",".join(str(i) for i in prev_winner_ids | {w.id for w in winners}), giveaway_id),
+        )
 
         embed.color = 0x64748b
         embed.set_footer(text=f"Gewinner: {', '.join(str(w) for w in winners)}")
@@ -83,6 +97,16 @@ class Giveaways(commands.Cog):
     @app_commands.command(name="giveaway-start", description="Giveaway starten")
     @app_commands.default_permissions(manage_guild=True)
     async def giveaway_start(self, interaction: discord.Interaction, prize: str, duration_minutes: int, winners: int = 1):
+        if winners < 1:
+            # random.sample() raises ValueError for a negative/zero sample size - without this
+            # check that would only surface much later when the giveaway actually ends (in the
+            # scheduled task, unhandled), leaving it stuck "ended" with no winner announcement
+            # ever sent instead of rejecting the obviously-wrong input up front.
+            await interaction.response.send_message("Anzahl Gewinner muss mindestens 1 sein.", ephemeral=True)
+            return
+        if duration_minutes < 1:
+            await interaction.response.send_message("Dauer muss mindestens 1 Minute sein.", ephemeral=True)
+            return
         ends_at = datetime.datetime.utcnow() + datetime.timedelta(minutes=duration_minutes)
         embed = discord.Embed(
             title=f"🎉 GIVEAWAY: {prize}",
@@ -116,7 +140,12 @@ class Giveaways(commands.Cog):
     @app_commands.command(name="giveaway-reroll", description="Giveaway neu auslosen")
     @app_commands.default_permissions(manage_guild=True)
     async def giveaway_reroll(self, interaction: discord.Interaction, message_id: str):
-        g = await db_one("SELECT * FROM giveaways WHERE message_id=? AND guild_id=?", (int(message_id), interaction.guild_id))
+        try:
+            mid = int(message_id)
+        except ValueError:
+            await interaction.response.send_message("Ungültige Nachrichten-ID.", ephemeral=True)
+            return
+        g = await db_one("SELECT * FROM giveaways WHERE message_id=? AND guild_id=?", (mid, interaction.guild_id))
         if not g:
             await interaction.response.send_message("Giveaway nicht gefunden.", ephemeral=True)
             return

@@ -754,11 +754,11 @@ function togglePanelEdit(id) {
 <div class="tab-pane" id="pane-giveaways">
 
 {% if ga_list %}
-<div class="section-label" style="margin-bottom:0.6rem;">Aktive Giveaways</div>
+<div class="section-label" style="margin-bottom:0.6rem;">{{ tr.giveaways_active_title }}</div>
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem;">
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Preis</th><th>Kanal</th><th>Gewinner</th><th>Endet</th><th>Aktionen</th></tr></thead>
+      <thead><tr><th>{{ tr.giveaways_col_prize }}</th><th>{{ tr.label_channel }}</th><th>{{ tr.giveaways_col_winners }}</th><th>{{ tr.giveaways_col_ends }}</th><th>{{ tr.giveaways_col_actions }}</th></tr></thead>
       <tbody>
         {% for g in ga_list %}
         <tr>
@@ -768,10 +768,10 @@ function togglePanelEdit(id) {
           <td style="color:var(--muted);font-size:0.8rem">{{ g.ends_at | dt }}</td>
           <td style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
             <form method="post" action="/servers/{{ guild.id }}/giveaways/{{ g.id }}/end" style="display:inline">
-              <button class="btn btn-danger" onclick="return confirm('Giveaway sofort beenden?')">⏹ Beenden</button>
+              <button class="btn btn-danger" onclick="return confirm({{ tr.giveaways_confirm_end | js }})">{{ tr.giveaways_btn_end }}</button>
             </form>
             <form method="post" action="/servers/{{ guild.id }}/giveaways/{{ g.id }}/reroll" style="display:inline">
-              <button class="btn" style="background:var(--accent-light);color:#a78bfa;border:1px solid rgba(124,58,237,0.3);" onclick="return confirm('Neu auslosen?')">🎲 Reroll</button>
+              <button class="btn" style="background:var(--accent-light);color:#a78bfa;border:1px solid rgba(124,58,237,0.3);" onclick="return confirm({{ tr.giveaways_confirm_reroll | js }})">{{ tr.giveaways_btn_reroll }}</button>
             </form>
           </td>
         </tr>
@@ -783,32 +783,32 @@ function togglePanelEdit(id) {
 {% endif %}
 
 <div class="card">
-  <div class="feat-header">🎉 Giveaway starten</div>
+  <div class="feat-header">{{ tr.giveaways_start_heading }}</div>
   <form method="post" action="/servers/{{ guild.id }}/giveaways/start">
     <div class="grid-2">
       <div>
-        <label>Kanal</label>
+        <label>{{ tr.label_channel }}</label>
         <select name="channel_id" required>
-          <option value="">Kanal wählen…</option>
+          <option value="">{{ tr.giveaways_channel_placeholder }}</option>
           {% for ch in channels %}<option value="{{ ch.id }}">#{{ ch.name }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label>Preis</label>
-        <input type="text" name="prize" placeholder="z.B. Discord Nitro" required>
+        <label>{{ tr.giveaways_col_prize }}</label>
+        <input type="text" name="prize" placeholder="{{ tr.giveaways_prize_placeholder }}" required>
       </div>
     </div>
     <div class="grid-2">
       <div>
-        <label>Dauer (Minuten)</label>
-        <input type="number" name="duration" placeholder="z.B. 60" min="1" required>
+        <label>{{ tr.giveaways_duration_label }}</label>
+        <input type="number" name="duration" placeholder="{{ tr.giveaways_duration_placeholder }}" min="1" required>
       </div>
       <div>
-        <label>Anzahl Gewinner</label>
+        <label>{{ tr.giveaways_winners_label }}</label>
         <input type="number" name="winners" value="1" min="1" max="20">
       </div>
     </div>
-    <button type="submit" class="btn btn-primary">🎉 Starten</button>
+    <button type="submit" class="btn btn-primary">{{ tr.giveaways_btn_start }}</button>
   </form>
 </div>
 </div>

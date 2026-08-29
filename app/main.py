@@ -4246,7 +4246,18 @@ async def giveaway_start_web(
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
-    channel = bot.get_channel(int(channel_id))
+    if winners < 1:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=giveaways&error=Anzahl+Gewinner+muss+mindestens+1+sein", status_code=302
+        )
+    if duration < 1:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=giveaways&error=Dauer+muss+mindestens+1+Minute+sein", status_code=302
+        )
+    try:
+        channel = bot.get_channel(int(channel_id))
+    except (ValueError, TypeError):
+        channel = None
     if not channel or channel.guild.id != guild_id:
         return RedirectResponse(
             f"/servers/{guild_id}?tab=giveaways&error=Kanal+nicht+gefunden", status_code=302
@@ -4296,8 +4307,9 @@ async def giveaway_end_web(request: Request, guild_id: int, gid: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=giveaways&error=Giveaway+nicht+gefunden", status_code=302)
     b = bot._bot_for_guild(guild_id)
     cog = b.cogs.get("Giveaways") if b else None
-    if cog:
-        await cog._end_giveaway(gid)
+    if not cog:
+        return RedirectResponse(f"/servers/{guild_id}?tab=giveaways&error=Bot+nicht+online", status_code=302)
+    await cog._end_giveaway(gid)
     return RedirectResponse(f"/servers/{guild_id}?tab=giveaways", status_code=302)
 
 
