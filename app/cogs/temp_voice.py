@@ -37,7 +37,12 @@ class TempVoice(commands.Cog):
         guild = member.guild
 
         # ── Joining a trigger channel → create temp channel ──────────────────
-        if after.channel:
+        # Must be an actual channel change, not just any voice state update (mute/deafen
+        # toggles etc. also fire on_voice_state_update with before.channel == after.channel) -
+        # otherwise a member stuck in the trigger channel (e.g. move_to() failed once due to a
+        # permissions hiccup) would get a brand new temp channel created on every single
+        # unrelated state change while they're still sitting there.
+        if after.channel and before.channel != after.channel:
             cfg = await db_one(
                 "SELECT * FROM temp_voice_config WHERE guild_id=? AND trigger_channel_id=?",
                 (str(guild.id), str(after.channel.id)),

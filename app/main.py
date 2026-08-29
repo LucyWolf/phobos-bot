@@ -2796,6 +2796,9 @@ async def events_delete(request: Request, guild_id: int, event_id: int):
 async def tempvoice_add(request: Request, guild_id: str):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(int(guild_id))
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
     form = await request.form()
     trigger = form.get("trigger_channel_id", "")
     category = form.get("category_id", "")
@@ -2804,11 +2807,14 @@ async def tempvoice_add(request: Request, guild_id: str):
         user_limit = max(0, min(99, int(form.get("user_limit") or 0)))
     except (ValueError, TypeError):
         user_limit = 0
-    if trigger:
-        await db_exec(
-            "INSERT OR REPLACE INTO temp_voice_config (guild_id, trigger_channel_id, category_id, name_template, user_limit) VALUES (?,?,?,?,?)",
-            (guild_id, trigger, category, name_tpl, user_limit),
-        )
+    if trigger not in {str(c.id) for c in guild.voice_channels}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&error=Ungültiger+Kanal", status_code=302)
+    if category and category not in {str(c.id) for c in guild.categories}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&error=Ungültige+Kategorie", status_code=302)
+    await db_exec(
+        "INSERT OR REPLACE INTO temp_voice_config (guild_id, trigger_channel_id, category_id, name_template, user_limit) VALUES (?,?,?,?,?)",
+        (guild_id, trigger, category, name_tpl, user_limit),
+    )
     return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&success=Gespeichert", status_code=302)
 
 @web.post("/servers/{guild_id}/tempvoice/edit/{config_id}")

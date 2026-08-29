@@ -891,18 +891,17 @@ function togglePanelEdit(id) {
 <div class="tab-pane" id="pane-tempvoice">
 <div class="card">
   <p class="hint" style="margin-bottom:1rem;">
-    Wenn ein Nutzer den Trigger-Kanal betritt, erstellt der Bot automatisch einen neuen Voice-Kanal.
-    Sobald alle den Kanal verlassen, wird er wieder gelöscht.
+    {{ tr.tempvoice_hint }}
   </p>
 
   {% if tempvoice_configs %}
   <table style="width:100%;border-collapse:collapse;margin-bottom:1.25rem;">
     <thead>
       <tr style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;">
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Trigger-Kanal</th>
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Kategorie</th>
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Name-Vorlage</th>
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Limit</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.tempvoice_col_trigger }}</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.tempvoice_col_category }}</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.tempvoice_col_name_template }}</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.tempvoice_col_limit }}</th>
         <th style="padding:0.4rem 0.5rem;"></th>
       </tr>
     </thead>
@@ -916,9 +915,9 @@ function togglePanelEdit(id) {
       <td style="padding:0.5rem;">{{ tv.name_template }}</td>
       <td style="padding:0.5rem;">{{ tv.user_limit if tv.user_limit else '∞' }}</td>
       <td style="padding:0.5rem;text-align:right;white-space:nowrap;">
-        <button type="button" class="btn btn-secondary" onclick="toggleTempvoiceEdit({{ tv.id }})" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="Einstellungen">⚙</button>
+        <button type="button" class="btn btn-secondary" onclick="toggleTempvoiceEdit({{ tv.id }})" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_settings }}">⚙</button>
         <form method="post" action="/servers/{{ guild.id }}/tempvoice/delete/{{ tv.id }}" style="margin:0;display:inline;">
-          <button type="submit" class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="Löschen">✕</button>
+          <button type="submit" class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_delete }}">✕</button>
         </form>
       </td>
     </tr>
@@ -927,28 +926,28 @@ function togglePanelEdit(id) {
         <form method="post" action="/servers/{{ guild.id }}/tempvoice/edit/{{ tv.id }}">
           <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
             <div>
-              <label style="font-size:0.82rem;">Trigger-Kanal <span style="color:var(--muted)">(Voice)</span></label>
+              <label style="font-size:0.82rem;">{{ tr.tempvoice_col_trigger }} <span style="color:var(--muted)">{{ tr.tempvoice_trigger_hint }}</span></label>
               <select name="trigger_channel_id" required style="margin-bottom:0;">
                 {% for vc in voice_channels %}<option value="{{ vc.id }}" {% if tv.trigger_channel_id == vc.id %}selected{% endif %}>🔊 {{ vc.name }}</option>{% endfor %}
               </select>
             </div>
             <div>
-              <label style="font-size:0.82rem;">Kategorie <span style="color:var(--muted)">(optional)</span></label>
+              <label style="font-size:0.82rem;">{{ tr.tempvoice_col_category }} <span style="color:var(--muted)">{{ tr.tempvoice_category_hint }}</span></label>
               <select name="category_id" style="margin-bottom:0;">
-                <option value="">— Gleiche wie Trigger —</option>
+                <option value="">{{ tr.tempvoice_category_same }}</option>
                 {% for cat in categories %}<option value="{{ cat.id }}" {% if tv.category_id == cat.id %}selected{% endif %}>📁 {{ cat.name }}</option>{% endfor %}
               </select>
             </div>
             <div>
-              <label style="font-size:0.82rem;">Name-Vorlage</label>
+              <label style="font-size:0.82rem;">{{ tr.tempvoice_col_name_template }}</label>
               <input type="text" name="name_template" value="{{ tv.name_template }}" style="margin-bottom:0;">
             </div>
             <div>
-              <label style="font-size:0.82rem;">Nutzer-Limit <span style="color:var(--muted)">(0 = unbegrenzt)</span></label>
+              <label style="font-size:0.82rem;">{{ tr.tempvoice_label_user_limit }} <span style="color:var(--muted)">{{ tr.tempvoice_user_limit_hint }}</span></label>
               <input type="number" name="user_limit" value="{{ tv.user_limit }}" min="0" max="99" style="margin-bottom:0;">
             </div>
           </div>
-          <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">💾 Speichern</button>
+          <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
         </form>
       </td>
     </tr>
@@ -960,47 +959,47 @@ function togglePanelEdit(id) {
   <form method="post" action="/servers/{{ guild.id }}/tempvoice/add">
     <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
       <div>
-        <label style="font-size:0.82rem;">Trigger-Kanal <span style="color:var(--muted)">(Voice)</span></label>
+        <label style="font-size:0.82rem;">{{ tr.tempvoice_col_trigger }} <span style="color:var(--muted)">{{ tr.tempvoice_trigger_hint }}</span></label>
         <select name="trigger_channel_id" required>
-          <option value="">— Kanal wählen —</option>
+          <option value="">{{ tr.autodelete_channel_placeholder }}</option>
           {% for vc in voice_channels %}<option value="{{ vc.id }}">🔊 {{ vc.name }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label style="font-size:0.82rem;">Kategorie <span style="color:var(--muted)">(optional)</span></label>
+        <label style="font-size:0.82rem;">{{ tr.tempvoice_col_category }} <span style="color:var(--muted)">{{ tr.tempvoice_category_hint }}</span></label>
         <select name="category_id">
-          <option value="">— Gleiche wie Trigger —</option>
+          <option value="">{{ tr.tempvoice_category_same }}</option>
           {% for cat in categories %}<option value="{{ cat.id }}">📁 {{ cat.name }}</option>{% endfor %}
         </select>
       </div>
       <div style="position:relative;">
         <label style="font-size:0.82rem;display:flex;align-items:center;gap:0.4rem;">
-          Name-Vorlage
-          <button type="button" onclick="toggleTvInfo()" title="Verfügbare Variablen"
+          {{ tr.tempvoice_col_name_template }}
+          <button type="button" onclick="toggleTvInfo()" title="{{ tr.tempvoice_info_tooltip }}"
             style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
         </label>
         <div id="tv-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.3rem;
              background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.75rem 1rem;
              font-size:0.78rem;min-width:260px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
-          <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">📋 Verfügbare Variablen</div>
+          <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.tempvoice_info_title }}</div>
           <table style="width:100%;border-collapse:collapse;">
-            <tr><td style="padding:0.15rem 0.5rem 0.15rem 0;"><code>{user}</code></td><td style="color:var(--muted);">Anzeigename des Nutzers</td></tr>
-            <tr><td style="padding:0.15rem 0.5rem 0.15rem 0;"><code>{name}</code></td><td style="color:var(--muted);">Discord-Username</td></tr>
-            <tr><td style="padding:0.15rem 0.5rem 0.15rem 0;"><code>{number}</code></td><td style="color:var(--muted);">Kanal-Nummer (1, 2, 3 …)</td></tr>
-            <tr><td style="padding:0.15rem 0.5rem 0.15rem 0;"><code>{date}</code></td><td style="color:var(--muted);">Datum (TT.MM.JJJJ)</td></tr>
-            <tr><td style="padding:0.15rem 0.5rem 0.15rem 0;"><code>{time}</code></td><td style="color:var(--muted);">Uhrzeit (HH:MM)</td></tr>
-            <tr><td style="padding:0.15rem 0.5rem 0.15rem 0;"><code>{count}</code></td><td style="color:var(--muted);">Mitglieder auf dem Server</td></tr>
+            <tr><td style="padding:0.15rem 0.5rem 0.15rem 0;"><code>{user}</code></td><td style="color:var(--muted);">{{ tr.tempvoice_var_user }}</td></tr>
+            <tr><td style="padding:0.15rem 0.5rem 0.15rem 0;"><code>{name}</code></td><td style="color:var(--muted);">{{ tr.tempvoice_var_name }}</td></tr>
+            <tr><td style="padding:0.15rem 0.5rem 0.15rem 0;"><code>{number}</code></td><td style="color:var(--muted);">{{ tr.tempvoice_var_number }}</td></tr>
+            <tr><td style="padding:0.15rem 0.5rem 0.15rem 0;"><code>{date}</code></td><td style="color:var(--muted);">{{ tr.tempvoice_var_date }}</td></tr>
+            <tr><td style="padding:0.15rem 0.5rem 0.15rem 0;"><code>{time}</code></td><td style="color:var(--muted);">{{ tr.tempvoice_var_time }}</td></tr>
+            <tr><td style="padding:0.15rem 0.5rem 0.15rem 0;"><code>{count}</code></td><td style="color:var(--muted);">{{ tr.tempvoice_var_count }}</td></tr>
           </table>
-          <div style="margin-top:0.6rem;color:var(--muted);font-size:0.72rem;">Beispiel: <code>🎮 {user}'s Raum #{number}</code></div>
+          <div style="margin-top:0.6rem;color:var(--muted);font-size:0.72rem;">{{ tr.tempvoice_example }} <code>{{ tr.tempvoice_example_template }}</code></div>
         </div>
         <input type="text" name="name_template" value="{user}'s Channel" placeholder="{user}'s Channel">
       </div>
       <div>
-        <label style="font-size:0.82rem;">Nutzer-Limit <span style="color:var(--muted)">(0 = unbegrenzt)</span></label>
+        <label style="font-size:0.82rem;">{{ tr.tempvoice_label_user_limit }} <span style="color:var(--muted)">{{ tr.tempvoice_user_limit_hint }}</span></label>
         <input type="number" name="user_limit" value="0" min="0" max="99">
       </div>
     </div>
-    <button type="submit" class="btn btn-primary">➕ Trigger hinzufügen</button>
+    <button type="submit" class="btn btn-primary">{{ tr.tempvoice_btn_add_trigger }}</button>
   </form>
 </div>
 </div>
