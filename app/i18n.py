@@ -882,7 +882,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "tickets_open_empty":       "No open tickets.",
         "tickets_info_tooltip":     "What is this?",
         "tickets_info_title":       "🎫 How do ticket panels work?",
-        "tickets_info_item_create": "Create a panel and post it to a channel with \"🚀 Publish\" — that posts a message with a button. When someone clicks it, the bot opens a private ticket channel just for them.",
+        "tickets_info_item_create": "Create a panel and post it to a channel with \"🚀 Publish\" — a message with a button appears there. When someone clicks it, the bot opens a private ticket channel just for them.",
         "tickets_info_item_access": "Only the creator, the optionally chosen support role, and admins can see the ticket channel — it stays invisible to everyone else.",
         "tickets_info_item_edit":   "Changes to the name, button text, emoji, or description of an already-published panel are applied directly to the live message — no need to publish again. Support role and category take effect immediately for newly created tickets.",
         "tickets_info_item_close":  "A ticket can be closed via the 🔒 button in its own channel, the /ticket-close command, or the ✖ button in the dashboard — this deletes the channel.",

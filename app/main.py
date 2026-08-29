@@ -934,7 +934,7 @@ async def profile_avatar_delete(request: Request):
 _BACKUP_FEATURE_TABLES = [
     "reaction_roles", "custom_commands", "auto_delete_channels",
     "temp_voice_config", "notifications", "freestuff_channels",
-    "birthdays", "warnings",
+    "birthdays", "warnings", "ticket_panels",
 ]
 
 
@@ -1169,6 +1169,15 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
                 "INSERT OR REPLACE INTO birthdays (user_id,guild_id,birthday) VALUES (:user_id,:guild_id,:birthday)",
             "warnings":
                 "INSERT OR IGNORE INTO warnings (user_id,guild_id,moderator_id,reason,timestamp) VALUES (:user_id,:guild_id,:moderator_id,:reason,:timestamp)",
+            # status/channel_id/message_id are deliberately NOT restored (left at their table
+            # defaults: 'draft' / '' / '') - a backed-up "published" panel could easily point at
+            # a Discord message that no longer exists by the time it's restored (channel/message
+            # deleted, days or weeks later). Same safety principle as notifications' live=0
+            # above: every restored panel comes back as an unpublished draft the admin has to
+            # consciously re-publish, rather than risk the bot creating tickets around a message
+            # that was never actually re-created.
+            "ticket_panels":
+                "INSERT INTO ticket_panels (guild_id,name,description,button_label,emoji,support_role_id,category_id) VALUES (:guild_id,:name,:description,:button_label,:emoji,:support_role_id,:category_id)",
         }
         for tbl, sql in _tbl_insert.items():
             rows = data.get(tbl, [])
