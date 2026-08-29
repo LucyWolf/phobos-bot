@@ -70,6 +70,13 @@ class Birthday(commands.Cog):
     @commands.command(name="geburtstag")
     async def birthday_set(self, ctx: commands.Context, datum: str = ""):
         """Geburtstag eintragen: !geburtstag TT.MM  |  löschen: !geburtstag löschen"""
+        if not ctx.guild:
+            # This is the project's only classic prefix command (every other user command is
+            # a slash command, which is guild-scoped by nature) - unlike those, this one can
+            # actually be reached via a DM to the bot, where ctx.guild is None and every path
+            # below immediately crashes on ctx.guild.id.
+            await ctx.reply("❌ Dieser Befehl funktioniert nur auf einem Server, nicht per DM.", mention_author=False)
+            return
         if datum.lower() in ("löschen", "entfernen", "delete", "remove"):
             await db_exec(
                 "DELETE FROM birthdays WHERE user_id=? AND guild_id=?",
