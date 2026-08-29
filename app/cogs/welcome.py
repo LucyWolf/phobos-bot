@@ -1,5 +1,5 @@
-import asyncio
 import io
+import re
 import discord
 from discord.ext import commands
 from database import get_guild_config
@@ -93,14 +93,23 @@ async def _make_card(member: discord.Member, circle_color: str, text_color: str,
     return buf
 
 
+_PLACEHOLDER_RE = re.compile(r"\{user\}|\{username\}|\{server\}|\{count\}")
+
+
 def fill(template: str, member: discord.Member) -> str:
-    return (
-        template
-        .replace("{user}", member.mention)
-        .replace("{username}", str(member))
-        .replace("{server}", member.guild.name)
-        .replace("{count}", str(member.guild.member_count))
-    )
+    # Chained .replace() calls used to substitute one placeholder at a time - if an
+    # already-substituted value (most plausibly the guild's own name, which admins can set to
+    # anything, e.g. "Cool {count} Server") happened to literally contain another placeholder's
+    # token, a LATER .replace() in the chain would go on to corrupt that already-inserted text
+    # too. A single regex pass over the ORIGINAL template can't do that, since it never
+    # re-scans text it has already substituted in.
+    values = {
+        "{user}": member.mention,
+        "{username}": str(member),
+        "{server}": member.guild.name,
+        "{count}": str(member.guild.member_count),
+    }
+    return _PLACEHOLDER_RE.sub(lambda m: values[m.group(0)], template)
 
 
 class Welcome(commands.Cog):
