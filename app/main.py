@@ -1655,7 +1655,10 @@ def get_invite_url() -> str:
 async def bot_design_page(request: Request, guild_id: str = "", success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
     token_set = await _token_configured()
-    target = bot._bot_for_guild(int(guild_id)) if guild_id else None
+    try:
+        target = bot._bot_for_guild(int(guild_id)) if guild_id else None
+    except (ValueError, TypeError):
+        target = None
     if target is None:
         ready = bot._ready_bots()
         target = ready[0] if ready else None
@@ -1681,7 +1684,10 @@ async def bot_design_save(
 ):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
-    target = bot._bot_for_guild(int(guild_id)) if guild_id else None
+    try:
+        target = bot._bot_for_guild(int(guild_id)) if guild_id else None
+    except (ValueError, TypeError):
+        target = None
     if target is None:
         ready = bot._ready_bots()
         target = ready[0] if ready else None
