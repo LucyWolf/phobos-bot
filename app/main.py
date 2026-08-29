@@ -3931,16 +3931,18 @@ async def level_role_add(request: Request, guild_id: int, level: str = Form(...)
             raise ValueError
     except ValueError:
         return RedirectResponse(f"/servers/{guild_id}?tab=leveling&error=Ungültiges+Level", status_code=302)
-    try:
-        await db_exec(
-            "INSERT INTO level_roles (guild_id, level, role_id) VALUES (?,?,?)",
-            (str(guild_id), level_int, role_id),
-        )
-    except Exception:
+    # A bare `except Exception` around the INSERT used to stand in for "level already has a
+    # role" (the UNIQUE(guild_id, level) constraint) - too broad, since it would misattribute
+    # any other, unrelated DB failure as "already assigned" too. Checked explicitly instead.
+    if await db_one("SELECT 1 FROM level_roles WHERE guild_id=? AND level=?", (str(guild_id), level_int)):
         return RedirectResponse(
             f"/servers/{guild_id}?tab=leveling&error=Für+dieses+Level+ist+schon+eine+Rolle+vergeben",
             status_code=302,
         )
+    await db_exec(
+        "INSERT INTO level_roles (guild_id, level, role_id) VALUES (?,?,?)",
+        (str(guild_id), level_int, role_id),
+    )
     asyncio.create_task(_retroactive_level_role_sync(guild_id, level_int))
     return RedirectResponse(f"/servers/{guild_id}?tab=leveling&success=Level-Rolle+hinzugefügt", status_code=303)
 
@@ -3974,16 +3976,18 @@ async def level_reward_add(request: Request, guild_id: int, level: str = Form(..
             raise ValueError
     except ValueError:
         return RedirectResponse(f"/servers/{guild_id}?tab=leveling&error=Ungültiges+Level", status_code=302)
-    try:
-        await db_exec(
-            "INSERT INTO level_rewards (guild_id, level, reward) VALUES (?,?,?)",
-            (str(guild_id), level_int, reward),
-        )
-    except Exception:
+    # Same fix as level_role_add above: an explicit existence check instead of a bare
+    # `except Exception` standing in for the UNIQUE(guild_id, level) constraint, so an
+    # unrelated DB failure can't get misreported as "already assigned".
+    if await db_one("SELECT 1 FROM level_rewards WHERE guild_id=? AND level=?", (str(guild_id), level_int)):
         return RedirectResponse(
             f"/servers/{guild_id}?tab=leveling&error=Für+dieses+Level+ist+schon+eine+Belohnung+vergeben",
             status_code=302,
         )
+    await db_exec(
+        "INSERT INTO level_rewards (guild_id, level, reward) VALUES (?,?,?)",
+        (str(guild_id), level_int, reward),
+    )
     return RedirectResponse(f"/servers/{guild_id}?tab=leveling&success=Belohnung+hinzugefügt", status_code=303)
 
 
