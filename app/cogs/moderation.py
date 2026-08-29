@@ -63,7 +63,12 @@ class Moderation(commands.Cog):
             (member.id, interaction.guild_id, interaction.user.id, reason),
         )
         await log_mod_action("warn", member, interaction.user, interaction.guild_id, reason)
-        await interaction.response.send_message(f"{member.mention} verwarnt. Grund: {reason}", ephemeral=True)
+        # The warning itself is already saved above regardless of what happens next - only
+        # truncate the echoed reason here, not what's stored, so a very long reason (Discord's
+        # slash command string limit is well above 2000) can't make this confirmation message
+        # itself exceed Discord's 2000-char message limit and fail.
+        shown_reason = reason if len(reason) <= 1900 else reason[:1900] + "…"
+        await interaction.response.send_message(f"{member.mention} verwarnt. Grund: {shown_reason}", ephemeral=True)
 
     @app_commands.command(name="warnings", description="Verwarnungen eines Mitglieds")
     @app_commands.default_permissions(moderate_members=True)
@@ -76,7 +81,14 @@ class Moderation(commands.Cog):
             await interaction.response.send_message(f"{member.mention} hat keine Verwarnungen.", ephemeral=True)
             return
         text = "\n".join(f"#{r['id']} — {r['reason']} ({r['timestamp']})" for r in rows)
-        await interaction.response.send_message(f"**Verwarnungen von {member}:**\n{text}", ephemeral=True)
+        msg = f"**Verwarnungen von {member}:**\n{text}"
+        # Discord's plain-message limit is 2000 chars - a heavily-warned member (the exact
+        # case this command is most needed for) could otherwise make send_message fail
+        # outright instead of showing anything at all. Truncates the oldest entries first
+        # (rows are newest-first), keeping the most recent warnings visible.
+        if len(msg) > 1900:
+            msg = msg[:1900] + f"\n… ({len(rows)} insgesamt, gekürzt)"
+        await interaction.response.send_message(msg, ephemeral=True)
 
     @app_commands.command(name="clearwarns", description="Alle Verwarnungen eines Mitglieds löschen")
     @app_commands.default_permissions(moderate_members=True)

@@ -822,7 +822,7 @@ function togglePanelEdit(id) {
   {% if warn_groups %}
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Nutzer</th><th>Warnungen</th><th>Letzte Warnung</th><th></th></tr></thead>
+      <thead><tr><th>{{ tr.warnings_col_user }}</th><th>{{ tr.warnings_col_count }}</th><th>{{ tr.warnings_col_last }}</th><th></th></tr></thead>
       <tbody>
         {% for wg in warn_groups %}
         <tr>
@@ -832,7 +832,7 @@ function togglePanelEdit(id) {
               {{ wg.count }}x
             </span>
           </td>
-          <td style="color:var(--muted);font-size:0.8rem">{{ wg.last }}</td>
+          <td style="color:var(--muted);font-size:0.8rem">{{ wg.last | dt }}</td>
           <td>
             <form method="post" action="/servers/{{ guild.id }}/warnings/{{ wg.user_id }}/clear" style="display:inline">
               <button class="btn btn-danger" onclick="return confirm({{ tr.warnings_confirm_clear.replace('{user}', wg.username) | js }})" title="{{ tr.btn_delete }}">✕</button>
@@ -844,10 +844,10 @@ function togglePanelEdit(id) {
     </table>
   </div>
   {% else %}
-  <div class="empty-state">✅ Keine Warnungen auf diesem Server.</div>
+  <div class="empty-state">{{ tr.warnings_empty }}</div>
   {% endif %}
 </div>
-<p class="hint" style="margin-top:1rem;">Warnen über Discord: <code>/warn @nutzer grund</code> · Alle Warnungen anzeigen: <code>/warnings @nutzer</code></p>
+<p class="hint" style="margin-top:1rem;">{{ tr.warnings_hint_warn }} <code>{{ tr.warnings_hint_warn_example }}</code> · {{ tr.warnings_hint_list }} <code>{{ tr.warnings_hint_list_example }}</code></p>
 </div>
 
 
