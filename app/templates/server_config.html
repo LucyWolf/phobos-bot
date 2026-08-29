@@ -1776,7 +1776,6 @@ document.querySelectorAll('input[type=color]').forEach(picker => {
   picker.addEventListener('input', () => {
     const hexInput = document.querySelector('input[name="_' + picker.name + '_hex"]');
     if (hexInput) hexInput.value = picker.value;
-    picker.form && (picker.form.querySelector('input[name="' + picker.name + '"]').value = picker.value);
   });
 });
 </script>
