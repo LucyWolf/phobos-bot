@@ -4144,6 +4144,20 @@ async def tickets_panel_unpublish(request: Request, guild_id: int, panel_id: int
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
+    # This only ever flipped the DB status - the live Discord message (with its still-fully-
+    # working button) was never touched, so "deactivating" a panel here had zero effect on
+    # what users actually saw/could click in Discord. Now deleted like publish/delete already do.
+    panel = await db_one("SELECT * FROM ticket_panels WHERE id=? AND guild_id=?", (panel_id, guild_id))
+    if panel and panel.get("message_id") and panel.get("channel_id"):
+        try:
+            b = bot._bot_for_guild(guild_id)
+            if b:
+                ch = b.get_channel(int(panel["channel_id"]))
+                if ch:
+                    msg = await ch.fetch_message(int(panel["message_id"]))
+                    await msg.delete()
+        except Exception:
+            pass
     await db_exec(
         "UPDATE ticket_panels SET status='draft', message_id='' WHERE id=? AND guild_id=?",
         (panel_id, guild_id),

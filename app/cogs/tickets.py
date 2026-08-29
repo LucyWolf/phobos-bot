@@ -58,6 +58,13 @@ class PanelButton(ui.Button):
         if not panel:
             await interaction.response.send_message("Panel nicht gefunden.", ephemeral=True)
             return
+        if panel.get("status") != "published":
+            # Belt-and-suspenders: unpublishing deletes the live message so this button
+            # shouldn't be clickable anymore at all, but if that deletion ever failed (missing
+            # permission, message already gone) or raced with a click, don't let a stale
+            # button still create a ticket for a panel the admin explicitly deactivated.
+            await interaction.response.send_message("Dieses Panel ist aktuell nicht aktiv.", ephemeral=True)
+            return
 
         existing = await db_one(
             "SELECT channel_id FROM tickets WHERE guild_id=? AND user_id=? AND panel_id=? AND status='open'",
