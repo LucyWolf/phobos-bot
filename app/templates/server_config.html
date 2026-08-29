@@ -324,7 +324,7 @@ document.addEventListener('click', function(e) {
   {% if level_roles %}
   {% for lr in level_roles %}
   <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.6rem;">
-    <span class="badge" style="background:var(--accent-light);color:#a78bfa;">Lvl {{ lr.level }}</span>
+    <span class="badge" style="background:var(--accent-light);color:#a78bfa;">{{ tr.leveling_lvl_badge_prefix }} {{ lr.level }}</span>
     <span style="flex:1;font-size:0.85rem;">{{ lr.role_name }}</span>
     <form method="post" action="/servers/{{ guild.id }}/level-roles/delete/{{ lr.id }}" style="margin:0;"
           onsubmit="return confirm({{ tr.leveling_role_confirm_delete.replace('{level}', lr.level|string) | js }})">
@@ -356,7 +356,7 @@ document.addEventListener('click', function(e) {
   {% if level_rewards %}
   {% for lrw in level_rewards %}
   <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.6rem;">
-    <span class="badge" style="background:var(--accent-light);color:#a78bfa;">Lvl {{ lrw.level }}</span>
+    <span class="badge" style="background:var(--accent-light);color:#a78bfa;">{{ tr.leveling_lvl_badge_prefix }} {{ lrw.level }}</span>
     <span style="flex:1;font-size:0.85rem;">{{ lrw.reward }}</span>
     <form method="post" action="/servers/{{ guild.id }}/level-rewards/delete/{{ lrw.id }}" style="margin:0;"
           onsubmit="return confirm({{ tr.leveling_reward_confirm_delete.replace('{level}', lrw.level|string) | js }})">
