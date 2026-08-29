@@ -1116,6 +1116,12 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
     try:
         raw = await backup_file.read()
         data = _djson.loads(raw)
+        if not isinstance(data, dict):
+            # Valid JSON that isn't a JSON *object* (a bare array/string/number/null/bool) -
+            # json.loads() succeeds for all of those, so the except above never fires, but the
+            # very next line's data.get(...) would then raise an unhandled AttributeError
+            # instead of showing the same "not a valid backup" message a parse failure gets.
+            raise ValueError("not a JSON object")
     except Exception:
         return RedirectResponse("/users?error=Ungültige+Backup-Datei+(kein+gültiges+JSON)", status_code=302)
 
@@ -1234,7 +1240,15 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
             if rows:
                 restored.append(tbl.replace("_", " ").title())
             if tbl == "automod_word_presets" and rows:
-                _restored_presets_guilds.update(row["guild_id"] for row in rows)
+                # Unlike the insert loop just above (each row already wrapped in its own
+                # try/except), this re-iterates the same list without that protection - a
+                # malformed row (not a dict, or missing "guild_id") would otherwise raise here
+                # even though the actual insert for that row already failed harmlessly above.
+                for row in rows:
+                    try:
+                        _restored_presets_guilds.add(row["guild_id"])
+                    except (TypeError, KeyError):
+                        pass
 
         # 8. Global config (full backup only, skip sensitive keys)
         _skip_cfg = {"discord_token", "smtp_pass", "secret_key"}
@@ -1292,6 +1306,11 @@ async def server_backup_restore(request: Request, guild_id: int, backup_file: Up
     try:
         raw = await backup_file.read()
         data = _djson.loads(raw)
+        if not isinstance(data, dict):
+            # Same guard as backup_restore() above - valid JSON that isn't an object (a bare
+            # array/string/number/etc.) would otherwise pass this try/except and crash the
+            # next line's data.get(...) with an unhandled AttributeError.
+            raise ValueError("not a JSON object")
     except Exception:
         return RedirectResponse(
             f"/servers/{guild_id}?tab=config&error=Ungültige+Backup-Datei+(kein+gültiges+JSON)",
@@ -1335,9 +1354,13 @@ async def server_backup_restore(request: Request, guild_id: int, backup_file: Up
         for tbl, sql in _BACKUP_TBL_INSERT.items():
             rows = data.get(tbl, [])
             for row in rows:
-                row = {**row, "guild_id": gid_str}
                 try:
-                    await db.execute(sql, row)
+                    # The dict-spread has to be inside this try, not before it - a malformed
+                    # backup file with a non-object entry in this list (a bare string/number)
+                    # would otherwise raise an unhandled TypeError right here ({**row, ...}
+                    # requires a mapping) instead of just skipping that one bad row like every
+                    # other malformed-row case in this loop already does.
+                    await db.execute(sql, {**row, "guild_id": gid_str})
                 except Exception:
                     pass
             if rows:
