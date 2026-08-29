@@ -77,7 +77,20 @@ class Notifications(commands.Cog):
                         "SELECT value FROM guild_configs WHERE guild_id=? AND key='twitch_api_id'",
                         (gid,),
                     )
-                    guild_api[gid] = int(cfg["value"]) if cfg else default_api_id
+                    if cfg:
+                        try:
+                            guild_api[gid] = int(cfg["value"])
+                        except (ValueError, TypeError):
+                            # notifications_set_api validates this against twitch_apis before
+                            # saving, so this should never actually be non-numeric - but this
+                            # whole loop only has ONE outer try/except (line ~145), so an
+                            # unguarded int() here would abort processing for every OTHER guild
+                            # and every other API too, not just this one guild, for the entire
+                            # 3-minute tick. Falling back like the "no config at all" case does
+                            # keeps one corrupted/legacy value from taking every guild down.
+                            guild_api[gid] = default_api_id
+                    else:
+                        guild_api[gid] = default_api_id
 
             # group rows by api_id (skip guilds with no resolvable API)
             by_api: dict[int, list] = {}

@@ -99,8 +99,21 @@ class Moderation(commands.Cog):
     @app_commands.command(name="clear", description="Nachrichten löschen")
     @app_commands.default_permissions(manage_messages=True)
     async def clear(self, interaction: discord.Interaction, amount: int):
+        if amount < 1:
+            await interaction.response.send_message("Anzahl muss mindestens 1 sein.", ephemeral=True)
+            return
         await interaction.response.defer(ephemeral=True)
-        deleted = await interaction.channel.purge(limit=amount)
+        try:
+            deleted = await interaction.channel.purge(limit=amount)
+        except discord.HTTPException as e:
+            # Unlike every other command in this cog, this call had no try/except at all -
+            # missing "Manage Messages"/"Read Message History", or messages older than
+            # Discord's 14-day bulk-delete window, would raise here. Since defer() already
+            # ran, an unhandled exception would leave the interaction stuck "thinking..."
+            # forever instead of ever getting a followup - same failure mode already fixed
+            # elsewhere in the project for a bare API call after a defer() (e.g. giveaways).
+            await interaction.followup.send(f"Löschen fehlgeschlagen: {e}", ephemeral=True)
+            return
         await interaction.followup.send(f"{len(deleted)} Nachrichten gelöscht.", ephemeral=True)
 
 
