@@ -475,7 +475,7 @@ renderLvlChannelsList();
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem;">
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Emoji</th><th>Kanal</th><th>Message-ID</th><th>Rolle</th><th></th></tr></thead>
+      <thead><tr><th>{{ tr.rr_col_emoji }}</th><th>{{ tr.label_channel }}</th><th>{{ tr.rr_col_message_id }}</th><th>{{ tr.rr_col_role }}</th><th></th></tr></thead>
       <tbody>
         {% for rr in rr_list %}
         <tr>
@@ -484,8 +484,8 @@ renderLvlChannelsList();
           <td><code>{{ rr.message_id }}</code></td>
           <td><span class="badge badge-moderator">{{ rr.role_name }}</span></td>
           <td>
-            <form method="post" action="/servers/{{ guild.id }}/reaction_roles/{{ rr.id }}/delete" style="display:inline">
-              <button class="btn btn-danger" onclick="return confirm('Löschen?')" title="{{ tr.btn_delete }}">✕</button>
+            <form method="post" action="/servers/{{ guild.id }}/reaction_roles/{{ rr.id }}/delete" style="display:inline" onsubmit="return confirm({{ tr.rr_confirm_delete.replace('{emoji}', rr.emoji).replace('{role}', rr.role_name) | js }})">
+              <button class="btn btn-danger" title="{{ tr.btn_delete }}">✕</button>
             </form>
           </td>
         </tr>
@@ -494,40 +494,42 @@ renderLvlChannelsList();
     </table>
   </div>
 </div>
+{% else %}
+<p class="hint" style="margin-bottom:1.5rem;">{{ tr.rr_empty }}</p>
 {% endif %}
 
 <div class="card">
-  <div class="feat-header">➕ Reaction Role hinzufügen</div>
+  <div class="feat-header">{{ tr.rr_create_heading }}</div>
   <form method="post" action="/servers/{{ guild.id }}/reaction_roles/add">
     <div class="grid-2">
       <div>
-        <label>Kanal</label>
+        <label>{{ tr.label_channel }}</label>
         <select name="channel_id" required>
-          <option value="">Kanal wählen…</option>
+          <option value="">{{ tr.rr_channel_placeholder }}</option>
           {% for ch in channels %}<option value="{{ ch.id }}">#{{ ch.name }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label>Rolle</label>
+        <label>{{ tr.rr_label_role }}</label>
         <select name="role_id" required>
-          <option value="">Rolle wählen…</option>
+          <option value="">{{ tr.rr_role_placeholder }}</option>
           {% for r in roles %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
         </select>
       </div>
     </div>
     <div class="grid-2">
       <div>
-        <label>Message-ID <span style="color:var(--muted);font-size:0.75rem">(Rechtsklick → ID kopieren)</span></label>
-        <input type="text" name="message_id" placeholder="z.B. 1234567890123456789" required pattern="[0-9]+">
+        <label>{{ tr.rr_label_message_id }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.rr_hint_message_id }}</span></label>
+        <input type="text" name="message_id" placeholder="{{ tr.rr_message_id_placeholder }}" required pattern="[0-9]+">
       </div>
       <div>
-        <label>Emoji</label>
-        <input type="text" name="emoji" placeholder="z.B. ✅ oder :emoji:" required>
+        <label>{{ tr.rr_label_emoji }}</label>
+        <input type="text" name="emoji" placeholder="{{ tr.rr_emoji_placeholder }}" required>
       </div>
     </div>
-    <button type="submit" class="btn btn-primary">➕ Hinzufügen</button>
+    <button type="submit" class="btn btn-primary">{{ tr.rr_btn_add }}</button>
   </form>
-  <p class="hint">Schritt 1: Poste eine Nachricht im Discord. Schritt 2: Rechtsklick → Nachrichten-ID kopieren (Entwicklermodus nötig). Schritt 3: Hier eintragen.</p>
+  <p class="hint">{{ tr.rr_hint_steps }}</p>
 </div>
 </div>
 

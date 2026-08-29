@@ -4275,13 +4275,50 @@ async def rr_add(
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
+    emoji = emoji.strip()
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Bot+nicht+verbunden", status_code=302)
     try:
+        channel_id_i, message_id_i, role_id_i = int(channel_id), int(message_id), int(role_id)
+    except (ValueError, TypeError):
+        return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Ungültige+Eingabe", status_code=302)
+    # Neither the target channel nor the role were ever checked against this guild's actual
+    # channels/roles before - the same cross-guild validation gap fixed for practically every
+    # other channel/role picker in the project.
+    channel = guild.get_channel(channel_id_i)
+    if not channel:
+        return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Kanal+nicht+gefunden", status_code=302)
+    role = guild.get_role(role_id_i)
+    if not role:
+        return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Rolle+nicht+gefunden", status_code=302)
+    try:
+        msg = await channel.fetch_message(message_id_i)
+    except Exception:
+        return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Nachricht+nicht+gefunden", status_code=302)
+    try:
+        # This route never actually placed the reaction on the message at all - it only wrote
+        # a DB row. /reactionrole-add in Discord does this already; without it, a reaction role
+        # configured via the dashboard has nothing for anyone to click in Discord at all, unless
+        # someone happens to react with that exact emoji themselves first.
+        await msg.add_reaction(emoji)
+    except (discord.HTTPException, discord.NotFound):
+        return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Ungültiger+Emoji", status_code=302)
+    # Same de-dup fix as the Discord command: without this, adding a second mapping for the
+    # same message+emoji (e.g. to change the granted role) would silently never take effect,
+    # since _handle_reaction only ever reads the first matching row.
+    existing = await db_one(
+        "SELECT id FROM reaction_roles WHERE guild_id=? AND message_id=? AND emoji=?",
+        (guild_id, message_id_i, emoji),
+    )
+    if existing:
+        await db_exec("UPDATE reaction_roles SET role_id=?, channel_id=? WHERE id=?",
+                       (role_id_i, channel_id_i, existing["id"]))
+    else:
         await db_exec(
             "INSERT INTO reaction_roles (guild_id,channel_id,message_id,emoji,role_id) VALUES (?,?,?,?,?)",
-            (guild_id, int(channel_id), int(message_id), emoji.strip(), int(role_id)),
+            (guild_id, channel_id_i, message_id_i, emoji, role_id_i),
         )
-    except Exception:
-        return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Ungültige+Eingabe", status_code=302)
     return RedirectResponse(f"/servers/{guild_id}?tab=rr&success=Reaction+Role+hinzugefügt", status_code=302)
 
 
@@ -4290,8 +4327,20 @@ async def rr_delete(request: Request, guild_id: int, rr_id: int):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
+    row = await db_one("SELECT * FROM reaction_roles WHERE id=? AND guild_id=?", (rr_id, guild_id))
+    if row:
+        # Best-effort: remove the bot's own reaction too, otherwise the emoji stays on the
+        # message looking just as clickable as before, but silently does nothing afterwards.
+        guild = bot.get_guild(guild_id)
+        channel = guild.get_channel(row["channel_id"]) if guild else None
+        if channel:
+            try:
+                msg = await channel.fetch_message(row["message_id"])
+                await msg.remove_reaction(row["emoji"], guild.me)
+            except Exception:
+                pass
     await db_exec("DELETE FROM reaction_roles WHERE id=? AND guild_id=?", (rr_id, guild_id))
-    return RedirectResponse(f"/servers/{guild_id}?tab=rr", status_code=302)
+    return RedirectResponse(f"/servers/{guild_id}?tab=rr&success=Reaction+Role+gelöscht", status_code=302)
 
 
 # ── Custom Commands ───────────────────────────────────────────────────────────
