@@ -2315,6 +2315,16 @@ async def freestuff_save(
         min_disc = 75
     deal_ch = deal_channel_id if deal_channel_id else None
     deal_plat_str = ",".join(p for p in deal_platforms if p in DEAL_PLATFORMS)
+    if deal_ch and max_price and not deal_plat_str:
+        # A deal channel + max price alone don't do anything without at least one selected
+        # platform (check_loop only fetches deals for platforms actually in deal_platforms) -
+        # the platform checkboxes start unchecked by design (v1.4.26), so this is an easy
+        # trap to fall into: saving would otherwise silently produce a config the dashboard
+        # status line shows as "active" while it never actually posts anything.
+        return RedirectResponse(
+            f"/servers/{guild_id}/freestuff?error=Bitte+mindestens+eine+Angebots-Plattform+wählen",
+            status_code=302,
+        )
     await db_exec(
         """INSERT INTO freestuff_channels
                (guild_id, channel_id, platforms, deal_max_price, deal_min_discount, deal_channel_id, deal_platforms)

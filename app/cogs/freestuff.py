@@ -376,7 +376,10 @@ class FreeStuff(commands.Cog):
         )
         if game.get("image"):
             embed.set_image(url=game["image"])
-        if orig is not None and is_deal:
+        if orig is not None:
+            # Also applies to free games sourced via CheapShark (Steam/GOG/Humble/Fanatical/
+            # GMG going to 100% off) - those carry a real original_price just like a deal
+            # would, only Epic/GamerPower-sourced free games leave it at None.
             embed.add_field(name="Normalpreis", value=f"{orig:.2f} €", inline=True)
             embed.add_field(name="Angebotspreis", value=f"{sale:.2f} €" if sale > 0 else "Gratis", inline=True)
             embed.add_field(name="Rabatt", value=f"-{disc}%", inline=True)

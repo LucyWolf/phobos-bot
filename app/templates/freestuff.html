@@ -61,7 +61,7 @@
   {% else %}
   <span style="color:var(--muted);">{{ tr.freestuff_status_free_off }}</span>
   {% endif %}
-  {% if cfg.deal_max_price and cfg.deal_channel_id %}
+  {% if cfg.deal_max_price and cfg.deal_channel_id and cfg.deal_platforms %}
   &nbsp;|&nbsp; {{ tr.freestuff_status_deals_upto }} <b>{{ "%.2f"|format(cfg.deal_max_price|float) }} €</b>
   ({{ tr.freestuff_status_min_disc }} {{ cfg.deal_min_discount or 75 }}{{ tr.freestuff_status_pct_disc }})
   {% endif %}
