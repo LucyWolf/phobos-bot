@@ -41,6 +41,19 @@ class CustomCommands(commands.Cog):
         if not trigger:
             await interaction.response.send_message("Trigger darf nicht leer sein.", ephemeral=True)
             return
+        if trigger in {c.name for c in self.bot.commands}:
+            # Both this cog's on_message AND discord.py's own classic-command dispatcher (the
+            # bot was built with command_prefix="!", see birthday.py's `!geburtstag`) run
+            # independently for every message - a custom trigger that happens to match a real
+            # registered command's name would fire BOTH on every use, sending two unrelated
+            # responses for one message. Checked dynamically against self.bot.commands rather
+            # than hardcoding "geburtstag" so this stays correct if more prefix commands are
+            # ever added.
+            await interaction.response.send_message(
+                f"`!{trigger}` ist ein reservierter Befehlsname und kann nicht überschrieben werden.",
+                ephemeral=True,
+            )
+            return
         if len(response) > 2000:
             # Discord's own hard limit for a plain (non-embed) message - on_message sends this
             # response as-is, so a longer value would silently never work once someone actually

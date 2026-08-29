@@ -4307,6 +4307,13 @@ async def cmd_add(
     trigger = trigger.lower().strip("!").strip()
     if not trigger:
         return RedirectResponse(f"/servers/{guild_id}?tab=commands&error=Trigger+darf+nicht+leer+sein", status_code=302)
+    b = bot._bot_for_guild(guild_id)
+    if b and trigger in {c.name for c in b.commands}:
+        # Same reasoning as the /addcommand slash command: this cog's on_message and
+        # discord.py's own classic-command dispatcher (command_prefix="!") both run
+        # independently for every message - a trigger matching a real command's name
+        # (currently only "geburtstag") would fire both, sending two unrelated responses.
+        return RedirectResponse(f"/servers/{guild_id}?tab=commands&error=Reservierter+Befehlsname", status_code=302)
     if len(response) > 2000:
         # Discord's hard limit for a plain message - on_message sends this as-is when the
         # command is triggered, so anything longer would silently never work (now also
