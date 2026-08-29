@@ -13,7 +13,16 @@ class Logging(commands.Cog):
         raw = await get_guild_config(guild_id, "log_exclude_channels") or ""
         if not raw:
             return False
-        return str(channel_id) in [c.strip() for c in raw.split(",") if c.strip()]
+        excluded = [c.strip() for c in raw.split(",") if c.strip()]
+        if str(channel_id) in excluded:
+            return True
+        # A message inside a thread has the thread's own channel_id, distinct from the
+        # parent text channel that's actually selectable in the exclude-list dropdown -
+        # also check the parent so excluding a channel covers its threads too.
+        channel = self.bot.get_channel(channel_id)
+        if isinstance(channel, discord.Thread) and channel.parent_id:
+            return str(channel.parent_id) in excluded
+        return False
 
     async def _log(self, guild_id: int, embed: discord.Embed, plain: str = ""):
         embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
@@ -106,10 +115,13 @@ class Logging(commands.Cog):
                 embed = discord.Embed(title="🏷️ Rollen aktualisiert", color=0x3b82f6)
                 embed.set_author(name=str(after), icon_url=after.display_avatar.url)
                 embed.add_field(name="Nutzer", value=after.mention)
+                # Discord embed field values are capped at 1024 chars - a bulk role change
+                # (e.g. via an external tool) could otherwise push this past the limit and
+                # make the whole channel.send() fail, same guard as on_member_remove below.
                 if added:
-                    embed.add_field(name="➕ Hinzugefügt", value=" ".join(r.mention for r in added))
+                    embed.add_field(name="➕ Hinzugefügt", value=" ".join(r.mention for r in added)[:1000])
                 if removed:
-                    embed.add_field(name="➖ Entfernt", value=" ".join(r.mention for r in removed))
+                    embed.add_field(name="➖ Entfernt", value=" ".join(r.mention for r in removed)[:1000])
                 parts = [after.display_name]
                 if added:
                     parts.append("+" + ", ".join(r.name for r in added))
