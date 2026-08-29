@@ -541,15 +541,15 @@ renderLvlChannelsList();
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem;">
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Trigger</th><th>Antwort</th><th></th></tr></thead>
+      <thead><tr><th>{{ tr.commands_label_trigger }}</th><th>{{ tr.commands_label_response }}</th><th></th></tr></thead>
       <tbody>
         {% for c in cmd_list %}
         <tr>
           <td><code>!{{ c.trigger }}</code></td>
           <td style="color:var(--muted);max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.response }}</td>
           <td>
-            <form method="post" action="/servers/{{ guild.id }}/commands/{{ c.id }}/delete" style="display:inline">
-              <button class="btn btn-danger" onclick="return confirm('Löschen?')" title="{{ tr.btn_delete }}">✕</button>
+            <form method="post" action="/servers/{{ guild.id }}/commands/{{ c.id }}/delete" style="display:inline" onsubmit="return confirm({{ tr.commands_confirm_delete.replace('{trigger}', c.trigger) | js }})">
+              <button class="btn btn-danger" title="{{ tr.btn_delete }}">✕</button>
             </form>
           </td>
         </tr>
@@ -558,24 +558,26 @@ renderLvlChannelsList();
     </table>
   </div>
 </div>
+{% else %}
+<p class="hint" style="margin-bottom:1.5rem;">{{ tr.commands_empty }}</p>
 {% endif %}
 
 <div class="card">
-  <div class="feat-header">➕ Command erstellen</div>
+  <div class="feat-header">{{ tr.commands_create_heading }}</div>
   <form method="post" action="/servers/{{ guild.id }}/commands/add">
     <div class="grid-2">
       <div>
-        <label>Trigger <span style="color:var(--muted);font-size:0.75rem">(ohne !)</span></label>
-        <input type="text" name="trigger" placeholder="z.B. ping" required>
+        <label>{{ tr.commands_label_trigger }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.commands_hint_trigger }}</span></label>
+        <input type="text" name="trigger" placeholder="{{ tr.commands_trigger_placeholder }}" required>
       </div>
       <div>
-        <label>Antwort</label>
-        <input type="text" name="response" placeholder="z.B. Pong! 🏓" required>
+        <label>{{ tr.commands_label_response }}</label>
+        <input type="text" name="response" placeholder="{{ tr.commands_response_placeholder }}" required maxlength="2000">
       </div>
     </div>
-    <button type="submit" class="btn btn-primary">➕ Erstellen</button>
+    <button type="submit" class="btn btn-primary">{{ tr.commands_btn_create }}</button>
   </form>
-  <p class="hint">Nutzer können Commands mit <code>!trigger</code> aufrufen. Existierende Trigger werden überschrieben.</p>
+  <p class="hint">{{ tr.commands_hint_pre }} <code>!trigger</code> {{ tr.commands_hint_post }}</p>
 </div>
 </div>
 

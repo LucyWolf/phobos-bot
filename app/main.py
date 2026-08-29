@@ -4305,16 +4305,21 @@ async def cmd_add(
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
     trigger = trigger.lower().strip("!").strip()
-    try:
-        await db_exec(
-            "INSERT INTO custom_commands (guild_id,trigger,response) VALUES (?,?,?)",
-            (guild_id, trigger, response),
-        )
-    except Exception:
-        await db_exec(
-            "UPDATE custom_commands SET response=? WHERE guild_id=? AND trigger=?",
-            (response, guild_id, trigger),
-        )
+    if not trigger:
+        return RedirectResponse(f"/servers/{guild_id}?tab=commands&error=Trigger+darf+nicht+leer+sein", status_code=302)
+    if len(response) > 2000:
+        # Discord's hard limit for a plain message - on_message sends this as-is when the
+        # command is triggered, so anything longer would silently never work (now also
+        # caught defensively there, but rejecting it here lets the admin fix it immediately).
+        return RedirectResponse(f"/servers/{guild_id}?tab=commands&error=Antwort+zu+lang+(max.+2000+Zeichen)", status_code=302)
+    # Same fix as the /addcommand slash command: a bare `except Exception` around the INSERT
+    # used to stand in for "trigger already exists", which could just as easily swallow an
+    # unrelated DB error and still report success. Atomic upsert instead.
+    await db_exec(
+        "INSERT INTO custom_commands (guild_id,trigger,response) VALUES (?,?,?) "
+        "ON CONFLICT(guild_id,trigger) DO UPDATE SET response=excluded.response",
+        (guild_id, trigger, response),
+    )
     return RedirectResponse(f"/servers/{guild_id}?tab=commands&success=Command+gespeichert", status_code=302)
 
 
@@ -4324,7 +4329,7 @@ async def cmd_delete(request: Request, guild_id: int, cmd_id: int):
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
     await db_exec("DELETE FROM custom_commands WHERE id=? AND guild_id=?", (cmd_id, guild_id))
-    return RedirectResponse(f"/servers/{guild_id}?tab=commands", status_code=302)
+    return RedirectResponse(f"/servers/{guild_id}?tab=commands&success=Command+gelöscht", status_code=302)
 
 
 # ── Giveaways ─────────────────────────────────────────────────────────────────
