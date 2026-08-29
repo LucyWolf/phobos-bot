@@ -4038,13 +4038,38 @@ async def tickets_panel_update(
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Rolle", status_code=302)
     if category_id and category_id not in {str(c.id) for c in guild.categories}:
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Kategorie", status_code=302)
+    panel_before = await db_one("SELECT * FROM ticket_panels WHERE id=? AND guild_id=?", (panel_id, guild_id))
+    new_name = name.strip()
+    new_label = button_label.strip() or "Ticket öffnen"
+    new_emoji = emoji.strip() or "🎫"
+    new_description = description.strip()
     await db_exec(
         "UPDATE ticket_panels SET name=?, button_label=?, description=?, emoji=?, "
         "support_role_id=?, category_id=? WHERE id=? AND guild_id=?",
-        (name.strip(), button_label.strip() or "Ticket öffnen",
-         description.strip(), emoji.strip() or "🎫",
+        (new_name, new_label, new_description, new_emoji,
          support_role_id, category_id, panel_id, guild_id),
     )
+    # A published panel's button/embed lives on an already-sent Discord message - saving name/
+    # button_label/emoji/description here only touched the DB row until now, so the dashboard
+    # showed the new values as "saved" while the live message kept showing the stale ones. If
+    # the panel is currently published, edit the live message in place to match.
+    if panel_before and panel_before.get("status") == "published" and panel_before.get("channel_id") and panel_before.get("message_id"):
+        b = bot._bot_for_guild(guild_id)
+        if b:
+            try:
+                ch = b.get_channel(int(panel_before["channel_id"]))
+                if ch:
+                    msg = await ch.fetch_message(int(panel_before["message_id"]))
+                    embed = discord.Embed(
+                        title=f"{new_emoji} {new_name}",
+                        description=new_description or "Klicke unten um ein Ticket zu öffnen.",
+                        color=0x7C3AED,
+                    )
+                    view = _TicketView(panel_id, new_label, new_emoji)
+                    await msg.edit(embed=embed, view=view)
+                    b.add_view(view)
+            except Exception:
+                pass
     return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Panel+gespeichert", status_code=302)
 
 
