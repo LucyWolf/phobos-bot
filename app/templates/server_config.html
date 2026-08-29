@@ -33,27 +33,27 @@
   <div class="card">
     <div class="grid-2">
       <div>
-        <label>Willkommens-Kanal</label>
+        <label>{{ tr.config_welcome_channel_label }}</label>
         <select name="welcome_channel">
-          <option value="">— Deaktiviert —</option>
+          <option value="">{{ tr.config_channel_disabled_option }}</option>
           {% for ch in channels %}<option value="{{ ch.id }}" {% if cfg.get('welcome_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label>Verlassen-Kanal</label>
+        <label>{{ tr.config_leave_channel_label }}</label>
         <select name="leave_channel">
-          <option value="">— Deaktiviert —</option>
+          <option value="">{{ tr.config_channel_disabled_option }}</option>
           {% for ch in channels %}<option value="{{ ch.id }}" {% if cfg.get('leave_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
         </select>
       </div>
     </div>
-    <label>Willkommensnachricht <span style="color:var(--muted);font-size:0.75rem">– Platzhalter: {user} {username} {server} {count}</span></label>
+    <label>{{ tr.config_welcome_message_label }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.config_welcome_message_hint }}</span></label>
     <input type="text" name="welcome_message" value="{{ cfg.get('welcome_message', 'Willkommen {user} auf {server}! Du bist Mitglied #{count}.') }}">
-    <label>Verlassensnachricht</label>
+    <label>{{ tr.config_leave_message_label }}</label>
     <input type="text" name="leave_message" value="{{ cfg.get('leave_message', '{username} hat den Server verlassen.') }}">
-    <label>Auto-Rolle bei Beitritt</label>
+    <label>{{ tr.config_autorole_label }}</label>
     <select name="autorole">
-      <option value="">— Keine —</option>
+      <option value="">{{ tr.config_autorole_none_option }}</option>
       {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('autorole') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
     </select>
 
@@ -61,26 +61,26 @@
     <div style="margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--border);">
       <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
         <input type="checkbox" name="welcome_card_enabled" value="1" {% if cfg.get('welcome_card_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;" id="wc-toggle">
-        <span>Willkommenskarte als Bild senden</span>
+        <span>{{ tr.config_welcome_card_label }}</span>
       </label>
       <div id="wc-colors" style="{% if cfg.get('welcome_card_enabled') != '1' %}display:none;{% endif %}">
         <div class="grid-2" style="gap:1rem;">
           <div>
-            <label style="font-size:0.82rem;">Kreis-Farbe (Avatar-Rand)</label>
+            <label style="font-size:0.82rem;">{{ tr.config_card_circle_label }}</label>
             <div style="display:flex;align-items:center;gap:0.5rem;">
               <input type="color" name="welcome_card_circle_color" value="{{ cfg.get('welcome_card_circle_color','#5865F2') }}" style="width:42px;height:36px;padding:2px;border-radius:6px;cursor:pointer;">
               <input type="text" name="_welcome_card_circle_color_hex" value="{{ cfg.get('welcome_card_circle_color','#5865F2') }}" style="width:90px;font-size:0.82rem;" oninput="syncColor(this,'welcome_card_circle_color')">
             </div>
           </div>
           <div>
-            <label style="font-size:0.82rem;">Text-Farbe (WELCOME)</label>
+            <label style="font-size:0.82rem;">{{ tr.config_card_text_label }}</label>
             <div style="display:flex;align-items:center;gap:0.5rem;">
               <input type="color" name="welcome_card_text_color" value="{{ cfg.get('welcome_card_text_color','#FFFFFF') }}" style="width:42px;height:36px;padding:2px;border-radius:6px;cursor:pointer;">
               <input type="text" name="_welcome_card_text_color_hex" value="{{ cfg.get('welcome_card_text_color','#FFFFFF') }}" style="width:90px;font-size:0.82rem;" oninput="syncColor(this,'welcome_card_text_color')">
             </div>
           </div>
           <div>
-            <label style="font-size:0.82rem;">Username-Farbe</label>
+            <label style="font-size:0.82rem;">{{ tr.config_card_username_label }}</label>
             <div style="display:flex;align-items:center;gap:0.5rem;">
               <input type="color" name="welcome_card_username_color" value="{{ cfg.get('welcome_card_username_color','#FFDA85') }}" style="width:42px;height:36px;padding:2px;border-radius:6px;cursor:pointer;">
               <input type="text" name="_welcome_card_username_color_hex" value="{{ cfg.get('welcome_card_username_color','#FFDA85') }}" style="width:90px;font-size:0.82rem;" oninput="syncColor(this,'welcome_card_username_color')">
@@ -88,13 +88,13 @@
           </div>
         </div>
         <p style="font-size:0.75rem;color:var(--muted);margin-top:0.75rem;">
-          Das Bild zeigt: Avatar des Mitglieds, WELCOME-Text, Username und Mitglieder-Nummer.
+          {{ tr.config_card_preview_hint }}
         </p>
       </div>
     </div>
   </div>
 
-  <button type="submit" class="btn btn-primary">💾 Speichern</button>
+  <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
 </form>
 </div>
 

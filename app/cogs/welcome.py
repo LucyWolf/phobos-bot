@@ -109,45 +109,64 @@ class Welcome(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
+        # Used to `return` early whenever no welcome channel was configured (or it failed to
+        # resolve) - which meant autorole below, a completely independent feature, silently
+        # never ran either unless a welcome channel happened to ALSO be set up. A server that
+        # only wants "give everyone a Member role on join" without a welcome message would have
+        # had autorole permanently broken. Restructured so the welcome-message block is now
+        # skippable on its own, and autorole always runs regardless of its outcome.
         channel_id = await get_guild_config(member.guild.id, "welcome_channel")
         message = await get_guild_config(member.guild.id, "welcome_message")
-        if not channel_id:
-            return
-        channel = self.bot.get_channel(int(channel_id))
-        if not channel:
-            return
-
-        card_enabled = await get_guild_config(member.guild.id, "welcome_card_enabled")
-        if card_enabled == "1":
-            circle_color  = await get_guild_config(member.guild.id, "welcome_card_circle_color")  or "#5865F2"
-            text_color    = await get_guild_config(member.guild.id, "welcome_card_text_color")    or "#FFFFFF"
-            username_color= await get_guild_config(member.guild.id, "welcome_card_username_color")or "#FFDA85"
+        channel = None
+        if channel_id:
             try:
-                buf  = await _make_card(member, circle_color, text_color, username_color)
-                file = discord.File(buf, filename="welcome.png")
-                if message:
-                    embed = discord.Embed(description=fill(message, member), color=0x5865F2)
-                    embed.set_author(name=str(member), icon_url=member.display_avatar.url)
-                    embed.set_image(url="attachment://welcome.png")
-                    await channel.send(file=file, embed=embed)
-                else:
-                    await channel.send(file=file)
-            except Exception:
-                # Fallback: plain embed
-                if message:
-                    embed = discord.Embed(description=fill(message, member), color=0x22c55e)
-                    embed.set_author(name=str(member), icon_url=member.display_avatar.url)
-                    await channel.send(embed=embed)
-        elif message:
-            embed = discord.Embed(description=fill(message, member), color=0x22c55e)
-            embed.set_author(name=str(member), icon_url=member.display_avatar.url)
-            await channel.send(embed=embed)
+                channel = self.bot.get_channel(int(channel_id))
+            except (ValueError, TypeError):
+                channel = None
+
+        if channel:
+            card_enabled = await get_guild_config(member.guild.id, "welcome_card_enabled")
+            if card_enabled == "1":
+                circle_color  = await get_guild_config(member.guild.id, "welcome_card_circle_color")  or "#5865F2"
+                text_color    = await get_guild_config(member.guild.id, "welcome_card_text_color")    or "#FFFFFF"
+                username_color= await get_guild_config(member.guild.id, "welcome_card_username_color")or "#FFDA85"
+                try:
+                    buf  = await _make_card(member, circle_color, text_color, username_color)
+                    file = discord.File(buf, filename="welcome.png")
+                    if message:
+                        embed = discord.Embed(description=fill(message, member), color=0x5865F2)
+                        embed.set_author(name=str(member), icon_url=member.display_avatar.url)
+                        embed.set_image(url="attachment://welcome.png")
+                        await channel.send(file=file, embed=embed)
+                    else:
+                        await channel.send(file=file)
+                except Exception:
+                    # Fallback: plain embed
+                    if message:
+                        embed = discord.Embed(description=fill(message, member), color=0x22c55e)
+                        embed.set_author(name=str(member), icon_url=member.display_avatar.url)
+                        await channel.send(embed=embed)
+            elif message:
+                embed = discord.Embed(description=fill(message, member), color=0x22c55e)
+                embed.set_author(name=str(member), icon_url=member.display_avatar.url)
+                await channel.send(embed=embed)
 
         role_id = await get_guild_config(member.guild.id, "autorole")
         if role_id:
-            role = member.guild.get_role(int(role_id))
+            try:
+                role = member.guild.get_role(int(role_id))
+            except (ValueError, TypeError):
+                role = None
             if role:
-                await member.add_roles(role, reason="Autorole")
+                try:
+                    await member.add_roles(role, reason="Autorole")
+                except discord.HTTPException as e:
+                    # Missing "Manage Roles", the role sitting above the bot's own top role,
+                    # ... - previously unhandled, which would otherwise propagate out of this
+                    # listener silently (discord.py's default per-event error handling logs it,
+                    # but there's no other way for an admin to ever find out autorole stopped
+                    # working for every new member).
+                    print(f"[Welcome] autorole failed for {member} in guild {member.guild.id}: {e}")
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
@@ -155,7 +174,10 @@ class Welcome(commands.Cog):
         message    = await get_guild_config(member.guild.id, "leave_message")
         if not channel_id or not message:
             return
-        channel = self.bot.get_channel(int(channel_id))
+        try:
+            channel = self.bot.get_channel(int(channel_id))
+        except (ValueError, TypeError):
+            channel = None
         if channel:
             embed = discord.Embed(description=fill(message, member), color=0xef4444)
             embed.set_author(name=str(member), icon_url=member.display_avatar.url)

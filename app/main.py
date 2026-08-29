@@ -3816,6 +3816,19 @@ async def server_config_save(request: Request, guild_id: int):
                 f"/servers/{guild_id}?tab={tab}&error=Ungültiger+Kanal+({key})", status_code=302
             )
 
+    # autorole went through the generic save loop below with no validation at all - unlike the
+    # channel keys above, it isn't even guild-scoped-safe by construction (get_role() degrades
+    # to a silent no-op for a wrong ID, but a non-numeric value saved via a raw POST would raise
+    # an unhandled ValueError in welcome.py's on_member_join for every future join).
+    role_keys = ["autorole"]
+    valid_role_ids = {str(ro.id) for ro in guild.roles if not ro.is_default()}
+    for key in role_keys:
+        value = str(form.get(key, ""))
+        if value and value not in valid_role_ids:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab={tab}&error=Ungültige+Rolle+({key})", status_code=302
+            )
+
     # (form key, min, max, error label)
     numeric_fields = [
         ("automod_spam_threshold", 2, 30, "Spam-Schwellenwert"),
