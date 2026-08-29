@@ -67,8 +67,15 @@ class Giveaways(commands.Cog):
         if not users:
             embed.color = 0x64748b
             embed.set_footer(text="Niemand hat teilgenommen.")
-            await msg.edit(embed=embed)
-            await channel.send("Niemand hat am Giveaway teilgenommen.")
+            try:
+                await msg.edit(embed=embed)
+                await channel.send("Niemand hat am Giveaway teilgenommen.")
+            except Exception as e:
+                # ended=1 is already committed above regardless - an unhandled exception here
+                # would otherwise propagate to whichever caller triggered this (a scheduled
+                # task, or a web route where it'd surface as a raw 500 instead of the normal
+                # redirect).
+                print(f"[Giveaways] no-participants announcement failed for giveaway {giveaway_id}: {e}")
             return
 
         # A reroll (giveaway_reroll resets ended=0 and calls this again) would otherwise be
@@ -91,8 +98,15 @@ class Giveaways(commands.Cog):
 
         embed.color = 0x64748b
         embed.set_footer(text=f"Gewinner: {', '.join(str(w) for w in winners)}")
-        await msg.edit(embed=embed)
-        await channel.send(f"🎉 Glückwunsch {mentions}! Du/Ihr habt **{g['prize']}** gewonnen!")
+        try:
+            await msg.edit(embed=embed)
+            await channel.send(f"🎉 Glückwunsch {mentions}! Du/Ihr habt **{g['prize']}** gewonnen!")
+        except Exception as e:
+            # Don't let a failure here (e.g. the bot loses Send Messages in this channel right
+            # at this moment) skip the DM loop below - if anything, the DM matters MORE when the
+            # channel announcement itself didn't go out, since it'd otherwise be the only
+            # notification. winner_ids is already saved above regardless either way.
+            print(f"[Giveaways] channel announcement failed for giveaway {giveaway_id}: {e}")
 
         # The channel mention above is the only guaranteed notification - anyone not actively
         # watching that channel right then could easily miss it entirely, with no other way to
