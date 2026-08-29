@@ -74,16 +74,24 @@ class AutoDelete(commands.Cog):
         if not message.guild or message.author.bot:
             return
         gid = str(message.guild.id)
-        cid = str(message.channel.id)
-        delay = (self._configs.get(gid) or {}).get(cid)
+        # A message inside a thread has message.channel == the thread, not the parent text
+        # channel that's actually selectable/configurable in the dashboard - match against
+        # the parent for the config lookup, but keep fetching/deleting from the real channel
+        # the message lives in (a thread's messages aren't visible via the parent channel).
+        if isinstance(message.channel, discord.Thread):
+            config_cid = str(message.channel.parent_id)
+        else:
+            config_cid = str(message.channel.id)
+        actual_cid = str(message.channel.id)
+        delay = (self._configs.get(gid) or {}).get(config_cid)
         if not delay:
             return
         delete_at = datetime.datetime.utcnow() + datetime.timedelta(seconds=delay)
         pending_id = await db_insert(
             "INSERT INTO auto_delete_pending (guild_id, channel_id, message_id, delete_at) VALUES (?,?,?,?)",
-            (gid, cid, str(message.id), delete_at.isoformat()),
+            (gid, actual_cid, str(message.id), delete_at.isoformat()),
         )
-        self._schedule(pending_id, cid, str(message.id), delay)
+        self._schedule(pending_id, actual_cid, str(message.id), delay)
 
     async def _delete_later(self, pending_id: int, channel_id: str, message_id: str, delay: float):
         try:
