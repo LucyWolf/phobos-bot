@@ -3140,10 +3140,19 @@ async def notif_api_edit(
         return RedirectResponse("/settings/notifications?error=Keine+Berechtigung", status_code=302)
     if label.strip():
         await db_exec("UPDATE twitch_apis SET label=? WHERE id=?", (label.strip(), api_id))
+    creds_changed = bool(twitch_client_id.strip() or twitch_client_secret.strip())
     if twitch_client_id.strip():
         await db_exec("UPDATE twitch_apis SET client_id=? WHERE id=?", (twitch_client_id.strip(), api_id))
     if twitch_client_secret.strip():
         await db_exec("UPDATE twitch_apis SET client_secret=? WHERE id=?", (twitch_client_secret.strip(), api_id))
+    if creds_changed:
+        # A cached OAuth token from the old credentials could otherwise keep being used for
+        # up to an hour (see Notifications.reset_token_cache) even though they were just
+        # changed here, e.g. specifically to replace a compromised/regenerated secret.
+        for b in bot._bots.values():
+            cog = b.cogs.get("Notifications")
+            if cog:
+                cog.reset_token_cache(api_id)
     return RedirectResponse("/settings/notifications?success=API+aktualisiert", status_code=302)
 
 

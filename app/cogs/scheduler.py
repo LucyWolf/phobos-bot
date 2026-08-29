@@ -39,9 +39,19 @@ class Scheduler(commands.Cog):
             if not ch:
                 continue
             try:
-                embed = await self._build_event_embed(row) if row.get("event_id") else None
-                if embed:
-                    await ch.send(embed=embed)
+                if row.get("event_id"):
+                    embed, event_gone = await self._build_event_embed(row)
+                    if event_gone:
+                        # The event was deleted directly via Discord's own UI, not through the
+                        # dashboard's delete route (which cleans up its pending reminders
+                        # itself) - suppress this stale reminder instead of falling back to
+                        # plain text, which would announce an event that no longer exists.
+                        await db_exec("UPDATE scheduled_messages SET sent=1 WHERE id=?", (row["id"],))
+                        continue
+                    if embed:
+                        await ch.send(embed=embed)
+                    else:
+                        await ch.send(row["message"])
                 else:
                     await ch.send(row["message"])
                 await db_exec("UPDATE scheduled_messages SET sent=1 WHERE id=?", (row["id"],))
@@ -49,13 +59,19 @@ class Scheduler(commands.Cog):
                 pass
 
     async def _build_event_embed(self, row):
+        """Returns (embed, event_gone). event_gone=True means the event was confirmed deleted
+        (404 from Discord) - any other failure (network hiccup, guild not found) returns
+        (None, False) so the caller still falls back to sending the plain reminder text,
+        rather than silently dropping a reminder for an event that might still exist."""
+        guild = self.bot.get_guild(int(row["guild_id"]))
+        if not guild:
+            return None, False
         try:
-            guild = self.bot.get_guild(int(row["guild_id"]))
-            if not guild:
-                return None
             event = await guild.fetch_scheduled_event(int(row["event_id"]))
+        except discord.NotFound:
+            return None, True
         except Exception:
-            return None
+            return None, False
         embed = discord.Embed(
             title=f"🗓️ {event.name}",
             description=row["message"] or event.description,
@@ -72,7 +88,7 @@ class Scheduler(commands.Cog):
             embed.add_field(name="Ort", value=event.location, inline=False)
         elif event.channel:
             embed.add_field(name="Ort", value=event.channel.mention, inline=False)
-        return embed
+        return embed, False
 
     def _fmt_local(self, dt):
         if not dt:

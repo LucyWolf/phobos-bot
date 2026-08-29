@@ -21,6 +21,13 @@ class Notifications(commands.Cog):
     def cog_unload(self):
         self.twitch_loop.cancel()
 
+    def reset_token_cache(self, api_id: int) -> None:
+        """Drops any cached OAuth token for this Twitch API, so the next twitch_loop tick
+        re-authenticates with the (possibly just-changed) credentials instead of continuing
+        to use a token that could now be stale or revoked - e.g. regenerating the Client
+        Secret on Twitch's side invalidates all tokens issued under the old one."""
+        self._token_cache.pop(api_id, None)
+
     async def _twitch_auth(self, api_id: int, client_id: str, client_secret: str) -> tuple[str | None, str | None]:
         now = datetime.datetime.utcnow()
         cached = self._token_cache.get(api_id)
