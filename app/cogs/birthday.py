@@ -21,7 +21,15 @@ class Birthday(commands.Cog):
         today = now.strftime("%m-%d")
         year = now.year
 
-        rows = await db_rows("SELECT * FROM birthdays WHERE birthday=?", (today,))
+        match_dates = [today]
+        if today == "02-28" and not (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)):
+            # Feb 29 birthdays (a valid, storable date via !geburtstag - 2000 is a leap year
+            # so the validation lets it through) would otherwise never match in the 3 out of 4
+            # years that aren't leap years, since "02-29" never occurs as `today`. Celebrate on
+            # Feb 28 instead, the common convention.
+            match_dates.append("02-29")
+        placeholders = ",".join("?" for _ in match_dates)
+        rows = await db_rows(f"SELECT * FROM birthdays WHERE birthday IN ({placeholders})", tuple(match_dates))
         for row in rows:
             uid, gid = row["user_id"], row["guild_id"]
             # Optimistisch reservieren — INSERT schlägt fehl wenn anderer Bot schon gesendet hat
@@ -84,6 +92,13 @@ class Birthday(commands.Cog):
         await db_exec(
             "INSERT OR REPLACE INTO birthdays (user_id, guild_id, birthday) VALUES (?,?,?)",
             (str(ctx.author.id), str(ctx.guild.id), bday),
+        )
+        # birthday_sent is only keyed by (user_id, guild_id, year), not the date itself -
+        # if this user was already wished this year on their old (wrong) date, that row would
+        # otherwise block them from getting wished again on the corrected date this same year.
+        await db_exec(
+            "DELETE FROM birthday_sent WHERE user_id=? AND guild_id=? AND year=?",
+            (str(ctx.author.id), str(ctx.guild.id), datetime.datetime.now().year),
         )
         await ctx.reply(f"✅ Geburtstag gespeichert: **{day:02d}.{month:02d}**", mention_author=False)
 

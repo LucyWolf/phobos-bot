@@ -279,6 +279,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "autodelete_dur_24h": "24 Stunden",
         "autodelete_dur_2d":  "2 Tage",
         "autodelete_dur_7d":  "7 Tage",
+        # Birthday
+        "birthday_hint_pre":  "Mitglieder tragen ihren Geburtstag mit",
+        "birthday_hint_post": "ein. Um 8:00 Uhr schickt der Bot automatisch eine Glückwunschnachricht.",
+        "birthday_channel_label": "Geburtstags-Kanal",
+        "birthday_message_label": "Glückwunsch-Nachricht",
+        "birthday_list_title": "🎂 Eingetragene Geburtstage",
+        "birthday_col_user":  "Nutzer",
+        "birthday_col_date":  "Datum",
         # Spam-Schutz / Auto-Mod
         "automod_info_tooltip":       "Was ist das?",
         "automod_info_title":         "Wie funktionieren Kategorien?",
@@ -615,6 +623,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "autodelete_dur_24h": "24 hours",
         "autodelete_dur_2d":  "2 days",
         "autodelete_dur_7d":  "7 days",
+        # Birthday
+        "birthday_hint_pre":  "Members can set their birthday with",
+        "birthday_hint_post": ". At 8:00 the bot automatically sends a congratulations message.",
+        "birthday_channel_label": "Birthday channel",
+        "birthday_message_label": "Congratulations message",
+        "birthday_list_title": "🎂 Registered birthdays",
+        "birthday_col_user":  "User",
+        "birthday_col_date":  "Date",
         # Spam Protection / Auto-Mod
         "automod_info_tooltip":       "What is this?",
         "automod_info_title":         "How do categories work?",

@@ -1401,40 +1401,39 @@ document.addEventListener('click', function(e) {
 <input type="hidden" name="tab" value="birthday">
 <div class="card">
   <p class="hint" style="margin-bottom:1rem;">
-    Mitglieder tragen ihren Geburtstag mit <code>!geburtstag TT.MM</code> ein.
-    Um 8:00 Uhr schickt der Bot automatisch eine Glückwunschnachricht.
+    {{ tr.birthday_hint_pre }} <code>!geburtstag TT.MM</code> {{ tr.birthday_hint_post }}
   </p>
   <div class="grid-2" style="gap:1rem;margin-bottom:1rem;">
     <div>
-      <label>Geburtstags-Kanal</label>
+      <label>{{ tr.birthday_channel_label }}</label>
       <select name="birthday_channel">
-        <option value="">— Deaktiviert —</option>
+        <option value="">{{ tr.freestuff_disabled_option }}</option>
         {% for c in channels %}<option value="{{ c.id }}" {% if cfg.get('birthday_channel') == c.id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
       </select>
     </div>
     <div>
-      <label>Glückwunsch-Nachricht <span style="color:var(--muted);font-size:0.75rem">{user}</span></label>
+      <label>{{ tr.birthday_message_label }} <span style="color:var(--muted);font-size:0.75rem">{user}</span></label>
       <input type="text" name="birthday_message" value="{{ cfg.get('birthday_message', '🎂 Alles Gute zum Geburtstag, {user}! 🎉') }}">
     </div>
   </div>
-  <button type="submit" class="btn btn-primary">💾 Speichern</button>
+  <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
 </div>
 </form>
 
 {% if birthdays %}
 <div class="card" style="margin-top:1rem;">
-  <div class="feat-header" style="margin-bottom:0.75rem;">🎂 Eingetragene Geburtstage</div>
+  <div class="feat-header" style="margin-bottom:0.75rem;">{{ tr.birthday_list_title }}</div>
   <table style="width:100%;border-collapse:collapse;">
     <thead>
       <tr style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;">
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Nutzer-ID</th>
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Datum</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.birthday_col_user }}</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.birthday_col_date }}</th>
       </tr>
     </thead>
     <tbody>
     {% for b in birthdays %}
     <tr style="border-top:1px solid var(--border);font-size:0.85rem;">
-      <td style="padding:0.5rem;color:var(--muted);">{{ b.user_id }}</td>
+      <td style="padding:0.5rem;color:var(--muted);">{{ b.username }}</td>
       <td style="padding:0.5rem;">{{ b.birthday[3:] }}.{{ b.birthday[:2] }}</td>
     </tr>
     {% endfor %}

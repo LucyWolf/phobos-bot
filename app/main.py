@@ -3583,6 +3583,14 @@ async def server_config(
         m = guild.get_member(wg["user_id"])
         wg["username"] = str(m) if m else f"#{wg['user_id']}"
 
+    # Birthdays
+    _birthdays = await db_rows(
+        "SELECT * FROM birthdays WHERE guild_id=? ORDER BY birthday", (str(guild_id),)
+    )
+    for b in _birthdays:
+        m = guild.get_member(int(b["user_id"]))
+        b["username"] = str(m) if m else f"#{b['user_id']}"
+
     # Ticket panels
     ticket_panels = await db_rows(
         "SELECT * FROM ticket_panels WHERE guild_id=? ORDER BY created_at DESC", (guild_id,)
@@ -3669,9 +3677,7 @@ async def server_config(
         "scheduled_messages": await db_rows(
             "SELECT * FROM scheduled_messages WHERE guild_id=? AND sent=0 ORDER BY send_at", (str(guild_id),)
         ),
-        "birthdays": await db_rows(
-            "SELECT * FROM birthdays WHERE guild_id=? ORDER BY birthday", (str(guild_id),)
-        ),
+        "birthdays": _birthdays,
         "events_list": sorted(guild.scheduled_events, key=lambda e: e.start_time),
         "event_reminders": await _event_reminders_by_event(guild_id),
     })
