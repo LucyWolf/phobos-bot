@@ -94,6 +94,20 @@ class Giveaways(commands.Cog):
         await msg.edit(embed=embed)
         await channel.send(f"🎉 Glückwunsch {mentions}! Du/Ihr habt **{g['prize']}** gewonnen!")
 
+        # The channel mention above is the only guaranteed notification - anyone not actively
+        # watching that channel right then could easily miss it entirely, with no other way to
+        # find out. A DM is best-effort on top of that (never a replacement: many users have
+        # DMs from non-friends disabled, or block the bot), so failures here are expected and
+        # silently ignored per winner instead of affecting the others or the channel message.
+        for w in winners:
+            try:
+                await w.send(
+                    f"🎉 Du hast im Giveaway auf **{channel.guild.name}** gewonnen: **{g['prize']}**!\n"
+                    f"Schau in {channel.mention} vorbei."
+                )
+            except Exception:
+                pass
+
     @app_commands.command(name="giveaway-start", description="Giveaway starten")
     @app_commands.default_permissions(manage_guild=True)
     async def giveaway_start(self, interaction: discord.Interaction, prize: str, duration_minutes: int, winners: int = 1):
