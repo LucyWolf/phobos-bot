@@ -11,6 +11,13 @@ class ReactionRoles(commands.Cog):
     @app_commands.command(name="reactionrole-add", description="Reaction Role hinzufügen")
     @app_commands.default_permissions(manage_roles=True)
     async def rr_add(self, interaction: discord.Interaction, message_id: str, emoji: str, role: discord.Role):
+        # The channel search below makes one fetch_message() API call per text channel until
+        # it finds the message - on any server with more than a handful of channels that alone
+        # can take longer than Discord's 3-second initial-response window (worst case: the
+        # message is in the LAST channel checked, or in none at all). Without deferring first,
+        # every send_message() below would then raise "interaction expired" instead of ever
+        # reaching the user.
+        await interaction.response.defer(ephemeral=True)
         msg = None
         for channel in interaction.guild.text_channels:
             try:
@@ -20,12 +27,12 @@ class ReactionRoles(commands.Cog):
             except Exception:
                 continue
         if not msg:
-            await interaction.response.send_message("Nachricht nicht gefunden.", ephemeral=True)
+            await interaction.followup.send("Nachricht nicht gefunden.", ephemeral=True)
             return
         try:
             await msg.add_reaction(emoji)
         except (discord.HTTPException, discord.NotFound):
-            await interaction.response.send_message("Ungültiger Emoji.", ephemeral=True)
+            await interaction.followup.send("Ungültiger Emoji.", ephemeral=True)
             return
         # No UNIQUE constraint exists on (guild_id, message_id, emoji) - without this check, a
         # second /reactionrole-add for the same message+emoji (e.g. trying to change which role
@@ -44,7 +51,7 @@ class ReactionRoles(commands.Cog):
                 "INSERT INTO reaction_roles (guild_id,channel_id,message_id,emoji,role_id) VALUES (?,?,?,?,?)",
                 (interaction.guild_id, channel_id, int(message_id), emoji, role.id),
             )
-        await interaction.response.send_message(f"Reaction Role hinzugefügt: {emoji} → {role.mention}", ephemeral=True)
+        await interaction.followup.send(f"Reaction Role hinzugefügt: {emoji} → {role.mention}", ephemeral=True)
 
     @app_commands.command(name="reactionrole-remove", description="Reaction Role entfernen")
     @app_commands.default_permissions(manage_roles=True)
