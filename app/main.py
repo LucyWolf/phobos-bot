@@ -2496,6 +2496,20 @@ async def scheduled_edit(request: Request, guild_id: str, msg_id: int):
     if channel_id and channel_id not in {str(c.id) for c in guild.text_channels}:
         return RedirectResponse(f"/servers/{guild_id}?tab=scheduled&error=Ungültiger+Kanal", status_code=302)
     if channel_id and message and send_at:
+        existing = await db_one(
+            "SELECT event_id FROM scheduled_messages WHERE id=? AND guild_id=?", (msg_id, guild_id)
+        )
+        if existing and existing.get("event_id"):
+            # This row is an event reminder/announcement - the edit form pre-fills send_at in
+            # the viewer's own dashboard timezone (see _add_event_send_at_fields), so the
+            # submitted value must be interpreted the same way and re-normalized back to
+            # Europe/Berlin, matching the storage convention events_create/edit rely on. A
+            # plain (non-event) scheduled message has no such convention, so it's stored as-is.
+            try:
+                send_dt = _aware(datetime.datetime.fromisoformat(send_at), _request_tz.get())
+                send_at = send_dt.astimezone(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%dT%H:%M")
+            except ValueError:
+                return RedirectResponse(f"/servers/{guild_id}?tab=scheduled&error=Ungültiger+Zeitpunkt", status_code=302)
         await db_exec(
             "UPDATE scheduled_messages SET channel_id=?, message=?, send_at=? WHERE id=? AND guild_id=? AND sent=0",
             (channel_id, message, send_at, msg_id, guild_id),
@@ -2516,24 +2530,30 @@ _EVENT_START_MESSAGE = "🔴 Das Event startet jetzt!"
 _EVENT_END_MESSAGE = "🏁 Das Event ist jetzt beendet!"
 
 
+def _add_event_send_at_fields(row: dict) -> None:
+    """event_id-linked scheduled_messages rows store send_at as a naive Europe/Berlin
+    wall-clock string (see events_create/events_edit) - the generic `dt`/`dtlocal` filters
+    can't be reused here since they assume UTC for naive values, which would apply the wrong
+    offset. Adds send_at_display (pretty, for read-only display) and send_at_edit (datetime-
+    local input format) in the viewer's own configured dashboard timezone."""
+    try:
+        send_dt = _aware(datetime.datetime.fromisoformat(row["send_at"]), ZoneInfo("Europe/Berlin"))
+        local_dt = send_dt.astimezone(_request_tz.get())
+        row["send_at_display"] = local_dt.strftime("%d.%m.%Y %H:%M")
+        row["send_at_edit"] = local_dt.strftime("%Y-%m-%dT%H:%M")
+    except ValueError:
+        row["send_at_display"] = row["send_at"]
+        row["send_at_edit"] = row["send_at"]
+
+
 async def _event_reminders_by_event(guild_id) -> dict[str, list[dict]]:
     rows = await db_rows(
         "SELECT * FROM scheduled_messages WHERE guild_id=? AND sent=0 AND event_id IS NOT NULL ORDER BY send_at",
         (str(guild_id),),
     )
-    berlin_tz = ZoneInfo("Europe/Berlin")
     grouped: dict[str, list[dict]] = {}
     for row in rows:
-        # send_at is always stored as a naive Europe/Berlin wall-clock string (see events_create/
-        # events_edit) - the generic `dt` filter can't be reused for display here since it
-        # assumes UTC for naive values, which would apply the wrong offset. Convert explicitly
-        # to the viewer's own configured dashboard timezone instead of always showing Berlin
-        # time regardless of who's looking.
-        try:
-            send_dt = _aware(datetime.datetime.fromisoformat(row["send_at"]), berlin_tz)
-            row["send_at_display"] = send_dt.astimezone(_request_tz.get()).strftime("%d.%m.%Y %H:%M")
-        except ValueError:
-            row["send_at_display"] = row["send_at"]
+        _add_event_send_at_fields(row)
         grouped.setdefault(row["event_id"], []).append(row)
     return grouped
 
@@ -3602,6 +3622,16 @@ async def server_config(
         m = guild.get_member(int(b["user_id"]))
         b["username"] = str(m) if m else f"#{b['user_id']}"
 
+    # Scheduled messages (event-linked rows get send_at_display/send_at_edit - see
+    # _add_event_send_at_fields; plain, non-event scheduled messages are left untouched, that
+    # feature stores/edits send_at as raw, unconverted browser-local text with no normalization)
+    _scheduled_messages = await db_rows(
+        "SELECT * FROM scheduled_messages WHERE guild_id=? AND sent=0 ORDER BY send_at", (str(guild_id),)
+    )
+    for sm in _scheduled_messages:
+        if sm.get("event_id"):
+            _add_event_send_at_fields(sm)
+
     # Ticket panels
     ticket_panels = await db_rows(
         "SELECT * FROM ticket_panels WHERE guild_id=? ORDER BY created_at DESC", (guild_id,)
@@ -3685,9 +3715,7 @@ async def server_config(
         "tempvoice_configs": await db_rows(
             "SELECT * FROM temp_voice_config WHERE guild_id=?", (str(guild_id),)
         ),
-        "scheduled_messages": await db_rows(
-            "SELECT * FROM scheduled_messages WHERE guild_id=? AND sent=0 ORDER BY send_at", (str(guild_id),)
-        ),
+        "scheduled_messages": _scheduled_messages,
         "birthdays": _birthdays,
         "events_list": sorted(guild.scheduled_events, key=lambda e: e.start_time),
         "event_reminders": await _event_reminders_by_event(guild_id),

@@ -1042,7 +1042,7 @@ function toggleTempvoiceEdit(id) {
     {% for sm in scheduled_messages %}
     {% set ch_name = channels | selectattr('id','equalto',sm.channel_id) | map(attribute='name') | first | default(sm.channel_id) %}
     <tr style="border-top:1px solid var(--border);font-size:0.85rem;">
-      <td style="padding:0.5rem;white-space:nowrap;">{{ sm.send_at | replace("T"," ") }}</td>
+      <td style="padding:0.5rem;white-space:nowrap;">{{ sm.send_at_display or (sm.send_at | replace("T"," ")) }}</td>
       <td style="padding:0.5rem;">#{{ ch_name }}</td>
       <td style="padding:0.5rem;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ sm.message }}</td>
       <td style="padding:0.5rem;text-align:right;white-space:nowrap;">
@@ -1064,7 +1064,7 @@ function toggleTempvoiceEdit(id) {
             </div>
             <div>
               <label style="font-size:0.82rem;">Zeitpunkt</label>
-              <input type="datetime-local" name="send_at" value="{{ sm.send_at }}" required style="margin-bottom:0;">
+              <input type="datetime-local" name="send_at" value="{{ sm.send_at_edit or sm.send_at }}" required style="margin-bottom:0;">
             </div>
           </div>
           <label style="font-size:0.82rem;">Nachricht</label>
