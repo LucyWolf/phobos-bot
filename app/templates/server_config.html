@@ -818,6 +818,22 @@ function togglePanelEdit(id) {
 <!-- TAB: Warnungen                                                      -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-warnings">
+
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="toggleWarningsInfo()" title="{{ tr.warnings_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="warnings-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:300px;max-width:400px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.warnings_info_title }}</div>
+    <ul style="margin:0 0 0 1.1rem;padding:0;color:var(--muted);line-height:1.6;">
+      <li>{{ tr.warnings_info_item_issue }}</li>
+      <li>{{ tr.warnings_info_item_view }}</li>
+      <li>{{ tr.warnings_info_item_clear }}</li>
+    </ul>
+  </div>
+</div>
+
 <div class="card" style="padding:0;overflow:hidden;">
   {% if warn_groups %}
   <div class="table-wrap">
@@ -849,6 +865,18 @@ function togglePanelEdit(id) {
 </div>
 <p class="hint" style="margin-top:1rem;">{{ tr.warnings_hint_warn }} <code>{{ tr.warnings_hint_warn_example }}</code> · {{ tr.warnings_hint_list }} <code>{{ tr.warnings_hint_list_example }}</code></p>
 </div>
+<script>
+function toggleWarningsInfo() {
+  const box = document.getElementById('warnings-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('warnings-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleWarningsInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+</script>
 
 
 
