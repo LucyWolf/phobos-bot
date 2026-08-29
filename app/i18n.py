@@ -625,7 +625,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "autodelete_dur_7d":  "7 days",
         # Birthday
         "birthday_hint_pre":  "Members can set their birthday with",
-        "birthday_hint_post": ". At 8:00 the bot automatically sends a congratulations message.",
+        "birthday_hint_post": "— at 8:00 the bot automatically sends a congratulations message.",
         "birthday_channel_label": "Birthday channel",
         "birthday_message_label": "Congratulations message",
         "birthday_list_title": "🎂 Registered birthdays",
