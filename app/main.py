@@ -4145,8 +4145,15 @@ async def ticket_close(request: Request, guild_id: int, ticket_id: int):
     if ch:
         try:
             await ch.delete(reason="Ticket via Dashboard geschlossen")
-        except Exception:
+        except discord.NotFound:
             pass
+        except Exception as e:
+            # Same reasoning as the "bot not online" branch above: if the channel is still
+            # there and we couldn't actually delete it (e.g. missing permission right now),
+            # don't mark the ticket closed - that would hide it from the open-tickets list
+            # with no way to retry.
+            print(f"[Tickets] channel delete failed for ticket {ticket_id}: {e}")
+            return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Kanal+konnte+nicht+gelöscht+werden", status_code=302)
     await db_exec(
         "UPDATE tickets SET status='closed' WHERE id=? AND guild_id=?",
         (ticket_id, guild_id),
