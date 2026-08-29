@@ -436,6 +436,13 @@ async def init_db():
                 SELECT MAX(id) FROM reaction_roles GROUP BY guild_id, message_id, emoji
             )""",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_reaction_roles_unique ON reaction_roles(guild_id, message_id, emoji)",
+            """CREATE TABLE IF NOT EXISTS amp_configs (
+                guild_id TEXT PRIMARY KEY,
+                label TEXT NOT NULL DEFAULT '',
+                url TEXT NOT NULL DEFAULT '',
+                username TEXT NOT NULL DEFAULT '',
+                password TEXT NOT NULL DEFAULT ''
+            )""",
         ]:
             try:
                 await db.execute(col)

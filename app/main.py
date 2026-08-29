@@ -153,6 +153,7 @@ COGS = [
     "cogs.temp_voice",
     "cogs.scheduler",
     "cogs.birthday",
+    "cogs.amp",
 ]
 
 
@@ -2449,6 +2450,76 @@ async def bot_update_apply(request: Request):
     return HTMLResponse(html)
 
 
+# ── AMP Gameserver ────────────────────────────────────────────────────────────
+
+@web.post("/servers/{guild_id}/amp/save")
+async def amp_save(
+    request: Request, guild_id: int,
+    label: str = Form(""), url: str = Form(""),
+    username: str = Form(""), password: str = Form(""),
+):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    url = url.strip().rstrip("/")
+    if url and not (url.startswith("http://") or url.startswith("https://")):
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=amp&error=URL+muss+mit+http://+oder+https://+beginnen", status_code=302
+        )
+    if not url or not username.strip():
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=URL+und+Nutzername+erforderlich", status_code=302)
+    # A blank password field means "keep the existing one" (same convention as SMTP/Twitch
+    # credential forms elsewhere) - only overwrite it if the admin actually typed something,
+    # so re-saving the label/URL doesn't silently wipe out a previously stored password.
+    existing = await db_one("SELECT password FROM amp_configs WHERE guild_id=?", (str(guild_id),))
+    final_password = password.strip() or (existing["password"] if existing else "")
+    await db_exec(
+        "INSERT INTO amp_configs (guild_id,label,url,username,password) VALUES (?,?,?,?,?) "
+        "ON CONFLICT(guild_id) DO UPDATE SET label=excluded.label, url=excluded.url, "
+        "username=excluded.username, password=excluded.password",
+        (str(guild_id), label.strip(), url, username.strip(), final_password),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Gespeichert", status_code=302)
+
+
+async def _amp_cfg_for_guild(guild_id: int):
+    return await db_one("SELECT * FROM amp_configs WHERE guild_id=?", (str(guild_id),))
+
+
+@web.post("/servers/{guild_id}/amp/start")
+async def amp_start_web(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    cfg = await _amp_cfg_for_guild(guild_id)
+    if not cfg or not cfg.get("url"):
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Kein+Gameserver+verknüpft", status_code=302)
+    amp_cog = bot.cogs.get("AMP")
+    if not amp_cog:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
+    ok, error = await amp_cog._set_running(cfg, start=True)
+    if not ok:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error={urllib.parse.quote(error[:150])}", status_code=302)
+    return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Startbefehl+gesendet", status_code=302)
+
+
+@web.post("/servers/{guild_id}/amp/stop")
+async def amp_stop_web(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    cfg = await _amp_cfg_for_guild(guild_id)
+    if not cfg or not cfg.get("url"):
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Kein+Gameserver+verknüpft", status_code=302)
+    amp_cog = bot.cogs.get("AMP")
+    if not amp_cog:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
+    ok, error = await amp_cog._set_running(cfg, start=False)
+    if not ok:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error={urllib.parse.quote(error[:150])}", status_code=302)
+    return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Stoppbefehl+gesendet", status_code=302)
+
+
 # ── Free Stuff ────────────────────────────────────────────────────────────────
 
 @web.get("/servers/{guild_id}/freestuff", response_class=HTMLResponse)
@@ -3746,6 +3817,7 @@ _SERVER_CONFIG_TAB_LABELS = {
     "giveaways": "🎉 Giveaways", "warnings": "⚠️ Warnungen", "users": "👥 Nutzer",
     "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant", "events": "🗓️ Events",
     "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
+    "amp": "🎮 Gameserver",
 }
 
 
@@ -3890,6 +3962,16 @@ async def server_config(
         "SELECT * FROM automod_word_presets WHERE guild_id=? ORDER BY id", (str(guild_id),)
     )
 
+    amp_cfg = await db_one("SELECT * FROM amp_configs WHERE guild_id=?", (str(guild_id),))
+    amp_status = None
+    if tab == "amp" and amp_cfg and amp_cfg.get("url"):
+        # Only fetched when the amp tab is actually being viewed - every OTHER tab load would
+        # otherwise pay for a live login+status round-trip to an external AMP instance it has
+        # nothing to do with, every single time any tab on this page is opened.
+        amp_cog = bot.cogs.get("AMP")
+        if amp_cog:
+            amp_status = await amp_cog._fetch_status(amp_cfg)
+
     return templates.TemplateResponse("server_config.html", {
         **session(request), "request": request,
         "guild": {"id": str(guild.id), "name": guild.name,
@@ -3916,6 +3998,7 @@ async def server_config(
         "tempvoice_configs": await db_rows(
             "SELECT * FROM temp_voice_config WHERE guild_id=?", (str(guild_id),)
         ),
+        "amp_cfg": amp_cfg, "amp_status": amp_status,
         "scheduled_messages": _scheduled_messages,
         "birthdays": _birthdays,
         "events_list": sorted(guild.scheduled_events, key=lambda e: e.start_time),

@@ -1791,8 +1791,94 @@ function toggleAdEdit(id) {
 }
 </script>
 
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: AMP Gameserver                                                  -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-amp">
+
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="toggleAmpInfo()" title="{{ tr.amp_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="amp-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:300px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.amp_info_title }}</div>
+    <ul style="margin:0 0 0 1.1rem;padding:0;color:var(--muted);line-height:1.6;">
+      <li>{{ tr.amp_info_item_what }}</li>
+      <li>{{ tr.amp_info_item_commands }}</li>
+      <li>{{ tr.amp_info_item_password }}</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:1.25rem;">
+  <div class="feat-header" style="margin-bottom:1rem;">{{ tr.amp_config_title }}</div>
+  <form method="post" action="/servers/{{ guild.id }}/amp/save">
+    <div class="grid-2">
+      <div>
+        <label>{{ tr.amp_label_label }}</label>
+        <input type="text" name="label" value="{{ amp_cfg.label if amp_cfg else '' }}" placeholder="{{ tr.amp_label_placeholder }}" maxlength="100">
+      </div>
+      <div>
+        <label>{{ tr.amp_url_label }}</label>
+        <input type="text" name="url" value="{{ amp_cfg.url if amp_cfg else '' }}" placeholder="{{ tr.amp_url_placeholder }}">
+      </div>
+      <div>
+        <label>{{ tr.amp_username_label }}</label>
+        <input type="text" name="username" value="{{ amp_cfg.username if amp_cfg else '' }}" autocomplete="off">
+      </div>
+      <div>
+        <label>{{ tr.amp_password_label }}</label>
+        <input type="password" name="password" placeholder="••••••••" autocomplete="new-password">
+        <p class="hint" style="margin-top:0.3rem;">{{ tr.amp_password_hint }}</p>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
+  </form>
+</div>
+
+{% if amp_cfg and amp_cfg.url %}
+<div class="card">
+  <div class="feat-header" style="margin-bottom:1rem;">{{ tr.amp_status_title }}{% if amp_cfg.label %} — {{ amp_cfg.label }}{% endif %}</div>
+  {% if amp_status %}
+    {% if amp_status.error %}
+      <p style="margin-bottom:1rem;">{{ tr.amp_status_error }}: {{ amp_status.error }}</p>
+    {% elif amp_status.online %}
+      <p style="margin-bottom:1rem;font-size:1.05rem;">{{ tr.amp_status_online }}</p>
+    {% else %}
+      <p style="margin-bottom:1rem;font-size:1.05rem;">{{ tr.amp_status_offline }}</p>
+    {% endif %}
+  {% else %}
+    <p style="margin-bottom:1rem;color:var(--muted);">{{ tr.amp_status_none }}</p>
+  {% endif %}
+  <div style="display:flex;gap:0.75rem;">
+    <form method="post" action="/servers/{{ guild.id }}/amp/start" style="margin:0;">
+      <button type="submit" class="btn btn-secondary">{{ tr.amp_btn_start }}</button>
+    </form>
+    <form method="post" action="/servers/{{ guild.id }}/amp/stop" style="margin:0;">
+      <button type="submit" class="btn btn-danger">{{ tr.amp_btn_stop }}</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+</div>
+
 <script>
-const TABS = ['config','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete'];
+function toggleAmpInfo() {
+  const box = document.getElementById('amp-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('amp-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleAmpInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+</script>
+
+<script>
+const TABS = ['config','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete','amp'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {
