@@ -51,11 +51,15 @@
 </div>
 {% endif %}
 
-{% if twitch_apis|length > 1 %}
+{% if twitch_apis and (twitch_apis|length > 1 or api_unresolved) %}
+{% if api_unresolved %}
+<div class="alert alert-error">⚠️ {{ tr.notif_api_unresolved_warning }}</div>
+{% endif %}
 <div class="notif-card" style="margin-bottom:1rem;">
   <div style="font-weight:700;font-size:0.88rem;margin-bottom:0.75rem;">🟣 {{ tr.notif_api_select_title }}</div>
   <form method="post" action="/servers/{{ guild_id }}/notifications/api" style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
     <select name="twitch_api_id" style="margin:0;width:auto;min-width:200px;">
+      {% if not current_api_id %}<option value="" selected disabled>{{ tr.notif_api_select_placeholder }}</option>{% endif %}
       {% for api in twitch_apis %}
       <option value="{{ api.id }}" {% if api.id == current_api_id %}selected{% endif %}>{{ api.label }} (ID: {{ api.id }})</option>
       {% endfor %}

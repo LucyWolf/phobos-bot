@@ -2841,7 +2841,21 @@ async def notifications_page(request: Request, guild_id: str, success: str = "",
     current_api_cfg = await db_one(
         "SELECT value FROM guild_configs WHERE guild_id=? AND key='twitch_api_id'", (guild_id,)
     )
-    current_api_id = int(current_api_cfg["value"]) if current_api_cfg else (twitch_apis[0]["id"] if twitch_apis else 0)
+    # Mirror twitch_loop()'s own auto-select rule exactly (cogs/notifications.py): it only
+    # auto-picks an API when exactly one is registered GLOBALLY - with 2+ and nothing
+    # explicitly saved for this guild, the loop skips the guild entirely. Must use the global
+    # count here, not len(twitch_apis) - that list is role-scoped (a moderator may only see
+    # one of several globally-registered APIs), so it alone can't tell whether the cog would
+    # actually auto-select. Getting this wrong would show an API as "selected" in the dropdown
+    # that was never actually saved, while notifications silently never fire.
+    global_api_count = (await db_one("SELECT COUNT(*) AS c FROM twitch_apis"))["c"]
+    if current_api_cfg:
+        current_api_id = int(current_api_cfg["value"])
+    elif global_api_count == 1 and twitch_apis:
+        current_api_id = twitch_apis[0]["id"]
+    else:
+        current_api_id = 0
+    api_unresolved = global_api_count > 1 and not current_api_cfg
     return templates.TemplateResponse("notifications.html", {
         **session(request), "request": request,
         "guilds": await _guild_list(request), "token_set": token_set,
@@ -2850,6 +2864,7 @@ async def notifications_page(request: Request, guild_id: str, success: str = "",
         "channels": channels, "subs": subs,
         "twitch_apis": twitch_apis,
         "current_api_id": current_api_id,
+        "api_unresolved": api_unresolved,
         "twitch_configured": bool(twitch_apis),
         "success": success, "error": error,
     })
