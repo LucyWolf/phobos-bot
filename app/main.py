@@ -947,8 +947,15 @@ _BACKUP_FEATURE_TABLES = [
 # (/servers/{guild_id}/backup/restore) - was previously defined inline inside backup_restore()
 # only, duplicating it for the new per-server path would have let the two drift out of sync.
 _BACKUP_TBL_INSERT = {
+    # A plain "OR IGNORE" never actually triggered here - reaction_roles had no unique index
+    # to ignore against, so restoring the same (or an overlapping) backup more than once
+    # silently piled up duplicate rows every time (confirmed live). database.py now backfills
+    # a UNIQUE(guild_id,message_id,emoji) index (deduplicating any pre-existing rows first) -
+    # this upserts on that instead, matching the semantics of the app-level dedup that
+    # rr_add/rr_remove already apply for a live INSERT/UPDATE (v1.7.6).
     "reaction_roles":
-        "INSERT OR IGNORE INTO reaction_roles (guild_id,channel_id,message_id,emoji,role_id) VALUES (:guild_id,:channel_id,:message_id,:emoji,:role_id)",
+        "INSERT INTO reaction_roles (guild_id,channel_id,message_id,emoji,role_id) VALUES (:guild_id,:channel_id,:message_id,:emoji,:role_id) "
+        "ON CONFLICT(guild_id,message_id,emoji) DO UPDATE SET channel_id=excluded.channel_id, role_id=excluded.role_id",
     "custom_commands":
         "INSERT INTO custom_commands (guild_id,trigger,response) VALUES (:guild_id,:trigger,:response) ON CONFLICT(guild_id,trigger) DO UPDATE SET response=excluded.response",
     "auto_delete_channels":

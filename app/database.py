@@ -422,6 +422,20 @@ async def init_db():
             "ALTER TABLE levels ADD COLUMN voice_xp INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE levels ADD COLUMN voice_level INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE giveaways ADD COLUMN winner_ids TEXT DEFAULT ''",
+            # reaction_roles never had a DB-level uniqueness guarantee on (guild_id,
+            # message_id, emoji) - the application layer (rr_add/rr_remove in main.py) has
+            # deduplicated new inserts since v1.7.6, but backup restore writes directly via
+            # INSERT OR IGNORE with no matching index to ignore against, so restoring the same
+            # (or an overlapping) server backup more than once silently piles up duplicate
+            # rows - confirmed live by actually restoring a test backup twice. Existing
+            # duplicates have to be cleaned up BEFORE the unique index below can even be
+            # created (SQLite refuses to build a unique index over data that already violates
+            # it) - keeps the highest id (most recently inserted/most likely most current) per
+            # group, discards the rest.
+            """DELETE FROM reaction_roles WHERE id NOT IN (
+                SELECT MAX(id) FROM reaction_roles GROUP BY guild_id, message_id, emoji
+            )""",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_reaction_roles_unique ON reaction_roles(guild_id, message_id, emoji)",
         ]:
             try:
                 await db.execute(col)
