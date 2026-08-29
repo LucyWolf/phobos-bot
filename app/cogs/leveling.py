@@ -145,17 +145,31 @@ class Leveling(commands.Cog):
         mode = await get_guild_config(member.guild.id, "leveling_role_mode") or "stack"
         try:
             if mode == "replace":
-                target = eligible[-1]
-                keep_role_id = int(target["role_id"])
-                to_remove = [
-                    r for r in member.roles
-                    if r.id in {int(x["role_id"]) for x in rows} and r.id != keep_role_id
-                ]
-                if to_remove:
-                    await member.remove_roles(*to_remove, reason="Level-Rolle aktualisiert")
-                target_role = member.guild.get_role(keep_role_id)
-                if target_role and target_role not in member.roles:
-                    await member.add_roles(target_role, reason=f"Level {effective_level} erreicht")
+                # eligible[-1] (highest configured level <= effective_level) used to be taken
+                # as the target unconditionally, even if that specific Discord role had since
+                # been deleted (config row left behind, matching how deleted level roles are
+                # already tolerated elsewhere - "stack" mode below skips them the same way).
+                # guild.get_role() then correctly returned None and skipped ADDING it back, but
+                # the removal of the member's other, still-valid level roles happened anyway -
+                # net effect: a member could lose every level role they had and gain nothing,
+                # just because a higher one they'd since qualified for was deleted from Discord.
+                target_role = None
+                for r in reversed(eligible):
+                    candidate = member.guild.get_role(int(r["role_id"]))
+                    if candidate:
+                        target_role = candidate
+                        break
+                if target_role:
+                    to_remove = [
+                        r for r in member.roles
+                        if r.id in {int(x["role_id"]) for x in rows} and r.id != target_role.id
+                    ]
+                    if to_remove:
+                        await member.remove_roles(*to_remove, reason="Level-Rolle aktualisiert")
+                    if target_role not in member.roles:
+                        await member.add_roles(target_role, reason=f"Level {effective_level} erreicht")
+                # If no eligible role resolves to an actual Discord role at all, leave the
+                # member's current roles untouched rather than stripping them for no replacement.
             else:
                 to_add = []
                 for r in eligible:
