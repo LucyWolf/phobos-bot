@@ -248,11 +248,11 @@ document.addEventListener('click', function(e) {
 <input type="hidden" name="tab" value="leveling">
 <div class="card">
   <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
-    <input type="checkbox" name="leveling_enabled" value="1" {% if cfg.get('leveling_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> Leveling aktivieren
+    <input type="checkbox" name="leveling_enabled" value="1" {% if cfg.get('leveling_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> {{ tr.leveling_enabled_label }}
   </label>
-  <label>Level-Up-Kanal <span style="color:var(--muted);font-size:0.75rem">(leer = aktueller Kanal)</span></label>
+  <label>{{ tr.leveling_channel_label }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.leveling_channel_hint }}</span></label>
   <select name="level_channel">
-    <option value="">— Aktueller Kanal —</option>
+    <option value="">{{ tr.leveling_channel_current_option }}</option>
     {% for ch in channels %}<option value="{{ ch.id }}" {% if cfg.get('level_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
   </select>
   <label>{{ tr.leveling_channels_label }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.leveling_channels_hint }}</span></label>
@@ -314,8 +314,8 @@ document.addEventListener('click', function(e) {
       <option value="replace" {% if cfg.get('leveling_role_mode') == 'replace' %}selected{% endif %}>{{ tr.leveling_role_mode_replace }}</option>
     </select>
   </div>
-  <p class="hint">15–25 XP pro Nachricht · 60s Cooldown · Commands: /rank /leaderboard /setxp</p>
-  <button type="submit" class="btn btn-primary">💾 Speichern</button>
+  <p class="hint">{{ tr.leveling_commands_hint }}</p>
+  <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
 </div>
 </form>
 
@@ -431,7 +431,7 @@ renderLvlChannelsList();
   {% if leaderboard %}
   <div class="table-wrap">
     <table>
-      <thead><tr><th>#</th><th>Nutzer</th><th>Chat-Level</th><th>Chat-XP</th><th>Nachrichten</th><th>Voice-Level</th><th>Voice-XP</th><th>Voice-Minuten</th><th></th></tr></thead>
+      <thead><tr><th>{{ tr.leveling_lb_col_rank }}</th><th>{{ tr.leveling_lb_col_user }}</th><th>{{ tr.leveling_lb_col_chat_level }}</th><th>{{ tr.leveling_lb_col_chat_xp }}</th><th>{{ tr.leveling_lb_col_messages }}</th><th>{{ tr.leveling_lb_col_voice_level }}</th><th>{{ tr.leveling_lb_col_voice_xp }}</th><th>{{ tr.leveling_lb_col_voice_minutes }}</th><th></th></tr></thead>
       <tbody>
         {% for e in leaderboard %}
         <tr>
@@ -457,11 +457,11 @@ renderLvlChannelsList();
     </table>
   </div>
   {% else %}
-  <div class="empty-state">🏆 Noch keine XP-Daten vorhanden. Leveling aktivieren und warten!</div>
+  <div class="empty-state">{{ tr.leveling_lb_empty }}</div>
   {% endif %}
 </div>
 {% if cfg.get('leveling_enabled') != '1' %}
-<div class="alert alert-error" style="margin-top:1rem;">Leveling ist deaktiviert – aktiviere es in der Konfiguration.</div>
+<div class="alert alert-error" style="margin-top:1rem;">{{ tr.leveling_disabled_notice }}</div>
 {% endif %}
 </div>
 
