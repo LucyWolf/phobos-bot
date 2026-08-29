@@ -1175,7 +1175,7 @@ function toggleScheduledEdit(id) {
         <div>{% if ev.entity_type.name == 'external' %}📍{% else %}🔊{% endif %} {{ ev.name }}</div>
         {% if ev.description %}<div style="font-size:0.72rem;color:var(--muted);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ ev.description }}</div>{% endif %}
         {% if reminders_for_ev %}
-        <div style="font-size:0.72rem;color:#a78bfa;">⏰ {% for rem in reminders_for_ev %}{{ rem.send_at | replace("T"," ") }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
+        <div style="font-size:0.72rem;color:#a78bfa;">⏰ {% for rem in reminders_for_ev %}{{ rem.send_at_display }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
         {% endif %}
       </td>
       <td style="padding:0.5rem;">
@@ -1200,7 +1200,7 @@ function toggleScheduledEdit(id) {
         <div style="margin-bottom:0.75rem;font-size:0.78rem;color:var(--muted);">
           <div style="font-weight:600;color:var(--text);margin-bottom:0.3rem;">{{ tr.events_reminders_list_title }}</div>
           {% for rem in reminders_for_ev %}
-          <div>⏰ {{ rem.send_at | replace("T"," ") }} — {{ rem.message }}</div>
+          <div>⏰ {{ rem.send_at_display }} — {{ rem.message }}</div>
           {% endfor %}
         </div>
         {% endif %}

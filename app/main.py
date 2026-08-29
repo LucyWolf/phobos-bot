@@ -2521,8 +2521,19 @@ async def _event_reminders_by_event(guild_id) -> dict[str, list[dict]]:
         "SELECT * FROM scheduled_messages WHERE guild_id=? AND sent=0 AND event_id IS NOT NULL ORDER BY send_at",
         (str(guild_id),),
     )
+    berlin_tz = ZoneInfo("Europe/Berlin")
     grouped: dict[str, list[dict]] = {}
     for row in rows:
+        # send_at is always stored as a naive Europe/Berlin wall-clock string (see events_create/
+        # events_edit) - the generic `dt` filter can't be reused for display here since it
+        # assumes UTC for naive values, which would apply the wrong offset. Convert explicitly
+        # to the viewer's own configured dashboard timezone instead of always showing Berlin
+        # time regardless of who's looking.
+        try:
+            send_dt = _aware(datetime.datetime.fromisoformat(row["send_at"]), berlin_tz)
+            row["send_at_display"] = send_dt.astimezone(_request_tz.get()).strftime("%d.%m.%Y %H:%M")
+        except ValueError:
+            row["send_at_display"] = row["send_at"]
         grouped.setdefault(row["event_id"], []).append(row)
     return grouped
 
