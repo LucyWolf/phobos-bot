@@ -5,7 +5,15 @@ import discord
 from discord.ext import commands
 from database import get_guild_config, db_exec, log_mod_action
 
-URL_RE = re.compile(r"https?://\S+|discord\.gg/\S+", re.IGNORECASE)
+# discord.gg/... was the only invite format matched without a http(s):// prefix - Discord
+# invites shared as plain text just as often use discord.com/invite/... or the legacy
+# discordapp.com/invite/..., which slipped straight through the link filter (a message reading
+# "join discord.com/invite/abc123" has no http(s):// and isn't discord.gg, so URL_RE never
+# matched it at all). Deliberately NOT extended to a general bare-domain matcher (e.g. catching
+# "example.com" with no protocol) - that needs a TLD allowlist to avoid false-positiving on
+# ordinary prose (versions, abbreviations, filenames), which is a design decision beyond this
+# specific, unambiguous gap.
+URL_RE = re.compile(r"https?://\S+|discord\.gg/\S+|discord(?:app)?\.com/invite/\S+", re.IGNORECASE)
 
 
 class AutoMod(commands.Cog):
