@@ -44,7 +44,7 @@ except ImportError:
     # bot doesn't need it, only get_system_stats() below (the Bot-Info dashboard page) does.
     psutil = None
 from cogs.tickets import OpenTicketView as _TicketView
-from cogs.leveling import xp_for_level as _xp_for_level
+from cogs.leveling import xp_for_level as _xp_for_level, cumulative_xp_for_level as _cumulative_xp_for_level
 from i18n import get_tr
 import uvicorn
 from discord.ext import commands
@@ -3537,8 +3537,13 @@ async def leaderboard_page(request: Request, guild_id: str = ""):
                 e["username"] = str(m) if m else f"#{e['user_id']}"
                 e["avatar"] = str(m.display_avatar.url) if m else None
                 e["rank"] = i
+                # Closed-form cumulative instead of summing xp_for_level() in a loop - same
+                # O(level) blowup risk cogs.leveling.level_from_xp() had, just here it'd run
+                # once per leaderboard ROW (up to 50) on every page load instead of per XP
+                # grant, and a slow synchronous loop here blocks the whole dashboard's event
+                # loop for everyone, not just the one Discord interaction.
                 needed = _xp_for_level(e["level"], quad, linear, base)
-                in_level = e["xp"] - sum(_xp_for_level(lv, quad, linear, base) for lv in range(e["level"]))
+                in_level = e["xp"] - _cumulative_xp_for_level(e["level"], quad, linear, base)
                 e["xp_needed"] = needed
                 e["xp_in_level"] = in_level
                 e["pct"] = min(int(in_level * 100 / needed), 100) if needed else 0

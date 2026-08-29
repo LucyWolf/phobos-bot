@@ -16,6 +16,18 @@ def xp_for_level(level: int, quad: int = 5, linear: int = 50, base: int = 100) -
     return quad * (level ** 2) + linear * level + base
 
 
+def cumulative_xp_for_level(level: int, quad: int = 5, linear: int = 50, base: int = 100) -> int:
+    # Total XP needed to reach `level` starting from 0 - i.e. sum(xp_for_level(i) for i in
+    # range(level)), but as a closed form (sum of an arithmetic-quadratic series:
+    # quad*sum(i^2) + linear*sum(i) + base*n for i in 0..n-1) instead of an actual loop.
+    # Used by both level_from_xp() below and by /rank + the web leaderboard, which previously
+    # each ran their own O(level) sum() to compute "XP earned within the current level" -
+    # same blowup risk as level_from_xp() had, just one call site instead of every XP grant.
+    if level <= 0:
+        return 0
+    return quad * (level - 1) * level * (2 * level - 1) // 6 + linear * (level - 1) * level // 2 + base * level
+
+
 def level_from_xp(xp: int, quad: int = 5, linear: int = 50, base: int = 100) -> int:
     # Used to repeatedly subtract xp_for_level(level) in a loop, incrementing level by 1 each
     # time - O(level) per call, and this runs on EVERY single XP grant (a message, a minute in
@@ -24,25 +36,19 @@ def level_from_xp(xp: int, quad: int = 5, linear: int = 50, base: int = 100) -> 
     # XP accumulated over months of normal activity, that could reach hundreds of thousands of
     # iterations on every subsequent message from an active member - real, noticeable lag, not
     # just a theoretical worst case.
-    # Cumulative XP needed to reach level n has a closed form (sum of an arithmetic-quadratic
-    # series: quad*sum(i^2) + linear*sum(i) + base*n for i in 0..n-1), so this is now a binary
-    # search over that closed form instead - O(log(xp)) regardless of curve parameters, and
-    # returns the exact same level the old subtraction loop would have.
+    # cumulative_xp_for_level gives the closed form, so this is now a binary search over that
+    # instead - O(log(xp)) regardless of curve parameters, and returns the exact same level the
+    # old subtraction loop would have.
     base = max(1, base)  # guards the same base=quad=linear=0 infinite-loop case the dashboard
                          # already rejects at save time - defense in depth, not a behavior change
                          # for any value that could actually reach here through normal use.
 
-    def cumulative(n: int) -> int:
-        if n <= 0:
-            return 0
-        return quad * (n - 1) * n * (2 * n - 1) // 6 + linear * (n - 1) * n // 2 + base * n
-
     lo, hi = 0, 1
-    while cumulative(hi) <= xp:
+    while cumulative_xp_for_level(hi, quad, linear, base) <= xp:
         hi *= 2
     while lo < hi:
         mid = (lo + hi + 1) // 2
-        if cumulative(mid) <= xp:
+        if cumulative_xp_for_level(mid, quad, linear, base) <= xp:
             lo = mid
         else:
             hi = mid - 1
@@ -289,9 +295,9 @@ class Leveling(commands.Cog):
         tquad, tlinear, tbase = await self._get_curve(interaction.guild_id, "text")
         vquad, vlinear, vbase = await self._get_curve(interaction.guild_id, "voice")
         text_needed = xp_for_level(row["level"], tquad, tlinear, tbase)
-        text_in_level = row["xp"] - sum(xp_for_level(i, tquad, tlinear, tbase) for i in range(row["level"]))
+        text_in_level = row["xp"] - cumulative_xp_for_level(row["level"], tquad, tlinear, tbase)
         voice_needed = xp_for_level(row["voice_level"], vquad, vlinear, vbase)
-        voice_in_level = row["voice_xp"] - sum(xp_for_level(i, vquad, vlinear, vbase) for i in range(row["voice_level"]))
+        voice_in_level = row["voice_xp"] - cumulative_xp_for_level(row["voice_level"], vquad, vlinear, vbase)
         embed = discord.Embed(title=f"Rang von {member.display_name}", color=0x7c3aed)
         embed.add_field(name="Chat-Level", value=str(row["level"]))
         embed.add_field(name="Chat-XP", value=f"{text_in_level} / {text_needed}")
