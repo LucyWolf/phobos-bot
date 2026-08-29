@@ -858,7 +858,7 @@ function togglePanelEdit(id) {
 <div class="tab-pane" id="pane-users">
 {% if role == 'admin' %}
 <div class="card">
-  <p class="hint" style="margin-bottom:1rem;">Admins haben automatisch Zugriff auf alle Server. Moderatoren müssen explizit freigegeben werden.</p>
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.server_users_hint }}</p>
   {% for u in all_users %}
   <div style="display:flex;align-items:center;gap:0.75rem;padding:0.65rem 0;border-bottom:1px solid var(--border);">
     <div style="flex:1;">
@@ -866,21 +866,21 @@ function togglePanelEdit(id) {
       <span class="badge badge-{{ u.role }}" style="margin-left:0.5rem;font-size:0.72rem;">{{ u.role }}</span>
     </div>
     {% if u.role == 'admin' %}
-    <span style="color:var(--muted);font-size:0.8rem;">Globaler Zugriff</span>
+    <span style="color:var(--muted);font-size:0.8rem;">{{ tr.server_users_global_access }}</span>
     {% elif u.id in server_perms %}
     <form method="post" action="/servers/{{ guild.id }}/users/{{ u.id }}/revoke" style="margin:0;">
-      <button type="submit" class="btn" style="background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.25);font-size:0.78rem;padding:0.25rem 0.7rem;">✓ Zugriff entziehen</button>
+      <button type="submit" class="btn" style="background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.25);font-size:0.78rem;padding:0.25rem 0.7rem;">{{ tr.server_users_revoke }}</button>
     </form>
     {% else %}
     <form method="post" action="/servers/{{ guild.id }}/users/{{ u.id }}/grant" style="margin:0;">
-      <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;padding:0.25rem 0.7rem;">+ Zugriff gewähren</button>
+      <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;padding:0.25rem 0.7rem;">{{ tr.server_users_grant }}</button>
     </form>
     {% endif %}
   </div>
   {% endfor %}
 </div>
 {% else %}
-<div class="empty-state">Nur Admins können Serverzugriff verwalten.</div>
+<div class="empty-state">{{ tr.server_users_admin_only }}</div>
 {% endif %}
 </div>
 

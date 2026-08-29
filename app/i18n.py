@@ -309,6 +309,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "tempvoice_var_count":       "Mitglieder auf dem Server",
         "tempvoice_example":         "Beispiel:",
         "tempvoice_example_template": "🎮 {user}'s Raum #{number}",
+        # Server-Nutzerzugriff
+        "server_users_hint":         "Admins haben automatisch Zugriff auf alle Server. Moderatoren müssen explizit freigegeben werden.",
+        "server_users_global_access": "Globaler Zugriff",
+        "server_users_revoke":       "✓ Zugriff entziehen",
+        "server_users_grant":        "+ Zugriff gewähren",
+        "server_users_admin_only":   "Nur Admins können Serverzugriff verwalten.",
         # Spam-Schutz / Auto-Mod
         "automod_info_tooltip":       "Was ist das?",
         "automod_info_title":         "Wie funktionieren Kategorien?",
@@ -675,6 +681,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "tempvoice_var_count":       "Members on the server",
         "tempvoice_example":         "Example:",
         "tempvoice_example_template": "🎮 {user}'s Room #{number}",
+        # Server User Access
+        "server_users_hint":         "Admins automatically have access to every server. Moderators need to be explicitly granted access.",
+        "server_users_global_access": "Global access",
+        "server_users_revoke":       "✓ Revoke access",
+        "server_users_grant":        "+ Grant access",
+        "server_users_admin_only":   "Only admins can manage server access.",
         # Spam Protection / Auto-Mod
         "automod_info_tooltip":       "What is this?",
         "automod_info_title":         "How do categories work?",
