@@ -21,7 +21,13 @@ class Scheduler(commands.Cog):
 
     @tasks.loop(minutes=1)
     async def _check(self):
-        now = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M")
+        # main.py's events_create/events_edit always normalize event reminder/announcement
+        # send_at values to Europe/Berlin wall-clock time before storing (see berlin_tz there).
+        # Comparing against a naive datetime.now() only happened to work because the reference
+        # docker-compose.yml sets TZ=Europe/Berlin - on any deployment where the container's
+        # system timezone differs (a real risk given self-hosting by others, e.g. the planned
+        # hosting product), reminders/announcements would fire at a systematically wrong time.
+        now = datetime.datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%dT%H:%M")
         rows = await db_rows(
             "SELECT * FROM scheduled_messages WHERE sent=0 AND send_at <= ?", (now,)
         )
