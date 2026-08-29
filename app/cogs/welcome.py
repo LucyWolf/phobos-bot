@@ -35,7 +35,11 @@ async def _make_card(member: discord.Member, circle_color: str, text_color: str,
     from PIL import Image, ImageDraw
 
     avatar_url = str(member.display_avatar.replace(format="png", size=256))
-    async with aiohttp.ClientSession() as session:
+    # Every other external HTTP call in this project (notifications.py, freestuff.py) sets an
+    # explicit timeout=10 - this one didn't, so a slow/unresponsive Discord CDN response could
+    # hang this specific join's card generation for aiohttp's much longer default before the
+    # caller's try/except finally falls back to a plain embed.
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
         async with session.get(avatar_url) as resp:
             avatar_bytes = await resp.read()
 
