@@ -146,7 +146,11 @@ class Logging(commands.Cog):
                 embed.add_field(name="Bis", value=discord.utils.format_dt(after.timed_out_until, "f"))
                 plain = f"{after.display_name} · bis {after.timed_out_until.strftime('%d.%m.%Y %H:%M')}"
             else:
-                embed = discord.Embed(title="⏱️ Timeout aufgehoben", color=0x22c55e)
+                # Different icon than "Timeout verhängt" on purpose - same pairing pattern as
+                # 🔨/✅ (ban/unban) and 💎/💔 (boost/unboost), so the dashboard's bar-color
+                # lookup (_log_bar_class in main.py, keyed purely on the icon since the embed's
+                # actual color isn't persisted to the DB) can tell the two apart too.
+                embed = discord.Embed(title="✅ Timeout aufgehoben", color=0x22c55e)
                 embed.set_author(name=str(after), icon_url=after.display_avatar.url)
                 embed.add_field(name="Nutzer", value=after.mention)
                 plain = after.display_name
