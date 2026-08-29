@@ -4439,6 +4439,10 @@ async def giveaway_start_web(
         return RedirectResponse(
             f"/servers/{guild_id}?tab=giveaways&error=Dauer+muss+mindestens+1+Minute+sein", status_code=302
         )
+    if len(prize) > 240:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=giveaways&error=Preis+darf+max.+240+Zeichen+lang+sein", status_code=302
+        )
     try:
         channel = bot.get_channel(int(channel_id))
     except (ValueError, TypeError):

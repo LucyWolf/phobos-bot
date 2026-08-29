@@ -55,8 +55,15 @@ class Scheduler(commands.Cog):
                 else:
                     await ch.send(row["message"])
                 await db_exec("UPDATE scheduled_messages SET sent=1 WHERE id=?", (row["id"],))
-            except Exception:
-                pass
+            except Exception as e:
+                # Unlike `if not ch: continue` above (which can legitimately mean another bot
+                # instance owns this channel in a multi-bot setup), reaching this point means
+                # THIS instance did resolve the channel - a failure here is a real, likely
+                # persistent problem (missing "Send Messages" permission, etc.). Without this
+                # log the row just silently retries every single minute forever with zero
+                # visibility for the admin, unlike every other retry-on-failure path in the
+                # project (auto_delete.py, notifications.py) which all print on failure.
+                print(f"[Scheduler] failed to send scheduled message {row['id']} to channel {row['channel_id']}: {e!r}")
 
     async def _build_event_embed(self, row):
         """Returns (embed, event_gone). event_gone=True means the event was confirmed deleted

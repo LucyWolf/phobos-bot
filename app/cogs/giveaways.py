@@ -135,6 +135,14 @@ class Giveaways(commands.Cog):
         if duration_minutes < 1:
             await interaction.response.send_message("Dauer muss mindestens 1 Minute sein.", ephemeral=True)
             return
+        if len(prize) > 240:
+            # The prize goes straight into the embed title ("🎉 GIVEAWAY: {prize}"), which
+            # Discord hard-caps at 256 characters - unlike winners/duration above, nothing
+            # catches the resulting HTTPException from the send() below, and interaction.
+            # response.defer() was about to be called, so a failure here would leave the
+            # interaction stuck "thinking..." forever instead of showing any error.
+            await interaction.response.send_message("Preis darf max. 240 Zeichen lang sein.", ephemeral=True)
+            return
         ends_at = datetime.datetime.utcnow() + datetime.timedelta(minutes=duration_minutes)
         embed = discord.Embed(
             title=f"🎉 GIVEAWAY: {prize}",

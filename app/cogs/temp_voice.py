@@ -3,9 +3,17 @@ import discord
 from discord.ext import commands
 from database import db_rows, db_exec, db_one
 
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from pytz import timezone as ZoneInfo
+
 
 def _apply_template(tpl: str, member: discord.Member, channel_number: int) -> str:
-    now = datetime.datetime.now()
+    # A naive now() only happens to show the right {date}/{time} because the reference
+    # docker-compose.yml sets TZ=Europe/Berlin - same underlying assumption already fixed for
+    # scheduler.py/birthday.py, here it's cosmetic (a channel name) rather than a scheduling bug.
+    now = datetime.datetime.now(ZoneInfo("Europe/Berlin"))
     return (
         tpl
         .replace("{user}",    member.display_name)
@@ -52,7 +60,13 @@ class TempVoice(commands.Cog):
                 existing = await db_rows(
                     "SELECT channel_id FROM temp_voice_active WHERE guild_id=?", (str(guild.id),)
                 )
-                name = _apply_template(tpl, member, len(existing) + 1)
+                # A short-looking template can still expand past Discord's 100-char channel
+                # name limit once {user}/{name}/{count} are substituted (a long display name,
+                # a large member count, ...) - the admin only controls the template, not the
+                # final length, and create_voice_channel() would otherwise fail with an
+                # HTTPException that the broad except below swallows silently, leaving this
+                # member without a temp channel and no explanation.
+                name = _apply_template(tpl, member, len(existing) + 1)[:100]
                 limit = int(cfg["user_limit"] or 0)
                 category = (
                     guild.get_channel(int(cfg["category_id"]))
