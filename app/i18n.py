@@ -257,7 +257,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "events_info_reminder_example": "Zusätzlich zur automatischen Start-Meldung, z.B. Min. vorher: 10, Text: „Los geht's gleich!“ — landen im Ankündigungskanal, auch im Tab „Geplant“ editierbar.",
         "events_info_footer":         "Bei „Ohne Kanal“ verlangt Discord immer ein Enddatum. Lässt du den Ort leer, wird automatisch der Servername eingetragen. Solange ein Event noch nicht gestartet ist (Status „Geplant“), kannst du es über ✎ nachträglich bearbeiten — danach nur noch löschen.",
         # Auto-Delete
-        "autodelete_title":           "🗑️ Auto-Delete Kanäle",
         "autodelete_hint":            "Nachrichten in diesen Kanälen werden automatisch nach der eingestellten Zeit gelöscht.",
         "autodelete_info_tooltip":    "Was ist das?",
         "autodelete_info_title":      "Wie funktioniert Auto-Delete?",
@@ -592,7 +591,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "events_info_reminder_example": "In addition to the automatic start message, e.g. min. before: 10, text: \"Starting soon!\" — posted to the announcement channel, also editable in the \"Scheduled\" tab.",
         "events_info_footer":         "For \"No channel\" events, Discord always requires an end date. If you leave the location empty, the server name is used automatically. As long as an event hasn't started yet (status \"Scheduled\"), you can edit it via ✎ — afterwards it can only be deleted.",
         # Auto-Delete
-        "autodelete_title":           "🗑️ Auto-Delete Channels",
         "autodelete_hint":            "Messages in these channels are automatically deleted after the configured time.",
         "autodelete_info_tooltip":    "What is this?",
         "autodelete_info_title":      "How does Auto-Delete work?",
