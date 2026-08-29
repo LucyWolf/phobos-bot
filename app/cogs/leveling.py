@@ -294,10 +294,16 @@ class Leveling(commands.Cog):
             return
         tquad, tlinear, tbase = await self._get_curve(interaction.guild_id, "text")
         vquad, vlinear, vbase = await self._get_curve(interaction.guild_id, "voice")
+        # The stored level only gets recomputed against the CURRENT curve on the member's next
+        # XP grant - if an admin makes the curve harder in the meantime, cumulative_xp_for_level
+        # (evaluated with the new curve) can exceed the XP actually earned under the old one,
+        # which would show as a confusing negative "XP in this level" until that next grant
+        # catches up. Clamped to 0 rather than trying to eagerly resync every member's stored
+        # level here, which would be a bigger behavior change than this display fix calls for.
         text_needed = xp_for_level(row["level"], tquad, tlinear, tbase)
-        text_in_level = row["xp"] - cumulative_xp_for_level(row["level"], tquad, tlinear, tbase)
+        text_in_level = max(0, row["xp"] - cumulative_xp_for_level(row["level"], tquad, tlinear, tbase))
         voice_needed = xp_for_level(row["voice_level"], vquad, vlinear, vbase)
-        voice_in_level = row["voice_xp"] - cumulative_xp_for_level(row["voice_level"], vquad, vlinear, vbase)
+        voice_in_level = max(0, row["voice_xp"] - cumulative_xp_for_level(row["voice_level"], vquad, vlinear, vbase))
         embed = discord.Embed(title=f"Rang von {member.display_name}", color=0x7c3aed)
         embed.add_field(name="Chat-Level", value=str(row["level"]))
         embed.add_field(name="Chat-XP", value=f"{text_in_level} / {text_needed}")

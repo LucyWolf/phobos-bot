@@ -3543,7 +3543,10 @@ async def leaderboard_page(request: Request, guild_id: str = ""):
                 # grant, and a slow synchronous loop here blocks the whole dashboard's event
                 # loop for everyone, not just the one Discord interaction.
                 needed = _xp_for_level(e["level"], quad, linear, base)
-                in_level = e["xp"] - _cumulative_xp_for_level(e["level"], quad, linear, base)
+                # Clamped to 0 - the stored level only catches up to a curve change on the
+                # member's next XP grant, so right after an admin makes the curve harder this
+                # can briefly go negative for members who leveled up under the old curve.
+                in_level = max(0, e["xp"] - _cumulative_xp_for_level(e["level"], quad, linear, base))
                 e["xp_needed"] = needed
                 e["xp_in_level"] = in_level
                 e["pct"] = min(int(in_level * 100 / needed), 100) if needed else 0
