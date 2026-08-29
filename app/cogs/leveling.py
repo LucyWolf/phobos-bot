@@ -17,11 +17,36 @@ def xp_for_level(level: int, quad: int = 5, linear: int = 50, base: int = 100) -
 
 
 def level_from_xp(xp: int, quad: int = 5, linear: int = 50, base: int = 100) -> int:
-    level = 0
-    while xp >= xp_for_level(level, quad, linear, base):
-        xp -= xp_for_level(level, quad, linear, base)
-        level += 1
-    return level
+    # Used to repeatedly subtract xp_for_level(level) in a loop, incrementing level by 1 each
+    # time - O(level) per call, and this runs on EVERY single XP grant (a message, a minute in
+    # voice), synchronously on the bot's one event loop. With a low-cost curve (e.g. base=1,
+    # quad=linear=0 - a valid, dashboard-allowed "many small levels" configuration) and enough
+    # XP accumulated over months of normal activity, that could reach hundreds of thousands of
+    # iterations on every subsequent message from an active member - real, noticeable lag, not
+    # just a theoretical worst case.
+    # Cumulative XP needed to reach level n has a closed form (sum of an arithmetic-quadratic
+    # series: quad*sum(i^2) + linear*sum(i) + base*n for i in 0..n-1), so this is now a binary
+    # search over that closed form instead - O(log(xp)) regardless of curve parameters, and
+    # returns the exact same level the old subtraction loop would have.
+    base = max(1, base)  # guards the same base=quad=linear=0 infinite-loop case the dashboard
+                         # already rejects at save time - defense in depth, not a behavior change
+                         # for any value that could actually reach here through normal use.
+
+    def cumulative(n: int) -> int:
+        if n <= 0:
+            return 0
+        return quad * (n - 1) * n * (2 * n - 1) // 6 + linear * (n - 1) * n // 2 + base * n
+
+    lo, hi = 0, 1
+    while cumulative(hi) <= xp:
+        hi *= 2
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if cumulative(mid) <= xp:
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
 
 
 class Leveling(commands.Cog):
@@ -186,6 +211,13 @@ class Leveling(commands.Cog):
                 except ValueError:
                     xp_gain = 5
                 for vc in guild.voice_channels:
+                    if guild.afk_channel and vc.id == guild.afk_channel.id:
+                        # Long-deferred from when voice XP was first introduced ("afk kommt
+                        # noch") - anyone in the server's designated AFK channel isn't actually
+                        # participating, just parked there (often muted/deafened by Discord's
+                        # own AFK-channel behavior), so it shouldn't earn XP like a real voice
+                        # channel would.
+                        continue
                     for member in vc.members:
                         if member.bot:
                             continue
