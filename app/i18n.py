@@ -43,6 +43,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "label_password":     "Passwort",
         "label_email":        "E-Mail",
         "label_token":        "Token",
+        "label_avatar":       "Avatar",
         "saved_ok":           "Gespeichert.",
         "no_access":          "Du hast keinen Zugriff auf diesen Bereich.",
         # Tokens
@@ -287,6 +288,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "birthday_list_title": "🎂 Eingetragene Geburtstage",
         "birthday_col_user":  "Nutzer",
         "birthday_col_date":  "Datum",
+        "birthday_info_tooltip": "Was ist das?",
+        "birthday_info_title": "🎂 Wie funktionieren Geburtstage?",
+        "birthday_info_item_set": "Eintragen/ändern per !geburtstag TT.MM im Chat — ein erneuter Aufruf überschreibt das alte Datum.",
+        "birthday_info_item_delete": "Löschen per !geburtstag löschen (auch entfernen/delete/remove) im Chat.",
+        "birthday_info_item_placeholder": "In der Glückwunsch-Nachricht wird {user} durch eine Erwähnung des Mitglieds ersetzt.",
+        "birthday_info_item_channel": "Ohne gesetzten Geburtstags-Kanal wird nichts verschickt, auch wenn Geburtstage eingetragen sind.",
         # Temp-Voice
         "tempvoice_hint":            "Wenn ein Nutzer den Trigger-Kanal betritt, erstellt der Bot automatisch einen neuen Voice-Kanal. Sobald alle den Kanal verlassen, wird er wieder gelöscht.",
         "tempvoice_col_trigger":     "Trigger-Kanal",
@@ -334,6 +341,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "config_card_text_label":     "Text-Farbe (WELCOME)",
         "config_card_username_label": "Username-Farbe",
         "config_card_preview_hint":   "Das Bild zeigt: Avatar des Mitglieds, WELCOME-Text, Username und Mitglieder-Nummer.",
+        # Geplante Nachrichten
+        "scheduled_hint":             "Nachrichten werden automatisch zum gewählten Zeitpunkt in den Kanal gesendet.",
+        "scheduled_col_time":         "Zeitpunkt",
+        "scheduled_channel_placeholder": "— Kanal wählen —",
+        "scheduled_message_placeholder": "Nachrichtentext…",
+        "scheduled_btn_add":          "📅 Planen",
         # Spam-Schutz / Auto-Mod
         "automod_info_tooltip":       "Was ist das?",
         "automod_info_title":         "Wie funktionieren Kategorien?",
@@ -571,6 +584,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "label_password":     "Password",
         "label_email":        "E-Mail",
         "label_token":        "Token",
+        "label_avatar":       "Avatar",
         "saved_ok":           "Saved.",
         "no_access":          "You don't have access to this area.",
         # Tokens
@@ -815,6 +829,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "birthday_list_title": "🎂 Registered birthdays",
         "birthday_col_user":  "User",
         "birthday_col_date":  "Date",
+        "birthday_info_tooltip": "What is this?",
+        "birthday_info_title": "🎂 How do birthdays work?",
+        "birthday_info_item_set": "Set/change with !geburtstag DD.MM in chat — calling it again overwrites the old date.",
+        "birthday_info_item_delete": "Delete with !geburtstag löschen (also entfernen/delete/remove) in chat.",
+        "birthday_info_item_placeholder": "In the congratulations message, {user} is replaced with a mention of the member.",
+        "birthday_info_item_channel": "Without a configured birthday channel, nothing gets sent, even if birthdays are on file.",
         # Temp-Voice
         "tempvoice_hint":            "When a user joins the trigger channel, the bot automatically creates a new voice channel. Once everyone leaves it, it's deleted again.",
         "tempvoice_col_trigger":     "Trigger Channel",
@@ -862,6 +882,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "config_card_text_label":     "Text Color (WELCOME)",
         "config_card_username_label": "Username Color",
         "config_card_preview_hint":   "The image shows: the member's avatar, WELCOME text, username, and member number.",
+        # Scheduled Messages
+        "scheduled_hint":             "Messages are sent to the channel automatically at the chosen time.",
+        "scheduled_col_time":         "Time",
+        "scheduled_channel_placeholder": "— Select channel —",
+        "scheduled_message_placeholder": "Message text…",
+        "scheduled_btn_add":          "📅 Schedule",
         # Spam Protection / Auto-Mod
         "automod_info_tooltip":       "What is this?",
         "automod_info_title":         "How do categories work?",

@@ -60,7 +60,7 @@ PROCESS_START = datetime.datetime.utcnow()
 from database import (
     DB_PATH, init_db, get_config, set_config,
     get_guild_config, set_guild_config, get_all_guild_config,
-    db_rows, db_one, db_exec, db_insert, log_mod_action,
+    db_rows, db_one, db_exec, db_exec_rowcount, db_insert, log_mod_action,
 )
 import totp
 
@@ -1716,8 +1716,7 @@ async def bot_design_save(
         else:
             return RedirectResponse(f"{redirect_base}&error=Keine+Änderungen", status_code=302)
     except discord.HTTPException as e:
-        msg = str(e)[:80].replace(" ", "+")
-        return RedirectResponse(f"{redirect_base}&error={msg}", status_code=302)
+        return RedirectResponse(f"{redirect_base}&error={urllib.parse.quote(str(e)[:80])}", status_code=302)
     return RedirectResponse(f"{redirect_base}&success=Gespeichert", status_code=302)
 
 
@@ -2525,10 +2524,18 @@ async def scheduled_edit(request: Request, guild_id: str, msg_id: int):
                 send_at = send_dt.astimezone(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%dT%H:%M")
             except ValueError:
                 return RedirectResponse(f"/servers/{guild_id}?tab=scheduled&error=Ungültiger+Zeitpunkt", status_code=302)
-        await db_exec(
+        updated = await db_exec_rowcount(
             "UPDATE scheduled_messages SET channel_id=?, message=?, send_at=? WHERE id=? AND guild_id=? AND sent=0",
             (channel_id, message, send_at, msg_id, guild_id),
         )
+        if not updated:
+            # The AND sent=0 guard means this silently affects 0 rows if the scheduler's own
+            # 1-minute tick already sent this message in the time between the admin loading the
+            # edit form and submitting it - a real, if narrow, race (not just a raw-POST edge
+            # case) for anything scheduled to fire soon. Previously showed "Gespeichert" anyway,
+            # implying the edit took effect when the message had already gone out with the OLD
+            # content/time.
+            return RedirectResponse(f"/servers/{guild_id}?tab=scheduled&error=Nachricht+wurde+bereits+gesendet", status_code=302)
     return RedirectResponse(f"/servers/{guild_id}?tab=scheduled&success=Gespeichert", status_code=302)
 
 @web.post("/servers/{guild_id}/scheduled/delete/{msg_id}")

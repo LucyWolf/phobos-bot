@@ -1194,15 +1194,15 @@ function toggleTempvoiceEdit(id) {
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-scheduled">
 <div class="card">
-  <p class="hint" style="margin-bottom:1rem;">Nachrichten werden automatisch zum gewählten Zeitpunkt in den Kanal gesendet.</p>
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.scheduled_hint }}</p>
 
   {% if scheduled_messages %}
   <table style="width:100%;border-collapse:collapse;margin-bottom:1.25rem;">
     <thead>
       <tr style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;">
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Zeitpunkt</th>
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Kanal</th>
-        <th style="text-align:left;padding:0.4rem 0.5rem;">Nachricht</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.scheduled_col_time }}</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.label_channel }}</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.label_message }}</th>
         <th style="padding:0.4rem 0.5rem;"></th>
       </tr>
     </thead>
@@ -1225,17 +1225,17 @@ function toggleTempvoiceEdit(id) {
         <form method="post" action="/servers/{{ guild.id }}/scheduled/edit/{{ sm.id }}">
           <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
             <div>
-              <label style="font-size:0.82rem;">Kanal</label>
+              <label style="font-size:0.82rem;">{{ tr.label_channel }}</label>
               <select name="channel_id" required style="margin-bottom:0;">
                 {% for c in channels %}<option value="{{ c.id }}" {% if c.id == sm.channel_id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
               </select>
             </div>
             <div>
-              <label style="font-size:0.82rem;">Zeitpunkt</label>
+              <label style="font-size:0.82rem;">{{ tr.scheduled_col_time }}</label>
               <input type="datetime-local" name="send_at" value="{{ sm.send_at_edit or sm.send_at }}" required style="margin-bottom:0;">
             </div>
           </div>
-          <label style="font-size:0.82rem;">Nachricht</label>
+          <label style="font-size:0.82rem;">{{ tr.label_message }}</label>
           <textarea name="message" rows="4" required
                     style="margin-bottom:0.75rem;width:100%;box-sizing:border-box;
                            background:var(--bg);color:var(--text);border:1px solid var(--border);
@@ -1244,7 +1244,7 @@ function toggleTempvoiceEdit(id) {
                            transition:border-color 0.15s;outline:none;"
                     onfocus="this.style.borderColor='var(--accent)'"
                     onblur="this.style.borderColor='var(--border)'">{{ sm.message }}</textarea>
-          <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">💾 Speichern</button>
+          <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
         </form>
       </td>
     </tr>
@@ -1256,19 +1256,19 @@ function toggleTempvoiceEdit(id) {
   <form method="post" action="/servers/{{ guild.id }}/scheduled/add">
     <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
       <div>
-        <label style="font-size:0.82rem;">Kanal</label>
+        <label style="font-size:0.82rem;">{{ tr.label_channel }}</label>
         <select name="channel_id" required>
-          <option value="">— Kanal wählen —</option>
+          <option value="">{{ tr.scheduled_channel_placeholder }}</option>
           {% for c in channels %}<option value="{{ c.id }}">#{{ c.name }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label style="font-size:0.82rem;">Zeitpunkt</label>
+        <label style="font-size:0.82rem;">{{ tr.scheduled_col_time }}</label>
         <input type="datetime-local" name="send_at" required>
       </div>
     </div>
-    <label style="font-size:0.82rem;">Nachricht</label>
-    <textarea name="message" rows="4" placeholder="Nachrichtentext…" required
+    <label style="font-size:0.82rem;">{{ tr.label_message }}</label>
+    <textarea name="message" rows="4" placeholder="{{ tr.scheduled_message_placeholder }}" required
               style="margin-bottom:0.75rem;width:100%;box-sizing:border-box;
                      background:var(--bg);color:var(--text);border:1px solid var(--border);
                      border-radius:0.5rem;padding:0.65rem 0.75rem;font-size:0.88rem;
@@ -1276,7 +1276,7 @@ function toggleTempvoiceEdit(id) {
                      transition:border-color 0.15s;outline:none;"
               onfocus="this.style.borderColor='var(--accent)'"
               onblur="this.style.borderColor='var(--border)'"></textarea>
-    <button type="submit" class="btn btn-primary">📅 Planen</button>
+    <button type="submit" class="btn btn-primary">{{ tr.scheduled_btn_add }}</button>
   </form>
 </div>
 </div>
@@ -1565,6 +1565,23 @@ document.addEventListener('click', function(e) {
 <!-- TAB: Geburtstage                                                     -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-birthday">
+
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="toggleBirthdayInfo()" title="{{ tr.birthday_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="bday-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:300px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.birthday_info_title }}</div>
+    <ul style="margin:0 0 0 1.1rem;padding:0;color:var(--muted);line-height:1.6;">
+      <li>{{ tr.birthday_info_item_set }}</li>
+      <li>{{ tr.birthday_info_item_delete }}</li>
+      <li>{{ tr.birthday_info_item_placeholder }}</li>
+      <li>{{ tr.birthday_info_item_channel }}</li>
+    </ul>
+  </div>
+</div>
+
 <form method="post" action="/servers/{{ guild.id }}">
 <input type="hidden" name="tab" value="birthday">
 <div class="card">
@@ -1610,6 +1627,19 @@ document.addEventListener('click', function(e) {
 </div>
 {% endif %}
 </div>
+
+<script>
+function toggleBirthdayInfo() {
+  const box = document.getElementById('bday-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('bday-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleBirthdayInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+</script>
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <!-- TAB: Auto-Delete                                                     -->

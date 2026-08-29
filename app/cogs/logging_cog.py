@@ -47,7 +47,10 @@ class Logging(commands.Cog):
         channel_id = await get_guild_config(guild_id, "log_channel")
         if not channel_id:
             return
-        channel = self.bot.get_channel(int(channel_id))
+        try:
+            channel = self.bot.get_channel(int(channel_id))
+        except (ValueError, TypeError):
+            channel = None
         if channel:
             try:
                 await channel.send(embed=embed)

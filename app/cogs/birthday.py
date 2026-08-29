@@ -3,6 +3,11 @@ import discord
 from discord.ext import commands, tasks
 from database import db_rows, db_exec, db_exec_rowcount, get_guild_config
 
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from pytz import timezone as ZoneInfo
+
 
 class Birthday(commands.Cog):
     def __init__(self, bot):
@@ -14,7 +19,11 @@ class Birthday(commands.Cog):
 
     @tasks.loop(minutes=30)
     async def _check(self):
-        now = datetime.datetime.now()
+        # Comparing against a naive datetime.now() only happened to work because the reference
+        # docker-compose.yml sets TZ=Europe/Berlin; a container running under a different
+        # timezone (e.g. a hosted customer's own deployment) would fire this at the wrong
+        # local hour and could miscompute "today" near a midnight boundary.
+        now = datetime.datetime.now(ZoneInfo("Europe/Berlin"))
         # Only run between 08:00 and 08:29
         if now.hour != 8:
             return
