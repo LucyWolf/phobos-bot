@@ -753,6 +753,21 @@ function togglePanelEdit(id) {
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-giveaways">
 
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="toggleGiveawaysInfo()" title="{{ tr.giveaways_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="giveaways-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:300px;max-width:400px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.giveaways_info_title }}</div>
+    <ul style="margin:0 0 0 1.1rem;padding:0;color:var(--muted);line-height:1.6;">
+      <li>{{ tr.giveaways_info_item_start }}</li>
+      <li>{{ tr.giveaways_info_item_end }}</li>
+      <li>{{ tr.giveaways_info_item_reroll }}</li>
+    </ul>
+  </div>
+</div>
+
 {% if ga_list %}
 <div class="section-label" style="margin-bottom:0.6rem;">{{ tr.giveaways_active_title }}</div>
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem;">
@@ -812,6 +827,18 @@ function togglePanelEdit(id) {
   </form>
 </div>
 </div>
+<script>
+function toggleGiveawaysInfo() {
+  const box = document.getElementById('giveaways-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('giveaways-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleGiveawaysInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+</script>
 
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
