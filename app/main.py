@@ -935,6 +935,11 @@ _BACKUP_FEATURE_TABLES = [
     "reaction_roles", "custom_commands", "auto_delete_channels",
     "temp_voice_config", "notifications", "freestuff_channels",
     "birthdays", "warnings", "ticket_panels",
+    # Added later than the others - level_roles/level_rewards/automod_word_presets predate
+    # ticket_panels being added to this list (v1.7.0) but were never added themselves, meaning
+    # a full backup+restore silently dropped every configured level role, level reward, and
+    # custom Auto-Mod word-list category with no indication anything was lost.
+    "level_roles", "level_rewards", "automod_word_presets",
 ]
 
 
@@ -1150,6 +1155,7 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
             restored.append("Server-Konfiguration")
 
         # 7. Feature tables
+        _restored_presets_guilds: set = set()
         _tbl_insert = {
             "reaction_roles":
                 "INSERT OR IGNORE INTO reaction_roles (guild_id,channel_id,message_id,emoji,role_id) VALUES (:guild_id,:channel_id,:message_id,:emoji,:role_id)",
@@ -1178,6 +1184,12 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
             # that was never actually re-created.
             "ticket_panels":
                 "INSERT INTO ticket_panels (guild_id,name,description,button_label,emoji,support_role_id,category_id) VALUES (:guild_id,:name,:description,:button_label,:emoji,:support_role_id,:category_id)",
+            "level_roles":
+                "INSERT OR IGNORE INTO level_roles (guild_id,level,role_id) VALUES (:guild_id,:level,:role_id)",
+            "level_rewards":
+                "INSERT OR IGNORE INTO level_rewards (guild_id,level,reward) VALUES (:guild_id,:level,:reward)",
+            "automod_word_presets":
+                "INSERT INTO automod_word_presets (guild_id,label,words) VALUES (:guild_id,:label,:words)",
         }
         for tbl, sql in _tbl_insert.items():
             rows = data.get(tbl, [])
@@ -1188,6 +1200,8 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
                     pass
             if rows:
                 restored.append(tbl.replace("_", " ").title())
+            if tbl == "automod_word_presets" and rows:
+                _restored_presets_guilds.update(row["guild_id"] for row in rows)
 
         # 8. Global config (full backup only, skip sensitive keys)
         _skip_cfg = {"discord_token", "smtp_pass", "secret_key"}
@@ -1210,6 +1224,15 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
     if "auto_delete_channels" in data:
         await _reload_auto_delete()
 
+    # Run after the restore transaction above has committed (set_guild_config opens its own
+    # connection and commits independently - calling it from inside the still-open `db` block
+    # would race against that uncommitted transaction). Without this, a guild that's never
+    # opened its Auto-Mod tab before would get the 4 hardcoded starter presets seeded alongside
+    # these just-restored ones the first time an admin visits it - server_config()'s seeding
+    # check only looks at whether this flag is set, not whether the table already has rows.
+    for gid in _restored_presets_guilds:
+        await set_guild_config(int(gid), "automod_presets_seeded", "1")
+
     summary = ", ".join(restored) if restored else "Nichts"
     return RedirectResponse(
         f"/users?success=Backup+eingespielt:+{urllib.parse.quote(summary)}", status_code=302
@@ -1220,7 +1243,13 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
 
 async def _send_reset_email(to_addr: str, reset_url: str):
     host = await get_config("smtp_host") or ""
-    port = int(await get_config("smtp_port") or 587)
+    try:
+        port = int(await get_config("smtp_port") or 587)
+    except (ValueError, TypeError):
+        # smtp_settings_save validates this now, but a value saved before that guard existed
+        # could still be sitting in the DB - same defense-in-depth already applied elsewhere
+        # in the project for config values that are validated at save time but read unguarded.
+        port = 587
     user = await get_config("smtp_user") or ""
     pw   = await get_config("smtp_pass") or ""
     frm  = await get_config("smtp_from") or user
@@ -3061,18 +3090,10 @@ async def notif_settings_page(request: Request, saved: bool = False, error: str 
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
     token_set = await _token_configured()
-    uid = request.session.get("user_id")
-    role = request.session.get("role")
-    if role == "admin":
-        twitch_apis = await db_rows("SELECT * FROM twitch_apis ORDER BY owner_id, created_at")
-    else:
-        twitch_apis = await db_rows(
-            """SELECT DISTINCT ta.* FROM twitch_apis ta
-               LEFT JOIN twitch_api_access taa ON taa.api_id = ta.id
-               WHERE ta.owner_id=? OR taa.user_id=?
-               ORDER BY ta.created_at""",
-            (uid, uid),
-        )
+    # admin_redirect above guarantees role=='admin' for anyone reaching this point - the
+    # owner/access-scoped query this used to fall back to for non-admins is unreachable dead
+    # code since notif_settings_page became admin-only (same cleanup as tokens_page above).
+    twitch_apis = await db_rows("SELECT * FROM twitch_apis ORDER BY owner_id, created_at")
     all_users_map = {u["id"]: u["username"] for u in await db_rows("SELECT id, username FROM users")}
     # attach owner name and list of users with granted access
     access_rows = await db_rows("SELECT api_id, user_id FROM twitch_api_access")
@@ -3081,7 +3102,7 @@ async def notif_settings_page(request: Request, saved: bool = False, error: str 
         access_map.setdefault(ar["api_id"], []).append(ar["user_id"])
     for a in twitch_apis:
         a["owner_name"] = all_users_map.get(a["owner_id"], "—")
-        a["is_own"] = (a["owner_id"] == uid) or (role == "admin")
+        a["is_own"] = True
         granted_ids = access_map.get(a["id"], [])
         a["granted_users"] = [{"id": gid, "username": all_users_map.get(gid, str(gid))} for gid in granted_ids]
     # users available to grant (all except self and already granted)
@@ -3221,6 +3242,19 @@ async def smtp_settings_save(
 ):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
+    if smtp_port.strip():
+        try:
+            if not (1 <= int(smtp_port.strip()) <= 65535):
+                raise ValueError
+        except ValueError:
+            # _send_reset_email() does int(get_config("smtp_port") or 587) completely
+            # unguarded - a non-numeric value saved here would raise there instead, and
+            # forgot_pw_submit only shows that exception's message when the submitted email
+            # actually belongs to a registered user (the no-such-user path always shows the
+            # generic "an email was sent if this address is registered" success message to
+            # prevent enumeration) - a broken port value would silently defeat that
+            # protection by making a real account distinguishable via the resulting error.
+            return RedirectResponse("/settings?error=Ungültiger+SMTP-Port", status_code=302)
     for key, val in [
         ("smtp_host", smtp_host), ("smtp_port", smtp_port),
         ("smtp_user", smtp_user), ("smtp_from", smtp_from),
@@ -3249,25 +3283,19 @@ async def smtp_test(request: Request, test_email: str = Form(...)):
 async def tokens_page(request: Request, success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
-    is_admin = request.session.get("role") == "admin"
-    uid = request.session.get("user_id")
-    if is_admin:
-        token_rows = await db_rows(
-            "SELECT id, label, token, enabled, created_at FROM bot_tokens ORDER BY id"
-        )
-        all_users = await db_rows("SELECT id, username FROM users ORDER BY username")
-        tu_rows = await db_rows("SELECT token_id, user_id FROM bot_token_users")
-        token_users: dict[int, set] = {}
-        for r in tu_rows:
-            token_users.setdefault(r["token_id"], set()).add(r["user_id"])
-    else:
-        token_rows = await db_rows(
-            "SELECT t.id, t.label, t.token, t.enabled, t.created_at FROM bot_tokens t "
-            "WHERE EXISTS (SELECT 1 FROM bot_token_users tu WHERE tu.token_id=t.id AND tu.user_id=?) ORDER BY t.id",
-            (uid,),
-        )
-        all_users = []
-        token_users = {}
+    # admin_redirect above already guarantees role=='admin' for anyone reaching this point -
+    # the non-admin branch this used to have (a per-user-assigned-tokens-only view) has been
+    # unreachable since tokens_page became admin-only (v1.5.0), per the already-documented
+    # dead code (v1.5.1: "unreachable code... left in place, out of scope for that round").
+    # Removed now rather than left as permanent technical debt.
+    token_rows = await db_rows(
+        "SELECT id, label, token, enabled, created_at FROM bot_tokens ORDER BY id"
+    )
+    all_users = await db_rows("SELECT id, username FROM users ORDER BY username")
+    tu_rows = await db_rows("SELECT token_id, user_id FROM bot_token_users")
+    token_users: dict[int, set] = {}
+    for r in tu_rows:
+        token_users.setdefault(r["token_id"], set()).add(r["user_id"])
     for t in token_rows:
         tok = t["token"]
         t["masked"] = ("•" * 40 + tok[-6:]) if len(tok) > 6 else "•" * len(tok)
@@ -3342,20 +3370,13 @@ async def tokens_set_users(request: Request, token_id: int):
 async def tokens_delete(request: Request, token_id: int):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
-    is_admin = request.session.get("role") == "admin"
-    uid = request.session.get("user_id")
-    allowed = is_admin
-    if not is_admin:
-        allowed = bool(await db_one(
-            "SELECT 1 FROM bot_token_users WHERE token_id=? AND user_id=?", (token_id, uid)
-        ))
-    if allowed:
-        await db_exec("UPDATE bot_tokens SET enabled=0 WHERE id=?", (token_id,))
-        await _stop_bot(token_id)
-        await db_exec("DELETE FROM bot_tokens WHERE id=?", (token_id,))
-        await db_exec("DELETE FROM bot_token_users WHERE token_id=?", (token_id,))
-        return RedirectResponse("/settings/tokens?success=Token+gelöscht.", status_code=302)
-    return RedirectResponse("/settings/tokens?error=Keine+Berechtigung", status_code=302)
+    # admin_redirect guarantees admin here - the per-assigned-user allowance check this had
+    # was unreachable dead code (same cleanup as tokens_page above).
+    await db_exec("UPDATE bot_tokens SET enabled=0 WHERE id=?", (token_id,))
+    await _stop_bot(token_id)
+    await db_exec("DELETE FROM bot_tokens WHERE id=?", (token_id,))
+    await db_exec("DELETE FROM bot_token_users WHERE token_id=?", (token_id,))
+    return RedirectResponse("/settings/tokens?success=Token+gelöscht.", status_code=302)
 
 
 @web.post("/settings/tokens/rename/{token_id}")
@@ -3366,42 +3387,23 @@ async def tokens_rename(request: Request, token_id: int):
     label = (form.get("label") or "").strip()
     if not label:
         return RedirectResponse("/settings/tokens?error=Bezeichnung+darf+nicht+leer+sein", status_code=302)
-    is_admin = request.session.get("role") == "admin"
-    uid = request.session.get("user_id")
-    if is_admin:
-        await db_exec("UPDATE bot_tokens SET label=? WHERE id=?", (label, token_id))
-        return RedirectResponse("/settings/tokens?success=Bezeichnung+gespeichert", status_code=302)
-    assigned = await db_one(
-        "SELECT 1 FROM bot_token_users WHERE token_id=? AND user_id=?", (token_id, uid)
-    )
-    if assigned:
-        await db_exec("UPDATE bot_tokens SET label=? WHERE id=?", (label, token_id))
-        return RedirectResponse("/settings/tokens?success=Bezeichnung+gespeichert", status_code=302)
-    return RedirectResponse("/settings/tokens?error=Keine+Berechtigung", status_code=302)
+    await db_exec("UPDATE bot_tokens SET label=? WHERE id=?", (label, token_id))
+    return RedirectResponse("/settings/tokens?success=Bezeichnung+gespeichert", status_code=302)
 
 
 @web.post("/settings/tokens/toggle/{token_id}")
 async def tokens_toggle(request: Request, token_id: int):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
-    is_admin = request.session.get("role") == "admin"
-    uid = request.session.get("user_id")
-    allowed = is_admin
-    if not is_admin:
-        allowed = bool(await db_one(
-            "SELECT 1 FROM bot_token_users WHERE token_id=? AND user_id=?", (token_id, uid)
-        ))
-    if allowed:
-        row = await db_one("SELECT enabled FROM bot_tokens WHERE id=?", (token_id,))
-        if row:
-            new_enabled = 0 if row["enabled"] else 1
-            await db_exec("UPDATE bot_tokens SET enabled=? WHERE id=?", (new_enabled, token_id))
-            if new_enabled:
-                asyncio.create_task(_start_bot_by_id(token_id))
-            else:
-                await _stop_bot(token_id)
-        return RedirectResponse("/settings/tokens?success=Status+geändert.", status_code=302)
-    return RedirectResponse("/settings/tokens?error=Keine+Berechtigung", status_code=302)
+    row = await db_one("SELECT enabled FROM bot_tokens WHERE id=?", (token_id,))
+    if row:
+        new_enabled = 0 if row["enabled"] else 1
+        await db_exec("UPDATE bot_tokens SET enabled=? WHERE id=?", (new_enabled, token_id))
+        if new_enabled:
+            asyncio.create_task(_start_bot_by_id(token_id))
+        else:
+            await _stop_bot(token_id)
+    return RedirectResponse("/settings/tokens?success=Status+geändert.", status_code=302)
 
 
 # ── User Email ─────────────────────────────────────────────────────────────────
