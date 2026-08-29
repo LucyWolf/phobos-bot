@@ -56,13 +56,24 @@ class ReactionRoles(commands.Cog):
     @app_commands.command(name="reactionrole-remove", description="Reaction Role entfernen")
     @app_commands.default_permissions(manage_roles=True)
     async def rr_remove(self, interaction: discord.Interaction, message_id: str, emoji: str):
+        try:
+            message_id_i = int(message_id)
+        except ValueError:
+            # Unlike rr_add (where a bad message_id just falls through the per-channel search
+            # loop's own except and ends up as a friendly "not found"), this int() ran
+            # unguarded directly - a non-numeric value would raise here with no interaction
+            # response ever sent, showing as a generic "This interaction failed" to the user
+            # instead of an actual error message. Same fix pattern already applied elsewhere
+            # for a bare int() on user-supplied Discord IDs (e.g. /unban, /giveaway-reroll).
+            await interaction.response.send_message("Ungültige Nachrichten-ID.", ephemeral=True)
+            return
         row = await db_one(
             "SELECT channel_id FROM reaction_roles WHERE guild_id=? AND message_id=? AND emoji=?",
-            (interaction.guild_id, int(message_id), emoji),
+            (interaction.guild_id, message_id_i, emoji),
         )
         deleted = await db_exec_rowcount(
             "DELETE FROM reaction_roles WHERE guild_id=? AND message_id=? AND emoji=?",
-            (interaction.guild_id, int(message_id), emoji),
+            (interaction.guild_id, message_id_i, emoji),
         )
         if not deleted:
             # Previously said "entfernt" unconditionally, even for a message_id/emoji pair that
@@ -75,7 +86,7 @@ class ReactionRoles(commands.Cog):
             channel = interaction.guild.get_channel(row["channel_id"])
             if channel:
                 try:
-                    msg = await channel.fetch_message(int(message_id))
+                    msg = await channel.fetch_message(message_id_i)
                     await msg.remove_reaction(emoji, self.bot.user)
                 except Exception:
                     pass

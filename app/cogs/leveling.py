@@ -257,7 +257,19 @@ class Leveling(commands.Cog):
 
     async def _announce_levelup(self, member: discord.Member, level: int, kind: str):
         channel_id = await get_guild_config(member.guild.id, "level_channel")
-        channel = self.bot.get_channel(int(channel_id)) if channel_id else member.guild.system_channel
+        if channel_id:
+            # level_channel is validated against the guild's own channels at save time, but
+            # every other channel-config read in the project still guards int() at the point of
+            # use as defense in depth against a legacy/corrupted value (see welcome.py,
+            # logging_cog.py) - this one didn't, and would otherwise raise an unhandled
+            # ValueError on every level-up for the affected guild instead of degrading to no
+            # announcement, same as the already-tolerated "channel since deleted" case below.
+            try:
+                channel = self.bot.get_channel(int(channel_id))
+            except (ValueError, TypeError):
+                channel = None
+        else:
+            channel = member.guild.system_channel
         if not channel:
             return
         label = "Voice-Level" if kind == "voice" else "Chat-Level"

@@ -3998,6 +3998,13 @@ async def level_reward_add(request: Request, guild_id: int, level: str = Form(..
     reward = reward.strip()
     if not reward:
         return RedirectResponse(f"/servers/{guild_id}?tab=leveling&error=Belohnung+erforderlich", status_code=302)
+    if len(reward) > 1000:
+        # Goes straight into an embed field value in _announce_levelup() - Discord's hard limit
+        # there is 1024 characters. That's already caught by that function's own try/except (it
+        # would just log and silently skip the whole level-up announcement, not crash), but
+        # rejecting it here up front matches the maxlength on the form field and gives the
+        # admin an actual error instead of a level-up that silently never announces again.
+        return RedirectResponse(f"/servers/{guild_id}?tab=leveling&error=Belohnung+zu+lang+(max.+1000+Zeichen)", status_code=302)
     try:
         level_int = int(level)
         if not (1 <= level_int <= 1000):
@@ -4095,6 +4102,17 @@ async def tickets_panel_update(
         # raise, which (before this fix) would have crashed /publish's request with an
         # unhandled 500 instead of a friendly error.
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Button-Text+zu+lang+(max.+80+Zeichen)", status_code=302)
+    if len(description.strip()) > 3900:
+        # Ends up in the ticket-channel embed description as "Hallo {mention}!\n{description}"
+        # (cogs/tickets.py's _create_ticket) - Discord's hard limit there is 4096 characters.
+        # Unlike name/button_label above, this wasn't checked at all: a too-long description
+        # wouldn't break /publish (that message only ever shows the raw description, no
+        # greeting prefix), it would instead make channel.send() fail silently for every
+        # future ticket creation from this panel - already caught by _create_ticket's own
+        # broad try/except (cleanup + a generic "couldn't create ticket" message), but with no
+        # way for the admin to tell WHY from that message alone. Rejecting it here, where the
+        # cause is obvious, is better than a mystery failure at every ticket open attempt.
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Beschreibung+zu+lang+(max.+3900+Zeichen)", status_code=302)
     panel_before = await db_one("SELECT * FROM ticket_panels WHERE id=? AND guild_id=?", (panel_id, guild_id))
     new_name = name.strip()
     new_label = button_label.strip() or "Ticket öffnen"

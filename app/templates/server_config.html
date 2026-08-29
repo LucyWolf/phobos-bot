@@ -375,7 +375,7 @@ document.addEventListener('click', function(e) {
     </div>
     <div style="flex:1;">
       <label style="font-size:0.72rem;">{{ tr.leveling_reward_select_label }}</label>
-      <input type="text" name="reward" placeholder="{{ tr.leveling_reward_placeholder }}" required style="margin:0;">
+      <input type="text" name="reward" placeholder="{{ tr.leveling_reward_placeholder }}" maxlength="1000" required style="margin:0;">
     </div>
     <button type="submit" class="btn btn-primary" style="padding:0.4rem 0.6rem;" title="{{ tr.btn_add }}">➕</button>
   </form>
@@ -750,7 +750,7 @@ document.addEventListener('click', function(e) {
                 </div>
                 <div style="grid-column:1/-1;">
                   <label>{{ tr.tickets_description_label }}</label>
-                  <input type="text" name="description" value="{{ p.description or '' }}" placeholder="{{ tr.tickets_description_placeholder }}" style="margin-bottom:0;">
+                  <input type="text" name="description" value="{{ p.description or '' }}" placeholder="{{ tr.tickets_description_placeholder }}" maxlength="3900" style="margin-bottom:0;">
                 </div>
               </div>
               <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>

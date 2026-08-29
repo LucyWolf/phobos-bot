@@ -101,7 +101,17 @@ class AutoMod(commands.Cog):
         bot_member = message.guild.me
         msg_template = await get_guild_config(message.guild.id, "automod_warn_message") \
             or "⚠️ **{server}**: {reason}"
-        dm_text = msg_template.replace("{server}", message.guild.name).replace("{reason}", reason)
+        # Chained .replace() calls corrupt already-substituted text if it happens to contain a
+        # later placeholder's literal token - e.g. an admin-set guild name like "Cool {reason}
+        # Server" would get its own "{reason}" replaced again by the second .replace() call.
+        # Same bug class already fixed in welcome.py's fill(); noted but left here at the time
+        # (v1.8.9) as out of scope for that tab's review round - fixed now that Spam-Schutz is
+        # in scope. A single regex pass over the ORIGINAL template can't re-scan inserted text.
+        dm_text = re.sub(
+            r"\{server\}|\{reason\}",
+            lambda m: message.guild.name if m.group(0) == "{server}" else reason,
+            msg_template,
+        )
         try:
             await member.send(dm_text)
         except Exception:
