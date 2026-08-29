@@ -856,6 +856,22 @@ function togglePanelEdit(id) {
 <!-- TAB: Benutzer (Admin only)                                          -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-users">
+
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="toggleUsersInfo()" title="{{ tr.server_users_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="users-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:300px;max-width:400px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.server_users_info_title }}</div>
+    <ul style="margin:0 0 0 1.1rem;padding:0;color:var(--muted);line-height:1.6;">
+      <li>{{ tr.server_users_info_item_admin }}</li>
+      <li>{{ tr.server_users_info_item_grant }}</li>
+      <li>{{ tr.server_users_info_item_global }}</li>
+    </ul>
+  </div>
+</div>
+
 {% if role == 'admin' %}
 <div class="card">
   <p class="hint" style="margin-bottom:1rem;">{{ tr.server_users_hint }}</p>
@@ -883,6 +899,18 @@ function togglePanelEdit(id) {
 <div class="empty-state">{{ tr.server_users_admin_only }}</div>
 {% endif %}
 </div>
+<script>
+function toggleUsersInfo() {
+  const box = document.getElementById('users-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('users-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleUsersInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+</script>
 
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->

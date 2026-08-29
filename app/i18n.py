@@ -315,6 +315,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "server_users_revoke":       "✓ Zugriff entziehen",
         "server_users_grant":        "+ Zugriff gewähren",
         "server_users_admin_only":   "Nur Admins können Serverzugriff verwalten.",
+        "server_users_info_tooltip": "Was ist das?",
+        "server_users_info_title":   "👥 Wie funktioniert Server-Zugriff?",
+        "server_users_info_item_admin": "Admins haben automatisch Zugriff auf jeden Server, unabhängig von dieser Liste.",
+        "server_users_info_item_grant": "Hier lässt sich für Moderatoren gezielt der Zugriff auf DIESEN einen Server freigeben oder entziehen.",
+        "server_users_info_item_global": "Alternative Ansicht: unter Einstellungen → Benutzer lässt sich pro Nutzer auf einen Blick festlegen, auf welche Server er insgesamt zugreifen darf.",
         # Spam-Schutz / Auto-Mod
         "automod_info_tooltip":       "Was ist das?",
         "automod_info_title":         "Wie funktionieren Kategorien?",
@@ -687,6 +692,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "server_users_revoke":       "✓ Revoke access",
         "server_users_grant":        "+ Grant access",
         "server_users_admin_only":   "Only admins can manage server access.",
+        "server_users_info_tooltip": "What is this?",
+        "server_users_info_title":   "👥 How does server access work?",
+        "server_users_info_item_admin": "Admins automatically have access to every server, regardless of this list.",
+        "server_users_info_item_grant": "Use this to grant or revoke a moderator's access to THIS one server specifically.",
+        "server_users_info_item_global": "Alternative view: Settings → Users lets you see and set which servers a given user can access overall, at a glance.",
         # Spam Protection / Auto-Mod
         "automod_info_tooltip":       "What is this?",
         "automod_info_title":         "How do categories work?",
