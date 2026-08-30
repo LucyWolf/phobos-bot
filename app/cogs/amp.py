@@ -99,6 +99,19 @@ class AMP(commands.Cog):
         text = "Online" if result["online"] else "Offline"
         await interaction.followup.send(f"{icon} **{label}**: {text}")
 
+    async def _check_command_channel(self, interaction: discord.Interaction, cfg: dict) -> bool:
+        """Only gameserver-start/-stop are restrictable (per explicit request) - status stays
+        usable everywhere, since the whole point of it is letting anyone check at a glance."""
+        restricted_id = cfg.get("command_channel_id")
+        if not restricted_id or str(interaction.channel_id) == str(restricted_id):
+            return True
+        channel = interaction.guild.get_channel(int(restricted_id)) if interaction.guild else None
+        where = channel.mention if channel else "einem anderen Kanal"
+        await interaction.response.send_message(
+            f"Dieser Befehl ist nur in {where} erlaubt.", ephemeral=True
+        )
+        return False
+
     @app_commands.command(name="gameserver-start", description="Startet den verknüpften Gameserver")
     @app_commands.default_permissions(manage_guild=True)
     async def gameserver_start(self, interaction: discord.Interaction):
@@ -107,6 +120,8 @@ class AMP(commands.Cog):
             await interaction.response.send_message(
                 "Für diesen Server ist kein Gameserver verknüpft.", ephemeral=True
             )
+            return
+        if not await self._check_command_channel(interaction, cfg):
             return
         await interaction.response.defer(ephemeral=True)
         ok, error = await self._set_running(cfg, start=True)
@@ -123,6 +138,8 @@ class AMP(commands.Cog):
             await interaction.response.send_message(
                 "Für diesen Server ist kein Gameserver verknüpft.", ephemeral=True
             )
+            return
+        if not await self._check_command_channel(interaction, cfg):
             return
         await interaction.response.defer(ephemeral=True)
         ok, error = await self._set_running(cfg, start=False)

@@ -443,6 +443,7 @@ async def init_db():
                 username TEXT NOT NULL DEFAULT '',
                 password TEXT NOT NULL DEFAULT ''
             )""",
+            "ALTER TABLE amp_configs ADD COLUMN command_channel_id TEXT DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

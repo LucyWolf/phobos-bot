@@ -2457,9 +2457,13 @@ async def amp_save(
     request: Request, guild_id: int,
     label: str = Form(""), url: str = Form(""),
     username: str = Form(""), password: str = Form(""),
+    command_channel_id: str = Form(""),
 ):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
         return RedirectResponse("/servers", status_code=302)
     url = url.strip().rstrip("/")
     if url and not (url.startswith("http://") or url.startswith("https://")):
@@ -2468,16 +2472,19 @@ async def amp_save(
         )
     if not url or not username.strip():
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=URL+und+Nutzername+erforderlich", status_code=302)
+    command_channel_id = command_channel_id.strip()
+    if command_channel_id and command_channel_id not in {str(c.id) for c in guild.text_channels}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Ungültiger+Kanal", status_code=302)
     # A blank password field means "keep the existing one" (same convention as SMTP/Twitch
     # credential forms elsewhere) - only overwrite it if the admin actually typed something,
     # so re-saving the label/URL doesn't silently wipe out a previously stored password.
     existing = await db_one("SELECT password FROM amp_configs WHERE guild_id=?", (str(guild_id),))
     final_password = password.strip() or (existing["password"] if existing else "")
     await db_exec(
-        "INSERT INTO amp_configs (guild_id,label,url,username,password) VALUES (?,?,?,?,?) "
+        "INSERT INTO amp_configs (guild_id,label,url,username,password,command_channel_id) VALUES (?,?,?,?,?,?) "
         "ON CONFLICT(guild_id) DO UPDATE SET label=excluded.label, url=excluded.url, "
-        "username=excluded.username, password=excluded.password",
-        (str(guild_id), label.strip(), url, username.strip(), final_password),
+        "username=excluded.username, password=excluded.password, command_channel_id=excluded.command_channel_id",
+        (str(guild_id), label.strip(), url, username.strip(), final_password, command_channel_id),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Gespeichert", status_code=302)
 
