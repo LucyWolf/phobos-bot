@@ -26,6 +26,25 @@
 <!-- TAB: Konfiguration                                                  -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-config">
+
+{% if role == 'admin' %}
+<div class="card" style="margin-bottom:1.25rem;">
+  <div class="feat-header" style="margin-bottom:0.5rem;">{{ tr.features_title }}</div>
+  <p class="hint" style="margin-bottom:0.85rem;">{{ tr.features_hint }}</p>
+  <form method="post" action="/servers/{{ guild.id }}/features/save">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0.5rem 1rem;margin-bottom:1rem;">
+      {% for key, label in toggleable_features.items() %}
+      <label style="display:flex;align-items:center;gap:0.5rem;font-weight:400;margin-bottom:0;">
+        <input type="checkbox" name="features" value="{{ key }}" style="width:auto;margin:0;" {% if key in enabled_features %}checked{% endif %}>
+        {{ label }}
+      </label>
+      {% endfor %}
+    </div>
+    <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
+  </form>
+</div>
+{% endif %}
+
 <form method="post" action="/servers/{{ guild.id }}">
 <input type="hidden" name="tab" value="config">
 
@@ -97,22 +116,6 @@
 </form>
 
 {% if role == 'admin' %}
-<div class="card" style="margin-top:1.25rem;">
-  <div class="feat-header" style="margin-bottom:0.5rem;">{{ tr.features_title }}</div>
-  <p class="hint" style="margin-bottom:0.85rem;">{{ tr.features_hint }}</p>
-  <form method="post" action="/servers/{{ guild.id }}/features/save">
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0.5rem 1rem;margin-bottom:1rem;">
-      {% for key, label in toggleable_features.items() %}
-      <label style="display:flex;align-items:center;gap:0.5rem;font-weight:400;margin-bottom:0;">
-        <input type="checkbox" name="features" value="{{ key }}" style="width:auto;margin:0;" {% if key in enabled_features %}checked{% endif %}>
-        {{ label }}
-      </label>
-      {% endfor %}
-    </div>
-    <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
-  </form>
-</div>
-
 <div class="card" style="margin-top:1.25rem;">
   <div class="feat-header" style="margin-bottom:0.5rem;">{{ tr.server_backup_title }}</div>
   <p class="hint" style="margin-bottom:0.85rem;">{{ tr.server_backup_hint }}</p>

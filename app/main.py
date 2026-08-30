@@ -3849,14 +3849,28 @@ _TOGGLEABLE_FEATURES = {
 
 
 async def _get_enabled_features(guild_id) -> set:
-    # No stored value at all = never customized yet -> show everything, so upgrading to this
-    # feature doesn't retroactively hide tabs an admin already relies on. An explicitly saved
-    # empty string (every checkbox unticked) is a real, deliberate "hide all optional tabs"
-    # choice and has to stay empty rather than falling back to "show everything" too.
+    # No stored value at all = never customized yet. An explicitly saved empty string (every
+    # checkbox unticked) is a real, deliberate "hide all optional tabs" choice and has to stay
+    # empty rather than falling back to any default.
     raw = await get_guild_config(int(guild_id), "enabled_features")
-    if raw is None:
+    if raw is not None:
+        return {f for f in raw.split(",") if f}
+    # No enabled_features key yet - distinguish a genuinely new server (no guild_configs rows
+    # at all) from one that predates this feature but already has other settings saved. Only
+    # the latter falls back to "show everything", so upgrading doesn't retroactively hide tabs
+    # an admin already relies on; a brand-new server starts with nothing shown until the admin
+    # actively enables features, per request.
+    # automod_presets_seeded is excluded: it's written automatically the first time this guild's
+    # Auto-Mod tab is rendered (see server_config()), not from any deliberate admin action - a
+    # guild's very first-ever page load would otherwise already count as "has config" before the
+    # admin touched anything, defeating the "new server starts empty" default entirely.
+    has_any_config = await db_one(
+        "SELECT 1 FROM guild_configs WHERE guild_id=? AND key != 'automod_presets_seeded' LIMIT 1",
+        (int(guild_id),),
+    )
+    if has_any_config:
         return set(_TOGGLEABLE_FEATURES.keys())
-    return {f for f in raw.split(",") if f}
+    return set()
 
 
 @web.get("/servers/{guild_id}", response_class=HTMLResponse)
