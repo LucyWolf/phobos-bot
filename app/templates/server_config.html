@@ -15,7 +15,7 @@
 </style>
 
 {% from '_server_subnav.html' import server_subnav %}
-{{ server_subnav(guild.id, request.query_params.get('tab', 'config')) }}
+{{ server_subnav(guild.id, request.query_params.get('tab', 'config'), enabled_features) }}
 
 {% if saved %}<div class="alert alert-success">✅ Einstellungen gespeichert.</div>{% endif %}
 {% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
@@ -97,6 +97,22 @@
 </form>
 
 {% if role == 'admin' %}
+<div class="card" style="margin-top:1.25rem;">
+  <div class="feat-header" style="margin-bottom:0.5rem;">{{ tr.features_title }}</div>
+  <p class="hint" style="margin-bottom:0.85rem;">{{ tr.features_hint }}</p>
+  <form method="post" action="/servers/{{ guild.id }}/features/save">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0.5rem 1rem;margin-bottom:1rem;">
+      {% for key, label in toggleable_features.items() %}
+      <label style="display:flex;align-items:center;gap:0.5rem;font-weight:400;margin-bottom:0;">
+        <input type="checkbox" name="features" value="{{ key }}" style="width:auto;margin:0;" {% if key in enabled_features %}checked{% endif %}>
+        {{ label }}
+      </label>
+      {% endfor %}
+    </div>
+    <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
+  </form>
+</div>
+
 <div class="card" style="margin-top:1.25rem;">
   <div class="feat-header" style="margin-bottom:0.5rem;">{{ tr.server_backup_title }}</div>
   <p class="hint" style="margin-bottom:0.85rem;">{{ tr.server_backup_hint }}</p>

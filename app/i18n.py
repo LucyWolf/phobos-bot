@@ -31,6 +31,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "label_email":        "E-Mail",
         "label_avatar":       "Avatar",
         "saved_ok":           "Gespeichert.",
+        # Server Features (which optional tabs are shown for this server)
+        "features_title": "🧩 Angezeigte Funktionen",
+        "features_hint": "Wähle aus, welche Funktionen für diesen Server in der Seitenleiste erscheinen sollen — spart Übersicht, wenn du nicht alles nutzt. Config, Nutzer und Bot-Design bleiben immer sichtbar. Bereits abgespeicherte Einstellungen einer ausgeblendeten Funktion gehen dabei nicht verloren, nur der Reiter selbst wird versteckt.",
         # Server Backup
         "server_backup_title":   "🗄️ Server-Backup",
         "server_backup_hint":    "Sichert nur die Konfiguration DIESES Servers (Reaction Roles, Commands, Tickets, Level-Rollen, Auto-Mod-Presets, Geplante Nachrichten, u.v.m.) — keine Dashboard-Benutzer oder Tokens. Eine wiederhergestellte Datei kann auf einen beliebigen Server angewendet werden, nicht nur den, aus dem sie stammt.",
@@ -573,6 +576,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "label_email":        "E-Mail",
         "label_avatar":       "Avatar",
         "saved_ok":           "Saved.",
+        # Server Features (which optional tabs are shown for this server)
+        "features_title": "🧩 Displayed Features",
+        "features_hint": "Choose which features show up in the sidebar for this server — keeps things tidy if you don't use everything. Config, Users and Bot Design always stay visible. Settings already saved for a hidden feature aren't lost, only the tab itself is hidden.",
         # Server Backup
         "server_backup_title":   "🗄️ Server Backup",
         "server_backup_hint":    "Backs up only THIS server's own configuration (reaction roles, commands, tickets, level roles, Auto-Mod presets, scheduled messages, and more) — no dashboard users or tokens. A restored file can be applied to any server, not just the one it came from.",

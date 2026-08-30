@@ -4,7 +4,7 @@
 
 {% block content %}
 {% from '_server_subnav.html' import server_subnav %}
-{{ server_subnav(guild_id, 'log') }}
+{{ server_subnav(guild_id, 'log', enabled_features) }}
 <style>
   .log-settings { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.25rem; max-width:660px; margin-bottom:1.5rem; }
   .log-table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; overflow:hidden; }

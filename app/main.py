@@ -1864,6 +1864,7 @@ async def bot_design_page(request: Request, guild_id: str = "", success: str = "
         "success": success, "error": error,
         "current_name": current_name, "current_avatar": current_avatar,
         "bot_online": bot_online, "guild_id": guild_id,
+        "enabled_features": await _get_enabled_features(guild_id) if guild_id else None,
     })
 
 
@@ -2547,6 +2548,7 @@ async def freestuff_page(request: Request, guild_id: str, success: str = "", err
         "guild_id": guild_id, "guild_name": guild.name,
         "channels": channels, "cfg": cfg,
         "success": success, "error": error,
+        "enabled_features": await _get_enabled_features(guild_id),
     })
 
 
@@ -3186,6 +3188,7 @@ async def notifications_page(request: Request, guild_id: str, success: str = "",
         "api_unresolved": api_unresolved,
         "twitch_configured": bool(twitch_apis),
         "success": success, "error": error,
+        "enabled_features": await _get_enabled_features(guild_id),
     })
 
 
@@ -3700,6 +3703,7 @@ async def server_log_page(request: Request, guild_id: str, success: str = "", er
         "log_exclude_channels": log_exclude_channels,
         "logs": logs, "success": success, "error": error,
         "log_limit": limit, "log_limit_options": LOG_LIMIT_OPTIONS,
+        "enabled_features": await _get_enabled_features(guild_id),
     })
 
 
@@ -3826,6 +3830,33 @@ _SERVER_CONFIG_TAB_LABELS = {
     "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
     "amp": "🎮 Gameserver",
 }
+
+# Features an admin can hide from THIS server's own sidebar to cut down on clutter for
+# servers that only use a handful of them - "config" (base settings), "users" (access
+# control) and "botdesign" (bot identity) are deliberately left out of this list and stay
+# permanently visible, since they're structural/administrative rather than a feature someone
+# would opt in or out of. Hiding a tab here only removes its sidebar link - a bookmarked or
+# manually-typed URL to it still works, this is about decluttering navigation, not gating
+# access (that's what user_guild_permissions/admin-only routes already handle separately).
+_TOGGLEABLE_FEATURES = {
+    "automod": "🛡️ Spam-Schutz", "leveling": "🏆 Leveling", "rr": "🎭 Reaction Roles",
+    "commands": "📢 Commands", "tickets": "🎫 Tickets", "giveaways": "🎉 Giveaways",
+    "warnings": "⚠️ Warnungen", "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant",
+    "events": "🗓️ Events", "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
+    "amp": "🎮 Gameserver", "notifications": "🟣 Streaming", "freestuff": "🎁 Free Stuff",
+    "log": "📋 Log",
+}
+
+
+async def _get_enabled_features(guild_id) -> set:
+    # No stored value at all = never customized yet -> show everything, so upgrading to this
+    # feature doesn't retroactively hide tabs an admin already relies on. An explicitly saved
+    # empty string (every checkbox unticked) is a real, deliberate "hide all optional tabs"
+    # choice and has to stay empty rather than falling back to "show everything" too.
+    raw = await get_guild_config(int(guild_id), "enabled_features")
+    if raw is None:
+        return set(_TOGGLEABLE_FEATURES.keys())
+    return {f for f in raw.split(",") if f}
 
 
 @web.get("/servers/{guild_id}", response_class=HTMLResponse)
@@ -4006,6 +4037,8 @@ async def server_config(
             "SELECT * FROM temp_voice_config WHERE guild_id=?", (str(guild_id),)
         ),
         "amp_cfg": amp_cfg, "amp_status": amp_status,
+        "toggleable_features": _TOGGLEABLE_FEATURES,
+        "enabled_features": await _get_enabled_features(guild_id),
         "scheduled_messages": _scheduled_messages,
         "birthdays": _birthdays,
         "events_list": sorted(guild.scheduled_events, key=lambda e: e.start_time),
@@ -4040,6 +4073,20 @@ _TAB_CHECKBOX_KEYS = {
     "automod": ["automod_enabled", "automod_links"],
     "birthday": [],
 }
+
+
+@web.post("/servers/{guild_id}/features/save")
+async def server_features_save(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
+    form = await request.form()
+    selected = set(form.getlist("features")) & set(_TOGGLEABLE_FEATURES.keys())
+    # Deliberately allowed to be an empty string (every checkbox unticked, hide all optional
+    # tabs) - _get_enabled_features() only falls back to "show everything" when the key was
+    # NEVER saved at all, not when it was explicitly saved empty.
+    await set_guild_config(guild_id, "enabled_features", ",".join(sorted(selected)))
+    return RedirectResponse(f"/servers/{guild_id}?tab=config&success=Gespeichert", status_code=302)
 
 
 @web.post("/servers/{guild_id}")

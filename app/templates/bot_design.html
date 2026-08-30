@@ -5,7 +5,7 @@
 
 {% block content %}
 {% from '_server_subnav.html' import server_subnav %}
-{% if guild_id %}{{ server_subnav(guild_id, 'botdesign') }}{% endif %}
+{% if guild_id %}{{ server_subnav(guild_id, 'botdesign', enabled_features) }}{% endif %}
 <style>
   .design-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.5rem; margin-bottom:1.5rem; max-width:520px; }
   .avatar-preview { width:96px; height:96px; border-radius:50%; object-fit:cover; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:2rem; font-weight:700; color:#fff; border:3px solid var(--border); overflow:hidden; }
