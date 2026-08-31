@@ -59,31 +59,57 @@ def _amp_is_running(status: dict) -> bool:
     return status.get("State") not in (None, 10)
 
 
+def _extract_instance(d) -> dict | None:
+    """Returns a normalized {"id", "name", "running", "module"} from a raw dict if it looks
+    like an actual game instance, else None. Field names are read defensively (several
+    fallbacks tried per field) since the exact response shape could not be verified without a
+    real, authenticated call against a live instance."""
+    if not isinstance(d, dict):
+        return None
+    iid = d.get("InstanceID") or d.get("InstanceId") or d.get("ID")
+    if not iid:
+        return None
+    module = d.get("Module") or d.get("ModuleDisplayName") or ""
+    name = d.get("FriendlyName") or d.get("InstanceName") or d.get("Name") or str(iid)
+    running = d.get("Running")
+    if running is None:
+        running = d.get("AppState") not in (None, 10)
+    return {"id": str(iid), "name": name, "running": bool(running), "module": module}
+
+
 def _parse_instances(raw) -> list[dict]:
     """Parses ADSModule.GetInstances()'s response into a normalized list of
-    {"id": str, "name": str, "running": bool, "module": str}. Field names are read
-    defensively (several fallbacks tried per field) since the exact response shape could not
-    be verified without a real, authenticated call against a live instance - the pre-auth
-    GetAPISpec probe used elsewhere in this module only exposes login-related methods, not
-    ADSModule's. AMP versions differ on whether the ADS's own control instance is included in
-    the list (Module == "ADS") - excluded here since it isn't a game server to show/manage.
-    Needs confirming against a real ADS on first use."""
+    {"id": str, "name": str, "running": bool, "module": str}. AMP groups instances by hosting
+    "Target" (the machine running them) - confirmed live: a top-level entry can be a target
+    wrapper (its own ID-like field, but a FriendlyName like the literal "Local Instances" -
+    AMP's default name for instances hosted on the same machine as the ADS itself) with the
+    actual game instances nested inside one of its list-valued fields, rather than being a
+    game instance itself. A naive single-level parse mistook that wrapper for a single game
+    and missed everything nested inside it. Prefers nested instance-shaped dicts (scans every
+    list-valued field, without needing to guess the exact nested key name) and only falls back
+    to treating a top-level entry as an instance itself when nothing nested was found - this
+    keeps supporting a hypothetical genuinely flat response shape too. AMP versions differ on
+    whether the ADS's own control instance is included (Module == "ADS") - excluded here since
+    it isn't a game server to show/manage."""
     items = raw if isinstance(raw, list) else (raw or {}).get("result") or []
     out = []
     for item in items:
         if not isinstance(item, dict):
             continue
-        module = item.get("Module") or item.get("ModuleDisplayName") or ""
-        if module == "ADS":
+        found_nested = False
+        for value in item.values():
+            if isinstance(value, list) and value and all(isinstance(x, dict) for x in value):
+                for sub in value:
+                    sub_inst = _extract_instance(sub)
+                    if sub_inst:
+                        found_nested = True
+                        if sub_inst["module"] != "ADS":
+                            out.append(sub_inst)
+        if found_nested:
             continue
-        iid = item.get("InstanceID") or item.get("InstanceId") or item.get("ID")
-        if not iid:
-            continue
-        name = item.get("FriendlyName") or item.get("InstanceName") or item.get("Name") or str(iid)
-        running = item.get("Running")
-        if running is None:
-            running = item.get("AppState") not in (None, 10)
-        out.append({"id": str(iid), "name": name, "running": bool(running), "module": module})
+        inst = _extract_instance(item)
+        if inst and inst["module"] != "ADS":
+            out.append(inst)
     return out
 
 
@@ -142,10 +168,15 @@ class AMP(commands.Cog):
                 # connection. Surface a snippet of the raw response instead of looking identical
                 # to "no error, nothing to see" - there'd otherwise be no way to tell those two
                 # cases apart or to debug a mismatch without live access to a real ADS instance.
-                return {"instances": [], "error": f"0 Instanzen erkannt, Rohantwort: {str(raw)[:200]}"}
-            return {"instances": parsed, "error": None}
+                return {"instances": [], "error": f"0 Instanzen erkannt, Rohantwort: {str(raw)[:200]}",
+                        "raw_debug": str(raw)[:500]}
+            # Always keep a raw snippet even on a successful parse - parsing has already been
+            # wrong once before without raising or returning zero results (a wrapper entry was
+            # mistaken for a game), so a "looks fine" result here still isn't a strong enough
+            # guarantee to skip giving admins a way to double check what AMP actually returned.
+            return {"instances": parsed, "error": None, "raw_debug": str(raw)[:500]}
         except Exception as e:
-            return {"instances": [], "error": _err_text(e)}
+            return {"instances": [], "error": _err_text(e), "raw_debug": None}
 
     async def _instance_action(self, cfg: dict, instance_id: str, method: str) -> tuple[bool, str]:
         # CubeCoders AMP's documented way to target a specific instance from an ADS-authenticated

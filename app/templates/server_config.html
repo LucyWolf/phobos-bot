@@ -1853,6 +1853,12 @@ function toggleAdEdit(id) {
     </div>
   </div>
   {% endfor %}
+  {% if amp_raw_debug %}
+  <details style="margin-top:0.75rem;">
+    <summary class="hint" style="cursor:pointer;">{{ tr.amp_raw_debug_label }}</summary>
+    <pre style="white-space:pre-wrap;word-break:break-all;font-size:0.7rem;color:var(--muted);margin-top:0.4rem;">{{ amp_raw_debug }}</pre>
+  </details>
+  {% endif %}
 </div>
 {% elif amp_cfg and amp_cfg.url %}
 <div class="card" style="margin-bottom:1.25rem;">
@@ -1884,6 +1890,12 @@ function toggleAdEdit(id) {
   </div>
   {% if amp_instances_error %}
   <p class="hint" style="margin-top:0.75rem;">{{ tr.amp_instances_error_hint }}: {{ amp_instances_error }}</p>
+  {% endif %}
+  {% if amp_raw_debug %}
+  <details style="margin-top:0.75rem;">
+    <summary class="hint" style="cursor:pointer;">{{ tr.amp_raw_debug_label }}</summary>
+    <pre style="white-space:pre-wrap;word-break:break-all;font-size:0.7rem;color:var(--muted);margin-top:0.4rem;">{{ amp_raw_debug }}</pre>
+  </details>
   {% endif %}
 </div>
 {% endif %}
