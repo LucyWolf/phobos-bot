@@ -1830,7 +1830,38 @@ function toggleAdEdit(id) {
   </div>
 </div>
 
+{% if amp_cfg and amp_cfg.url %}
 <div class="card" style="margin-bottom:1.25rem;">
+  <div class="feat-header" style="margin-bottom:1rem;justify-content:space-between;">
+    <span>{{ tr.amp_status_title }}{% if amp_cfg.label %} — {{ amp_cfg.label }}{% endif %}</span>
+    <button type="button" class="btn btn-secondary" onclick="toggleAmpEdit()" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="{{ tr.btn_settings }}">⚙</button>
+  </div>
+  {% if amp_status %}
+    {% if amp_status.error %}
+      <p style="margin-bottom:1rem;">{{ tr.amp_status_error }}: {{ amp_status.error }}</p>
+    {% elif amp_status.online %}
+      <p style="margin-bottom:1rem;font-size:1.05rem;">{{ tr.amp_status_online }}</p>
+    {% else %}
+      <p style="margin-bottom:1rem;font-size:1.05rem;">{{ tr.amp_status_offline }}</p>
+    {% endif %}
+  {% else %}
+    <p style="margin-bottom:1rem;color:var(--muted);">{{ tr.amp_status_none }}</p>
+  {% endif %}
+  <div style="display:flex;gap:0.75rem;">
+    <form method="post" action="/servers/{{ guild.id }}/amp/start" style="margin:0;">
+      <button type="submit" class="btn btn-secondary">{{ tr.amp_btn_start }}</button>
+    </form>
+    <form method="post" action="/servers/{{ guild.id }}/amp/stop" style="margin:0;">
+      <button type="submit" class="btn btn-danger">{{ tr.amp_btn_stop }}</button>
+    </form>
+    <form method="post" action="/servers/{{ guild.id }}/amp/restart" style="margin:0;">
+      <button type="submit" class="btn btn-secondary">{{ tr.amp_btn_restart }}</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="card" id="amp-edit-card" {% if amp_cfg and amp_cfg.url %}style="display:none;"{% endif %}>
   <div class="feat-header" style="margin-bottom:1rem;">{{ tr.amp_config_title }}</div>
   <form method="post" action="/servers/{{ guild.id }}/amp/save">
     <div class="grid-2">
@@ -1870,34 +1901,6 @@ function toggleAdEdit(id) {
   {% endif %}
 </div>
 
-{% if amp_cfg and amp_cfg.url %}
-<div class="card">
-  <div class="feat-header" style="margin-bottom:1rem;">{{ tr.amp_status_title }}{% if amp_cfg.label %} — {{ amp_cfg.label }}{% endif %}</div>
-  {% if amp_status %}
-    {% if amp_status.error %}
-      <p style="margin-bottom:1rem;">{{ tr.amp_status_error }}: {{ amp_status.error }}</p>
-    {% elif amp_status.online %}
-      <p style="margin-bottom:1rem;font-size:1.05rem;">{{ tr.amp_status_online }}</p>
-    {% else %}
-      <p style="margin-bottom:1rem;font-size:1.05rem;">{{ tr.amp_status_offline }}</p>
-    {% endif %}
-  {% else %}
-    <p style="margin-bottom:1rem;color:var(--muted);">{{ tr.amp_status_none }}</p>
-  {% endif %}
-  <div style="display:flex;gap:0.75rem;">
-    <form method="post" action="/servers/{{ guild.id }}/amp/start" style="margin:0;">
-      <button type="submit" class="btn btn-secondary">{{ tr.amp_btn_start }}</button>
-    </form>
-    <form method="post" action="/servers/{{ guild.id }}/amp/stop" style="margin:0;">
-      <button type="submit" class="btn btn-danger">{{ tr.amp_btn_stop }}</button>
-    </form>
-    <form method="post" action="/servers/{{ guild.id }}/amp/restart" style="margin:0;">
-      <button type="submit" class="btn btn-secondary">{{ tr.amp_btn_restart }}</button>
-    </form>
-  </div>
-</div>
-{% endif %}
-
 </div>
 
 <script>
@@ -1911,6 +1914,10 @@ document.addEventListener('click', function(e) {
     box.style.display = 'none';
   }
 });
+function toggleAmpEdit() {
+  const card = document.getElementById('amp-edit-card');
+  if (card) card.style.display = card.style.display === 'none' ? '' : 'none';
+}
 </script>
 
 <script>
