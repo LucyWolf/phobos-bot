@@ -2592,7 +2592,7 @@ async def amp_instances_json(request: Request, guild_id: int):
 
 
 @web.post("/servers/{guild_id}/amp/instance/{instance_id}/start")
-async def amp_instance_start_web(request: Request, guild_id: int, instance_id: str):
+async def amp_instance_start_web(request: Request, guild_id: int, instance_id: str, instance_name: str = Form("")):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
@@ -2602,14 +2602,14 @@ async def amp_instance_start_web(request: Request, guild_id: int, instance_id: s
     amp_cog = bot.cogs.get("AMP")
     if not amp_cog:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
-    ok, error = await amp_cog._instance_action(cfg, instance_id, "Start")
+    ok, error = await amp_cog._instance_action(cfg, instance_name, "Start")
     if not ok:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error={urllib.parse.quote(error[:150])}", status_code=302)
     return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Startbefehl+gesendet", status_code=302)
 
 
 @web.post("/servers/{guild_id}/amp/instance/{instance_id}/stop")
-async def amp_instance_stop_web(request: Request, guild_id: int, instance_id: str):
+async def amp_instance_stop_web(request: Request, guild_id: int, instance_id: str, instance_name: str = Form("")):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
@@ -2619,14 +2619,14 @@ async def amp_instance_stop_web(request: Request, guild_id: int, instance_id: st
     amp_cog = bot.cogs.get("AMP")
     if not amp_cog:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
-    ok, error = await amp_cog._instance_action(cfg, instance_id, "Stop")
+    ok, error = await amp_cog._instance_action(cfg, instance_name, "Stop")
     if not ok:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error={urllib.parse.quote(error[:150])}", status_code=302)
     return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Stoppbefehl+gesendet", status_code=302)
 
 
 @web.post("/servers/{guild_id}/amp/instance/{instance_id}/restart")
-async def amp_instance_restart_web(request: Request, guild_id: int, instance_id: str):
+async def amp_instance_restart_web(request: Request, guild_id: int, instance_id: str, instance_name: str = Form("")):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
@@ -2636,7 +2636,7 @@ async def amp_instance_restart_web(request: Request, guild_id: int, instance_id:
     amp_cog = bot.cogs.get("AMP")
     if not amp_cog:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
-    ok, error = await amp_cog._instance_action(cfg, instance_id, "Restart")
+    ok, error = await amp_cog._instance_action(cfg, instance_name, "Restart")
     if not ok:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error={urllib.parse.quote(error[:150])}", status_code=302)
     return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Neustart-Befehl+gesendet", status_code=302)

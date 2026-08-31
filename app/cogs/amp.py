@@ -343,31 +343,25 @@ class AMP(commands.Cog):
         except Exception as e:
             return {"instances": [], "error": _err_text(e), "raw_debug": None}
 
-    async def _instance_action(self, cfg: dict, instance_id: str, method: str) -> tuple[bool, str]:
+    async def _instance_action(self, cfg: dict, instance_name: str, method: str) -> tuple[bool, str]:
         """method is "Start"/"Stop"/"Restart" (same convention as the legacy whole-connection
         _amp_action), mapped here to ADSModule's own "{method}Instance" methods - confirmed
         live to exist via an authenticated Core.GetAPISpec() call (StartInstance/StopInstance/
         RestartInstance are listed directly under ADSModule). Replaces an earlier, WRONG guess
         that tried to reach a specific instance through a compound passthrough URL
         (/API/ADSModule/Servers/{id}/API/Core/{method}) - never actually verified and abandoned
-        once ADSModule's real method list was seen. instance_id must be the instance's
-        InstanceID (a GUID, used for dashboard URLs/DOM identification) - looked up here against
-        a fresh instance list to find the matching InstanceName, since that's what
-        Start/Stop/RestartInstance are believed to take as their parameter (going by the AMP
-        API's established, well-documented convention elsewhere - NOT independently verified
-        against this specific method's declared Parameters, which weren't fetched to avoid
-        invoking a destructive action blindly during diagnostics; if this parameter name turns
-        out wrong, the resulting AMP error message will say so directly, the same way the
-        instance-listing method itself was pinned down)."""
-        listing = await self._list_instances(cfg)
-        match = next((i for i in listing["instances"] if i["id"] == str(instance_id)), None)
-        if not match:
-            return False, "Instanz nicht mehr gefunden (evtl. inzwischen entfernt?)"
+        once ADSModule's real method list was seen. Takes AMP's own InstanceName directly
+        instead of doing its own InstanceID-to-InstanceName lookup via a fresh _list_instances()
+        call - that lookup used to run INSIDE this function on every single click, doubling
+        every action to two full login+API round trips (list, then act) and making a single
+        button press take up to ~40s in the worst case, which the user reported as the whole
+        bot appearing to hang. Callers already have instance_name from a prior
+        _list_instances()/_resolve_target() call, so it's passed straight through now."""
         try:
             async with aiohttp.ClientSession() as session:
                 session_id = await _amp_login(session, cfg["url"], cfg["username"], cfg["password"])
                 await _amp_call(session, cfg["url"], "ADSModule", f"{method}Instance",
-                                 SESSIONID=session_id, InstanceName=match["instance_name"])
+                                 SESSIONID=session_id, InstanceName=instance_name)
             return True, ""
         except Exception as e:
             return False, _err_text(e)
@@ -455,7 +449,7 @@ class AMP(commands.Cog):
         if mode == "legacy":
             ok, err = await self._amp_action(cfg, method)
         else:
-            ok, err = await self._instance_action(cfg, data["id"], method)
+            ok, err = await self._instance_action(cfg, data["instance_name"], method)
         name = "" if mode == "legacy" else f" **{data['name']}**"
         if ok:
             await interaction.followup.send(f"{success_icon}{name} {success_text}", ephemeral=True)

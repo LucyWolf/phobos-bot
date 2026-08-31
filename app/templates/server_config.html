@@ -1851,15 +1851,17 @@ function toggleAdEdit(id) {
           {{ inst.label }}
         </span>
       </div>
-      {% if inst.address %}<p class="hint" style="margin-bottom:0.9rem;font-family:monospace;font-size:0.78rem;">{{ inst.address }}</p>{% endif %}
       <div style="display:flex;gap:0.5rem;">
         <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/start" style="margin:0;flex:1;">
+          <input type="hidden" name="instance_name" value="{{ inst.instance_name }}">
           <button type="submit" class="btn btn-secondary" style="width:100%;padding:0.4rem 0.3rem;font-size:0.76rem;line-height:1;white-space:nowrap;">{{ tr.amp_btn_start }}</button>
         </form>
         <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/stop" style="margin:0;flex:1;">
+          <input type="hidden" name="instance_name" value="{{ inst.instance_name }}">
           <button type="submit" class="btn btn-danger" style="width:100%;padding:0.4rem 0.3rem;font-size:0.76rem;line-height:1;white-space:nowrap;">{{ tr.amp_btn_stop }}</button>
         </form>
         <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/restart" style="margin:0;flex:1;">
+          <input type="hidden" name="instance_name" value="{{ inst.instance_name }}">
           <button type="submit" class="btn btn-secondary" style="width:100%;padding:0.4rem 0.3rem;font-size:0.76rem;line-height:1;white-space:nowrap;">{{ tr.amp_btn_restart }}</button>
         </form>
       </div>
