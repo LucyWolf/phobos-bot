@@ -12,29 +12,23 @@
   <p class="hint" style="margin-bottom:1.25rem;">
     Wird für das Passwort-Reset-System verwendet. Funktioniert mit Gmail, Outlook, oder eigenem Mailserver.
   </p>
-  <form method="post" action="/settings/smtp" id="smtp-form">
-    <label style="display:flex;align-items:center;gap:0.5rem;font-weight:400;">
-      <input type="checkbox" id="smtp-locked-cb" name="smtp_locked" value="1" {% if smtp_locked %}checked{% endif %}
-             onchange="document.querySelectorAll('.smtp-lockable').forEach(function(el){ el.disabled = document.getElementById('smtp-locked-cb').checked; })"
-             style="width:auto;margin:0;">
-      Standard sperren <span style="color:var(--muted);font-size:0.72rem">(verhindert versehentliches Ändern durch andere Admins)</span>
-    </label>
-    <div class="grid-2" style="margin-top:0.75rem;">
+  <form method="post" action="/settings/smtp">
+    <div class="grid-2">
       <div>
         <label>SMTP Host</label>
-        <input type="text" name="smtp_host" value="{{ smtp_host }}" placeholder="smtp.gmail.com" class="smtp-lockable" {% if smtp_locked %}disabled{% endif %}>
+        <input type="text" name="smtp_host" value="{{ smtp_host }}" placeholder="smtp.gmail.com">
       </div>
       <div>
         <label>Port</label>
-        <input type="number" name="smtp_port" value="{{ smtp_port }}" placeholder="587" class="smtp-lockable" {% if smtp_locked %}disabled{% endif %}>
+        <input type="number" name="smtp_port" value="{{ smtp_port }}" placeholder="587">
       </div>
     </div>
     <label>Benutzername (E-Mail)</label>
-    <input type="email" name="smtp_user" value="{{ smtp_user }}" placeholder="bot@gmail.com" class="smtp-lockable" {% if smtp_locked %}disabled{% endif %}>
+    <input type="email" name="smtp_user" value="{{ smtp_user }}" placeholder="bot@gmail.com">
     <label>Passwort / App-Passwort <span style="color:var(--muted);font-size:0.72rem">(leer lassen = nicht ändern)</span></label>
-    <input type="password" name="smtp_pass" placeholder="••••••••" class="smtp-lockable" {% if smtp_locked %}disabled{% endif %}>
+    <input type="password" name="smtp_pass" placeholder="••••••••">
     <label>Absender-Adresse <span style="color:var(--muted);font-size:0.72rem">(leer = gleich wie Benutzername)</span></label>
-    <input type="email" name="smtp_from" value="{{ smtp_from }}" placeholder="noreply@example.com" class="smtp-lockable" {% if smtp_locked %}disabled{% endif %}>
+    <input type="email" name="smtp_from" value="{{ smtp_from }}" placeholder="noreply@example.com">
     <label>Dashboard-URL <span style="color:var(--muted);font-size:0.72rem">(für Reset-Links, z.B. https://bot.example.com)</span></label>
     <input type="url" name="base_url" value="{{ base_url }}" placeholder="https://bot.example.com">
     <button type="submit" class="btn btn-primary">💾 Speichern</button>

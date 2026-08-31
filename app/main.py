@@ -3558,7 +3558,6 @@ async def smtp_settings_page(request: Request, saved: bool = False, error: str =
         "smtp_user":  await get_config("smtp_user") or "",
         "smtp_from":  await get_config("smtp_from") or "",
         "base_url":   await get_config("base_url") or "",
-        "smtp_locked": (await get_config("smtp_locked")) == "1",
         "saved": saved, "error": error, "test_ok": test_ok,
     })
 
@@ -3569,44 +3568,30 @@ async def smtp_settings_save(
     smtp_host: str = Form(""), smtp_port: str = Form("587"),
     smtp_user: str = Form(""), smtp_pass: str = Form(""),
     smtp_from: str = Form(""), base_url: str = Form(""),
-    smtp_locked: str = Form(""),
 ):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
-    # "Standard sperren" - since every dashboard admin has equal full access (no finer-grained
-    # roles, a deliberate earlier simplification), this can't stop a determined second admin
-    # from unchecking it themselves - it only prevents an ACCIDENTAL overwrite of a shared,
-    # already-working SMTP config by protecting the sensitive fields from casual edits: while
-    # already locked, a save that leaves the checkbox checked ignores any submitted changes to
-    # host/port/user/from/password outright, no matter what was actually posted (defends
-    # against a stale/tampered form too, not just the normal UI where these fields are simply
-    # disabled). Unlocking (submitting with the checkbox unchecked) applies edits normally in
-    # that same request.
-    currently_locked = (await get_config("smtp_locked")) == "1"
-    wants_locked = bool(smtp_locked.strip())
-    if not (currently_locked and wants_locked):
-        if smtp_port.strip():
-            try:
-                if not (1 <= int(smtp_port.strip()) <= 65535):
-                    raise ValueError
-            except ValueError:
-                # _send_reset_email() does int(get_config("smtp_port") or 587) completely
-                # unguarded - a non-numeric value saved here would raise there instead, and
-                # forgot_pw_submit only shows that exception's message when the submitted email
-                # actually belongs to a registered user (the no-such-user path always shows the
-                # generic "an email was sent if this address is registered" success message to
-                # prevent enumeration) - a broken port value would silently defeat that
-                # protection by making a real account distinguishable via the resulting error.
-                return RedirectResponse("/settings?error=Ungültiger+SMTP-Port", status_code=302)
-        for key, val in [
-            ("smtp_host", smtp_host), ("smtp_port", smtp_port),
-            ("smtp_user", smtp_user), ("smtp_from", smtp_from),
-        ]:
-            await set_config(key, val.strip())
-        if smtp_pass.strip():
-            await set_config("smtp_pass", smtp_pass.strip())
-    await set_config("base_url", base_url.strip())
-    await set_config("smtp_locked", "1" if wants_locked else "0")
+    if smtp_port.strip():
+        try:
+            if not (1 <= int(smtp_port.strip()) <= 65535):
+                raise ValueError
+        except ValueError:
+            # _send_reset_email() does int(get_config("smtp_port") or 587) completely
+            # unguarded - a non-numeric value saved here would raise there instead, and
+            # forgot_pw_submit only shows that exception's message when the submitted email
+            # actually belongs to a registered user (the no-such-user path always shows the
+            # generic "an email was sent if this address is registered" success message to
+            # prevent enumeration) - a broken port value would silently defeat that
+            # protection by making a real account distinguishable via the resulting error.
+            return RedirectResponse("/settings?error=Ungültiger+SMTP-Port", status_code=302)
+    for key, val in [
+        ("smtp_host", smtp_host), ("smtp_port", smtp_port),
+        ("smtp_user", smtp_user), ("smtp_from", smtp_from),
+        ("base_url", base_url),
+    ]:
+        await set_config(key, val.strip())
+    if smtp_pass.strip():
+        await set_config("smtp_pass", smtp_pass.strip())
     return RedirectResponse("/settings?success=SMTP+gespeichert", status_code=302)
 
 
