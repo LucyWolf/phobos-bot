@@ -77,6 +77,39 @@ def _extract_instance(d) -> dict | None:
     return {"id": str(iid), "name": name, "running": bool(running), "module": module}
 
 
+def _summarize_raw(raw) -> str:
+    """Compact structural summary of ADSModule.GetInstances()'s raw response for debugging -
+    counts and brief per-entry identifiers instead of a truncated raw dump, since a real
+    nested instance list can easily be larger than any reasonable truncation limit (confirmed
+    live: a 500-char truncation cut off after the very first nested entry, before any actual
+    game instances could even be seen)."""
+    items = raw if isinstance(raw, list) else (raw or {}).get("result") or []
+    if not isinstance(items, list):
+        return f"Unerwartete Form: {type(raw).__name__}"
+    lines = [f"Top-Level-Einträge: {len(items)}"]
+    for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            lines.append(f"[{i}] kein Objekt ({type(item).__name__})")
+            continue
+        keys = list(item.keys())
+        lines.append(f"[{i}] Felder ({len(keys)}): {keys}")
+        own = _extract_instance(item)
+        if own:
+            lines.append(f"    selbst instanzartig: Module={own['module']!r} Name={own['name']!r} Running={own['running']}")
+        for key, value in item.items():
+            if isinstance(value, list):
+                lines.append(f"    Liste '{key}': {len(value)} Einträge")
+                for j, sub in enumerate(value):
+                    sub_inst = _extract_instance(sub)
+                    if sub_inst:
+                        lines.append(f"      [{j}] Module={sub_inst['module']!r} Name={sub_inst['name']!r} Running={sub_inst['running']}")
+                    elif isinstance(sub, dict):
+                        lines.append(f"      [{j}] kein Instanz-Muster, Felder: {list(sub.keys())}")
+                    else:
+                        lines.append(f"      [{j}] {type(sub).__name__}: {str(sub)[:80]}")
+    return "\n".join(lines)
+
+
 def _parse_instances(raw) -> list[dict]:
     """Parses ADSModule.GetInstances()'s response into a normalized list of
     {"id": str, "name": str, "running": bool, "module": str}. AMP groups instances by hosting
@@ -161,20 +194,25 @@ class AMP(commands.Cog):
                 session_id = await _amp_login(session, cfg["url"], cfg["username"], cfg["password"])
                 raw = await _amp_call(session, cfg["url"], "ADSModule", "GetInstances", SESSIONID=session_id)
             parsed = _parse_instances(raw)
+            summary = _summarize_raw(raw)
             if not parsed:
                 # The call itself succeeded (no exception) but nothing was recognized in the
                 # response - since the exact field names were never verified against a real ADS,
                 # this is just as likely a parsing mismatch as it is a genuinely standalone
-                # connection. Surface a snippet of the raw response instead of looking identical
-                # to "no error, nothing to see" - there'd otherwise be no way to tell those two
-                # cases apart or to debug a mismatch without live access to a real ADS instance.
-                return {"instances": [], "error": f"0 Instanzen erkannt, Rohantwort: {str(raw)[:200]}",
-                        "raw_debug": str(raw)[:500]}
-            # Always keep a raw snippet even on a successful parse - parsing has already been
+                # connection. Surface a structural summary instead of looking identical to "no
+                # error, nothing to see" - there'd otherwise be no way to tell those two cases
+                # apart or to debug a mismatch without live access to a real ADS instance. A
+                # summary rather than a raw dump, because a raw dump truncated to any reasonable
+                # length can cut off before showing anything past the first nested entry
+                # (confirmed live - a real response's first AvailableInstances entry alone
+                # exceeded a 500-char truncation on its own).
+                return {"instances": [], "error": "0 Instanzen erkannt (Details im Debug-Bereich unten)",
+                        "raw_debug": summary}
+            # Always keep the summary even on a successful parse - parsing has already been
             # wrong once before without raising or returning zero results (a wrapper entry was
             # mistaken for a game), so a "looks fine" result here still isn't a strong enough
             # guarantee to skip giving admins a way to double check what AMP actually returned.
-            return {"instances": parsed, "error": None, "raw_debug": str(raw)[:500]}
+            return {"instances": parsed, "error": None, "raw_debug": summary}
         except Exception as e:
             return {"instances": [], "error": _err_text(e), "raw_debug": None}
 
