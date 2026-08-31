@@ -2554,6 +2554,57 @@ async def amp_delete_web(request: Request, guild_id: int):
     return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Verbindung+gelöscht", status_code=302)
 
 
+@web.post("/servers/{guild_id}/amp/instance/{instance_id}/start")
+async def amp_instance_start_web(request: Request, guild_id: int, instance_id: str):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    cfg = await _amp_cfg_for_guild(guild_id)
+    if not cfg or not cfg.get("url"):
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Kein+Gameserver+verknüpft", status_code=302)
+    amp_cog = bot.cogs.get("AMP")
+    if not amp_cog:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
+    ok, error = await amp_cog._instance_action(cfg, instance_id, "Start")
+    if not ok:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error={urllib.parse.quote(error[:150])}", status_code=302)
+    return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Startbefehl+gesendet", status_code=302)
+
+
+@web.post("/servers/{guild_id}/amp/instance/{instance_id}/stop")
+async def amp_instance_stop_web(request: Request, guild_id: int, instance_id: str):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    cfg = await _amp_cfg_for_guild(guild_id)
+    if not cfg or not cfg.get("url"):
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Kein+Gameserver+verknüpft", status_code=302)
+    amp_cog = bot.cogs.get("AMP")
+    if not amp_cog:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
+    ok, error = await amp_cog._instance_action(cfg, instance_id, "Stop")
+    if not ok:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error={urllib.parse.quote(error[:150])}", status_code=302)
+    return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Stoppbefehl+gesendet", status_code=302)
+
+
+@web.post("/servers/{guild_id}/amp/instance/{instance_id}/restart")
+async def amp_instance_restart_web(request: Request, guild_id: int, instance_id: str):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    cfg = await _amp_cfg_for_guild(guild_id)
+    if not cfg or not cfg.get("url"):
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Kein+Gameserver+verknüpft", status_code=302)
+    amp_cog = bot.cogs.get("AMP")
+    if not amp_cog:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
+    ok, error = await amp_cog._instance_action(cfg, instance_id, "Restart")
+    if not ok:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error={urllib.parse.quote(error[:150])}", status_code=302)
+    return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Neustart-Befehl+gesendet", status_code=302)
+
+
 # ── Free Stuff ────────────────────────────────────────────────────────────────
 
 @web.get("/servers/{guild_id}/freestuff", response_class=HTMLResponse)
@@ -4042,13 +4093,22 @@ async def server_config(
 
     amp_cfg = await db_one("SELECT * FROM amp_configs WHERE guild_id=?", (str(guild_id),))
     amp_status = None
+    amp_instances = None
     if tab == "amp" and amp_cfg and amp_cfg.get("url"):
         # Only fetched when the amp tab is actually being viewed - every OTHER tab load would
         # otherwise pay for a live login+status round-trip to an external AMP instance it has
         # nothing to do with, every single time any tab on this page is opened.
         amp_cog = bot.cogs.get("AMP")
         if amp_cog:
-            amp_status = await amp_cog._fetch_status(amp_cfg)
+            # A connection can be a single standalone AMP instance OR the main ADS controller
+            # managing several game instances underneath it - try instance discovery first,
+            # only fall back to the single-connection status view (amp_status) if none were
+            # found (a genuinely standalone connection, or the discovery call itself failed).
+            listing = await amp_cog._list_instances(amp_cfg)
+            if listing["instances"]:
+                amp_instances = listing["instances"]
+            else:
+                amp_status = await amp_cog._fetch_status(amp_cfg)
 
     return templates.TemplateResponse("server_config.html", {
         **session(request), "request": request,
@@ -4076,7 +4136,7 @@ async def server_config(
         "tempvoice_configs": await db_rows(
             "SELECT * FROM temp_voice_config WHERE guild_id=?", (str(guild_id),)
         ),
-        "amp_cfg": amp_cfg, "amp_status": amp_status,
+        "amp_cfg": amp_cfg, "amp_status": amp_status, "amp_instances": amp_instances,
         "toggleable_features": _TOGGLEABLE_FEATURES,
         "enabled_features": await _get_enabled_features(guild_id),
         "scheduled_messages": _scheduled_messages,

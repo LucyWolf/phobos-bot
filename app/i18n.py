@@ -413,8 +413,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # AMP Gameserver
         "amp_info_tooltip": "Was ist das?",
         "amp_info_title":   "🎮 Wie funktioniert die Gameserver-Anbindung?",
-        "amp_info_item_what": "Verknüpft diesen Discord-Server mit einer CubeCoders-AMP-Instanz (z.B. ein Minecraft- oder Rust-Server) — zeigt an ob sie läuft und erlaubt Starten/Stoppen.",
-        "amp_info_item_commands": "Im Chat verfügbar: /gameserver-status (für alle sichtbar), /gameserver-start, /gameserver-stop und /gameserver-restart (nur für Mitglieder mit Server verwalten-Berechtigung).",
+        "amp_info_item_what": "Verknüpft diesen Discord-Server mit einer CubeCoders-AMP-Instanz — zeigt an ob sie läuft und erlaubt Starten/Stoppen. Verwaltet die eine Verbindung mehrere Spiele (ADS-Controller), werden alle automatisch einzeln angezeigt.",
+        "amp_info_item_commands": "Im Chat verfügbar: /gameserver-status (für alle sichtbar), /gameserver-start, /gameserver-stop und /gameserver-restart (nur für Mitglieder mit Server verwalten-Berechtigung). Bei mehreren verknüpften Spielen mit server: den Namen angeben.",
         "amp_info_item_password": "Passwortfeld beim Speichern leer lassen, um das bereits gespeicherte Passwort zu behalten.",
         "amp_config_title":  "Verbindung",
         "amp_label_label":   "Bezeichnung",
@@ -960,8 +960,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # AMP Gameserver
         "amp_info_tooltip": "What is this?",
         "amp_info_title":   "🎮 How does the game server connection work?",
-        "amp_info_item_what": "Links this Discord server to a CubeCoders AMP instance (e.g. a Minecraft or Rust server) — shows whether it's running and lets you start/stop it.",
-        "amp_info_item_commands": "Available in chat: /gameserver-status (visible to everyone), /gameserver-start, /gameserver-stop and /gameserver-restart (only for members with the Manage Server permission).",
+        "amp_info_item_what": "Links this Discord server to a CubeCoders AMP instance — shows whether it's running and lets you start/stop it. If the connection manages several games (an ADS controller), all of them show up individually.",
+        "amp_info_item_commands": "Available in chat: /gameserver-status (visible to everyone), /gameserver-start, /gameserver-stop and /gameserver-restart (only for members with the Manage Server permission). With several linked games, specify which one via server:.",
         "amp_info_item_password": "Leave the password field empty when saving to keep the already-stored password.",
         "amp_config_title":  "Connection",
         "amp_label_label":   "Label",
