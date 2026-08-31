@@ -2328,9 +2328,33 @@ _ANDROID_APK_URL = (
 )
 
 
+def _reap_stray_zombies():
+    """Best-effort, non-blocking cleanup for any child process that has already exited but was
+    never waited on. This process runs as PID 1 inside the container (no init system like tini
+    - confirmed live via `docker exec ... cat /proc/1/cmdline`, it's directly `python main.py`)
+    - PID 1 is responsible for reaping EVERY one of its children, including ones it never
+    explicitly tracked itself (e.g. a helper process `git` spawns internally for an HTTPS
+    fetch, which becomes an orphan reparented to PID 1 if it outlives git's own exit - asyncio's
+    subprocess machinery only reaps the exact PID it launched via create_subprocess_exec, it has
+    no way to know about such a grandchild). Confirmed live: 70 stray zombie `git` processes had
+    accumulated across this project's many update cycles in one long session, all with comm=git
+    and an already-empty cmdline (the telltale sign of an unreaped, already-exited child) -
+    os.waitpid(-1, os.WNOHANG) reaps ALL of this process's exited children in one sweep,
+    regardless of whether _run() below was the one that spawned them. Non-blocking (WNOHANG)
+    so it only ever cleans up processes that already exited, never waits on a still-running one."""
+    try:
+        while True:
+            pid, _ = os.waitpid(-1, os.WNOHANG)
+            if pid == 0:
+                break
+    except ChildProcessError:
+        pass  # no children at all left to reap
+
+
 async def _do_git_update():
     global _update_status, _update_running
     _update_status = {"logs": [], "done": False, "error": ""}
+    _reap_stray_zombies()  # clean up anything left over from earlier update runs first
 
     async def _run(cmd: list, cwd: str | None = None) -> int:
         proc = await asyncio.create_subprocess_exec(
@@ -2342,7 +2366,9 @@ async def _do_git_update():
             line = raw.decode("utf-8", errors="replace").rstrip()
             if line:
                 _ulog(line, "info")
-        return await proc.wait()
+        rc = await proc.wait()
+        _reap_stray_zombies()
+        return rc
 
     try:
         _ulog("$ phobos-bot update — " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "cmd")
