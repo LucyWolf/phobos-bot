@@ -100,11 +100,21 @@ def _extract_instance(d) -> dict | None:
     since ADSModule's Start/Stop/RestartInstance action methods are documented to take
     InstanceName, not InstanceID - "name" is the human FriendlyName shown in the UI, which can
     differ from both.
-    "state" is one of AMP_APP_STATES's category keys (e.g. "online"/"installing"/"failed"/...),
-    looked up from the raw AppState int via AMP_APP_STATES - falls back to a plain Running-bool
-    reading only when AppState itself is missing entirely (defends against a response shape
-    that omits it, not a substitute for the real enum otherwise). "color" is the matching
-    display bucket ("green"/"red"/"yellow"/"gray") for the dashboard's status pill."""
+    "state" is one of AMP_APP_STATES's category keys (e.g. "online"/"installing"/"failed"/...).
+    Running now takes priority over AppState for the positive case - two live, directly
+    contradicting real-world observations on this project's own "wa" instance forced this: AMP's
+    own panel showed "Installing" while AppState was 0 (which AMP_APP_STATES maps to "Stopped"),
+    and later showed "Running" while AppState was 70 (mapped to "Installing") - AppState's exact
+    meaning apparently isn't consistent for this instance/module type, while AMP's own displayed
+    "Running" label matched the raw Running bool in both cases. So: Running=True always wins
+    ("online", regardless of whatever AppState claims) - AppState is only consulted to pick a
+    more specific category (installing/failed/suspended/...) when Running is False, and only
+    "offline" is used as the final fallback when even that doesn't resolve to anything known.
+    This can't fix the reverse case (Running=False but AMP's UI already shows "Installing" -
+    AppState alone can't distinguish that from a genuinely stopped instance, seemingly a real
+    data gap in what this API call exposes for this module type), but it does fix the more
+    disruptive case of a fully running instance being mislabeled by a misleading AppState value.
+    "color" is the matching display bucket ("green"/"red"/"yellow"/"gray") for the status pill."""
     if not isinstance(d, dict):
         return None
     iid = d.get("InstanceID") or d.get("InstanceId") or d.get("ID")
@@ -115,10 +125,12 @@ def _extract_instance(d) -> dict | None:
     name = d.get("FriendlyName") or instance_name
     app_state = d.get("AppState")
     running = bool(d.get("Running"))
-    if app_state in AMP_APP_STATES:
+    if running:
+        state, color = "online", "green"
+    elif app_state in AMP_APP_STATES:
         state, color = AMP_APP_STATES[app_state]
     else:
-        state, color = ("online", "green") if running else ("offline", "red")
+        state, color = "offline", "red"
     ip = d.get("IP") or d.get("ApplicationIP")
     port = d.get("Port")
     address = f"{ip}:{port}" if ip and port else None
