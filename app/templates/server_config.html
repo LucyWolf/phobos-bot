@@ -1862,6 +1862,12 @@ function toggleAdEdit(id) {
     </div>
     <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
   </form>
+  {% if amp_cfg and amp_cfg.url %}
+  <form method="post" action="/servers/{{ guild.id }}/amp/delete" style="margin-top:0.75rem;"
+        onsubmit="return confirm({{ tr.amp_confirm_delete.replace('{name}', amp_cfg.label or 'Gameserver') | js }})">
+    <button type="submit" class="btn btn-danger" title="{{ tr.btn_delete }}">🗑 {{ tr.btn_delete }}</button>
+  </form>
+  {% endif %}
 </div>
 
 {% if amp_cfg and amp_cfg.url %}

@@ -434,6 +434,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "amp_btn_start":     "🟢 Starten",
         "amp_btn_stop":      "🔴 Stoppen",
         "amp_btn_restart":   "🔄 Neustarten",
+        "amp_confirm_delete": "Verbindung zu „{name}“ wirklich löschen? Der Bot kann diesen Gameserver danach nicht mehr steuern.",
         # Tickets
         "tickets_panels_title":     "🎫 Ticket-Panels",
         "tickets_panels_total":     "gesamt",
@@ -980,6 +981,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "amp_btn_start":     "🟢 Start",
         "amp_btn_stop":      "🔴 Stop",
         "amp_btn_restart":   "🔄 Restart",
+        "amp_confirm_delete": "Really delete the connection to \"{name}\"? The bot won't be able to control this gameserver afterwards.",
         # Tickets
         "tickets_panels_title":     "🎫 Ticket Panels",
         "tickets_panels_total":     "total",

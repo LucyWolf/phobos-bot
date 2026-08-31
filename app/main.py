@@ -2545,6 +2545,15 @@ async def amp_restart_web(request: Request, guild_id: int):
     return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Neustart-Befehl+gesendet", status_code=302)
 
 
+@web.post("/servers/{guild_id}/amp/delete")
+async def amp_delete_web(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    await db_exec("DELETE FROM amp_configs WHERE guild_id=?", (str(guild_id),))
+    return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Verbindung+gelöscht", status_code=302)
+
+
 # ── Free Stuff ────────────────────────────────────────────────────────────────
 
 @web.get("/servers/{guild_id}/freestuff", response_class=HTMLResponse)
