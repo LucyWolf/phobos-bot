@@ -78,11 +78,27 @@ def _extract_instance(d) -> dict | None:
 
 
 def _summarize_raw(raw) -> str:
-    """Compact structural summary of ADSModule.GetInstances()'s raw response for debugging -
-    counts and brief per-entry identifiers instead of a truncated raw dump, since a real
-    nested instance list can easily be larger than any reasonable truncation limit (confirmed
-    live: a 500-char truncation cut off after the very first nested entry, before any actual
-    game instances could even be seen)."""
+    """Compact structural summary of an AMP API response for debugging - counts and brief
+    per-entry identifiers instead of a truncated raw dump, since a real nested instance list
+    can easily be larger than any reasonable truncation limit (confirmed live: a 500-char
+    truncation cut off after the very first nested entry, before any actual game instances
+    could even be seen). Also reused as a generic probe for candidate list methods whose
+    response shape isn't known in advance - a top-level dict without a "result" list is shown
+    directly (keyed responses, e.g. one entry per instance ID, are just as plausible for some
+    of those candidates as a list is)."""
+    if isinstance(raw, dict) and not isinstance(raw.get("result"), list):
+        keys = list(raw.keys())
+        lines = [f"Dict mit {len(keys)} Top-Level-Schlüssel(n): {keys}"]
+        for key, value in raw.items():
+            if isinstance(value, dict):
+                sub_inst = _extract_instance(value)
+                if sub_inst:
+                    lines.append(f"  '{key}': Module={sub_inst['module']!r} Name={sub_inst['name']!r} Running={sub_inst['running']}")
+                else:
+                    lines.append(f"  '{key}': dict, Felder: {list(value.keys())}")
+            else:
+                lines.append(f"  '{key}': {type(value).__name__} = {str(value)[:80]}")
+        return "\n".join(lines)
     items = raw if isinstance(raw, list) else (raw or {}).get("result") or []
     if not isinstance(items, list):
         return f"Unerwartete Form: {type(raw).__name__}"
@@ -181,41 +197,57 @@ class AMP(commands.Cog):
     async def _restart(self, cfg: dict) -> tuple[bool, str]:
         return await self._amp_action(cfg, "Restart")
 
+    # Confirmed live against a real ADS's Core.GetAPISpec(): ADSModule.GetInstances() only
+    # returns the ADS's own control instance wrapped in a Target object, not the actual game
+    # instances - these are the next most likely candidates by name for a method that DOES
+    # return the actual games, tried directly (no params) rather than guessed at blindly again.
+    _CANDIDATE_LIST_METHODS = ["GetLocalInstances", "GetInstanceStatuses", "Servers"]
+
     async def _probe_ads_methods(self, cfg: dict) -> str:
-        """Diagnostic only, not used in normal operation: lists every method AMPModule exposes
-        under "ADSModule" (Core.GetAPISpec, called authenticated this time - unlike the pre-auth
-        probe used while first designing this integration, which only exposed login-related
-        methods, not this one). Used to find the correct method for enumerating game instances
-        after ADSModule.GetInstances() turned out to only return the ADS's own control instance,
-        not the actual games - confirmed live against a real ADS (AvailableInstances contained
-        just the ADS entry). Confirmed live: GetAPISpec's response is a dict keyed by module
-        name (e.g. "ADSModule"), each holding one dict per method with its own Description/
-        Parameters/etc. metadata - listing every method name (plus its Description, when AMP
-        provides one) directly under that module key rather than a generic substring search,
-        since a naive "contains ads" search also matches method names like AttachADS/
-        AttachADSWithPairingCode and pulls in their internal metadata fields as false positives,
-        pushing genuinely relevant method names further down the alphabet out of any reasonable
-        length cap - confirmed live, a first version of this walk did exactly that. Only ever
+        """Diagnostic only, not used in normal operation: for each of _CANDIDATE_LIST_METHODS,
+        calls it directly (SESSIONID only, no other params) against the real ADS and reports
+        what came back - a structural summary on success (via _summarize_raw, reusable since
+        the shape is unknown either way), or the actual error otherwise (most usefully, AMP's
+        own "missing required parameter" message would reveal what parameter is actually
+        needed). Also includes each candidate's declared Parameters from Core.GetAPISpec
+        (called authenticated this time - unlike the pre-auth probe used while first designing
+        this integration, which only exposed login-related methods, not this one), so a failed
+        call's likely cause is visible even without a successful response to inspect. Only ever
         surfaced via the dashboard's debug view when instance discovery already found 0 games,
         never during normal use."""
         try:
             async with aiohttp.ClientSession() as session:
                 session_id = await _amp_login(session, cfg["url"], cfg["username"], cfg["password"])
-                spec = await _amp_call(session, cfg["url"], "Core", "GetAPISpec", SESSIONID=session_id)
-        except Exception as e:
-            return f"GetAPISpec fehlgeschlagen: {_err_text(e)}"
+                try:
+                    spec = await _amp_call(session, cfg["url"], "Core", "GetAPISpec", SESSIONID=session_id)
+                except Exception as e:
+                    spec = None
+                    spec_error = _err_text(e)
+                else:
+                    spec_error = None
+                ads_meta = {}
+                if isinstance(spec, dict):
+                    ads_key = next((k for k in spec.keys() if isinstance(k, str) and k.lower() == "adsmodule"), None)
+                    if ads_key and isinstance(spec[ads_key], dict):
+                        ads_meta = spec[ads_key]
 
-        if not isinstance(spec, dict):
-            return f"Unerwartete GetAPISpec-Form: {type(spec).__name__}"
-        ads_key = next((k for k in spec.keys() if isinstance(k, str) and k.lower() == "adsmodule"), None)
-        if not ads_key or not isinstance(spec[ads_key], dict):
-            return f"Kein 'ADSModule'-Schlüssel gefunden. Top-Level-Module: {sorted(spec.keys())}"
-        lines = [f"{len(spec[ads_key])} Methoden unter '{ads_key}':"]
-        for name in sorted(spec[ads_key].keys()):
-            meta = spec[ads_key].get(name)
-            desc = meta.get("Description") if isinstance(meta, dict) else None
-            lines.append(f"- {name}" + (f": {desc}" if desc else ""))
-        return "\n".join(lines)
+                lines = []
+                for method in self._CANDIDATE_LIST_METHODS:
+                    lines.append(f"── ADSModule.{method} ──")
+                    params = ads_meta.get(method, {}).get("Parameters") if isinstance(ads_meta.get(method), dict) else None
+                    if params:
+                        lines.append(f"Deklarierte Parameter: {params}")
+                    elif spec_error:
+                        lines.append(f"(Parameter unbekannt, GetAPISpec fehlgeschlagen: {spec_error})")
+                    try:
+                        result = await _amp_call(session, cfg["url"], "ADSModule", method, SESSIONID=session_id)
+                        lines.append(_summarize_raw(result))
+                    except Exception as e:
+                        lines.append(f"Aufruf fehlgeschlagen: {_err_text(e)}")
+                    lines.append("")
+                return "\n".join(lines)
+        except Exception as e:
+            return f"Login fehlgeschlagen: {_err_text(e)}"
 
     async def _list_instances(self, cfg: dict) -> dict:
         """A connection can be a single standalone AMP instance OR the main ADS controller
