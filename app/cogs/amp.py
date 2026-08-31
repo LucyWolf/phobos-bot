@@ -245,6 +245,31 @@ def _parse_instances(raw) -> list[dict]:
 _LIST_CACHE_TTL = 5
 _list_cache: dict[str, tuple[float, dict]] = {}
 
+# Reported live: Running flips True the instant AMP's underlying process/container starts, well
+# before a slow-loading game is actually joinable ("dieser braucht sehr lange zum starten...und
+# dennoch steht schon online drauf") - a TCP-connect check against the game's own port was tried
+# and deliberately abandoned (see git history) since most game servers use UDP, not TCP, which
+# would make that check permanently wrong instead of just briefly wrong. This is a much safer,
+# protocol-agnostic alternative: once an instance is first observed transitioning to Running,
+# keep showing "busy" instead of "online" for a fixed grace period, then trust Running normally.
+# It's a rough guess, not a real readiness check - can show "online" a bit early for a genuinely
+# slow game, or keep "busy" a bit longer than necessary for a fast one - but unlike the TCP
+# check, it can never get permanently stuck, since it always resolves after the grace period.
+_STARTUP_GRACE_SECONDS = 30
+_running_since: dict[str, float] = {}
+
+
+def _apply_startup_grace(instances: list[dict]) -> None:
+    now = time.monotonic()
+    for inst in instances:
+        iid = inst["id"]
+        if inst.get("running"):
+            since = _running_since.setdefault(iid, now)
+            if now - since < _STARTUP_GRACE_SECONDS:
+                inst["state"], inst["color"] = "busy", "yellow"
+        else:
+            _running_since.pop(iid, None)
+
 
 class AMP(commands.Cog):
     def __init__(self, bot):
@@ -378,6 +403,7 @@ class AMP(commands.Cog):
             # mapping introduced in v1.14.19 is a much bigger, still-unverified-against-a-real-
             # instance change than discovery itself was, so keeping this visible lets a mismatch
             # be caught and reported directly instead of needing another guess-then-report round.
+            _apply_startup_grace(parsed)
             return {"instances": parsed, "error": None, "raw_debug": summary, "connection_error": False}
         except Exception as e:
             # Distinct from the "0 recognized" case above: this branch means the call itself
