@@ -87,8 +87,18 @@ def _extract_instance(d) -> dict | None:
     name = d.get("FriendlyName") or instance_name
     running = bool(d.get("Running"))
     state = "online" if running else "offline"
+    ip = d.get("IP") or d.get("ApplicationIP")
+    port = d.get("Port")
+    address = f"{ip}:{port}" if ip and port else None
+    # DisplayImageSource's actual content was never verified against a real instance - used
+    # defensively (only if it looks like a real absolute image URL) so an unexpected value
+    # (null, a relative AMP-internal path needing its own session/auth, some other shape) just
+    # means no background image is shown, never a broken image or a crash.
+    image_src = d.get("DisplayImageSource")
+    image_url = image_src if isinstance(image_src, str) and image_src.startswith(("http://", "https://")) else None
     return {"id": str(iid), "instance_name": instance_name, "name": name, "running": running,
-            "state": state, "app_state": d.get("AppState"), "module": module}
+            "state": state, "app_state": d.get("AppState"), "module": module,
+            "address": address, "image_url": image_url}
 
 
 def _summarize_raw(raw) -> str:
