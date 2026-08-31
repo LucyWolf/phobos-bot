@@ -59,24 +59,50 @@ def _amp_is_running(status: dict) -> bool:
     return status.get("State") not in (None, 10)
 
 
+# CubeCoders AMP's ApplicationState enum - confirmed authoritative (not another guess): matches
+# github.com/p0t4t0sandwich/ampapi-py (vendored inside the "cubecoders-amp-api-wrapper" PyPI
+# package, a community wrapper that mirrors AMP's own C# enum) AND cross-checked against two
+# real, live values from this project's own AMP instance (-1 for genuinely idle/never-started
+# instances, 20 for a genuinely running one) - this replaces the two earlier wrong guesses
+# (v1.14.9's "AppState != 10 means starting", then v1.14.11's fallback to a plain Running-only
+# bool once that was proven wrong). Each value maps to a display bucket used for both the label
+# and the color shown on the dashboard tile.
+AMP_APP_STATES: dict[int, tuple[str, str]] = {
+    -1:  ("offline", "red"),
+    0:   ("offline", "red"),
+    5:   ("starting", "yellow"),
+    7:   ("starting", "yellow"),
+    10:  ("starting", "yellow"),
+    20:  ("online", "green"),
+    30:  ("restarting", "yellow"),
+    40:  ("stopping", "yellow"),
+    45:  ("stopping", "yellow"),
+    50:  ("sleeping", "yellow"),
+    60:  ("waiting", "yellow"),
+    70:  ("installing", "yellow"),
+    75:  ("updating", "yellow"),
+    80:  ("awaiting_input", "red"),
+    100: ("failed", "red"),
+    200: ("suspended", "gray"),
+    250: ("maintenance", "gray"),
+    999: ("unknown", "gray"),
+}
+
+
 def _extract_instance(d) -> dict | None:
-    """Returns a normalized {"id", "instance_name", "name", "running", "state", "app_state",
-    "module"} from a raw dict if it looks like an actual game instance, else None. Field names
-    are read defensively (several fallbacks tried per field). "id" (InstanceID, a GUID) is used
-    for dashboard URLs/DOM identification - stable and URL-safe. "instance_name" (InstanceName,
-    a short string like the AMP module's own generated slug) is kept separately since
-    ADSModule's Start/Stop/RestartInstance action methods are documented to take InstanceName,
-    not InstanceID - "name" is the human FriendlyName shown in the UI, which can differ from
-    both.
-    "state" is "online"/"offline" only, straight from the "Running" bool - a previous version
-    also tried a "pending" state for a transitional "starting up" window, guessing that
-    AppState != 10 ("10 = Stopped", the one cross-version-documented stable value) meant
-    "starting" - confirmed WRONG live: idle, never-started instances also report an AppState
-    other than 10 here, so that heuristic showed a permanent false "starting" for genuinely
-    stopped instances. Reverted to the simple, correct Running-only reading until the real
-    AppState numbering for this module type is known. "app_state" (the raw AppState int) is
-    kept on the dict and shown directly on the dashboard tile in the meantime, specifically so
-    the real value is visible without another guess-then-report round trip."""
+    """Returns a normalized {"id", "instance_name", "name", "running", "state", "color",
+    "app_state", "module"} from a raw dict if it looks like an actual game instance, else None.
+    Field names are read defensively (several fallbacks tried per field). "id" (InstanceID, a
+    GUID) is used for dashboard URLs/DOM identification - stable and URL-safe. "instance_name"
+    (InstanceName, a short string like the AMP module's own generated slug) is kept separately
+    since ADSModule's Start/Stop/RestartInstance action methods are documented to take
+    InstanceName, not InstanceID - "name" is the human FriendlyName shown in the UI, which can
+    differ from both.
+    "state" is one of AMP_APP_STATES's category keys (e.g. "online"/"installing"/"failed"/...),
+    looked up from the raw AppState int via AMP_APP_STATES - falls back to a plain Running-bool
+    reading only when AppState itself is missing entirely (defends against a response shape
+    that omits it, not a substitute for the real enum otherwise). "color" is the matching
+    display bucket ("green"/"red"/"yellow"/"gray") for the dashboard's status pill."""
     if not isinstance(d, dict):
         return None
     iid = d.get("InstanceID") or d.get("InstanceId") or d.get("ID")
@@ -85,8 +111,12 @@ def _extract_instance(d) -> dict | None:
     module = d.get("Module") or d.get("ModuleDisplayName") or ""
     instance_name = d.get("InstanceName") or str(iid)
     name = d.get("FriendlyName") or instance_name
+    app_state = d.get("AppState")
     running = bool(d.get("Running"))
-    state = "online" if running else "offline"
+    if app_state in AMP_APP_STATES:
+        state, color = AMP_APP_STATES[app_state]
+    else:
+        state, color = ("online", "green") if running else ("offline", "red")
     ip = d.get("IP") or d.get("ApplicationIP")
     port = d.get("Port")
     address = f"{ip}:{port}" if ip and port else None
@@ -97,7 +127,7 @@ def _extract_instance(d) -> dict | None:
     image_src = d.get("DisplayImageSource")
     image_url = image_src if isinstance(image_src, str) and image_src.startswith(("http://", "https://")) else None
     return {"id": str(iid), "instance_name": instance_name, "name": name, "running": running,
-            "state": state, "app_state": d.get("AppState"), "module": module,
+            "state": state, "color": color, "app_state": app_state, "module": module,
             "address": address, "image_url": image_url}
 
 
@@ -304,11 +334,12 @@ class AMP(commands.Cog):
                 methods = await self._probe_ads_methods(cfg)
                 return {"instances": [], "error": "0 Instanzen erkannt (Details im Debug-Bereich unten)",
                         "raw_debug": f"{summary}\n\n{methods}"}
-            # No debug summary on a successful parse - GetLocalInstances is now confirmed live
-            # to return the actual games correctly (was needed while GetInstances() was still
-            # wrongly believed to be the right method), no reason to clutter a normal, working
-            # page load with diagnostic output any more.
-            return {"instances": parsed, "error": None, "raw_debug": None}
+            # Debug summary temporarily brought back even on a successful parse (was disabled in
+            # v1.14.8 once instance discovery itself was confirmed working) - the AppState enum
+            # mapping introduced in v1.14.19 is a much bigger, still-unverified-against-a-real-
+            # instance change than discovery itself was, so keeping this visible lets a mismatch
+            # be caught and reported directly instead of needing another guess-then-report round.
+            return {"instances": parsed, "error": None, "raw_debug": summary}
         except Exception as e:
             return {"instances": [], "error": _err_text(e), "raw_debug": None}
 

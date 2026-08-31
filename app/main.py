@@ -2494,6 +2494,23 @@ async def _amp_cfg_for_guild(guild_id: int):
     return await db_one("SELECT * FROM amp_configs WHERE guild_id=?", (str(guild_id),))
 
 
+# Maps cogs.amp.AMP_APP_STATES's category keys to their translated dashboard label - kept here
+# (not in the cog) since it needs i18n's tr dict, which the cog has no access to.
+_AMP_STATE_TR_KEYS = {
+    "online": "amp_status_online", "offline": "amp_status_offline",
+    "starting": "amp_status_starting", "restarting": "amp_status_restarting",
+    "stopping": "amp_status_stopping", "sleeping": "amp_status_sleeping",
+    "waiting": "amp_status_waiting", "installing": "amp_status_installing",
+    "updating": "amp_status_updating", "awaiting_input": "amp_status_awaiting_input",
+    "failed": "amp_status_failed", "suspended": "amp_status_suspended",
+    "maintenance": "amp_status_maintenance", "unknown": "amp_status_unknown",
+}
+
+
+def _amp_state_label(state: str, tr: dict) -> str:
+    return tr.get(_AMP_STATE_TR_KEYS.get(state, "amp_status_offline"), state)
+
+
 @web.post("/servers/{guild_id}/amp/start")
 async def amp_start_web(request: Request, guild_id: int):
     if r := auth_redirect(request): return r
@@ -2567,8 +2584,10 @@ async def amp_instances_json(request: Request, guild_id: int):
     if not cfg or not cfg.get("url") or not amp_cog:
         return JSONResponse({"instances": []})
     listing = await amp_cog._list_instances(cfg)
+    tr = get_tr(request.session.get("lang", "de"))
     return JSONResponse({"instances": [
-        {"id": i["id"], "state": i["state"]} for i in listing["instances"]
+        {"id": i["id"], "color": i["color"], "label": _amp_state_label(i["state"], tr)}
+        for i in listing["instances"]
     ]})
 
 
@@ -4150,6 +4169,8 @@ async def server_config(
             amp_raw_debug = listing.get("raw_debug")
             if listing["instances"]:
                 amp_instances = listing["instances"]
+                for inst in amp_instances:
+                    inst["label"] = _amp_state_label(inst["state"], _tr_tickets)
             else:
                 amp_instances_error = listing["error"]
                 amp_status = await amp_cog._fetch_status(amp_cfg)

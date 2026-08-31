@@ -1836,17 +1836,19 @@ function toggleAdEdit(id) {
   <button type="button" class="btn btn-secondary" onclick="toggleAmpEdit()" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="{{ tr.btn_settings }}">⚙</button>
 </div>
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin-bottom:1.25rem;">
+  {% set AMP_COLOR_HEX = {'green': '#22c55e', 'red': '#ef4444', 'yellow': '#eab308', 'gray': '#94a3b8'} %}
   {% for inst in amp_instances %}
+  {% set inst_hex = AMP_COLOR_HEX.get(inst.color, '#94a3b8') %}
   <div class="card" style="margin-bottom:0;padding:0;overflow:hidden;
-       border-top:3px solid {% if inst.state == 'online' %}#22c55e{% else %}#ef4444{% endif %};
+       border-top:3px solid {{ inst_hex }};
        {% if inst.image_url %}background-image:linear-gradient(rgba(15,17,23,0.82),rgba(15,17,23,0.9)),url('{{ inst.image_url }}');background-size:cover;background-position:center;{% endif %}">
     <div style="padding:1.1rem 1.25rem;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;margin-bottom:0.7rem;">
         <div style="font-weight:700;font-size:1.02rem;">🎮 {{ inst.name }}</div>
-        <span id="amp-state-{{ inst.id }}" data-online="{{ tr.amp_status_online }}" data-offline="{{ tr.amp_status_offline }}"
+        <span id="amp-state-{{ inst.id }}"
               style="flex-shrink:0;padding:0.2rem 0.65rem;border-radius:999px;font-size:0.72rem;font-weight:700;white-space:nowrap;
-              {% if inst.state == 'online' %}background:rgba(34,197,94,0.15);color:#22c55e;{% else %}background:rgba(239,68,68,0.15);color:#ef4444;{% endif %}">
-          {% if inst.state == 'online' %}{{ tr.amp_status_online }}{% else %}{{ tr.amp_status_offline }}{% endif %}
+              background:{{ inst_hex }}26;color:{{ inst_hex }};">
+          {{ inst.label }}
         </span>
       </div>
       {% if inst.address %}<p class="hint" style="margin-bottom:0.9rem;font-family:monospace;font-size:0.78rem;">{{ inst.address }}</p>{% endif %}
@@ -1874,6 +1876,7 @@ function toggleAdEdit(id) {
 {% if tab == 'amp' and amp_instances %}
 <script>
 (function() {
+  const AMP_COLOR_HEX = {green: '#22c55e', red: '#ef4444', yellow: '#eab308', gray: '#94a3b8'};
   function pollAmpStatus() {
     fetch("/servers/{{ guild.id }}/amp/instances.json")
       .then(r => r.json())
@@ -1881,10 +1884,10 @@ function toggleAdEdit(id) {
         (data.instances || []).forEach(function(inst) {
           const el = document.getElementById('amp-state-' + inst.id);
           if (!el) return;
-          const online = inst.state === 'online';
-          el.textContent = online ? el.dataset.online : el.dataset.offline;
-          el.style.background = online ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)';
-          el.style.color = online ? '#22c55e' : '#ef4444';
+          const hex = AMP_COLOR_HEX[inst.color] || AMP_COLOR_HEX.gray;
+          el.textContent = inst.label;
+          el.style.background = hex + '26';
+          el.style.color = hex;
         });
       })
       .catch(function() {});
