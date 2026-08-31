@@ -1839,7 +1839,7 @@ function toggleAdEdit(id) {
   {% for inst in amp_instances %}
   <div class="card" style="margin-bottom:0;">
     <div style="font-weight:600;margin-bottom:0.4rem;">{{ inst.name }}</div>
-    <p style="margin-bottom:0.75rem;font-size:1.05rem;">{% if inst.state == 'online' %}{{ tr.amp_status_online }}{% elif inst.state == 'pending' %}{{ tr.amp_status_pending }}{% else %}{{ tr.amp_status_offline }}{% endif %}</p>
+    <p id="amp-state-{{ inst.id }}" style="margin-bottom:0.75rem;font-size:1.05rem;">{% if inst.state == 'online' %}{{ tr.amp_status_online }}{% elif inst.state == 'pending' %}{{ tr.amp_status_pending }}{% else %}{{ tr.amp_status_offline }}{% endif %}</p>
     <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
       <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/start" style="margin:0;">
         <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.55rem;font-size:0.78rem;">{{ tr.amp_btn_start }}</button>
@@ -1859,6 +1859,32 @@ function toggleAdEdit(id) {
   <summary class="hint" style="cursor:pointer;">{{ tr.amp_raw_debug_label }}</summary>
   <pre style="white-space:pre-wrap;word-break:break-all;font-size:0.7rem;color:var(--muted);margin-top:0.4rem;">{{ amp_raw_debug }}</pre>
 </details>
+{% endif %}
+{% if tab == 'amp' and amp_instances %}
+<script>
+(function() {
+  const AMP_LABELS = {
+    online: {{ tr.amp_status_online | jsraw }},
+    pending: {{ tr.amp_status_pending | jsraw }},
+    offline: {{ tr.amp_status_offline | jsraw }}
+  };
+  function pollAmpStatus() {
+    fetch("/servers/{{ guild.id }}/amp/instances.json")
+      .then(r => r.json())
+      .then(data => {
+        (data.instances || []).forEach(function(inst) {
+          const el = document.getElementById('amp-state-' + inst.id);
+          if (el && AMP_LABELS[inst.state]) el.textContent = AMP_LABELS[inst.state];
+        });
+      })
+      .catch(function() {});
+  }
+  // Only while this tab is the one actually loaded (a tab switch elsewhere in this dashboard
+  // is a real page navigation, not client-side-only - see showTab()'s comment above - so this
+  // interval is naturally torn down on navigating away, no visibility check needed).
+  setInterval(pollAmpStatus, 10000);
+})();
+</script>
 {% endif %}
 {% elif amp_cfg and amp_cfg.url %}
 <div class="card" style="margin-bottom:1.25rem;">

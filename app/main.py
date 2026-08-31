@@ -2554,6 +2554,24 @@ async def amp_delete_web(request: Request, guild_id: int):
     return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Verbindung+gelöscht", status_code=302)
 
 
+@web.get("/servers/{guild_id}/amp/instances.json")
+async def amp_instances_json(request: Request, guild_id: int):
+    # Polled client-side (see server_config.html's amp tab) so a game's status tile updates
+    # live in place - e.g. moving from "starting up" to "online" once it finishes booting -
+    # without the admin having to manually reload the whole page to see the current state.
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return JSONResponse({"instances": []}, status_code=403)
+    cfg = await _amp_cfg_for_guild(guild_id)
+    amp_cog = bot.cogs.get("AMP")
+    if not cfg or not cfg.get("url") or not amp_cog:
+        return JSONResponse({"instances": []})
+    listing = await amp_cog._list_instances(cfg)
+    return JSONResponse({"instances": [
+        {"id": i["id"], "state": i["state"]} for i in listing["instances"]
+    ]})
+
+
 @web.post("/servers/{guild_id}/amp/instance/{instance_id}/start")
 async def amp_instance_start_web(request: Request, guild_id: int, instance_id: str):
     if r := auth_redirect(request): return r
