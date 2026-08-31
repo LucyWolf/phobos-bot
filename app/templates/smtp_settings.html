@@ -13,14 +13,23 @@
     Wird für das Passwort-Reset-System verwendet. Funktioniert mit Gmail, Outlook, oder eigenem Mailserver.
   </p>
   <form method="post" action="/settings/smtp">
+    <label>Anbieter <span style="color:var(--muted);font-size:0.72rem">(füllt Host + Port automatisch aus)</span></label>
+    <select id="smtp-provider" onchange="applySmtpProvider()">
+      <option value="">— Manuell —</option>
+      <option value="gmail">Gmail</option>
+      <option value="outlook">Outlook / Office 365</option>
+      <option value="gmx">GMX</option>
+      <option value="webde">Web.de</option>
+      <option value="yahoo">Yahoo</option>
+    </select>
     <div class="grid-2">
       <div>
         <label>SMTP Host</label>
-        <input type="text" name="smtp_host" value="{{ smtp_host }}" placeholder="smtp.gmail.com">
+        <input type="text" name="smtp_host" id="smtp-host" value="{{ smtp_host }}" placeholder="smtp.gmail.com">
       </div>
       <div>
         <label>Port</label>
-        <input type="number" name="smtp_port" value="{{ smtp_port }}" placeholder="587">
+        <input type="number" name="smtp_port" id="smtp-port" value="{{ smtp_port }}" placeholder="587">
       </div>
     </div>
     <label>Benutzername (E-Mail)</label>
@@ -55,4 +64,23 @@
     4. Benutzername: deine Gmail-Adresse · Passwort: das generierte App-Passwort
   </p>
 </div>
+
+<script>
+// Public, well-documented SMTP endpoints for the most common providers - not specific to any
+// one self-hoster's own mailbox (unlike the actual host/username/password stored per-instance
+// in the database), so safe to ship as generic presets in this shared, public codebase.
+const SMTP_PROVIDERS = {
+  gmail:   { host: "smtp.gmail.com",      port: 587 },
+  outlook: { host: "smtp.office365.com",  port: 587 },
+  gmx:     { host: "mail.gmx.net",        port: 587 },
+  webde:   { host: "smtp.web.de",         port: 587 },
+  yahoo:   { host: "smtp.mail.yahoo.com", port: 587 },
+};
+function applySmtpProvider() {
+  const p = SMTP_PROVIDERS[document.getElementById('smtp-provider').value];
+  if (!p) return;  // "— Manuell —" - leave whatever is already in the fields untouched
+  document.getElementById('smtp-host').value = p.host;
+  document.getElementById('smtp-port').value = p.port;
+}
+</script>
 {% endblock %}
