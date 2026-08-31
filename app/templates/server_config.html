@@ -1839,7 +1839,7 @@ function toggleAdEdit(id) {
   {% for inst in amp_instances %}
   <div class="card" style="margin-bottom:0;">
     <div style="font-weight:600;margin-bottom:0.4rem;">{{ inst.name }}</div>
-    <p style="margin-bottom:0.75rem;font-size:1.05rem;">{% if inst.running %}{{ tr.amp_status_online }}{% else %}{{ tr.amp_status_offline }}{% endif %}</p>
+    <p style="margin-bottom:0.75rem;font-size:1.05rem;">{% if inst.state == 'online' %}{{ tr.amp_status_online }}{% elif inst.state == 'pending' %}{{ tr.amp_status_pending }}{% else %}{{ tr.amp_status_offline }}{% endif %}</p>
     <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
       <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/start" style="margin:0;">
         <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.55rem;font-size:0.78rem;">{{ tr.amp_btn_start }}</button>

@@ -60,13 +60,20 @@ def _amp_is_running(status: dict) -> bool:
 
 
 def _extract_instance(d) -> dict | None:
-    """Returns a normalized {"id", "instance_name", "name", "running", "module"} from a raw
-    dict if it looks like an actual game instance, else None. Field names are read defensively
-    (several fallbacks tried per field). "id" (InstanceID, a GUID) is used for dashboard URLs/
-    DOM identification - stable and URL-safe. "instance_name" (InstanceName, a short string
-    like the AMP module's own generated slug) is kept separately since ADSModule's Start/Stop/
-    RestartInstance action methods are documented to take InstanceName, not InstanceID - "name"
-    is the human FriendlyName shown in the UI, which can differ from both."""
+    """Returns a normalized {"id", "instance_name", "name", "running", "state", "module"} from
+    a raw dict if it looks like an actual game instance, else None. Field names are read
+    defensively (several fallbacks tried per field). "id" (InstanceID, a GUID) is used for
+    dashboard URLs/DOM identification - stable and URL-safe. "instance_name" (InstanceName, a
+    short string like the AMP module's own generated slug) is kept separately since ADSModule's
+    Start/Stop/RestartInstance action methods are documented to take InstanceName, not
+    InstanceID - "name" is the human FriendlyName shown in the UI, which can differ from both.
+    "state" is "online"/"offline"/"pending" - AMP has a transitional state while an instance is
+    starting up (its own UI showed "Waiting", confirmed live after triggering Start through
+    this integration) where "Running" is already/still False but AppState is neither unset nor
+    the one stable, cross-version-documented "10 = Stopped" value - "running" (a plain bool,
+    kept for any caller still relying on the simpler on/off reading) treats that transitional
+    window as not-yet-running, "state" surfaces it separately as "pending" instead of looking
+    identical to a fully stopped instance."""
     if not isinstance(d, dict):
         return None
     iid = d.get("InstanceID") or d.get("InstanceId") or d.get("ID")
@@ -76,10 +83,17 @@ def _extract_instance(d) -> dict | None:
     instance_name = d.get("InstanceName") or str(iid)
     name = d.get("FriendlyName") or instance_name
     running = d.get("Running")
+    app_state = d.get("AppState")
+    if running:
+        state = "online"
+    elif app_state not in (None, 10):
+        state = "pending"
+    else:
+        state = "offline"
     if running is None:
-        running = d.get("AppState") not in (None, 10)
+        running = state != "offline"
     return {"id": str(iid), "instance_name": instance_name, "name": name,
-            "running": bool(running), "module": module}
+            "running": bool(running), "state": state, "module": module}
 
 
 def _summarize_raw(raw) -> str:
