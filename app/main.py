@@ -4094,6 +4094,7 @@ async def server_config(
     amp_cfg = await db_one("SELECT * FROM amp_configs WHERE guild_id=?", (str(guild_id),))
     amp_status = None
     amp_instances = None
+    amp_instances_error = None
     if tab == "amp" and amp_cfg and amp_cfg.get("url"):
         # Only fetched when the amp tab is actually being viewed - every OTHER tab load would
         # otherwise pay for a live login+status round-trip to an external AMP instance it has
@@ -4104,10 +4105,16 @@ async def server_config(
             # managing several game instances underneath it - try instance discovery first,
             # only fall back to the single-connection status view (amp_status) if none were
             # found (a genuinely standalone connection, or the discovery call itself failed).
+            # The discovery error is surfaced in the dashboard (amp_instances_error) rather than
+            # silently swallowed, since ADSModule.GetInstances()'s exact response shape was never
+            # verified against a real ADS instance - without this, a genuine parsing/API mismatch
+            # would look identical to "this connection just has no ADS layer", with no way for
+            # the admin to tell the difference or report back what actually went wrong.
             listing = await amp_cog._list_instances(amp_cfg)
             if listing["instances"]:
                 amp_instances = listing["instances"]
             else:
+                amp_instances_error = listing["error"]
                 amp_status = await amp_cog._fetch_status(amp_cfg)
 
     return templates.TemplateResponse("server_config.html", {
@@ -4137,6 +4144,7 @@ async def server_config(
             "SELECT * FROM temp_voice_config WHERE guild_id=?", (str(guild_id),)
         ),
         "amp_cfg": amp_cfg, "amp_status": amp_status, "amp_instances": amp_instances,
+        "amp_instances_error": amp_instances_error,
         "toggleable_features": _TOGGLEABLE_FEATURES,
         "enabled_features": await _get_enabled_features(guild_id),
         "scheduled_messages": _scheduled_messages,

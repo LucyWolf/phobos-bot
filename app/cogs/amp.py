@@ -134,7 +134,16 @@ class AMP(commands.Cog):
             async with aiohttp.ClientSession() as session:
                 session_id = await _amp_login(session, cfg["url"], cfg["username"], cfg["password"])
                 raw = await _amp_call(session, cfg["url"], "ADSModule", "GetInstances", SESSIONID=session_id)
-            return {"instances": _parse_instances(raw), "error": None}
+            parsed = _parse_instances(raw)
+            if not parsed:
+                # The call itself succeeded (no exception) but nothing was recognized in the
+                # response - since the exact field names were never verified against a real ADS,
+                # this is just as likely a parsing mismatch as it is a genuinely standalone
+                # connection. Surface a snippet of the raw response instead of looking identical
+                # to "no error, nothing to see" - there'd otherwise be no way to tell those two
+                # cases apart or to debug a mismatch without live access to a real ADS instance.
+                return {"instances": [], "error": f"0 Instanzen erkannt, Rohantwort: {str(raw)[:200]}"}
+            return {"instances": parsed, "error": None}
         except Exception as e:
             return {"instances": [], "error": _err_text(e)}
 

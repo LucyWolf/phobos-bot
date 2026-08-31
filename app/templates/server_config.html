@@ -1882,6 +1882,9 @@ function toggleAdEdit(id) {
       <button type="submit" class="btn btn-secondary">{{ tr.amp_btn_restart }}</button>
     </form>
   </div>
+  {% if amp_instances_error %}
+  <p class="hint" style="margin-top:0.75rem;">{{ tr.amp_instances_error_hint }}: {{ amp_instances_error }}</p>
+  {% endif %}
 </div>
 {% endif %}
 
