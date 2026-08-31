@@ -1885,6 +1885,9 @@ function toggleAdEdit(id) {
     <form method="post" action="/servers/{{ guild.id }}/amp/stop" style="margin:0;">
       <button type="submit" class="btn btn-danger">{{ tr.amp_btn_stop }}</button>
     </form>
+    <form method="post" action="/servers/{{ guild.id }}/amp/restart" style="margin:0;">
+      <button type="submit" class="btn btn-secondary">{{ tr.amp_btn_restart }}</button>
+    </form>
   </div>
 </div>
 {% endif %}

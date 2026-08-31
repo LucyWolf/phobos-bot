@@ -2528,6 +2528,23 @@ async def amp_stop_web(request: Request, guild_id: int):
     return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Stoppbefehl+gesendet", status_code=302)
 
 
+@web.post("/servers/{guild_id}/amp/restart")
+async def amp_restart_web(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    cfg = await _amp_cfg_for_guild(guild_id)
+    if not cfg or not cfg.get("url"):
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Kein+Gameserver+verknüpft", status_code=302)
+    amp_cog = bot.cogs.get("AMP")
+    if not amp_cog:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
+    ok, error = await amp_cog._restart(cfg)
+    if not ok:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error={urllib.parse.quote(error[:150])}", status_code=302)
+    return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Neustart-Befehl+gesendet", status_code=302)
+
+
 # ── Free Stuff ────────────────────────────────────────────────────────────────
 
 @web.get("/servers/{guild_id}/freestuff", response_class=HTMLResponse)

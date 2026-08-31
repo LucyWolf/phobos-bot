@@ -9,6 +9,14 @@ import aiohttp
 from database import db_one
 
 
+def _err_text(e: Exception) -> str:
+    # str(e) is an empty string for several common exception types (e.g. asyncio.TimeoutError
+    # on an unreachable AMP host, confirmed live) - falling back to the exception's class name
+    # ensures the user always sees SOMETHING instead of a bare, unhelpful "Fehler: " with
+    # nothing after the colon.
+    return str(e) or type(e).__name__
+
+
 # CubeCoders AMP's HTTP API: every call is POST /API/{Module}/{Method} with a JSON body and
 # an Accept header of application/json (confirmed live against a real running AMP instance -
 # a request without it gets rejected outright with "Invalid accept header value"). Core.Login
@@ -69,17 +77,22 @@ class AMP(commands.Cog):
                 status = await _amp_call(session, cfg["url"], "Core", "GetStatus", SESSIONID=session_id)
             return {"online": _amp_is_running(status), "error": None, "raw": status}
         except Exception as e:
-            return {"online": False, "error": str(e), "raw": None}
+            return {"online": False, "error": _err_text(e), "raw": None}
 
-    async def _set_running(self, cfg: dict, start: bool) -> tuple[bool, str]:
-        method = "Start" if start else "Stop"
+    async def _amp_action(self, cfg: dict, method: str) -> tuple[bool, str]:
         try:
             async with aiohttp.ClientSession() as session:
                 session_id = await _amp_login(session, cfg["url"], cfg["username"], cfg["password"])
                 await _amp_call(session, cfg["url"], "Core", method, SESSIONID=session_id)
             return True, ""
         except Exception as e:
-            return False, str(e)
+            return False, _err_text(e)
+
+    async def _set_running(self, cfg: dict, start: bool) -> tuple[bool, str]:
+        return await self._amp_action(cfg, "Start" if start else "Stop")
+
+    async def _restart(self, cfg: dict) -> tuple[bool, str]:
+        return await self._amp_action(cfg, "Restart")
 
     @app_commands.command(name="gameserver-status", description="Zeigt ob der verknüpfte Gameserver online ist")
     async def gameserver_status(self, interaction: discord.Interaction):
@@ -147,6 +160,24 @@ class AMP(commands.Cog):
             await interaction.followup.send("🔴 Stoppbefehl gesendet.", ephemeral=True)
         else:
             await interaction.followup.send(f"⚠️ Stoppen fehlgeschlagen: {error}", ephemeral=True)
+
+    @app_commands.command(name="gameserver-restart", description="Startet den verknüpften Gameserver neu")
+    @app_commands.default_permissions(manage_guild=True)
+    async def gameserver_restart(self, interaction: discord.Interaction):
+        cfg = await self._get_config(interaction.guild_id)
+        if not cfg:
+            await interaction.response.send_message(
+                "Für diesen Server ist kein Gameserver verknüpft.", ephemeral=True
+            )
+            return
+        if not await self._check_command_channel(interaction, cfg):
+            return
+        await interaction.response.defer(ephemeral=True)
+        ok, error = await self._restart(cfg)
+        if ok:
+            await interaction.followup.send("🔄 Neustart-Befehl gesendet.", ephemeral=True)
+        else:
+            await interaction.followup.send(f"⚠️ Neustart fehlgeschlagen: {error}", ephemeral=True)
 
 
 async def setup(bot):
