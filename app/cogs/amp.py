@@ -60,20 +60,23 @@ def _amp_is_running(status: dict) -> bool:
 
 
 def _extract_instance(d) -> dict | None:
-    """Returns a normalized {"id", "instance_name", "name", "running", "state", "module"} from
-    a raw dict if it looks like an actual game instance, else None. Field names are read
-    defensively (several fallbacks tried per field). "id" (InstanceID, a GUID) is used for
-    dashboard URLs/DOM identification - stable and URL-safe. "instance_name" (InstanceName, a
-    short string like the AMP module's own generated slug) is kept separately since ADSModule's
-    Start/Stop/RestartInstance action methods are documented to take InstanceName, not
-    InstanceID - "name" is the human FriendlyName shown in the UI, which can differ from both.
-    "state" is "online"/"offline"/"pending" - AMP has a transitional state while an instance is
-    starting up (its own UI showed "Waiting", confirmed live after triggering Start through
-    this integration) where "Running" is already/still False but AppState is neither unset nor
-    the one stable, cross-version-documented "10 = Stopped" value - "running" (a plain bool,
-    kept for any caller still relying on the simpler on/off reading) treats that transitional
-    window as not-yet-running, "state" surfaces it separately as "pending" instead of looking
-    identical to a fully stopped instance."""
+    """Returns a normalized {"id", "instance_name", "name", "running", "state", "app_state",
+    "module"} from a raw dict if it looks like an actual game instance, else None. Field names
+    are read defensively (several fallbacks tried per field). "id" (InstanceID, a GUID) is used
+    for dashboard URLs/DOM identification - stable and URL-safe. "instance_name" (InstanceName,
+    a short string like the AMP module's own generated slug) is kept separately since
+    ADSModule's Start/Stop/RestartInstance action methods are documented to take InstanceName,
+    not InstanceID - "name" is the human FriendlyName shown in the UI, which can differ from
+    both.
+    "state" is "online"/"offline" only, straight from the "Running" bool - a previous version
+    also tried a "pending" state for a transitional "starting up" window, guessing that
+    AppState != 10 ("10 = Stopped", the one cross-version-documented stable value) meant
+    "starting" - confirmed WRONG live: idle, never-started instances also report an AppState
+    other than 10 here, so that heuristic showed a permanent false "starting" for genuinely
+    stopped instances. Reverted to the simple, correct Running-only reading until the real
+    AppState numbering for this module type is known. "app_state" (the raw AppState int) is
+    kept on the dict and shown directly on the dashboard tile in the meantime, specifically so
+    the real value is visible without another guess-then-report round trip."""
     if not isinstance(d, dict):
         return None
     iid = d.get("InstanceID") or d.get("InstanceId") or d.get("ID")
@@ -82,18 +85,10 @@ def _extract_instance(d) -> dict | None:
     module = d.get("Module") or d.get("ModuleDisplayName") or ""
     instance_name = d.get("InstanceName") or str(iid)
     name = d.get("FriendlyName") or instance_name
-    running = d.get("Running")
-    app_state = d.get("AppState")
-    if running:
-        state = "online"
-    elif app_state not in (None, 10):
-        state = "pending"
-    else:
-        state = "offline"
-    if running is None:
-        running = state != "offline"
-    return {"id": str(iid), "instance_name": instance_name, "name": name,
-            "running": bool(running), "state": state, "module": module}
+    running = bool(d.get("Running"))
+    state = "online" if running else "offline"
+    return {"id": str(iid), "instance_name": instance_name, "name": name, "running": running,
+            "state": state, "app_state": d.get("AppState"), "module": module}
 
 
 def _summarize_raw(raw) -> str:

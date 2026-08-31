@@ -2557,8 +2557,8 @@ async def amp_delete_web(request: Request, guild_id: int):
 @web.get("/servers/{guild_id}/amp/instances.json")
 async def amp_instances_json(request: Request, guild_id: int):
     # Polled client-side (see server_config.html's amp tab) so a game's status tile updates
-    # live in place - e.g. moving from "starting up" to "online" once it finishes booting -
-    # without the admin having to manually reload the whole page to see the current state.
+    # live in place without the admin having to manually reload the whole page to see the
+    # current state.
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return JSONResponse({"instances": []}, status_code=403)

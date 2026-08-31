@@ -1838,8 +1838,15 @@ function toggleAdEdit(id) {
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem;margin-bottom:1.25rem;">
   {% for inst in amp_instances %}
   <div class="card" style="margin-bottom:0;">
-    <div style="font-weight:600;margin-bottom:0.4rem;">{{ inst.name }}</div>
-    <p id="amp-state-{{ inst.id }}" style="margin-bottom:0.75rem;font-size:1.05rem;">{% if inst.state == 'online' %}{{ tr.amp_status_online }}{% elif inst.state == 'pending' %}{{ tr.amp_status_pending }}{% else %}{{ tr.amp_status_offline }}{% endif %}</p>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;margin-bottom:0.6rem;">
+      <div style="font-weight:600;">{{ inst.name }}</div>
+      <span id="amp-state-{{ inst.id }}" data-online="{{ tr.amp_status_online }}" data-offline="{{ tr.amp_status_offline }}"
+            style="flex-shrink:0;padding:0.15rem 0.6rem;border-radius:999px;font-size:0.72rem;font-weight:700;white-space:nowrap;
+            {% if inst.state == 'online' %}background:rgba(34,197,94,0.15);color:#22c55e;{% else %}background:rgba(239,68,68,0.15);color:#ef4444;{% endif %}">
+        {% if inst.state == 'online' %}{{ tr.amp_status_online }}{% else %}{{ tr.amp_status_offline }}{% endif %}
+      </span>
+    </div>
+    {% if inst.app_state is not none %}<p class="hint" style="margin-bottom:0.6rem;">AppState: {{ inst.app_state }}</p>{% endif %}
     <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
       <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/start" style="margin:0;">
         <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.55rem;font-size:0.78rem;">{{ tr.amp_btn_start }}</button>
@@ -1863,18 +1870,17 @@ function toggleAdEdit(id) {
 {% if tab == 'amp' and amp_instances %}
 <script>
 (function() {
-  const AMP_LABELS = {
-    online: {{ tr.amp_status_online | jsraw }},
-    pending: {{ tr.amp_status_pending | jsraw }},
-    offline: {{ tr.amp_status_offline | jsraw }}
-  };
   function pollAmpStatus() {
     fetch("/servers/{{ guild.id }}/amp/instances.json")
       .then(r => r.json())
       .then(data => {
         (data.instances || []).forEach(function(inst) {
           const el = document.getElementById('amp-state-' + inst.id);
-          if (el && AMP_LABELS[inst.state]) el.textContent = AMP_LABELS[inst.state];
+          if (!el) return;
+          const online = inst.state === 'online';
+          el.textContent = online ? el.dataset.online : el.dataset.offline;
+          el.style.background = online ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)';
+          el.style.color = online ? '#22c55e' : '#ef4444';
         });
       })
       .catch(function() {});
