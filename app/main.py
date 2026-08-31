@@ -3599,8 +3599,22 @@ async def smtp_settings_save(
 async def smtp_test(request: Request, test_email: str = Form(...)):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
+    # The link used to always be a hard-coded, deliberately non-functional placeholder
+    # (https://example.com/test-link) - confirmed live to be confusing: an admin who clicked it
+    # (reasonably, to check the email actually arrived and looks right) landed on a genuinely
+    # unreachable domain and read that as the test having failed, even though sending itself
+    # had already succeeded by that point. Using base_url (when configured) with a token that's
+    # deliberately invalid gives a much more representative preview instead: reset_pw_page()
+    # already handles an unrecognized token gracefully (redirects to /login with a friendly
+    # "link invalid or expired" message, not a crash) - so this now lands the admin on their
+    # own actually-reachable dashboard, which also incidentally doubles as a live check that
+    # base_url itself points somewhere real. Falls back to the old placeholder only when
+    # base_url isn't set at all, since a bare "/reset-password?token=..." relative path
+    # wouldn't be a valid clickable link in an email either.
+    base = await get_config("base_url") or ""
+    test_link = f"{base.rstrip('/')}/reset-password?token=test-preview-token" if base else "https://example.com/test-link"
     try:
-        await _send_reset_email(test_email.strip(), "https://example.com/test-link")
+        await _send_reset_email(test_email.strip(), test_link)
         return RedirectResponse("/settings?success=Test-E-Mail+gesendet", status_code=302)
     except Exception as e:
         return RedirectResponse(f"/settings?error={urllib.parse.quote(str(e))}", status_code=302)
