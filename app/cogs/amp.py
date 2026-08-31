@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -147,7 +149,7 @@ def _summarize_raw(raw) -> str:
             if isinstance(value, dict):
                 sub_inst = _extract_instance(value)
                 if sub_inst:
-                    lines.append(f"  '{key}': Module={sub_inst['module']!r} Name={sub_inst['name']!r} Running={sub_inst['running']}")
+                    lines.append(f"  '{key}': Module={sub_inst['module']!r} Name={sub_inst['name']!r} Running={sub_inst['running']} AppState={sub_inst['app_state']!r}")
                 else:
                     lines.append(f"  '{key}': dict, Felder: {list(value.keys())}")
             else:
@@ -165,14 +167,14 @@ def _summarize_raw(raw) -> str:
         lines.append(f"[{i}] Felder ({len(keys)}): {keys}")
         own = _extract_instance(item)
         if own:
-            lines.append(f"    selbst instanzartig: Module={own['module']!r} Name={own['name']!r} Running={own['running']}")
+            lines.append(f"    selbst instanzartig: Module={own['module']!r} Name={own['name']!r} Running={own['running']} AppState={own['app_state']!r}")
         for key, value in item.items():
             if isinstance(value, list):
                 lines.append(f"    Liste '{key}': {len(value)} Einträge")
                 for j, sub in enumerate(value):
                     sub_inst = _extract_instance(sub)
                     if sub_inst:
-                        lines.append(f"      [{j}] Module={sub_inst['module']!r} Name={sub_inst['name']!r} Running={sub_inst['running']}")
+                        lines.append(f"      [{j}] Module={sub_inst['module']!r} Name={sub_inst['name']!r} Running={sub_inst['running']} AppState={sub_inst['app_state']!r}")
                     elif isinstance(sub, dict):
                         lines.append(f"      [{j}] kein Instanz-Muster, Felder: {list(sub.keys())}")
                     else:
@@ -214,6 +216,17 @@ def _parse_instances(raw) -> list[dict]:
         if inst and inst["module"] != "ADS":
             out.append(inst)
     return out
+
+
+# Short-lived cache for _list_instances(), keyed by the connection's URL+username. Reported
+# by the user as "every time I switch away from the Gameserver tab and back, the page loads
+# first" - each full page render of that tab did a fresh live AMP login+API round trip with no
+# caching at all, so quick back-and-forth tab switching paid that latency every single time.
+# TTL is deliberately short (well under the 10s live-poll interval in server_config.html's
+# JS) so the poll always sees genuinely fresh data - this only smooths out rapid page reloads,
+# it doesn't make the dashboard lag behind real AMP state.
+_LIST_CACHE_TTL = 5
+_list_cache: dict[str, tuple[float, dict]] = {}
 
 
 class AMP(commands.Cog):
@@ -314,6 +327,15 @@ class AMP(commands.Cog):
         Returns {"instances": [...], "error": str|None} - a standalone (non-ADS) connection is
         expected to error here (no ADSModule available), callers fall back to treating the
         connection itself as the single controllable target in that case."""
+        cache_key = f"{cfg.get('url')}|{cfg.get('username')}"
+        cached = _list_cache.get(cache_key)
+        if cached and time.monotonic() - cached[0] < _LIST_CACHE_TTL:
+            return cached[1]
+        result = await self._list_instances_uncached(cfg)
+        _list_cache[cache_key] = (time.monotonic(), result)
+        return result
+
+    async def _list_instances_uncached(self, cfg: dict) -> dict:
         try:
             async with aiohttp.ClientSession() as session:
                 session_id = await _amp_login(session, cfg["url"], cfg["username"], cfg["password"])
@@ -362,6 +384,10 @@ class AMP(commands.Cog):
                 session_id = await _amp_login(session, cfg["url"], cfg["username"], cfg["password"])
                 await _amp_call(session, cfg["url"], "ADSModule", f"{method}Instance",
                                  SESSIONID=session_id, InstanceName=instance_name)
+            # Drop any cached listing for this connection so the page the user gets redirected
+            # back to (or the next live-poll tick) doesn't show pre-action state for up to
+            # _LIST_CACHE_TTL seconds, which would look like the click did nothing.
+            _list_cache.pop(f"{cfg.get('url')}|{cfg.get('username')}", None)
             return True, ""
         except Exception as e:
             return False, _err_text(e)

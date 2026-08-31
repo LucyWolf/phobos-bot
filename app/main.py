@@ -2586,7 +2586,7 @@ async def amp_instances_json(request: Request, guild_id: int):
     listing = await amp_cog._list_instances(cfg)
     tr = get_tr(request.session.get("lang", "de"))
     return JSONResponse({"instances": [
-        {"id": i["id"], "color": i["color"], "label": _amp_state_label(i["state"], tr)}
+        {"id": i["id"], "color": i["color"], "label": _amp_state_label(i["state"], tr), "app_state": i["app_state"]}
         for i in listing["instances"]
     ]})
 

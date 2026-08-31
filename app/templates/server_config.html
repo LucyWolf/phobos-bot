@@ -1848,7 +1848,7 @@ function toggleAdEdit(id) {
         <span id="amp-state-{{ inst.id }}"
               style="flex-shrink:0;padding:0.2rem 0.65rem;border-radius:999px;font-size:0.72rem;font-weight:700;white-space:nowrap;
               background:{{ inst_hex }}26;color:{{ inst_hex }};">
-          {{ inst.label }}
+          {{ inst.label }}{% if inst.app_state is not none %} #{{ inst.app_state }}{% endif %}
         </span>
       </div>
       <div style="display:flex;gap:0.5rem;">
@@ -1887,7 +1887,7 @@ function toggleAdEdit(id) {
           const el = document.getElementById('amp-state-' + inst.id);
           if (!el) return;
           const hex = AMP_COLOR_HEX[inst.color] || AMP_COLOR_HEX.gray;
-          el.textContent = inst.label;
+          el.textContent = inst.label + (inst.app_state !== null && inst.app_state !== undefined ? ' #' + inst.app_state : '');
           el.style.background = hex + '26';
           el.style.color = hex;
         });
