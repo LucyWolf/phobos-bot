@@ -355,15 +355,24 @@ class AMP(commands.Cog):
                 # exceeded a 500-char truncation on its own).
                 methods = await self._probe_ads_methods(cfg)
                 return {"instances": [], "error": "0 Instanzen erkannt (Details im Debug-Bereich unten)",
-                        "raw_debug": f"{summary}\n\n{methods}"}
+                        "raw_debug": f"{summary}\n\n{methods}", "connection_error": False}
             # Debug summary temporarily brought back even on a successful parse (was disabled in
             # v1.14.8 once instance discovery itself was confirmed working) - the AppState enum
             # mapping introduced in v1.14.19 is a much bigger, still-unverified-against-a-real-
             # instance change than discovery itself was, so keeping this visible lets a mismatch
             # be caught and reported directly instead of needing another guess-then-report round.
-            return {"instances": parsed, "error": None, "raw_debug": summary}
+            return {"instances": parsed, "error": None, "raw_debug": summary, "connection_error": False}
         except Exception as e:
-            return {"instances": [], "error": _err_text(e), "raw_debug": None}
+            # Distinct from the "0 recognized" case above: this branch means the call itself
+            # never came back cleanly (timeout, DNS/connect failure, bad credentials, ...) -
+            # reported live as confusing by the user, since main.py used to treat this exactly
+            # like a standalone (non-ADS) connection and fall back to the legacy single-
+            # connection status card, which then ALSO tried its own live AMP call (_fetch_status)
+            # and typically failed the same way, showing an unrelated "Status — Phobos Game
+            # Server" card with a bare "TimeoutError" instead of the admin's actual multi-
+            # instance tiles. connection_error=True lets main.py show a plain "AMP currently
+            # unreachable, retrying" message tied to the real tile view instead.
+            return {"instances": [], "error": _err_text(e), "raw_debug": None, "connection_error": True}
 
     async def _instance_action(self, cfg: dict, instance_name: str, method: str) -> tuple[bool, str]:
         """method is "Start"/"Stop"/"Restart" (same convention as the legacy whole-connection

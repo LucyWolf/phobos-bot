@@ -1901,6 +1901,21 @@ function toggleAdEdit(id) {
 })();
 </script>
 {% endif %}
+{% elif amp_connection_error %}
+<div class="card" style="margin-bottom:1.25rem;">
+  <div class="feat-header" style="margin-bottom:1rem;justify-content:space-between;">
+    <span>{{ tr.amp_status_title }}{% if amp_cfg.label %} — {{ amp_cfg.label }}{% endif %}</span>
+    <button type="button" class="btn btn-secondary" onclick="toggleAmpEdit()" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="{{ tr.btn_settings }}">⚙</button>
+  </div>
+  <p style="margin-bottom:0.5rem;">⚠️ {{ tr.amp_connection_error_title }}</p>
+  <p class="hint">{{ amp_connection_error }}</p>
+  {% if amp_raw_debug %}
+  <details style="margin-top:0.75rem;">
+    <summary class="hint" style="cursor:pointer;">{{ tr.amp_raw_debug_label }}</summary>
+    <pre style="white-space:pre-wrap;word-break:break-all;font-size:0.7rem;color:var(--muted);margin-top:0.4rem;">{{ amp_raw_debug }}</pre>
+  </details>
+  {% endif %}
+</div>
 {% elif amp_cfg and amp_cfg.url %}
 <div class="card" style="margin-bottom:1.25rem;">
   <div class="feat-header" style="margin-bottom:1rem;justify-content:space-between;">

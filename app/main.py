@@ -4175,6 +4175,7 @@ async def server_config(
     amp_status = None
     amp_instances = None
     amp_instances_error = None
+    amp_connection_error = None
     amp_raw_debug = None
     if tab == "amp" and amp_cfg and amp_cfg.get("url"):
         # Only fetched when the amp tab is actually being viewed - every OTHER tab load would
@@ -4197,6 +4198,15 @@ async def server_config(
                 amp_instances = listing["instances"]
                 for inst in amp_instances:
                     inst["label"] = _amp_state_label(inst["state"], _tr_tickets)
+            elif listing.get("connection_error"):
+                # A real timeout/connect/login failure, not "this connection has no ADS layer" -
+                # reported live as confusing (User: "wenn der nicht richtig die Seite lädt lande
+                # ich da [bei dem einzelnen Fallback-Bild]") - the old code treated this exactly
+                # like a standalone connection and fell through to _fetch_status() below, which
+                # then ALSO tried its own live AMP call and typically failed the same way,
+                # showing an unrelated single-connection card instead of the admin's actual
+                # multi-instance setup. Skip that redundant second doomed call entirely here.
+                amp_connection_error = listing["error"]
             else:
                 amp_instances_error = listing["error"]
                 amp_status = await amp_cog._fetch_status(amp_cfg)
@@ -4228,7 +4238,8 @@ async def server_config(
             "SELECT * FROM temp_voice_config WHERE guild_id=?", (str(guild_id),)
         ),
         "amp_cfg": amp_cfg, "amp_status": amp_status, "amp_instances": amp_instances,
-        "amp_instances_error": amp_instances_error, "amp_raw_debug": amp_raw_debug,
+        "amp_instances_error": amp_instances_error, "amp_connection_error": amp_connection_error,
+        "amp_raw_debug": amp_raw_debug,
         "toggleable_features": _TOGGLEABLE_FEATURES,
         "enabled_features": await _get_enabled_features(guild_id),
         "scheduled_messages": _scheduled_messages,
