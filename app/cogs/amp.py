@@ -181,6 +181,49 @@ class AMP(commands.Cog):
     async def _restart(self, cfg: dict) -> tuple[bool, str]:
         return await self._amp_action(cfg, "Restart")
 
+    async def _probe_ads_methods(self, cfg: dict) -> str:
+        """Diagnostic only, not used in normal operation: lists method names actually exposed
+        by this specific AMP instance's API spec that mention "ADS" (Core.GetAPISpec, called
+        authenticated this time - unlike the pre-auth probe used while first designing this
+        integration, which only exposed login-related methods, not this one). Used to find the
+        correct method for enumerating game instances after ADSModule.GetInstances() turned out
+        to only return the ADS's own control instance, not the actual games - confirmed live
+        against a real ADS (AvailableInstances contained just the ADS entry). The exact shape
+        of GetAPISpec's response isn't known either, so this walks the whole structure
+        generically instead of assuming one - only ever surfaced via the dashboard's debug view
+        when instance discovery already found 0 games, never during normal use."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                session_id = await _amp_login(session, cfg["url"], cfg["username"], cfg["password"])
+                spec = await _amp_call(session, cfg["url"], "Core", "GetAPISpec", SESSIONID=session_id)
+        except Exception as e:
+            return f"GetAPISpec fehlgeschlagen: {_err_text(e)}"
+
+        names: set[str] = set()
+
+        def _walk(node, path=""):
+            if isinstance(node, dict):
+                for k, v in node.items():
+                    key_path = f"{path}.{k}" if path else str(k)
+                    if isinstance(k, str) and "ads" in k.lower():
+                        names.add(key_path)
+                        # the module's own method names may not themselves contain "ads", only
+                        # their containing module key does (e.g. "ADSModule") - list its direct
+                        # children too, not just the module key itself.
+                        if isinstance(v, dict):
+                            for sub_k in v.keys():
+                                names.add(f"{key_path}.{sub_k}")
+                    _walk(v, key_path)
+            elif isinstance(node, list):
+                for item in node:
+                    _walk(item, path)
+
+        _walk(spec)
+        if not names:
+            top_keys = list(spec.keys())[:20] if isinstance(spec, dict) else None
+            return f"Keine 'ADS'-Methoden im API-Spec gefunden. Typ: {type(spec).__name__}, Keys: {top_keys}"
+        return "Methoden mit 'ADS' im Namen:\n" + "\n".join(sorted(names)[:40])
+
     async def _list_instances(self, cfg: dict) -> dict:
         """A connection can be a single standalone AMP instance OR the main ADS controller
         managing several game instances underneath it (confirmed live for this project's own
@@ -206,8 +249,9 @@ class AMP(commands.Cog):
                 # length can cut off before showing anything past the first nested entry
                 # (confirmed live - a real response's first AvailableInstances entry alone
                 # exceeded a 500-char truncation on its own).
+                methods = await self._probe_ads_methods(cfg)
                 return {"instances": [], "error": "0 Instanzen erkannt (Details im Debug-Bereich unten)",
-                        "raw_debug": summary}
+                        "raw_debug": f"{summary}\n\n{methods}"}
             # Always keep the summary even on a successful parse - parsing has already been
             # wrong once before without raising or returning zero results (a wrapper entry was
             # mistaken for a game), so a "looks fine" result here still isn't a strong enough
