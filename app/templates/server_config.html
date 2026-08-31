@@ -1837,32 +1837,30 @@ function toggleAdEdit(id) {
 </div>
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem;margin-bottom:1.25rem;">
   {% for inst in amp_instances %}
-  <div class="card" style="margin-bottom:0;position:relative;overflow:hidden;
+  <div class="card" style="margin-bottom:0;padding:0;overflow:hidden;
+       border-top:3px solid {% if inst.state == 'online' %}#22c55e{% else %}#ef4444{% endif %};
        {% if inst.image_url %}background-image:linear-gradient(rgba(15,17,23,0.82),rgba(15,17,23,0.9)),url('{{ inst.image_url }}');background-size:cover;background-position:center;{% endif %}">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;margin-bottom:0.6rem;">
-      <div style="font-weight:600;">{{ inst.name }}</div>
-      <span id="amp-state-{{ inst.id }}" data-online="{{ tr.amp_status_online }}" data-offline="{{ tr.amp_status_offline }}"
-            style="flex-shrink:0;padding:0.15rem 0.6rem;border-radius:999px;font-size:0.72rem;font-weight:700;white-space:nowrap;
-            {% if inst.state == 'online' %}background:rgba(34,197,94,0.15);color:#22c55e;{% else %}background:rgba(239,68,68,0.15);color:#ef4444;{% endif %}">
-        {% if inst.state == 'online' %}{{ tr.amp_status_online }}{% else %}{{ tr.amp_status_offline }}{% endif %}
-      </span>
-    </div>
-    {% if inst.address %}<p class="hint" style="margin-bottom:0.5rem;font-family:monospace;">{{ inst.address }}</p>{% endif %}
-    {% if inst.app_state is not none %}<p class="hint" style="margin-bottom:0.6rem;">AppState: {{ inst.app_state }}</p>{% endif %}
-    <div style="margin-bottom:0.85rem;">
-      <div style="font-weight:600;">{% if inst.state == 'online' %}{{ tr.amp_instance_running }}{% else %}{{ tr.amp_instance_not_running }}{% endif %}</div>
-      <p class="hint" style="margin-bottom:0;">{% if inst.state == 'online' %}{{ tr.amp_instance_running_hint }}{% else %}{{ tr.amp_instance_stopped_hint }}{% endif %}</p>
-    </div>
-    <div style="display:flex;gap:0.4rem;flex-wrap:wrap;justify-content:flex-end;">
-      <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/start" style="margin:0;">
-        <button type="submit" class="btn btn-secondary" title="{{ tr.amp_btn_start }}" style="padding:0.3rem 0.5rem;font-size:0.9rem;line-height:1;">🟢</button>
-      </form>
-      <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/stop" style="margin:0;">
-        <button type="submit" class="btn btn-danger" title="{{ tr.amp_btn_stop }}" style="padding:0.3rem 0.5rem;font-size:0.9rem;line-height:1;">🔴</button>
-      </form>
-      <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/restart" style="margin:0;">
-        <button type="submit" class="btn btn-secondary" title="{{ tr.amp_btn_restart }}" style="padding:0.3rem 0.5rem;font-size:0.9rem;line-height:1;">🔄</button>
-      </form>
+    <div style="padding:1.1rem 1.25rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;margin-bottom:0.7rem;">
+        <div style="font-weight:700;font-size:1.02rem;">🎮 {{ inst.name }}</div>
+        <span id="amp-state-{{ inst.id }}" data-online="{{ tr.amp_status_online }}" data-offline="{{ tr.amp_status_offline }}"
+              style="flex-shrink:0;padding:0.2rem 0.65rem;border-radius:999px;font-size:0.72rem;font-weight:700;white-space:nowrap;
+              {% if inst.state == 'online' %}background:rgba(34,197,94,0.15);color:#22c55e;{% else %}background:rgba(239,68,68,0.15);color:#ef4444;{% endif %}">
+          {% if inst.state == 'online' %}{{ tr.amp_status_online }}{% else %}{{ tr.amp_status_offline }}{% endif %}
+        </span>
+      </div>
+      {% if inst.address %}<p class="hint" style="margin-bottom:0.9rem;font-family:monospace;font-size:0.78rem;">{{ inst.address }}</p>{% endif %}
+      <div style="display:flex;gap:0.5rem;">
+        <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/start" style="margin:0;flex:1;">
+          <button type="submit" class="btn btn-secondary" title="{{ tr.amp_btn_start }}" style="width:100%;padding:0.4rem;font-size:0.95rem;line-height:1;">🟢</button>
+        </form>
+        <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/stop" style="margin:0;flex:1;">
+          <button type="submit" class="btn btn-danger" title="{{ tr.amp_btn_stop }}" style="width:100%;padding:0.4rem;font-size:0.95rem;line-height:1;">🔴</button>
+        </form>
+        <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/restart" style="margin:0;flex:1;">
+          <button type="submit" class="btn btn-secondary" title="{{ tr.amp_btn_restart }}" style="width:100%;padding:0.4rem;font-size:0.95rem;line-height:1;">🔄</button>
+        </form>
+      </div>
     </div>
   </div>
   {% endfor %}
