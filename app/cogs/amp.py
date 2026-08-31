@@ -182,16 +182,22 @@ class AMP(commands.Cog):
         return await self._amp_action(cfg, "Restart")
 
     async def _probe_ads_methods(self, cfg: dict) -> str:
-        """Diagnostic only, not used in normal operation: lists method names actually exposed
-        by this specific AMP instance's API spec that mention "ADS" (Core.GetAPISpec, called
-        authenticated this time - unlike the pre-auth probe used while first designing this
-        integration, which only exposed login-related methods, not this one). Used to find the
-        correct method for enumerating game instances after ADSModule.GetInstances() turned out
-        to only return the ADS's own control instance, not the actual games - confirmed live
-        against a real ADS (AvailableInstances contained just the ADS entry). The exact shape
-        of GetAPISpec's response isn't known either, so this walks the whole structure
-        generically instead of assuming one - only ever surfaced via the dashboard's debug view
-        when instance discovery already found 0 games, never during normal use."""
+        """Diagnostic only, not used in normal operation: lists every method AMPModule exposes
+        under "ADSModule" (Core.GetAPISpec, called authenticated this time - unlike the pre-auth
+        probe used while first designing this integration, which only exposed login-related
+        methods, not this one). Used to find the correct method for enumerating game instances
+        after ADSModule.GetInstances() turned out to only return the ADS's own control instance,
+        not the actual games - confirmed live against a real ADS (AvailableInstances contained
+        just the ADS entry). Confirmed live: GetAPISpec's response is a dict keyed by module
+        name (e.g. "ADSModule"), each holding one dict per method with its own Description/
+        Parameters/etc. metadata - listing every method name (plus its Description, when AMP
+        provides one) directly under that module key rather than a generic substring search,
+        since a naive "contains ads" search also matches method names like AttachADS/
+        AttachADSWithPairingCode and pulls in their internal metadata fields as false positives,
+        pushing genuinely relevant method names further down the alphabet out of any reasonable
+        length cap - confirmed live, a first version of this walk did exactly that. Only ever
+        surfaced via the dashboard's debug view when instance discovery already found 0 games,
+        never during normal use."""
         try:
             async with aiohttp.ClientSession() as session:
                 session_id = await _amp_login(session, cfg["url"], cfg["username"], cfg["password"])
@@ -199,30 +205,17 @@ class AMP(commands.Cog):
         except Exception as e:
             return f"GetAPISpec fehlgeschlagen: {_err_text(e)}"
 
-        names: set[str] = set()
-
-        def _walk(node, path=""):
-            if isinstance(node, dict):
-                for k, v in node.items():
-                    key_path = f"{path}.{k}" if path else str(k)
-                    if isinstance(k, str) and "ads" in k.lower():
-                        names.add(key_path)
-                        # the module's own method names may not themselves contain "ads", only
-                        # their containing module key does (e.g. "ADSModule") - list its direct
-                        # children too, not just the module key itself.
-                        if isinstance(v, dict):
-                            for sub_k in v.keys():
-                                names.add(f"{key_path}.{sub_k}")
-                    _walk(v, key_path)
-            elif isinstance(node, list):
-                for item in node:
-                    _walk(item, path)
-
-        _walk(spec)
-        if not names:
-            top_keys = list(spec.keys())[:20] if isinstance(spec, dict) else None
-            return f"Keine 'ADS'-Methoden im API-Spec gefunden. Typ: {type(spec).__name__}, Keys: {top_keys}"
-        return "Methoden mit 'ADS' im Namen:\n" + "\n".join(sorted(names)[:40])
+        if not isinstance(spec, dict):
+            return f"Unerwartete GetAPISpec-Form: {type(spec).__name__}"
+        ads_key = next((k for k in spec.keys() if isinstance(k, str) and k.lower() == "adsmodule"), None)
+        if not ads_key or not isinstance(spec[ads_key], dict):
+            return f"Kein 'ADSModule'-Schlüssel gefunden. Top-Level-Module: {sorted(spec.keys())}"
+        lines = [f"{len(spec[ads_key])} Methoden unter '{ads_key}':"]
+        for name in sorted(spec[ads_key].keys()):
+            meta = spec[ads_key].get(name)
+            desc = meta.get("Description") if isinstance(meta, dict) else None
+            lines.append(f"- {name}" + (f": {desc}" if desc else ""))
+        return "\n".join(lines)
 
     async def _list_instances(self, cfg: dict) -> dict:
         """A connection can be a single standalone AMP instance OR the main ADS controller
