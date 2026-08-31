@@ -285,11 +285,11 @@ class AMP(commands.Cog):
                 methods = await self._probe_ads_methods(cfg)
                 return {"instances": [], "error": "0 Instanzen erkannt (Details im Debug-Bereich unten)",
                         "raw_debug": f"{summary}\n\n{methods}"}
-            # Always keep the summary even on a successful parse - parsing has already been
-            # wrong once before without raising or returning zero results (a wrapper entry was
-            # mistaken for a game), so a "looks fine" result here still isn't a strong enough
-            # guarantee to skip giving admins a way to double check what AMP actually returned.
-            return {"instances": parsed, "error": None, "raw_debug": summary}
+            # No debug summary on a successful parse - GetLocalInstances is now confirmed live
+            # to return the actual games correctly (was needed while GetInstances() was still
+            # wrongly believed to be the right method), no reason to clutter a normal, working
+            # page load with diagnostic output any more.
+            return {"instances": parsed, "error": None, "raw_debug": None}
         except Exception as e:
             return {"instances": [], "error": _err_text(e), "raw_debug": None}
 
