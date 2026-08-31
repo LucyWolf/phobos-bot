@@ -61,33 +61,38 @@ def _amp_is_running(status: dict) -> bool:
     return status.get("State") not in (None, 10)
 
 
-# CubeCoders AMP's ApplicationState enum - confirmed authoritative (not another guess): matches
-# github.com/p0t4t0sandwich/ampapi-py (vendored inside the "cubecoders-amp-api-wrapper" PyPI
-# package, a community wrapper that mirrors AMP's own C# enum) AND cross-checked against two
-# real, live values from this project's own AMP instance (-1 for genuinely idle/never-started
-# instances, 20 for a genuinely running one) - this replaces the two earlier wrong guesses
-# (v1.14.9's "AppState != 10 means starting", then v1.14.11's fallback to a plain Running-only
-# bool once that was proven wrong). Each value maps to a display bucket used for both the label
-# and the color shown on the dashboard tile.
+# CubeCoders AMP's ApplicationState enum. Originally mapped to 14 fine-grained display
+# categories (v1.14.19) - abandoned after two live, directly contradicting observations on this
+# project's own "wa" instance proved AppState isn't reliable enough for that level of detail
+# (AppState=0/"Stopped" while AMP's own panel showed "Installing"; later AppState=70/"Installing"
+# while AMP's own panel showed "Running"). On explicit request ("mach nur 3 stadien oder 4, 4 ist
+# error" / "syncron bekommen wir das nicht" - perfect sync isn't achievable, stop chasing it)
+# collapsed down to just 4 broad, robust stages: online (handled separately in
+# _extract_instance() via the Running bool, which took priority over AppState in v1.14.24 for
+# exactly this reliability reason - not part of this dict), offline (cleanly stopped, nothing
+# going on), busy (something is actively in progress - starting/stopping/installing/etc., no
+# need to distinguish which), and error (a real problem AMP is flagging, or a value nobody
+# recognizes - deliberately erring toward "flag it" over confidently guessing "offline" for
+# anything unexpected).
 AMP_APP_STATES: dict[int, tuple[str, str]] = {
-    -1:  ("offline", "red"),
-    0:   ("offline", "red"),
-    5:   ("starting", "yellow"),
-    7:   ("starting", "yellow"),
-    10:  ("starting", "yellow"),
-    20:  ("online", "green"),
-    30:  ("restarting", "yellow"),
-    40:  ("stopping", "yellow"),
-    45:  ("stopping", "yellow"),
-    50:  ("sleeping", "yellow"),
-    60:  ("waiting", "yellow"),
-    70:  ("installing", "yellow"),
-    75:  ("updating", "yellow"),
-    80:  ("awaiting_input", "red"),
-    100: ("failed", "red"),
-    200: ("suspended", "gray"),
-    250: ("maintenance", "gray"),
-    999: ("unknown", "gray"),
+    -1:  ("offline", "gray"),
+    0:   ("offline", "gray"),
+    5:   ("busy", "yellow"),
+    7:   ("busy", "yellow"),
+    10:  ("busy", "yellow"),
+    20:  ("busy", "yellow"),   # Ready - only reached here when Running is somehow still False
+    30:  ("busy", "yellow"),
+    40:  ("busy", "yellow"),
+    45:  ("busy", "yellow"),
+    50:  ("busy", "yellow"),
+    60:  ("busy", "yellow"),
+    70:  ("busy", "yellow"),
+    75:  ("busy", "yellow"),
+    80:  ("error", "red"),
+    100: ("error", "red"),
+    200: ("error", "red"),
+    250: ("error", "red"),
+    999: ("error", "red"),
 }
 
 
@@ -100,20 +105,17 @@ def _extract_instance(d) -> dict | None:
     since ADSModule's Start/Stop/RestartInstance action methods are documented to take
     InstanceName, not InstanceID - "name" is the human FriendlyName shown in the UI, which can
     differ from both.
-    "state" is one of AMP_APP_STATES's category keys (e.g. "online"/"installing"/"failed"/...).
-    Running now takes priority over AppState for the positive case - two live, directly
-    contradicting real-world observations on this project's own "wa" instance forced this: AMP's
-    own panel showed "Installing" while AppState was 0 (which AMP_APP_STATES maps to "Stopped"),
-    and later showed "Running" while AppState was 70 (mapped to "Installing") - AppState's exact
-    meaning apparently isn't consistent for this instance/module type, while AMP's own displayed
-    "Running" label matched the raw Running bool in both cases. So: Running=True always wins
-    ("online", regardless of whatever AppState claims) - AppState is only consulted to pick a
-    more specific category (installing/failed/suspended/...) when Running is False, and only
-    "offline" is used as the final fallback when even that doesn't resolve to anything known.
-    This can't fix the reverse case (Running=False but AMP's UI already shows "Installing" -
-    AppState alone can't distinguish that from a genuinely stopped instance, seemingly a real
-    data gap in what this API call exposes for this module type), but it does fix the more
-    disruptive case of a fully running instance being mislabeled by a misleading AppState value.
+    "state" is one of just 4 broad categories now ("online"/"busy"/"offline"/"error") - deliber-
+    ately coarse (down from 14 fine-grained ones in v1.14.19-23) per explicit request ("mach nur
+    3 stadien oder 4, 4 ist error") after two live, directly contradicting real-world
+    observations on this project's own "wa" instance proved finer-grained AppState detail isn't
+    reliable enough to show confidently: AMP's own panel showed "Installing" while AppState was
+    0 (mapped to "Stopped"), and later showed "Running" while AppState was 70 (mapped to
+    "Installing"). Running takes priority for the positive case - "online" whenever Running is
+    True, regardless of whatever AppState claims (AMP's own displayed "Running" label matched
+    the raw Running bool in both contradicting cases, unlike AppState) - AppState is only
+    consulted to distinguish "busy" (something in progress) from "error" (AMP flagging a real
+    problem, or a value nobody recognizes) when Running is False.
     "color" is the matching display bucket ("green"/"red"/"yellow"/"gray") for the status pill."""
     if not isinstance(d, dict):
         return None
@@ -130,7 +132,10 @@ def _extract_instance(d) -> dict | None:
     elif app_state in AMP_APP_STATES:
         state, color = AMP_APP_STATES[app_state]
     else:
-        state, color = "offline", "red"
+        # AppState missing entirely or a value nobody recognizes - flagged as "error" rather
+        # than confidently guessing "offline" for something genuinely unexpected (same
+        # philosophy as the rest of AMP_APP_STATES above).
+        state, color = "error", "red"
     ip = d.get("IP") or d.get("ApplicationIP")
     port = d.get("Port")
     address = f"{ip}:{port}" if ip and port else None

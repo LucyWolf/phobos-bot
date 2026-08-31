@@ -2522,14 +2522,11 @@ async def _amp_cfg_for_guild(guild_id: int):
 
 # Maps cogs.amp.AMP_APP_STATES's category keys to their translated dashboard label - kept here
 # (not in the cog) since it needs i18n's tr dict, which the cog has no access to.
+# Just 4 broad stages now (was 14 in v1.14.19-23, collapsed per explicit request - see
+# cogs.amp.AMP_APP_STATES's comment for why finer-grained AppState detail turned out unreliable).
 _AMP_STATE_TR_KEYS = {
     "online": "amp_status_online", "offline": "amp_status_offline",
-    "starting": "amp_status_starting", "restarting": "amp_status_restarting",
-    "stopping": "amp_status_stopping", "sleeping": "amp_status_sleeping",
-    "waiting": "amp_status_waiting", "installing": "amp_status_installing",
-    "updating": "amp_status_updating", "awaiting_input": "amp_status_awaiting_input",
-    "failed": "amp_status_failed", "suspended": "amp_status_suspended",
-    "maintenance": "amp_status_maintenance", "unknown": "amp_status_unknown",
+    "busy": "amp_status_busy", "error": "amp_status_error_state",
 }
 
 
