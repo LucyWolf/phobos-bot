@@ -3583,7 +3583,7 @@ async def smtp_settings_save(
             # generic "an email was sent if this address is registered" success message to
             # prevent enumeration) - a broken port value would silently defeat that
             # protection by making a real account distinguishable via the resulting error.
-            return RedirectResponse("/settings?error=Ungültiger+SMTP-Port", status_code=302)
+            return RedirectResponse("/settings/smtp?error=Ungültiger+SMTP-Port", status_code=302)
     for key, val in [
         ("smtp_host", smtp_host), ("smtp_port", smtp_port),
         ("smtp_user", smtp_user), ("smtp_from", smtp_from),
@@ -3592,7 +3592,10 @@ async def smtp_settings_save(
         await set_config(key, val.strip())
     if smtp_pass.strip():
         await set_config("smtp_pass", smtp_pass.strip())
-    return RedirectResponse("/settings?success=SMTP+gespeichert", status_code=302)
+    # Redirects back to the SMTP page itself (not the general /settings page, which shows
+    # unrelated App-Name/Zeitzone cards) - confirmed live as confusing: after saving SMTP,
+    # landing on a page about the app name looked like a wrong/unrelated destination.
+    return RedirectResponse("/settings/smtp?saved=true", status_code=302)
 
 
 @web.post("/settings/smtp/test")
@@ -3615,9 +3618,9 @@ async def smtp_test(request: Request, test_email: str = Form(...)):
     test_link = f"{base.rstrip('/')}/reset-password?token=test-preview-token" if base else "https://example.com/test-link"
     try:
         await _send_reset_email(test_email.strip(), test_link)
-        return RedirectResponse("/settings?success=Test-E-Mail+gesendet", status_code=302)
+        return RedirectResponse("/settings/smtp?test_ok=true", status_code=302)
     except Exception as e:
-        return RedirectResponse(f"/settings?error={urllib.parse.quote(str(e))}", status_code=302)
+        return RedirectResponse(f"/settings/smtp?error={urllib.parse.quote(str(e))}", status_code=302)
 
 
 # ── Token Management ──────────────────────────────────────────────────────────

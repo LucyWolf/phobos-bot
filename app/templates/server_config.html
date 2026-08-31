@@ -1835,7 +1835,7 @@ function toggleAdEdit(id) {
   <span>{{ tr.amp_status_title }}{% if amp_cfg.label %} — {{ amp_cfg.label }}{% endif %}</span>
   <button type="button" class="btn btn-secondary" onclick="toggleAmpEdit()" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="{{ tr.btn_settings }}">⚙</button>
 </div>
-<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem;margin-bottom:1.25rem;">
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin-bottom:1.25rem;">
   {% for inst in amp_instances %}
   <div class="card" style="margin-bottom:0;padding:0;overflow:hidden;
        border-top:3px solid {% if inst.state == 'online' %}#22c55e{% else %}#ef4444{% endif %};
@@ -1852,13 +1852,13 @@ function toggleAdEdit(id) {
       {% if inst.address %}<p class="hint" style="margin-bottom:0.9rem;font-family:monospace;font-size:0.78rem;">{{ inst.address }}</p>{% endif %}
       <div style="display:flex;gap:0.5rem;">
         <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/start" style="margin:0;flex:1;">
-          <button type="submit" class="btn btn-secondary" title="{{ tr.amp_btn_start }}" style="width:100%;padding:0.4rem;font-size:0.95rem;line-height:1;">🟢</button>
+          <button type="submit" class="btn btn-secondary" style="width:100%;padding:0.4rem 0.3rem;font-size:0.76rem;line-height:1;white-space:nowrap;">{{ tr.amp_btn_start }}</button>
         </form>
         <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/stop" style="margin:0;flex:1;">
-          <button type="submit" class="btn btn-danger" title="{{ tr.amp_btn_stop }}" style="width:100%;padding:0.4rem;font-size:0.95rem;line-height:1;">🔴</button>
+          <button type="submit" class="btn btn-danger" style="width:100%;padding:0.4rem 0.3rem;font-size:0.76rem;line-height:1;white-space:nowrap;">{{ tr.amp_btn_stop }}</button>
         </form>
         <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/restart" style="margin:0;flex:1;">
-          <button type="submit" class="btn btn-secondary" title="{{ tr.amp_btn_restart }}" style="width:100%;padding:0.4rem;font-size:0.95rem;line-height:1;">🔄</button>
+          <button type="submit" class="btn btn-secondary" style="width:100%;padding:0.4rem 0.3rem;font-size:0.76rem;line-height:1;white-space:nowrap;">{{ tr.amp_btn_restart }}</button>
         </form>
       </div>
     </div>
