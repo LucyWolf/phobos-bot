@@ -1831,35 +1831,35 @@ function toggleAdEdit(id) {
 </div>
 
 {% if amp_instances %}
-<div class="card" style="margin-bottom:1.25rem;">
-  <div class="feat-header" style="margin-bottom:1rem;justify-content:space-between;">
-    <span>{{ tr.amp_status_title }}{% if amp_cfg.label %} — {{ amp_cfg.label }}{% endif %}</span>
-    <button type="button" class="btn btn-secondary" onclick="toggleAmpEdit()" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="{{ tr.btn_settings }}">⚙</button>
-  </div>
+<div class="feat-header" style="margin-bottom:1rem;justify-content:space-between;">
+  <span>{{ tr.amp_status_title }}{% if amp_cfg.label %} — {{ amp_cfg.label }}{% endif %}</span>
+  <button type="button" class="btn btn-secondary" onclick="toggleAmpEdit()" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="{{ tr.btn_settings }}">⚙</button>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem;margin-bottom:1.25rem;">
   {% for inst in amp_instances %}
-  <div style="{% if not loop.last %}margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border);{% endif %}">
+  <div class="card" style="margin-bottom:0;">
     <div style="font-weight:600;margin-bottom:0.4rem;">{{ inst.name }}</div>
     <p style="margin-bottom:0.75rem;font-size:1.05rem;">{% if inst.running %}{{ tr.amp_status_online }}{% else %}{{ tr.amp_status_offline }}{% endif %}</p>
-    <div style="display:flex;gap:0.75rem;">
+    <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
       <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/start" style="margin:0;">
-        <button type="submit" class="btn btn-secondary">{{ tr.amp_btn_start }}</button>
+        <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.55rem;font-size:0.78rem;">{{ tr.amp_btn_start }}</button>
       </form>
       <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/stop" style="margin:0;">
-        <button type="submit" class="btn btn-danger">{{ tr.amp_btn_stop }}</button>
+        <button type="submit" class="btn btn-danger" style="padding:0.3rem 0.55rem;font-size:0.78rem;">{{ tr.amp_btn_stop }}</button>
       </form>
       <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/restart" style="margin:0;">
-        <button type="submit" class="btn btn-secondary">{{ tr.amp_btn_restart }}</button>
+        <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.55rem;font-size:0.78rem;">{{ tr.amp_btn_restart }}</button>
       </form>
     </div>
   </div>
   {% endfor %}
-  {% if amp_raw_debug %}
-  <details style="margin-top:0.75rem;">
-    <summary class="hint" style="cursor:pointer;">{{ tr.amp_raw_debug_label }}</summary>
-    <pre style="white-space:pre-wrap;word-break:break-all;font-size:0.7rem;color:var(--muted);margin-top:0.4rem;">{{ amp_raw_debug }}</pre>
-  </details>
-  {% endif %}
 </div>
+{% if amp_raw_debug %}
+<details style="margin-bottom:1.25rem;">
+  <summary class="hint" style="cursor:pointer;">{{ tr.amp_raw_debug_label }}</summary>
+  <pre style="white-space:pre-wrap;word-break:break-all;font-size:0.7rem;color:var(--muted);margin-top:0.4rem;">{{ amp_raw_debug }}</pre>
+</details>
+{% endif %}
 {% elif amp_cfg and amp_cfg.url %}
 <div class="card" style="margin-bottom:1.25rem;">
   <div class="feat-header" style="margin-bottom:1rem;justify-content:space-between;">

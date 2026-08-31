@@ -60,21 +60,26 @@ def _amp_is_running(status: dict) -> bool:
 
 
 def _extract_instance(d) -> dict | None:
-    """Returns a normalized {"id", "name", "running", "module"} from a raw dict if it looks
-    like an actual game instance, else None. Field names are read defensively (several
-    fallbacks tried per field) since the exact response shape could not be verified without a
-    real, authenticated call against a live instance."""
+    """Returns a normalized {"id", "instance_name", "name", "running", "module"} from a raw
+    dict if it looks like an actual game instance, else None. Field names are read defensively
+    (several fallbacks tried per field). "id" (InstanceID, a GUID) is used for dashboard URLs/
+    DOM identification - stable and URL-safe. "instance_name" (InstanceName, a short string
+    like the AMP module's own generated slug) is kept separately since ADSModule's Start/Stop/
+    RestartInstance action methods are documented to take InstanceName, not InstanceID - "name"
+    is the human FriendlyName shown in the UI, which can differ from both."""
     if not isinstance(d, dict):
         return None
     iid = d.get("InstanceID") or d.get("InstanceId") or d.get("ID")
     if not iid:
         return None
     module = d.get("Module") or d.get("ModuleDisplayName") or ""
-    name = d.get("FriendlyName") or d.get("InstanceName") or d.get("Name") or str(iid)
+    instance_name = d.get("InstanceName") or str(iid)
+    name = d.get("FriendlyName") or instance_name
     running = d.get("Running")
     if running is None:
         running = d.get("AppState") not in (None, 10)
-    return {"id": str(iid), "name": name, "running": bool(running), "module": module}
+    return {"id": str(iid), "instance_name": instance_name, "name": name,
+            "running": bool(running), "module": module}
 
 
 def _summarize_raw(raw) -> str:
@@ -252,15 +257,18 @@ class AMP(commands.Cog):
     async def _list_instances(self, cfg: dict) -> dict:
         """A connection can be a single standalone AMP instance OR the main ADS controller
         managing several game instances underneath it (confirmed live for this project's own
-        AMP install: a single ADS controller with multiple game instances configured under
-        it) - ADSModule.GetInstances() enumerates the latter. Returns
-        {"instances": [...], "error": str|None} - a standalone (non-ADS) connection is expected
-        to error here (no ADSModule available), callers fall back to treating the connection
-        itself as the single controllable target in that case."""
+        AMP install: a single ADS controller with three game instances configured under it) -
+        ADSModule.GetLocalInstances() enumerates the latter (confirmed live - ADSModule.
+        GetInstances(), tried first, only returns the ADS's own control instance wrapped in a
+        Target object, not the actual games; GetLocalInstances returns a flat list including
+        every instance, ADS control instance included, which is filtered out same as before).
+        Returns {"instances": [...], "error": str|None} - a standalone (non-ADS) connection is
+        expected to error here (no ADSModule available), callers fall back to treating the
+        connection itself as the single controllable target in that case."""
         try:
             async with aiohttp.ClientSession() as session:
                 session_id = await _amp_login(session, cfg["url"], cfg["username"], cfg["password"])
-                raw = await _amp_call(session, cfg["url"], "ADSModule", "GetInstances", SESSIONID=session_id)
+                raw = await _amp_call(session, cfg["url"], "ADSModule", "GetLocalInstances", SESSIONID=session_id)
             parsed = _parse_instances(raw)
             summary = _summarize_raw(raw)
             if not parsed:
@@ -286,18 +294,30 @@ class AMP(commands.Cog):
             return {"instances": [], "error": _err_text(e), "raw_debug": None}
 
     async def _instance_action(self, cfg: dict, instance_id: str, method: str) -> tuple[bool, str]:
-        # CubeCoders AMP's documented way to target a specific instance from an ADS-authenticated
-        # session is a compound URL that proxies the call through the ADS to that instance:
-        # /API/ADSModule/Servers/{InstanceID}/API/{Module}/{Method} - NOT verified against a real
-        # ADS instance (would need a real login this project deliberately never asks the user
-        # for), needs confirming on first live use, same caveat as _amp_is_running's State enum.
+        """method is "Start"/"Stop"/"Restart" (same convention as the legacy whole-connection
+        _amp_action), mapped here to ADSModule's own "{method}Instance" methods - confirmed
+        live to exist via an authenticated Core.GetAPISpec() call (StartInstance/StopInstance/
+        RestartInstance are listed directly under ADSModule). Replaces an earlier, WRONG guess
+        that tried to reach a specific instance through a compound passthrough URL
+        (/API/ADSModule/Servers/{id}/API/Core/{method}) - never actually verified and abandoned
+        once ADSModule's real method list was seen. instance_id must be the instance's
+        InstanceID (a GUID, used for dashboard URLs/DOM identification) - looked up here against
+        a fresh instance list to find the matching InstanceName, since that's what
+        Start/Stop/RestartInstance are believed to take as their parameter (going by the AMP
+        API's established, well-documented convention elsewhere - NOT independently verified
+        against this specific method's declared Parameters, which weren't fetched to avoid
+        invoking a destructive action blindly during diagnostics; if this parameter name turns
+        out wrong, the resulting AMP error message will say so directly, the same way the
+        instance-listing method itself was pinned down)."""
+        listing = await self._list_instances(cfg)
+        match = next((i for i in listing["instances"] if i["id"] == str(instance_id)), None)
+        if not match:
+            return False, "Instanz nicht mehr gefunden (evtl. inzwischen entfernt?)"
         try:
             async with aiohttp.ClientSession() as session:
                 session_id = await _amp_login(session, cfg["url"], cfg["username"], cfg["password"])
-                url = f"{cfg['url'].rstrip('/')}/API/ADSModule/Servers/{instance_id}/API/Core/{method}"
-                async with session.post(url, json={"SESSIONID": session_id}, headers=_HEADERS,
-                                         timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                    resp.raise_for_status()
+                await _amp_call(session, cfg["url"], "ADSModule", f"{method}Instance",
+                                 SESSIONID=session_id, InstanceName=match["instance_name"])
             return True, ""
         except Exception as e:
             return False, _err_text(e)
