@@ -1847,17 +1847,17 @@ function toggleAdEdit(id) {
         <input type="text" name="username" value="{{ amp_cfg.username if amp_cfg else '' }}" autocomplete="off">
       </div>
       <div>
-        <label>{{ tr.amp_password_label }}</label>
-        <input type="password" name="password" placeholder="••••••••" autocomplete="new-password">
-        <p class="hint" style="margin-top:0.3rem;">{{ tr.amp_password_hint }}</p>
-      </div>
-      <div>
         <label>{{ tr.amp_command_channel_label }}</label>
         <select name="command_channel_id">
           <option value="">{{ tr.config_channel_disabled_option }}</option>
           {% for ch in channels %}<option value="{{ ch.id }}" {% if amp_cfg and amp_cfg.command_channel_id == ch.id %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
         </select>
         <p class="hint" style="margin-top:0.3rem;">{{ tr.amp_command_channel_hint }}</p>
+      </div>
+      <div>
+        <label>{{ tr.amp_password_label }}</label>
+        <input type="password" name="password" placeholder="••••••••" autocomplete="new-password">
+        <p class="hint" style="margin-top:0.3rem;">{{ tr.amp_password_hint }}</p>
       </div>
     </div>
     <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
