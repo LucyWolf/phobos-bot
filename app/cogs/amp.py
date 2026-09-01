@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 
 import discord
@@ -309,6 +310,9 @@ _list_cache: dict[str, tuple[float, dict]] = {}
 # elapses first without ever seeing AppState=20, Running alone is trusted anyway.
 _STARTUP_CEILING_SECONDS = 240  # covers the observed ~134s Palworld load time with headroom
 _AMP_STATE_READY = 20
+# How long _notify_when_online() (Discord "server is now online" follow-up) keeps polling before
+# giving up silently - kept under Discord's ~15 minute interaction-followup webhook validity.
+_NOTIFY_TIMEOUT_SECONDS = 600
 _running_since: dict[str, float] = {}
 
 
@@ -586,8 +590,52 @@ class AMP(commands.Cog):
         name = "" if mode == "legacy" else f" **{data['name']}**"
         if ok:
             await interaction.followup.send(f"{success_icon}{name} {success_text}", ephemeral=True)
+            # Requested live: "wäre cool wenn da stehen würde server ist jetzt online oder so" -
+            # the confirmation above only means the command was accepted, not that the game is
+            # actually playable yet (same real load-time gap the dashboard tile now accounts for
+            # via AppState=20 detection - see _apply_startup_grace()'s comment). Only for a
+            # genuine Start on a resolved multi-instance target (mode=="instance") - a "legacy"
+            # single-connection target has no per-instance id to track, and Stop/Restart don't
+            # have an equally clear "done" signal to wait for.
+            if method == "Start" and mode == "instance":
+                asyncio.create_task(self._notify_when_online(
+                    interaction, cfg, data["id"], data["name"], data.get("game_name") or ""))
         else:
             await interaction.followup.send(f"⚠️{name} {fail_text}: {err}", ephemeral=True)
+
+    async def _notify_when_online(self, interaction: discord.Interaction, cfg: dict,
+                                   instance_id: str, name: str, game_name: str) -> None:
+        """Background follow-up after a successful Start: polls (through the existing cached
+        _list_instances(), so this doesn't add extra load beyond what the dashboard tile already
+        causes) until the instance reaches "online" - the same AppState=20-confirmed readiness
+        the tile shows, not just a raw Running flip - then sends a second message so the user
+        doesn't have to keep checking. Discord's interaction followup webhook stays valid for
+        15 minutes after the original interaction; _NOTIFY_TIMEOUT_SECONDS is kept safely under
+        that. Times out silently (no message) rather than spamming an "still not sure" notice -
+        the tile and /gameserver-status remain available for a manual check either way."""
+        deadline = time.monotonic() + _NOTIFY_TIMEOUT_SECONDS
+        game = f" ({game_name})" if game_name else ""
+        while time.monotonic() < deadline:
+            await asyncio.sleep(_LIST_CACHE_TTL + 2)
+            try:
+                listing = await self._list_instances(cfg)
+            except Exception:
+                continue
+            match = next((i for i in listing["instances"] if i["id"] == instance_id), None)
+            if not match:
+                continue
+            if match["state"] == "online":
+                try:
+                    await interaction.followup.send(f"🟢 **{name}**{game} ist jetzt online!", ephemeral=True)
+                except discord.HTTPException:
+                    pass
+                return
+            if match["state"] == "error":
+                try:
+                    await interaction.followup.send(f"🔴 **{name}**{game} meldet einen Fehler beim Starten.", ephemeral=True)
+                except discord.HTTPException:
+                    pass
+                return
 
     async def _check_command_channel(self, interaction: discord.Interaction, cfg: dict) -> bool:
         """Only gameserver-start/-stop are restrictable (per explicit request) - status stays
