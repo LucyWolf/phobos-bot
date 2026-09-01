@@ -98,7 +98,8 @@ AMP_APP_STATES: dict[int, tuple[str, str]] = {
 
 def _extract_instance(d) -> dict | None:
     """Returns a normalized {"id", "instance_name", "name", "running", "state", "color",
-    "app_state", "module"} from a raw dict if it looks like an actual game instance, else None.
+    "app_state", "module", "game_name"} from a raw dict if it looks like an actual game
+    instance, else None.
     Field names are read defensively (several fallbacks tried per field). "id" (InstanceID, a
     GUID) is used for dashboard URLs/DOM identification - stable and URL-safe. "instance_name"
     (InstanceName, a short string like the AMP module's own generated slug) is kept separately
@@ -145,9 +146,17 @@ def _extract_instance(d) -> dict | None:
     # means no background image is shown, never a broken image or a crash.
     image_src = d.get("DisplayImageSource")
     image_url = image_src if isinstance(image_src, str) and image_src.startswith(("http://", "https://")) else None
+    # ModuleDisplayName reliably holds the actual game ("Palworld", "Satisfactory", "Space
+    # Engineers", ...) - confirmed live across three real instances after Description/
+    # WelcomeMessage/SpecificDockerImage (the originally guessed candidates) all turned out
+    # empty or too coarse to tell games apart (SpecificDockerImage was identical - "cubecoders/
+    # ampbase:debian" - for two different games). Distinct from `module` above (the raw AMP
+    # "Module" field, e.g. "GenericModule" - used only to filter out the ADS controller itself,
+    # not for display).
+    game_name = d.get("ModuleDisplayName") or ""
     return {"id": str(iid), "instance_name": instance_name, "name": name, "running": running,
             "state": state, "color": color, "app_state": app_state, "module": module,
-            "address": address, "image_url": image_url}
+            "game_name": game_name, "address": address, "image_url": image_url}
 
 
 def _debug_game_fields(d) -> str:
