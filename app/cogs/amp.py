@@ -150,6 +150,26 @@ def _extract_instance(d) -> dict | None:
             "address": address, "image_url": image_url}
 
 
+def _debug_game_fields(d) -> str:
+    """One-off diagnostic addition to _summarize_raw()'s per-instance debug lines: the dashboard
+    tile currently only shows the admin-chosen FriendlyName (e.g. "wa"), not what game is
+    actually running - User: "kann man da nicht auch einblenden lassen was das für ein Game ist,
+    und nicht wie der Container heißt". Description/WelcomeMessage/SpecificDockerImage are
+    candidate fields that might carry that (their field NAMES were already visible in a prior
+    debug dump, but never their actual VALUES) - surfaced here in the existing, already-open
+    debug panel so the admin can check without needing AMP credentials or another live-probe
+    round from me. Not yet wired into the tile itself - depends on which of these, if any,
+    actually holds something useful."""
+    if not isinstance(d, dict):
+        return ""
+    parts = []
+    for field in ("Description", "WelcomeMessage", "SpecificDockerImage"):
+        value = d.get(field)
+        if value:
+            parts.append(f"{field}={str(value)[:80]!r}")
+    return " " + " ".join(parts) if parts else ""
+
+
 def _summarize_raw(raw) -> str:
     """Compact structural summary of an AMP API response for debugging - counts and brief
     per-entry identifiers instead of a truncated raw dump, since a real nested instance list
@@ -166,7 +186,7 @@ def _summarize_raw(raw) -> str:
             if isinstance(value, dict):
                 sub_inst = _extract_instance(value)
                 if sub_inst:
-                    lines.append(f"  '{key}': Module={sub_inst['module']!r} Name={sub_inst['name']!r} Running={sub_inst['running']} AppState={sub_inst['app_state']!r}")
+                    lines.append(f"  '{key}': Module={sub_inst['module']!r} Name={sub_inst['name']!r} Running={sub_inst['running']} AppState={sub_inst['app_state']!r}{_debug_game_fields(value)}")
                 else:
                     lines.append(f"  '{key}': dict, Felder: {list(value.keys())}")
             else:
@@ -184,14 +204,14 @@ def _summarize_raw(raw) -> str:
         lines.append(f"[{i}] Felder ({len(keys)}): {keys}")
         own = _extract_instance(item)
         if own:
-            lines.append(f"    selbst instanzartig: Module={own['module']!r} Name={own['name']!r} Running={own['running']} AppState={own['app_state']!r}")
+            lines.append(f"    selbst instanzartig: Module={own['module']!r} Name={own['name']!r} Running={own['running']} AppState={own['app_state']!r}{_debug_game_fields(item)}")
         for key, value in item.items():
             if isinstance(value, list):
                 lines.append(f"    Liste '{key}': {len(value)} Einträge")
                 for j, sub in enumerate(value):
                     sub_inst = _extract_instance(sub)
                     if sub_inst:
-                        lines.append(f"      [{j}] Module={sub_inst['module']!r} Name={sub_inst['name']!r} Running={sub_inst['running']} AppState={sub_inst['app_state']!r}")
+                        lines.append(f"      [{j}] Module={sub_inst['module']!r} Name={sub_inst['name']!r} Running={sub_inst['running']} AppState={sub_inst['app_state']!r}{_debug_game_fields(sub)}")
                     elif isinstance(sub, dict):
                         lines.append(f"      [{j}] kein Instanz-Muster, Felder: {list(sub.keys())}")
                     else:
