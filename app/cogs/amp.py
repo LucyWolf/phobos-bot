@@ -95,6 +95,17 @@ AMP_APP_STATES: dict[int, tuple[str, str]] = {
     999: ("error", "red"),
 }
 
+# Discord-side label for the same 4 states the dashboard tile shows (main.py's
+# _AMP_STATE_TR_KEYS/_amp_state_label do the i18n'd equivalent for the web UI - cogs in this
+# project don't use i18n, Discord output is hardcoded German throughout, same as everywhere
+# else in this bot). Kept in sync manually with AMP_APP_STATES' 4 category keys.
+_STATE_LABELS = {
+    "online": ("🟢", "Online"),
+    "busy": ("🟡", "Beschäftigt"),
+    "offline": ("⚫", "Offline"),
+    "error": ("🔴", "Fehler"),
+}
+
 
 def _extract_instance(d) -> dict | None:
     """Returns a normalized {"id", "instance_name", "name", "running", "state", "color",
@@ -542,14 +553,15 @@ class AMP(commands.Cog):
             text = "Online" if result["online"] else "Offline"
             await interaction.followup.send(f"{icon} **{label}**: {text}")
         elif mode == "instance":
-            icon = "🟢" if data["running"] else "🔴"
-            text = "Online" if data["running"] else "Offline"
-            await interaction.followup.send(f"{icon} **{data['name']}**: {text}")
+            icon, text = _STATE_LABELS.get(data["state"], _STATE_LABELS["error"])
+            game = f" ({data['game_name']})" if data.get("game_name") else ""
+            await interaction.followup.send(f"{icon} **{data['name']}**{game}: {text}")
         else:  # "all"
-            lines = [
-                f"{'🟢' if i['running'] else '🔴'} **{i['name']}**: {'Online' if i['running'] else 'Offline'}"
-                for i in data
-            ]
+            lines = []
+            for i in data:
+                icon, text = _STATE_LABELS.get(i["state"], _STATE_LABELS["error"])
+                game = f" ({i['game_name']})" if i.get("game_name") else ""
+                lines.append(f"{icon} **{i['name']}**{game}: {text}")
             await interaction.followup.send("\n".join(lines))
 
     async def _do_action(self, interaction: discord.Interaction, method: str, server_name: str | None,
