@@ -247,15 +247,28 @@ _list_cache: dict[str, tuple[float, dict]] = {}
 
 # Reported live: Running flips True the instant AMP's underlying process/container starts, well
 # before a slow-loading game is actually joinable ("dieser braucht sehr lange zum starten...und
-# dennoch steht schon online drauf") - a TCP-connect check against the game's own port was tried
-# and deliberately abandoned (see git history) since most game servers use UDP, not TCP, which
-# would make that check permanently wrong instead of just briefly wrong. This is a much safer,
-# protocol-agnostic alternative: once an instance is first observed transitioning to Running,
-# keep showing "busy" instead of "online" for a fixed grace period, then trust Running normally.
-# It's a rough guess, not a real readiness check - can show "online" a bit early for a genuinely
-# slow game, or keep "busy" a bit longer than necessary for a fast one - but unlike the TCP
-# check, it can never get permanently stuck, since it always resolves after the grace period.
-_STARTUP_GRACE_SECONDS = 30
+# dennoch steht schon online drauf"). A TCP-connect check against the game's own port was tried
+# and deliberately abandoned (see git history) since most game servers use UDP, not TCP.
+#
+# A live-timed trace against the real "wa" (Palworld) instance then found an actual, precise
+# signal instead of a guessed timer: AppState went 0 (Running already True, container starting)
+# -> 70 for ~2 minutes (loading, port still closed, CPU=0%) -> port opened (still AppState=70)
+# -> 20 (port open AND CPU jumped to a sustained 3-4%, i.e. the game engine is genuinely
+# ticking, not just the container having booted) -> stayed stable at 20 for several more
+# minutes. AppState=20 is exactly the point where two independent signals (port + CPU) agree the
+# game is really ready - this matches the community ampapi wrapper's own claim that 20="Ready",
+# even though that same wrapper's claim about 70="Installing" doesn't hold here (this was a
+# fully-installed instance loading normally, nothing being installed) - so AppState as a whole is
+# still not blindly trusted (see AMP_APP_STATES's own comment), just this one specific value,
+# now with two independent live confirmations behind it.
+#
+# Only verified against Palworld so far - a game/module where AppState never actually reaches 20
+# (or means something else there) must not get stuck on "busy" forever, so a time ceiling is
+# kept as a fallback: AppState=20 lets an instance flip to "online" as soon as it's confirmed
+# (can happen well before the ceiling, as fast as the game itself loads), but if the ceiling
+# elapses first without ever seeing AppState=20, Running alone is trusted anyway.
+_STARTUP_CEILING_SECONDS = 240  # covers the observed ~134s Palworld load time with headroom
+_AMP_STATE_READY = 20
 _running_since: dict[str, float] = {}
 
 
@@ -265,7 +278,8 @@ def _apply_startup_grace(instances: list[dict]) -> None:
         iid = inst["id"]
         if inst.get("running"):
             since = _running_since.setdefault(iid, now)
-            if now - since < _STARTUP_GRACE_SECONDS:
+            confirmed_ready = inst.get("app_state") == _AMP_STATE_READY
+            if not confirmed_ready and now - since < _STARTUP_CEILING_SECONDS:
                 inst["state"], inst["color"] = "busy", "yellow"
         else:
             _running_since.pop(iid, None)
