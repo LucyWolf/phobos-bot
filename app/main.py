@@ -2699,12 +2699,23 @@ async def amp_instance_command_name(
     if not amp_cog:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
     cfg = await _amp_cfg_for_guild(guild_id)
-    if cfg and await _amp_is_ads_instance(amp_cog, cfg, instance_id):
-        # Same reasoning as the three action routes below - a custom command saved against the
-        # ADS's own instance_id would be a PERSISTENT way to trigger an unverified action against
-        # it (worse than a one-off crafted POST to /start etc., since it'd sit there as a real
-        # slash command anyone with manage_guild could use going forward).
-        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Nicht+erlaubt", status_code=302)
+    if cfg:
+        is_ads, conn_error = await _amp_is_ads_instance(amp_cog, cfg, instance_id)
+        if conn_error:
+            # Fail CLOSED here, unlike the action routes below (which just show the connection
+            # error and stop, nothing gets persisted either way): this specific check exists
+            # because a saved custom command is a PERSISTENT way to later trigger an action
+            # against whatever instance_id it names - if AMP can't be reached right now to
+            # confirm this instance_id isn't the ADS's own, saving anyway would let exactly the
+            # unsafe case through unverified, armed and waiting for the connection to come back.
+            return RedirectResponse(f"/servers/{guild_id}?tab=amp&error={urllib.parse.quote(conn_error[:150])}", status_code=302)
+        if is_ads:
+            # Same reasoning as above, just for the confirmed (not merely unverifiable) case - a
+            # custom command saved against the ADS's own instance_id would be a PERSISTENT way to
+            # trigger an unverified action against it (worse than a one-off crafted POST to
+            # /start etc., since it'd sit there as a real slash command anyone with manage_guild
+            # could use going forward).
+            return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Nicht+erlaubt", status_code=302)
 
     validated = {}
     for field, raw in (("start_name", start_name), ("stop_name", stop_name), ("restart_name", restart_name)):
@@ -2779,18 +2790,26 @@ async def amp_instances_json(request: Request, guild_id: int):
     ]})
 
 
-async def _amp_is_ads_instance(amp_cog, cfg: dict, instance_id: str) -> bool:
-    """The template never renders Start/Stop/Restart forms for the ADS controller's own tile
-    (game_instances excludes module=='ADS'), and the Discord command path excludes it too via
-    _resolve_target() - but that's UI/command-layer protection only. A hand-crafted POST straight
-    to these three routes could still target the ADS's own instance_id, and ADSModule's
-    {method}Instance calls were never verified to make sense against the ADS's own instance name
-    (unlike a real game instance) - worst case it could affect the whole AMP connection for every
-    hosted game at once. Checked here too so that safety guarantee doesn't depend on the admin
-    only ever clicking the rendered buttons."""
+async def _amp_is_ads_instance(amp_cog, cfg: dict, instance_id: str) -> tuple[bool, str | None]:
+    """Returns (is_ads, connection_error). The template never renders Start/Stop/Restart forms
+    for the ADS controller's own tile (game_instances excludes module=='ADS'), and the Discord
+    command path excludes it too via _resolve_target() - but that's UI/command-layer protection
+    only. A hand-crafted POST straight to these three routes could still target the ADS's own
+    instance_id, and ADSModule's {method}Instance calls were never verified to make sense
+    against the ADS's own instance name (unlike a real game instance) - worst case it could
+    affect the whole AMP connection for every hosted game at once. Checked here too so that
+    safety guarantee doesn't depend on the admin only ever clicking the rendered buttons.
+    connection_error is surfaced separately (rather than just treating a failed lookup as
+    "not the ADS, proceed") so callers can bail out immediately with the real error instead of
+    proceeding to _instance_action(), which would then make its own, equally doomed second
+    login attempt against a connection that's already known to be down - the same "two round
+    trips feels like the bot is hanging" issue fixed for cogs/amp.py's Discord command path in
+    the same v1.14.47 round this was found in."""
     listing = await amp_cog._list_instances(cfg)
+    if listing.get("connection_error"):
+        return False, listing["error"]
     match = next((i for i in listing["instances"] if i["id"] == instance_id), None)
-    return bool(match and match.get("module") == "ADS")
+    return bool(match and match.get("module") == "ADS"), None
 
 
 @web.post("/servers/{guild_id}/amp/instance/{instance_id}/start")
@@ -2804,7 +2823,10 @@ async def amp_instance_start_web(request: Request, guild_id: int, instance_id: s
     amp_cog = bot.cogs.get("AMP")
     if not amp_cog:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
-    if await _amp_is_ads_instance(amp_cog, cfg, instance_id):
+    is_ads, conn_error = await _amp_is_ads_instance(amp_cog, cfg, instance_id)
+    if conn_error:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error={urllib.parse.quote(conn_error[:150])}", status_code=302)
+    if is_ads:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Nicht+erlaubt", status_code=302)
     ok, error = await amp_cog._instance_action(cfg, instance_name, "Start")
     if not ok:
@@ -2823,7 +2845,10 @@ async def amp_instance_stop_web(request: Request, guild_id: int, instance_id: st
     amp_cog = bot.cogs.get("AMP")
     if not amp_cog:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
-    if await _amp_is_ads_instance(amp_cog, cfg, instance_id):
+    is_ads, conn_error = await _amp_is_ads_instance(amp_cog, cfg, instance_id)
+    if conn_error:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error={urllib.parse.quote(conn_error[:150])}", status_code=302)
+    if is_ads:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Nicht+erlaubt", status_code=302)
     ok, error = await amp_cog._instance_action(cfg, instance_name, "Stop")
     if not ok:
@@ -2842,7 +2867,10 @@ async def amp_instance_restart_web(request: Request, guild_id: int, instance_id:
     amp_cog = bot.cogs.get("AMP")
     if not amp_cog:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
-    if await _amp_is_ads_instance(amp_cog, cfg, instance_id):
+    is_ads, conn_error = await _amp_is_ads_instance(amp_cog, cfg, instance_id)
+    if conn_error:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error={urllib.parse.quote(conn_error[:150])}", status_code=302)
+    if is_ads:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Nicht+erlaubt", status_code=302)
     ok, error = await amp_cog._instance_action(cfg, instance_name, "Restart")
     if not ok:

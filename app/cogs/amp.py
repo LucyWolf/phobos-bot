@@ -172,26 +172,6 @@ def _extract_instance(d) -> dict | None:
             "game_name": game_name, "address": address, "image_url": image_url}
 
 
-def _debug_game_fields(d) -> str:
-    """One-off diagnostic addition to _summarize_raw()'s per-instance debug lines: the dashboard
-    tile currently only shows the admin-chosen FriendlyName (e.g. "wa"), not what game is
-    actually running - User: "kann man da nicht auch einblenden lassen was das für ein Game ist,
-    und nicht wie der Container heißt". Description/WelcomeMessage/SpecificDockerImage are
-    candidate fields that might carry that (their field NAMES were already visible in a prior
-    debug dump, but never their actual VALUES) - surfaced here in the existing, already-open
-    debug panel so the admin can check without needing AMP credentials or another live-probe
-    round from me. Not yet wired into the tile itself - depends on which of these, if any,
-    actually holds something useful."""
-    if not isinstance(d, dict):
-        return ""
-    parts = []
-    for field in ("Description", "WelcomeMessage", "SpecificDockerImage"):
-        value = d.get(field)
-        if value:
-            parts.append(f"{field}={str(value)[:80]!r}")
-    return " " + " ".join(parts) if parts else ""
-
-
 def _summarize_raw(raw) -> str:
     """Compact structural summary of an AMP API response for debugging - counts and brief
     per-entry identifiers instead of a truncated raw dump, since a real nested instance list
@@ -208,7 +188,7 @@ def _summarize_raw(raw) -> str:
             if isinstance(value, dict):
                 sub_inst = _extract_instance(value)
                 if sub_inst:
-                    lines.append(f"  '{key}': Module={sub_inst['module']!r} Name={sub_inst['name']!r} Running={sub_inst['running']} AppState={sub_inst['app_state']!r}{_debug_game_fields(value)}")
+                    lines.append(f"  '{key}': Module={sub_inst['module']!r} Name={sub_inst['name']!r} Running={sub_inst['running']} AppState={sub_inst['app_state']!r}")
                 else:
                     lines.append(f"  '{key}': dict, Felder: {list(value.keys())}")
             else:
@@ -226,14 +206,14 @@ def _summarize_raw(raw) -> str:
         lines.append(f"[{i}] Felder ({len(keys)}): {keys}")
         own = _extract_instance(item)
         if own:
-            lines.append(f"    selbst instanzartig: Module={own['module']!r} Name={own['name']!r} Running={own['running']} AppState={own['app_state']!r}{_debug_game_fields(item)}")
+            lines.append(f"    selbst instanzartig: Module={own['module']!r} Name={own['name']!r} Running={own['running']} AppState={own['app_state']!r}")
         for key, value in item.items():
             if isinstance(value, list):
                 lines.append(f"    Liste '{key}': {len(value)} Einträge")
                 for j, sub in enumerate(value):
                     sub_inst = _extract_instance(sub)
                     if sub_inst:
-                        lines.append(f"      [{j}] Module={sub_inst['module']!r} Name={sub_inst['name']!r} Running={sub_inst['running']} AppState={sub_inst['app_state']!r}{_debug_game_fields(sub)}")
+                        lines.append(f"      [{j}] Module={sub_inst['module']!r} Name={sub_inst['name']!r} Running={sub_inst['running']} AppState={sub_inst['app_state']!r}")
                     elif isinstance(sub, dict):
                         lines.append(f"      [{j}] kein Instanz-Muster, Felder: {list(sub.keys())}")
                     else:
@@ -242,17 +222,22 @@ def _summarize_raw(raw) -> str:
 
 
 def _parse_instances(raw) -> list[dict]:
-    """Parses ADSModule.GetInstances()'s response into a normalized list of
-    {"id": str, "name": str, "running": bool, "module": str}. AMP groups instances by hosting
-    "Target" (the machine running them) - confirmed live: a top-level entry can be a target
-    wrapper (its own ID-like field, but a FriendlyName like the literal "Local Instances" -
-    AMP's default name for instances hosted on the same machine as the ADS itself) with the
-    actual game instances nested inside one of its list-valued fields, rather than being a
-    game instance itself. A naive single-level parse mistook that wrapper for a single game
-    and missed everything nested inside it. Prefers nested instance-shaped dicts (scans every
-    list-valued field, without needing to guess the exact nested key name) and only falls back
-    to treating a top-level entry as an instance itself when nothing nested was found - this
-    keeps supporting a hypothetical genuinely flat response shape too. AMP versions differ on
+    """Parses ADSModule.GetLocalInstances()'s response (the method actually called by
+    _list_instances_uncached() since v1.14.7 - this docstring used to say GetInstances(), the
+    earlier, abandoned method this nested-wrapper handling below was originally written for;
+    left as-is rather than removed since GetLocalInstances is confirmed flat in practice but
+    that's only verified against this project's own real instance, not every possible AMP
+    setup) into a normalized list of {"id": str, "name": str, "running": bool, "module": str}.
+    AMP groups instances by hosting "Target" (the machine running them) - confirmed live for
+    GetInstances(): a top-level entry can be a target wrapper (its own ID-like field, but a
+    FriendlyName like the literal "Local Instances" - AMP's default name for instances hosted
+    on the same machine as the ADS itself) with the actual game instances nested inside one of
+    its list-valued fields, rather than being a game instance itself. A naive single-level parse
+    mistook that wrapper for a single game and missed everything nested inside it. Prefers
+    nested instance-shaped dicts (scans every list-valued field, without needing to guess the
+    exact nested key name) and only falls back to treating a top-level entry as an instance
+    itself when nothing nested was found - this keeps supporting a hypothetical genuinely flat
+    response shape too. AMP versions differ on
     whether the ADS's own control instance is included (Module == "ADS") - included as a tile
     like any other instance on explicit request ("einfach der ADS-Eintrag selbst als Kachel"),
     though its Start/Stop/Restart buttons are hidden in the template since ADSModule's own
@@ -512,8 +497,20 @@ class AMP(commands.Cog):
         instance dict), "all" (data=the full instance list - only when require_choice=False
         and server_name was omitted, used by the status command to show everything at once),
         or None (data=None, error=a user-facing message - ambiguous or unmatched server_name,
-        or multiple instances exist but the caller requires picking exactly one)."""
+        multiple instances exist but the caller requires picking exactly one, or the AMP
+        connection itself is down)."""
         listing = await self._list_instances(cfg)
+        if listing.get("connection_error"):
+            # A real timeout/login failure, not "this connection has no ADS layer" - falling
+            # through to "legacy" mode below (empty instances list either way) would make every
+            # caller retry the exact same doomed login a SECOND time via _fetch_status()/
+            # _amp_action(), each with their own ~10s timeout - the same "two round trips feels
+            # like the bot is hanging" issue already fixed for the web dashboard in v1.14.23 and
+            # for a single instance action in v1.14.20, just left open in this one remaining
+            # place (every /gameserver-* Discord command goes through here). Surfacing the real
+            # error immediately also beats whatever the second, equally-doomed call would have
+            # said instead.
+            return None, None, listing["error"]
         # The ADS controller's own entry shows up as a dashboard tile (v1.14.40, "einfach der
         # ADS-Eintrag selbst als Kachel") but was never meant to be controllable through it -
         # ADSModule's {method}Instance calls were never verified to make sense against the
@@ -646,8 +643,9 @@ class AMP(commands.Cog):
                 return
 
     async def _check_command_channel(self, interaction: discord.Interaction, cfg: dict) -> bool:
-        """Only gameserver-start/-stop are restrictable (per explicit request) - status stays
-        usable everywhere, since the whole point of it is letting anyone check at a glance."""
+        """Start/Stop/Restart (global and per-instance custom commands alike) are restrictable
+        to one channel (per explicit request) - status stays usable everywhere, since the whole
+        point of it is letting anyone check at a glance."""
         restricted_id = cfg.get("command_channel_id")
         if not restricted_id or str(interaction.channel_id) == str(restricted_id):
             return True
@@ -733,6 +731,17 @@ class AMP(commands.Cog):
             # instance_id on a genuinely different AMP install) acting on the wrong instance
             # entirely under the new connection.
             listing = await self._list_instances(cfg_now)
+            if listing.get("connection_error"):
+                # Distinct from "not found" below - the instance is very likely still there,
+                # AMP itself just couldn't be reached right now (same distinction _resolve_
+                # target() makes for the global /gameserver-* commands). Without this, a
+                # temporary AMP outage would make every custom command claim the instance was
+                # "möglicherweise entfernt", which isn't true and points the admin in the wrong
+                # direction while troubleshooting.
+                await interaction.followup.send(
+                    f"⚠️ Verbindung zu AMP fehlgeschlagen: {listing['error']}", ephemeral=True
+                )
+                return None
             match = next((i for i in listing["instances"] if i["id"] == instance_id), None)
             if not match:
                 await interaction.followup.send(
