@@ -1872,24 +1872,25 @@ function toggleAdEdit(id) {
           ⚙ {{ tr.amp_cmd_settings_title }}
         </button>
         <div id="amp-cmd-edit-{{ inst.id }}" style="display:none;margin-top:0.6rem;">
+          {% set inst_slug = inst.name|lower|replace(' ', '-')|replace('_', '-') %}
           <p class="hint" style="margin-bottom:0.5rem;">{{ tr.amp_cmd_settings_hint }}</p>
           <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/command-name" style="margin:0;">
             <div style="display:flex;flex-direction:column;gap:0.5rem;">
               <div>
                 <label class="hint" style="display:block;margin-bottom:0.2rem;">{{ tr.amp_cmd_start_label }}</label>
-                <input type="text" name="start_name" value="{{ inst.cmd_start }}" placeholder="z.B. wa-start"
+                <input type="text" name="start_name" value="{{ inst.cmd_start }}" placeholder="z.B. {{ inst_slug }}-start"
                        maxlength="32" pattern="[a-z0-9_-]+"
                        oninput="updateAmpCmdPreview('{{ inst.id }}', 'start', this.value)">
               </div>
               <div>
                 <label class="hint" style="display:block;margin-bottom:0.2rem;">{{ tr.amp_cmd_stop_label }}</label>
-                <input type="text" name="stop_name" value="{{ inst.cmd_stop }}" placeholder="z.B. wa-stop"
+                <input type="text" name="stop_name" value="{{ inst.cmd_stop }}" placeholder="z.B. {{ inst_slug }}-stop"
                        maxlength="32" pattern="[a-z0-9_-]+"
                        oninput="updateAmpCmdPreview('{{ inst.id }}', 'stop', this.value)">
               </div>
               <div>
                 <label class="hint" style="display:block;margin-bottom:0.2rem;">{{ tr.amp_cmd_restart_label }}</label>
-                <input type="text" name="restart_name" value="{{ inst.cmd_restart }}" placeholder="z.B. wa-restart"
+                <input type="text" name="restart_name" value="{{ inst.cmd_restart }}" placeholder="z.B. {{ inst_slug }}-restart"
                        maxlength="32" pattern="[a-z0-9_-]+"
                        oninput="updateAmpCmdPreview('{{ inst.id }}', 'restart', this.value)">
               </div>
