@@ -656,7 +656,10 @@ class AMP(commands.Cog):
     # selber eingeben kan wie die dan heisen sollen" - confirmed via follow-up as dedicated
     # per-instance slash commands (e.g. /wa-start), not just aliases for the server: parameter
     # on the existing global commands above. One admin-chosen prefix per instance (stored in
-    # amp_instance_commands) generates {prefix}-start/-stop/-restart/-status automatically.
+    # amp_instance_commands) generates {prefix}-start/-stop/-restart automatically - matching
+    # exactly the tile's 3 action buttons (explicitly NOT a 4th {prefix}-status command, which
+    # a first version generated unasked - "ich meinte führ alle 3 buttons nicht nur einen" -
+    # status stays covered by the existing global /gameserver-status only).
     #
     # Registered as GUILD commands (tree.add_command(..., guild=...) + tree.sync(guild=...)),
     # not global ones - main.py's only existing tree.sync() call (on_ready) syncs globally,
@@ -719,21 +722,6 @@ class AMP(commands.Cog):
                     await interaction.followup.send(f"⚠️ **{match['name']}** {verb} fehlgeschlagen: {err}", ephemeral=True)
             return callback
 
-        async def _status_callback(interaction: discord.Interaction):
-            cfg_now = await self._get_config(interaction.guild_id)
-            if not cfg_now:
-                await interaction.response.send_message(
-                    "Für diesen Server ist kein Gameserver verknüpft.", ephemeral=True
-                )
-                return
-            await interaction.response.defer()
-            match = await _resolve(interaction)
-            if not match:
-                return
-            icon, text = _STATE_LABELS.get(match["state"], _STATE_LABELS["error"])
-            game = f" ({match['game_name']})" if match.get("game_name") else ""
-            await interaction.followup.send(f"{icon} **{match['name']}**{game}: {text}")
-
         commands_ = []
         for method, icon, verb, suffix in (
             ("Start", "🟢", "Startbefehl", "start"),
@@ -746,10 +734,6 @@ class AMP(commands.Cog):
             )
             cmd.default_permissions = discord.Permissions(manage_guild=True)
             commands_.append(cmd)
-        commands_.append(app_commands.Command(
-            name=f"{prefix}-status", description="Zeigt den Status dieser Instanz",
-            callback=_status_callback,
-        ))
         return commands_
 
     async def resync_guild_commands(self, guild_id: int) -> None:

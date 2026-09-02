@@ -1882,7 +1882,7 @@ function toggleAdEdit(id) {
               <button type="submit" class="btn btn-secondary" style="flex-shrink:0;">{{ tr.btn_save }}</button>
             </div>
             <p class="hint" id="amp-cmd-preview-{{ inst.id }}" style="margin-top:0.4rem;font-family:monospace;font-size:0.74rem;">
-              {% if inst.command_prefix %}/{{ inst.command_prefix }}-start /{{ inst.command_prefix }}-stop /{{ inst.command_prefix }}-restart /{{ inst.command_prefix }}-status{% endif %}
+              {% if inst.command_prefix %}/{{ inst.command_prefix }}-start /{{ inst.command_prefix }}-stop /{{ inst.command_prefix }}-restart{% endif %}
             </p>
           </form>
         </div>
@@ -2043,7 +2043,7 @@ function updateAmpCmdPreview(id, value) {
   const el = document.getElementById('amp-cmd-preview-' + id);
   if (!el) return;
   const prefix = (value || '').trim().toLowerCase();
-  el.textContent = prefix ? ['start', 'stop', 'restart', 'status'].map(s => '/' + prefix + '-' + s).join(' ') : '';
+  el.textContent = prefix ? ['start', 'stop', 'restart'].map(s => '/' + prefix + '-' + s).join(' ') : '';
 }
 </script>
 
