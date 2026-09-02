@@ -956,6 +956,14 @@ _BACKUP_FEATURE_TABLES = [
     # a full backup+restore silently dropped every configured level role, level reward, and
     # custom Auto-Mod word-list category with no indication anything was lost.
     "level_roles", "level_rewards", "automod_word_presets",
+    # Same gap, same fix, for the AMP gameserver connection (added to the project well after
+    # these tables were first audited for this list - never went back and added it). A full or
+    # per-server backup/restore silently dropped the entire AMP connection (URL, credentials,
+    # command channel) AND every custom per-instance Discord command name, with zero indication
+    # anything was lost - particularly relevant for the server-backup feature specifically, since
+    # its whole purpose is transferring a server's configuration onto another guild (e.g. the
+    # planned hosting model, see phobos_hosting_business_model memory).
+    "amp_configs", "amp_instance_commands",
 ]
 
 # Shared between the full-backup restore (/admin/backup/restore) and the per-server restore
@@ -1002,6 +1010,25 @@ _BACKUP_TBL_INSERT = {
         "INSERT OR IGNORE INTO level_rewards (guild_id,level,reward) VALUES (:guild_id,:level,:reward)",
     "automod_word_presets":
         "INSERT INTO automod_word_presets (guild_id,label,words) VALUES (:guild_id,:label,:words)",
+    # Credentials ARE included here, deliberately - the same precedent as bot_tokens (the actual
+    # Discord bot secret token) above, which is already backed up in full. This project's backup
+    # system is a self-hosted admin tool, not a multi-tenant SaaS with per-tenant secrecy
+    # boundaries - discord_token/smtp_pass are the ones explicitly excluded elsewhere, and that's
+    # for a different reason (single global values meant to be set fresh per install), not a
+    # blanket "never back up secrets" rule.
+    "amp_configs":
+        "INSERT INTO amp_configs (guild_id,label,url,username,password,command_channel_id) "
+        "VALUES (:guild_id,:label,:url,:username,:password,:command_channel_id) "
+        "ON CONFLICT(guild_id) DO UPDATE SET label=excluded.label, url=excluded.url, "
+        "username=excluded.username, password=excluded.password, command_channel_id=excluded.command_channel_id",
+    # `prefix` is hardcoded to '' rather than read from the row (same "extra unused dict keys are
+    # harmless" pattern already used above for e.g. notifications' `live`) - it's a dead column
+    # kept only for schema compatibility (see database.py's migration comment), always ''.
+    "amp_instance_commands":
+        "INSERT INTO amp_instance_commands (guild_id,instance_id,prefix,start_name,stop_name,restart_name) "
+        "VALUES (:guild_id,:instance_id,'',:start_name,:stop_name,:restart_name) "
+        "ON CONFLICT(guild_id,instance_id) DO UPDATE SET start_name=excluded.start_name, "
+        "stop_name=excluded.stop_name, restart_name=excluded.restart_name",
 }
 
 
@@ -1252,6 +1279,7 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
 
         # 7. Feature tables
         _restored_presets_guilds: set = set()
+        _restored_amp_cmd_guilds: set = set()
         for tbl, sql in _BACKUP_TBL_INSERT.items():
             rows = data.get(tbl, [])
             for row in rows:
@@ -1269,6 +1297,24 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
                 for row in rows:
                     try:
                         _restored_presets_guilds.add(row["guild_id"])
+                    except (TypeError, KeyError):
+                        pass
+            if tbl == "amp_instance_commands" and rows:
+                # Same re-iteration-without-protection caveat as automod_word_presets above -
+                # rows already validated by the insert loop, this just collects which guilds to
+                # resync afterward. Restored DB rows alone don't make Discord aware of anything -
+                # they need an explicit tree.sync(guild=...) call, which resync_guild_commands()
+                # does, same as every other write path that touches this table (the dashboard
+                # save route, amp_delete_web). Without this, on_ready()'s own auto-resync
+                # wouldn't help either: it only fires resync_guild_commands() when
+                # ensure_default_commands() actually inserts something NEW - a restored row
+                # that already exists for its instance_id means nothing "changed" from its
+                # point of view, so the recovered commands would otherwise sit inert in the DB
+                # forever, invisible in Discord, until an admin happened to manually re-save
+                # that exact instance's command names.
+                for row in rows:
+                    try:
+                        _restored_amp_cmd_guilds.add(row["guild_id"])
                     except (TypeError, KeyError):
                         pass
 
@@ -1301,6 +1347,15 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
     # check only looks at whether this flag is set, not whether the table already has rows.
     for gid in _restored_presets_guilds:
         await set_guild_config(int(gid), "automod_presets_seeded", "1")
+
+    for gid in _restored_amp_cmd_guilds:
+        try:
+            guild_bot = bot._bot_for_guild(int(gid))
+            amp_cog = guild_bot.cogs.get("AMP") if guild_bot else None
+            if amp_cog:
+                await amp_cog.resync_guild_commands(int(gid))
+        except Exception:
+            pass  # best-effort, same as every other post-restore reload here
 
     summary = ", ".join(restored) if restored else "Nichts"
     return RedirectResponse(
@@ -1354,6 +1409,7 @@ async def server_backup_restore(request: Request, guild_id: int, backup_file: Up
     gid_str = str(guild_id)
     restored: list[str] = []
     restored_presets = False
+    restored_amp_cmds = False
 
     async with aiosqlite.connect(DB_PATH) as db:
         for gc in data.get("guild_configs", []):
@@ -1389,6 +1445,8 @@ async def server_backup_restore(request: Request, guild_id: int, backup_file: Up
                 restored.append(tbl.replace("_", " ").title())
             if tbl == "automod_word_presets" and rows:
                 restored_presets = True
+            if tbl == "amp_instance_commands" and rows:
+                restored_amp_cmds = True
 
         await db.commit()
 
@@ -1399,6 +1457,16 @@ async def server_backup_restore(request: Request, guild_id: int, backup_file: Up
         # hardcoded starter presets seeded alongside these just-restored ones the first time
         # its Auto-Mod tab is opened, if it's never been opened before.
         await set_guild_config(guild_id, "automod_presets_seeded", "1")
+    if restored_amp_cmds:
+        # Same reasoning as the full-backup restore above - restored rows alone don't register
+        # anything with Discord, they need an explicit guild-command resync.
+        try:
+            guild_bot = bot._bot_for_guild(guild_id)
+            amp_cog = guild_bot.cogs.get("AMP") if guild_bot else None
+            if amp_cog:
+                await amp_cog.resync_guild_commands(guild_id)
+        except Exception:
+            pass
 
     summary = ", ".join(restored) if restored else "Nichts"
     return RedirectResponse(
