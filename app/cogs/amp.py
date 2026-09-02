@@ -681,17 +681,32 @@ class AMP(commands.Cog):
         "gameserver-status", "gameserver-start", "gameserver-stop", "gameserver-restart",
     }
 
-    @staticmethod
-    def _valid_command_name(name: str) -> str | None:
+    def _valid_command_name(self, name: str) -> str | None:
         """Returns the normalized command name if valid, else None. These are full Discord
         slash command names now (no fixed suffix gets appended anymore), so the real 32-char
-        Discord limit applies directly."""
+        Discord limit applies directly.
+        No longer a @staticmethod - also rejects any name that collides with one of THIS BOT'S
+        OTHER global commands (rank, warn, kick, ticket-close, giveaway-start, ...), not just
+        this cog's own 4. A custom command here is registered as a GUILD-scoped command
+        (tree.add_command(cmd, guild=...)); Discord shows a guild command in place of a global
+        one of the same name within that one guild (confirmed via discord.py's own docs on
+        get_command()/get_commands() treating global and per-guild commands as separate
+        namespaces that can carry the same name without erroring on registration - the collision
+        only becomes visible at invocation time in the affected guild). Naming a custom AMP
+        command "warn" or "kick" would therefore silently make that name run the AMP start/stop/
+        restart callback instead of the real moderation command in that one server, with no
+        error anywhere to catch it - same class of oversight custom_commands.py's /addcommand
+        already guards against for classic prefix commands (checked dynamically against
+        self.bot.commands there, not a hardcoded list, so it can't go stale as more commands get
+        added - same principle applied here via self.bot.tree.get_commands())."""
         name = (name or "").strip().lower()
         if not name or len(name) > 32:
             return None
         if not re.fullmatch(r"[a-z0-9_-]+", name):
             return None
         if name in AMP._RESERVED_COMMAND_NAMES:
+            return None
+        if name in {c.name for c in self.bot.tree.get_commands()}:
             return None
         return name
 
