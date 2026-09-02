@@ -1902,7 +1902,7 @@ function toggleAdEdit(id) {
           ⚙ {{ tr.amp_cmd_settings_title }}
         </button>
         <div id="amp-cmd-edit-{{ inst.id }}" style="display:none;margin-top:0.6rem;">
-          {% set inst_slug = inst.name|lower|replace(' ', '-')|replace('_', '-') %}
+          {% set inst_slug = inst.slug %}
           <p class="hint" style="margin-bottom:0.5rem;">{{ tr.amp_cmd_settings_hint }}</p>
           <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/command-name" style="margin:0;">
             <div style="display:flex;flex-direction:column;gap:0.5rem;">

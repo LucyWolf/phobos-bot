@@ -4442,6 +4442,15 @@ async def server_config(
                     inst["cmd_start"] = row["start_name"] if row else ""
                     inst["cmd_stop"] = row["stop_name"] if row else ""
                     inst["cmd_restart"] = row["restart_name"] if row else ""
+                    # Same slug ensure_default_commands() above actually uses for real default
+                    # command names - server_config.html used to recompute its own rough
+                    # approximation inline (lower + replace spaces/underscores only) just for the
+                    # placeholder text shown in an empty command-name field, which diverged from
+                    # the real one for any name with other special characters (parentheses,
+                    # exclamation marks, "#", ...) - e.g. "Space Engineers (EU)" showed
+                    # "space-engineers-(eu)-start" as the example, which _valid_command_name()
+                    # would then reject outright if typed in verbatim. One source of truth now.
+                    inst["slug"] = amp_cog._slugify(inst.get("name") or inst.get("instance_name") or "")
             elif listing.get("connection_error"):
                 # A real timeout/connect/login failure, not "this connection has no ADS layer" -
                 # reported live as confusing (User: "wenn der nicht richtig die Seite lädt lande
