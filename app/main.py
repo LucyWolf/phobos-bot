@@ -2630,6 +2630,13 @@ async def amp_instance_command_name(
     amp_cog = guild_bot.cogs.get("AMP") if guild_bot else None
     if not amp_cog:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
+    cfg = await _amp_cfg_for_guild(guild_id)
+    if cfg and await _amp_is_ads_instance(amp_cog, cfg, instance_id):
+        # Same reasoning as the three action routes below - a custom command saved against the
+        # ADS's own instance_id would be a PERSISTENT way to trigger an unverified action against
+        # it (worse than a one-off crafted POST to /start etc., since it'd sit there as a real
+        # slash command anyone with manage_guild could use going forward).
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Nicht+erlaubt", status_code=302)
 
     validated = {}
     for field, raw in (("start_name", start_name), ("stop_name", stop_name), ("restart_name", restart_name)):
@@ -2704,6 +2711,20 @@ async def amp_instances_json(request: Request, guild_id: int):
     ]})
 
 
+async def _amp_is_ads_instance(amp_cog, cfg: dict, instance_id: str) -> bool:
+    """The template never renders Start/Stop/Restart forms for the ADS controller's own tile
+    (game_instances excludes module=='ADS'), and the Discord command path excludes it too via
+    _resolve_target() - but that's UI/command-layer protection only. A hand-crafted POST straight
+    to these three routes could still target the ADS's own instance_id, and ADSModule's
+    {method}Instance calls were never verified to make sense against the ADS's own instance name
+    (unlike a real game instance) - worst case it could affect the whole AMP connection for every
+    hosted game at once. Checked here too so that safety guarantee doesn't depend on the admin
+    only ever clicking the rendered buttons."""
+    listing = await amp_cog._list_instances(cfg)
+    match = next((i for i in listing["instances"] if i["id"] == instance_id), None)
+    return bool(match and match.get("module") == "ADS")
+
+
 @web.post("/servers/{guild_id}/amp/instance/{instance_id}/start")
 async def amp_instance_start_web(request: Request, guild_id: int, instance_id: str, instance_name: str = Form("")):
     if r := auth_redirect(request): return r
@@ -2715,6 +2736,8 @@ async def amp_instance_start_web(request: Request, guild_id: int, instance_id: s
     amp_cog = bot.cogs.get("AMP")
     if not amp_cog:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
+    if await _amp_is_ads_instance(amp_cog, cfg, instance_id):
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Nicht+erlaubt", status_code=302)
     ok, error = await amp_cog._instance_action(cfg, instance_name, "Start")
     if not ok:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error={urllib.parse.quote(error[:150])}", status_code=302)
@@ -2732,6 +2755,8 @@ async def amp_instance_stop_web(request: Request, guild_id: int, instance_id: st
     amp_cog = bot.cogs.get("AMP")
     if not amp_cog:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
+    if await _amp_is_ads_instance(amp_cog, cfg, instance_id):
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Nicht+erlaubt", status_code=302)
     ok, error = await amp_cog._instance_action(cfg, instance_name, "Stop")
     if not ok:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error={urllib.parse.quote(error[:150])}", status_code=302)
@@ -2749,6 +2774,8 @@ async def amp_instance_restart_web(request: Request, guild_id: int, instance_id:
     amp_cog = bot.cogs.get("AMP")
     if not amp_cog:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
+    if await _amp_is_ads_instance(amp_cog, cfg, instance_id):
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Nicht+erlaubt", status_code=302)
     ok, error = await amp_cog._instance_action(cfg, instance_name, "Restart")
     if not ok:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error={urllib.parse.quote(error[:150])}", status_code=302)

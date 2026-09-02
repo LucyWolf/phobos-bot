@@ -743,10 +743,17 @@ class AMP(commands.Cog):
             name = names.get(method)
             if not name:
                 continue
-            cmd = app_commands.Command(
-                name=name, description=f"{verb} für diese Instanz",
-                callback=_action_callback(method, icon, verb),
-            )
+            try:
+                cmd = app_commands.Command(
+                    name=name, description=f"{verb} für diese Instanz",
+                    callback=_action_callback(method, icon, verb),
+                )
+            except ValueError as e:
+                # A row saved before name validation covered this case (or edited directly in
+                # the DB) must not crash the whole guild's command rebuild in resync_guild_
+                # commands() - same "skip and log, don't cascade" reasoning as there.
+                print(f"[AMP] Ungültiger gespeicherter Befehlsname {name!r} für Instanz {instance_id}: {_err_text(e)}")
+                continue
             cmd.default_permissions = discord.Permissions(manage_guild=True)
             commands_.append(cmd)
         return commands_
@@ -767,7 +774,17 @@ class AMP(commands.Cog):
             for row in rows:
                 names = {"Start": row["start_name"], "Stop": row["stop_name"], "Restart": row["restart_name"]}
                 for cmd in self._build_instance_commands(cfg, row["instance_id"], names):
-                    self.bot.tree.add_command(cmd, guild=guild_obj)
+                    # Defense in depth on top of ensure_default_commands()'s validation: a name
+                    # that's invalid for some other reason (a pre-existing bad row from before
+                    # that fix, or a rare race between two concurrent dashboard saves landing on
+                    # the same name) must not take out every OTHER instance's commands in this
+                    # guild too - the tree was already cleared above, so an uncaught exception
+                    # here would abort mid-rebuild and leave the guild with no custom commands at
+                    # all until whatever's wrong is found and fixed.
+                    try:
+                        self.bot.tree.add_command(cmd, guild=guild_obj)
+                    except Exception as e:
+                        print(f"[AMP] Konnte Befehl '{cmd.name}' für Guild {guild_id} nicht registrieren: {_err_text(e)}")
         await self.bot.tree.sync(guild=guild_obj)
 
     @commands.Cog.listener()
@@ -813,6 +830,16 @@ class AMP(commands.Cog):
             if not slug:
                 continue
             candidates = {f"{slug}-start", f"{slug}-stop", f"{slug}-restart"}
+            # A long, perfectly normal instance name (e.g. "Palworld Dedicated 24/7 EU Server")
+            # can easily slugify past Discord's 32-char command name limit once a suffix is
+            # appended - confirmed: that exact example already lands at 39 chars. Left
+            # unvalidated, resync_guild_commands() would later crash while constructing the
+            # app_commands.Command (discord.py's validate_name raises ValueError past 32 chars),
+            # which aborts the ENTIRE guild's command rebuild - not just this one instance - since
+            # the tree is already cleared by the time the loop reaches the bad row. Checked here,
+            # same "leave unconfigured rather than guess further" treatment as a name collision.
+            if not all(self._valid_command_name(c) for c in candidates):
+                continue
             if candidates & used or candidates & AMP._RESERVED_COMMAND_NAMES:
                 continue  # would collide - leave unconfigured rather than guess further
             await db_exec(
