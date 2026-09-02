@@ -1835,9 +1835,31 @@ function toggleAdEdit(id) {
   <span>{{ tr.amp_status_title }}{% if amp_cfg.label %} — {{ amp_cfg.label }}{% endif %}</span>
   <button type="button" class="btn btn-secondary" onclick="toggleAmpEdit()" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="{{ tr.btn_settings }}">⚙</button>
 </div>
+{% set AMP_COLOR_HEX = {'green': '#22c55e', 'red': '#ef4444', 'yellow': '#eab308', 'gray': '#94a3b8'} %}
+{% set ads_list = amp_instances | selectattr('module', 'equalto', 'ADS') | list %}
+{% set ads_inst = ads_list[0] if ads_list else None %}
+{% set game_instances = amp_instances | rejectattr('module', 'equalto', 'ADS') | list %}
+{% if ads_inst %}
+{# User-requested: "ich will das der amp server eine kachel hat dann dort drin die 3
+   weiteren kacheln" - the ADS controller entry (v1.14.40) becomes an outer card wrapping the
+   grid of actual game tiles, instead of sitting alongside them as its own separate tile. #}
+{% set ads_hex = AMP_COLOR_HEX.get(ads_inst.color, '#94a3b8') %}
+<div class="card" style="margin-bottom:1.25rem;border-top:3px solid {{ ads_hex }};">
+  <div style="padding:1.1rem 1.25rem;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;margin-bottom:0.7rem;">
+      <div style="font-weight:700;font-size:1.05rem;">🖥️ {{ ads_inst.name }}</div>
+      <span id="amp-state-{{ ads_inst.id }}"
+            style="flex-shrink:0;padding:0.2rem 0.65rem;border-radius:999px;font-size:0.72rem;font-weight:700;white-space:nowrap;
+            background:{{ ads_hex }}26;color:{{ ads_hex }};">
+        {{ ads_inst.label }}{% if ads_inst.app_state is not none %} #{{ ads_inst.app_state }}{% endif %}
+      </span>
+    </div>
+    <p class="hint" style="margin-bottom:1rem;">{{ tr.amp_ads_hint }}</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem;align-items:start;">
+{% else %}
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin-bottom:1.25rem;align-items:start;">
-  {% set AMP_COLOR_HEX = {'green': '#22c55e', 'red': '#ef4444', 'yellow': '#eab308', 'gray': '#94a3b8'} %}
-  {% for inst in amp_instances %}
+{% endif %}
+  {% for inst in game_instances %}
   {% set inst_hex = AMP_COLOR_HEX.get(inst.color, '#94a3b8') %}
   <div class="card" style="margin-bottom:0;padding:0;overflow:hidden;
        border-top:3px solid {{ inst_hex }};
@@ -1852,9 +1874,6 @@ function toggleAdEdit(id) {
         </span>
       </div>
       {% if inst.game_name %}<div style="font-size:0.76rem;color:var(--muted);margin-bottom:0.7rem;">{{ inst.game_name }}</div>{% endif %}
-      {% if inst.module == 'ADS' %}
-      <p class="hint">{{ tr.amp_ads_hint }}</p>
-      {% else %}
       <div style="display:flex;gap:0.5rem;">
         <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/start" style="margin:0;flex:1;">
           <input type="hidden" name="instance_name" value="{{ inst.instance_name }}">
@@ -1905,11 +1924,16 @@ function toggleAdEdit(id) {
           </form>
         </div>
       </div>
-      {% endif %}
     </div>
   </div>
   {% endfor %}
+{% if ads_inst %}
+    </div>
+  </div>
 </div>
+{% else %}
+</div>
+{% endif %}
 {% if amp_raw_debug %}
 <details style="margin-bottom:1.25rem;">
   <summary class="hint" style="cursor:pointer;">{{ tr.amp_raw_debug_label }}</summary>
