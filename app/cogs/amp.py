@@ -710,14 +710,29 @@ class AMP(commands.Cog):
             return None
         return name
 
-    def _build_instance_commands(self, cfg: dict, instance_id: str, names: dict) -> list[app_commands.Command]:
+    def _build_instance_commands(self, instance_id: str, names: dict) -> list[app_commands.Command]:
         """Builds one command per non-empty entry in `names` ({"Start": "...", "Stop": "...",
         "Restart": "..."}, any subset). Instance is re-resolved by ID against a fresh
         _list_instances() call on every single invocation (not captured once here) - it could
         have been renamed in AMP since the command name was configured, and instance_name (not
-        the stable id) is what ADSModule's Start/Stop/RestartInstance actually take."""
-        async def _resolve(interaction: discord.Interaction) -> dict | None:
-            listing = await self._list_instances(cfg)
+        the stable id) is what ADSModule's Start/Stop/RestartInstance actually take. Doesn't take
+        a cfg parameter (unlike earlier versions) - every callback below fetches its own fresh
+        cfg via self._get_config() at invocation time instead, so a connection change (URL/
+        credentials) between resync_guild_commands() calls can never leave a stale one baked into
+        a closure here."""
+        async def _resolve(interaction: discord.Interaction, cfg_now: dict) -> dict | None:
+            # Takes the FRESHLY-fetched cfg from the callback below, not the `cfg` this whole
+            # _build_instance_commands() call was originally built with - that one is captured
+            # once at resync_guild_commands() time and can go stale (an admin changing the AMP
+            # connection's URL/username/password via /amp/save does NOT trigger a resync, e.g.
+            # after rotating a leaked password - see the v1.14.27 changelog entry for exactly
+            # that happening on this project's own instance). A stale cfg here would look up the
+            # instance against the OLD server/credentials while _instance_action below correctly
+            # acts against the NEW one - at best a confusing "instance not found anymore" for an
+            # instance that's very much still there, at worst (a coincidentally matching
+            # instance_id on a genuinely different AMP install) acting on the wrong instance
+            # entirely under the new connection.
+            listing = await self._list_instances(cfg_now)
             match = next((i for i in listing["instances"] if i["id"] == instance_id), None)
             if not match:
                 await interaction.followup.send(
@@ -736,7 +751,7 @@ class AMP(commands.Cog):
                 if not await self._check_command_channel(interaction, cfg_now):
                     return
                 await interaction.response.defer(ephemeral=True)
-                match = await _resolve(interaction)
+                match = await _resolve(interaction, cfg_now)
                 if not match:
                     return
                 ok, err = await self._instance_action(cfg_now, match["instance_name"], method)
@@ -788,7 +803,7 @@ class AMP(commands.Cog):
             )
             for row in rows:
                 names = {"Start": row["start_name"], "Stop": row["stop_name"], "Restart": row["restart_name"]}
-                for cmd in self._build_instance_commands(cfg, row["instance_id"], names):
+                for cmd in self._build_instance_commands(row["instance_id"], names):
                     # Defense in depth on top of ensure_default_commands()'s validation: a name
                     # that's invalid for some other reason (a pre-existing bad row from before
                     # that fix, or a rare race between two concurrent dashboard saves landing on
