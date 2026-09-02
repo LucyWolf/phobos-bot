@@ -1852,6 +1852,9 @@ function toggleAdEdit(id) {
         </span>
       </div>
       {% if inst.game_name %}<div style="font-size:0.76rem;color:var(--muted);margin-bottom:0.7rem;">{{ inst.game_name }}</div>{% endif %}
+      {% if inst.module == 'ADS' %}
+      <p class="hint">{{ tr.amp_ads_hint }}</p>
+      {% else %}
       <div style="display:flex;gap:0.5rem;">
         <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/start" style="margin:0;flex:1;">
           <input type="hidden" name="instance_name" value="{{ inst.instance_name }}">
@@ -1902,6 +1905,7 @@ function toggleAdEdit(id) {
           </form>
         </div>
       </div>
+      {% endif %}
     </div>
   </div>
   {% endfor %}

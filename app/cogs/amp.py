@@ -164,8 +164,8 @@ def _extract_instance(d) -> dict | None:
     # WelcomeMessage/SpecificDockerImage (the originally guessed candidates) all turned out
     # empty or too coarse to tell games apart (SpecificDockerImage was identical - "cubecoders/
     # ampbase:debian" - for two different games). Distinct from `module` above (the raw AMP
-    # "Module" field, e.g. "GenericModule" - used only to filter out the ADS controller itself,
-    # not for display).
+    # "Module" field, e.g. "GenericModule" or "ADS" for the controller's own entry - used by the
+    # template to hide Start/Stop/Restart for that one tile, not for display).
     game_name = d.get("ModuleDisplayName") or ""
     return {"id": str(iid), "instance_name": instance_name, "name": name, "running": running,
             "state": state, "color": color, "app_state": app_state, "module": module,
@@ -253,8 +253,11 @@ def _parse_instances(raw) -> list[dict]:
     list-valued field, without needing to guess the exact nested key name) and only falls back
     to treating a top-level entry as an instance itself when nothing nested was found - this
     keeps supporting a hypothetical genuinely flat response shape too. AMP versions differ on
-    whether the ADS's own control instance is included (Module == "ADS") - excluded here since
-    it isn't a game server to show/manage."""
+    whether the ADS's own control instance is included (Module == "ADS") - included as a tile
+    like any other instance on explicit request ("einfach der ADS-Eintrag selbst als Kachel"),
+    though its Start/Stop/Restart buttons are hidden in the template since ADSModule's own
+    {method}Instance calls were never verified to make sense against the ADS's own instance
+    name (unlike a real game instance, stopping "itself" isn't a tested/expected operation)."""
     items = raw if isinstance(raw, list) else (raw or {}).get("result") or []
     out = []
     for item in items:
@@ -267,12 +270,11 @@ def _parse_instances(raw) -> list[dict]:
                     sub_inst = _extract_instance(sub)
                     if sub_inst:
                         found_nested = True
-                        if sub_inst["module"] != "ADS":
-                            out.append(sub_inst)
+                        out.append(sub_inst)
         if found_nested:
             continue
         inst = _extract_instance(item)
-        if inst and inst["module"] != "ADS":
+        if inst:
             out.append(inst)
     return out
 
@@ -512,7 +514,12 @@ class AMP(commands.Cog):
         or None (data=None, error=a user-facing message - ambiguous or unmatched server_name,
         or multiple instances exist but the caller requires picking exactly one)."""
         listing = await self._list_instances(cfg)
-        instances = listing["instances"]
+        # The ADS controller's own entry shows up as a dashboard tile (v1.14.40, "einfach der
+        # ADS-Eintrag selbst als Kachel") but was never meant to be controllable through it -
+        # ADSModule's {method}Instance calls were never verified to make sense against the
+        # ADS's own instance name, unlike a real game instance. Excluded here so it can't be
+        # matched/targeted by any of these Discord commands (Start/Stop/Restart/Status).
+        instances = [i for i in listing["instances"] if i.get("module") != "ADS"]
         if not instances:
             return "legacy", None, None
         if server_name:
@@ -800,7 +807,7 @@ class AMP(commands.Cog):
         used = {r[col] for r in existing for col in ("start_name", "stop_name", "restart_name") if r[col]}
         changed = False
         for inst in instances:
-            if inst["id"] in have_row:
+            if inst["id"] in have_row or inst.get("module") == "ADS":
                 continue
             slug = self._slugify(inst.get("name") or inst.get("instance_name") or "")
             if not slug:
