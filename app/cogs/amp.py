@@ -650,9 +650,23 @@ class AMP(commands.Cog):
         if not restricted_id or str(interaction.channel_id) == str(restricted_id):
             return True
         channel = interaction.guild.get_channel(int(restricted_id)) if interaction.guild else None
-        where = channel.mention if channel else "einem anderen Kanal"
+        if channel is None:
+            # The configured channel was deleted in Discord since it was set - not just "you're
+            # in the wrong channel" (which the generic message below implies, wrongly suggesting
+            # some other channel would work). Without this distinction every Start/Stop/Restart
+            # command (global AND every custom per-instance one) would stay silently, permanently
+            # blocked everywhere with a misleading message, until an admin happens to notice and
+            # clears/resets the channel in the AMP connection settings - nothing else points them
+            # there. Dashboard buttons are unaffected either way (this check only ever applies to
+            # Discord slash commands, see the docstring above).
+            await interaction.response.send_message(
+                "Der für diesen Befehl konfigurierte Kanal existiert nicht mehr - bitte in den "
+                "Gameserver-Verbindungseinstellungen im Dashboard einen neuen wählen.",
+                ephemeral=True,
+            )
+            return False
         await interaction.response.send_message(
-            f"Dieser Befehl ist nur in {where} erlaubt.", ephemeral=True
+            f"Dieser Befehl ist nur in {channel.mention} erlaubt.", ephemeral=True
         )
         return False
 

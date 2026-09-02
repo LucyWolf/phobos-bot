@@ -2699,7 +2699,13 @@ async def amp_instance_command_name(
     if not amp_cog:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
     cfg = await _amp_cfg_for_guild(guild_id)
-    if cfg:
+    if cfg and cfg.get("url"):
+        # Same "cfg exists but url could theoretically be empty" guard every other _amp_cfg_
+        # for_guild() caller in this file applies (e.g. amp_start_web right below) - normal
+        # dashboard usage can never produce such a row (amp_save() rejects an empty URL before
+        # ever writing one), but a crafted/corrupted backup restore could (the amp_configs
+        # insert in _BACKUP_TBL_INSERT doesn't itself re-validate non-empty). This route was the
+        # one place still checking bare `if cfg:` instead.
         is_ads, conn_error = await _amp_is_ads_instance(amp_cog, cfg, instance_id)
         if conn_error:
             # Fail CLOSED here, unlike the action routes below (which just show the connection
