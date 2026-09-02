@@ -10,7 +10,7 @@ from discord.ext import commands
 
 import aiohttp
 
-from database import db_one, db_rows
+from database import db_one, db_rows, db_exec
 
 
 def _err_text(e: Exception) -> str:
@@ -766,14 +766,57 @@ class AMP(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         for guild in self.bot.guilds:
-            rows = await db_rows(
-                "SELECT 1 FROM amp_instance_commands WHERE guild_id=? LIMIT 1", (str(guild.id),)
+            cfg = await self._get_config(guild.id)
+            if not cfg:
+                continue
+            try:
+                listing = await self._list_instances(cfg)
+                await self.ensure_default_commands(guild.id, listing["instances"])
+            except Exception as e:
+                print(f"[AMP] Guild-Befehl-Sync für {guild.id} fehlgeschlagen: {_err_text(e)}")
+
+    @staticmethod
+    def _slugify(name: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
+
+    async def ensure_default_commands(self, guild_id: int, instances: list[dict]) -> None:
+        """Auto-provisions default /​{slug}-start/-stop/-restart commands for any instance that
+        doesn't have custom command names configured yet - requested live: "der soll dort
+        automatich schon sachen drine haben die standart sind und wenn neue server dazu kommen
+        das der auch automatich das genau so macht" (defaults should already be there, and a
+        newly-added instance should get the same treatment automatically, no manual typing).
+        Called both on every bot startup (covers instances that already existed) and from
+        main.py's server_config() whenever the Gameserver tab is loaded (covers an instance
+        that got added to AMP while the bot was already running - discovery only happens
+        through _list_instances(), there's no separate "instance added" event to hook). Skips
+        an instance if its slug-derived names would collide with anything already used in this
+        guild, rather than silently overwriting or erroring - it just stays without custom
+        commands until the admin sets one manually in that case."""
+        existing = await db_rows(
+            "SELECT instance_id, start_name, stop_name, restart_name FROM amp_instance_commands WHERE guild_id=?",
+            (str(guild_id),),
+        )
+        have_row = {r["instance_id"] for r in existing}
+        used = {r[col] for r in existing for col in ("start_name", "stop_name", "restart_name") if r[col]}
+        changed = False
+        for inst in instances:
+            if inst["id"] in have_row:
+                continue
+            slug = self._slugify(inst.get("name") or inst.get("instance_name") or "")
+            if not slug:
+                continue
+            candidates = {f"{slug}-start", f"{slug}-stop", f"{slug}-restart"}
+            if candidates & used or candidates & AMP._RESERVED_COMMAND_NAMES:
+                continue  # would collide - leave unconfigured rather than guess further
+            await db_exec(
+                "INSERT INTO amp_instance_commands (guild_id, instance_id, prefix, start_name, stop_name, restart_name) "
+                "VALUES (?,?,?,?,?,?)",
+                (str(guild_id), inst["id"], "", f"{slug}-start", f"{slug}-stop", f"{slug}-restart"),
             )
-            if rows:
-                try:
-                    await self.resync_guild_commands(guild.id)
-                except Exception as e:
-                    print(f"[AMP] Guild-Befehl-Sync für {guild.id} fehlgeschlagen: {_err_text(e)}")
+            used |= candidates
+            changed = True
+        if changed:
+            await self.resync_guild_commands(guild_id)
 
     @app_commands.command(name="gameserver-start", description="Startet den verknüpften Gameserver")
     @app_commands.describe(server="Name des Spiels (nur nötig wenn mehrere verknüpft sind)")

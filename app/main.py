@@ -4283,6 +4283,23 @@ async def server_config(
             amp_raw_debug = listing.get("raw_debug")
             if listing["instances"]:
                 amp_instances = listing["instances"]
+                # Auto-provisions default /{slug}-start/-stop/-restart commands for any instance
+                # discovered here that doesn't have custom command names yet (e.g. a game added
+                # to AMP after the bot's own on_ready already ran) - "wenn neue server dazu
+                # kommen das der auch automatich das genau so macht". Resolved via
+                # _bot_for_guild rather than the plain `amp_cog` above (which comes from
+                # bot.cogs.get("AMP"), BotManager's dict.update()-merged view across all bot
+                # instances - fine for the read-only _list_instances() call above since that
+                # only talks to the external AMP API, but ensure_default_commands ultimately
+                # touches self.bot.tree for a resync, which must be the bot instance actually
+                # serving THIS guild, not an arbitrary one from the merge).
+                guild_bot_for_sync = bot._bot_for_guild(guild_id)
+                sync_cog = guild_bot_for_sync.cogs.get("AMP") if guild_bot_for_sync else None
+                if sync_cog:
+                    try:
+                        await sync_cog.ensure_default_commands(guild_id, amp_instances)
+                    except Exception:
+                        pass  # best-effort - a failed auto-provision here shouldn't break page load
                 cmd_names = {
                     r["instance_id"]: r
                     for r in await db_rows(
