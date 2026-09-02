@@ -1835,7 +1835,7 @@ function toggleAdEdit(id) {
   <span>{{ tr.amp_status_title }}{% if amp_cfg.label %} — {{ amp_cfg.label }}{% endif %}</span>
   <button type="button" class="btn btn-secondary" onclick="toggleAmpEdit()" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="{{ tr.btn_settings }}">⚙</button>
 </div>
-<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin-bottom:1.25rem;">
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin-bottom:1.25rem;align-items:start;">
   {% set AMP_COLOR_HEX = {'green': '#22c55e', 'red': '#ef4444', 'yellow': '#eab308', 'gray': '#94a3b8'} %}
   {% for inst in amp_instances %}
   {% set inst_hex = AMP_COLOR_HEX.get(inst.color, '#94a3b8') %}
