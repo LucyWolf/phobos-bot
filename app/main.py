@@ -355,6 +355,19 @@ class TZMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    """Stamps every response with Cache-Control: no-store so the browser never serves a stale
+    page after a deploy - requested after this bit repeatedly during this session (a JS/HTML
+    bug that had already been fixed in the code kept appearing to persist because the browser
+    was still showing the previous version). No static file mount exists in this app (avatars
+    etc. are served through their own dynamic routes, not StaticFiles), so there's nothing here
+    that would actually benefit from caching in the first place."""
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store, must-revalidate"
+        return response
+
+
 class SessionValidityMiddleware(BaseHTTPMiddleware):
     """Re-checks role/active status from the DB on every request — otherwise a
     deactivated or demoted user keeps full access for the rest of their
@@ -395,6 +408,7 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
 web.add_middleware(TZMiddleware)
 web.add_middleware(SessionValidityMiddleware)
 web.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="phobos_session")
+web.add_middleware(NoCacheMiddleware)
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 def _js_attr(value) -> str:
     """JSON-encode value for embedding as a JS string literal inside a double-quoted HTML
