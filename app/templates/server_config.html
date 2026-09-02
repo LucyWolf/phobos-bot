@@ -1831,28 +1831,36 @@ function toggleAdEdit(id) {
 </div>
 
 {% if amp_instances %}
-<div class="feat-header" style="margin-bottom:1rem;justify-content:space-between;">
-  <span>{{ tr.amp_status_title }}{% if amp_cfg.label %} — {{ amp_cfg.label }}{% endif %}</span>
-  <button type="button" class="btn btn-secondary" onclick="toggleAmpEdit()" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="{{ tr.btn_settings }}">⚙</button>
-</div>
 {% set AMP_COLOR_HEX = {'green': '#22c55e', 'red': '#ef4444', 'yellow': '#eab308', 'gray': '#94a3b8'} %}
 {% set ads_list = amp_instances | selectattr('module', 'equalto', 'ADS') | list %}
 {% set ads_inst = ads_list[0] if ads_list else None %}
 {% set game_instances = amp_instances | rejectattr('module', 'equalto', 'ADS') | list %}
+<div class="feat-header" style="margin-bottom:1rem;justify-content:space-between;">
+  <span>{{ tr.amp_status_title }}{% if amp_cfg.label %} — {{ amp_cfg.label }}{% endif %}</span>
+  {% if not ads_inst %}
+  <button type="button" class="btn btn-secondary" onclick="toggleAmpEdit()" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="{{ tr.btn_settings }}">⚙</button>
+  {% endif %}
+</div>
 {% if ads_inst %}
 {# User-requested: "ich will das der amp server eine kachel hat dann dort drin die 3
    weiteren kacheln" - the ADS controller entry (v1.14.40) becomes an outer card wrapping the
-   grid of actual game tiles, instead of sitting alongside them as its own separate tile. #}
+   grid of actual game tiles, instead of sitting alongside them as its own separate tile. The
+   connection-settings gear (⚙, toggles amp-edit-card below) moved onto this card too -
+   "mach das zahnrad auch da rein was dazu gehört" - it configures the connection this card
+   represents, so it belongs on the card, not floating in an outer header above it. #}
 {% set ads_hex = AMP_COLOR_HEX.get(ads_inst.color, '#94a3b8') %}
 <div class="card" style="margin-bottom:1.25rem;border-top:3px solid {{ ads_hex }};">
   <div style="padding:1.1rem 1.25rem;">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;margin-bottom:0.7rem;">
       <div style="font-weight:700;font-size:1.05rem;">🖥️ {{ ads_inst.name }}</div>
-      <span id="amp-state-{{ ads_inst.id }}"
-            style="flex-shrink:0;padding:0.2rem 0.65rem;border-radius:999px;font-size:0.72rem;font-weight:700;white-space:nowrap;
-            background:{{ ads_hex }}26;color:{{ ads_hex }};">
-        {{ ads_inst.label }}{% if ads_inst.app_state is not none %} #{{ ads_inst.app_state }}{% endif %}
-      </span>
+      <div style="display:flex;align-items:center;gap:0.5rem;">
+        <span id="amp-state-{{ ads_inst.id }}"
+              style="flex-shrink:0;padding:0.2rem 0.65rem;border-radius:999px;font-size:0.72rem;font-weight:700;white-space:nowrap;
+              background:{{ ads_hex }}26;color:{{ ads_hex }};">
+          {{ ads_inst.label }}{% if ads_inst.app_state is not none %} #{{ ads_inst.app_state }}{% endif %}
+        </span>
+        <button type="button" class="btn btn-secondary" onclick="toggleAmpEdit()" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="{{ tr.btn_settings }}">⚙</button>
+      </div>
     </div>
     <p class="hint" style="margin-bottom:1rem;">{{ tr.amp_ads_hint }}</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem;align-items:start;">
