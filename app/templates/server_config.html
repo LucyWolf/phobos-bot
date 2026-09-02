@@ -1872,18 +1872,32 @@ function toggleAdEdit(id) {
           ⚙ {{ tr.amp_cmd_settings_title }}
         </button>
         <div id="amp-cmd-edit-{{ inst.id }}" style="display:none;margin-top:0.6rem;">
+          <p class="hint" style="margin-bottom:0.5rem;">{{ tr.amp_cmd_settings_hint }}</p>
           <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/command-name" style="margin:0;">
-            <label class="hint" style="display:block;margin-bottom:0.3rem;">{{ tr.amp_cmd_prefix_label }}</label>
-            <div style="display:flex;gap:0.4rem;">
-              <input type="text" name="prefix" value="{{ inst.command_prefix }}" placeholder="z.B. wa"
-                     maxlength="20" pattern="[a-z0-9_-]+"
-                     oninput="updateAmpCmdPreview('{{ inst.id }}', this.value)"
-                     style="flex:1;">
-              <button type="submit" class="btn btn-secondary" style="flex-shrink:0;">{{ tr.btn_save }}</button>
+            <div style="display:flex;flex-direction:column;gap:0.5rem;">
+              <div>
+                <label class="hint" style="display:block;margin-bottom:0.2rem;">{{ tr.amp_cmd_start_label }}</label>
+                <input type="text" name="start_name" value="{{ inst.cmd_start }}" placeholder="z.B. wa-start"
+                       maxlength="32" pattern="[a-z0-9_-]+"
+                       oninput="updateAmpCmdPreview('{{ inst.id }}', 'start', this.value)">
+              </div>
+              <div>
+                <label class="hint" style="display:block;margin-bottom:0.2rem;">{{ tr.amp_cmd_stop_label }}</label>
+                <input type="text" name="stop_name" value="{{ inst.cmd_stop }}" placeholder="z.B. wa-stop"
+                       maxlength="32" pattern="[a-z0-9_-]+"
+                       oninput="updateAmpCmdPreview('{{ inst.id }}', 'stop', this.value)">
+              </div>
+              <div>
+                <label class="hint" style="display:block;margin-bottom:0.2rem;">{{ tr.amp_cmd_restart_label }}</label>
+                <input type="text" name="restart_name" value="{{ inst.cmd_restart }}" placeholder="z.B. wa-restart"
+                       maxlength="32" pattern="[a-z0-9_-]+"
+                       oninput="updateAmpCmdPreview('{{ inst.id }}', 'restart', this.value)">
+              </div>
+              <p class="hint" id="amp-cmd-preview-{{ inst.id }}" style="margin:0;font-family:monospace;font-size:0.74rem;">
+                {% if inst.cmd_start %}/{{ inst.cmd_start }} {% endif %}{% if inst.cmd_stop %}/{{ inst.cmd_stop }} {% endif %}{% if inst.cmd_restart %}/{{ inst.cmd_restart }}{% endif %}
+              </p>
+              <button type="submit" class="btn btn-secondary" style="align-self:flex-start;">{{ tr.btn_save }}</button>
             </div>
-            <p class="hint" id="amp-cmd-preview-{{ inst.id }}" style="margin-top:0.4rem;font-family:monospace;font-size:0.74rem;">
-              {% if inst.command_prefix %}/{{ inst.command_prefix }}-start /{{ inst.command_prefix }}-stop /{{ inst.command_prefix }}-restart{% endif %}
-            </p>
           </form>
         </div>
       </div>
@@ -2039,11 +2053,18 @@ function toggleInstanceCmdEdit(id) {
   const el = document.getElementById('amp-cmd-edit-' + id);
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
 }
-function updateAmpCmdPreview(id, value) {
+function updateAmpCmdPreview(id, action, value) {
+  const container = document.getElementById('amp-cmd-edit-' + id);
   const el = document.getElementById('amp-cmd-preview-' + id);
-  if (!el) return;
-  const prefix = (value || '').trim().toLowerCase();
-  el.textContent = prefix ? ['start', 'stop', 'restart'].map(s => '/' + prefix + '-' + s).join(' ') : '';
+  if (!container || !el) return;
+  const fieldNames = {start: 'start_name', stop: 'stop_name', restart: 'restart_name'};
+  const parts = [];
+  Object.keys(fieldNames).forEach(function(key) {
+    const raw = key === action ? value : (container.querySelector('[name="' + fieldNames[key] + '"]') || {}).value;
+    const name = (raw || '').trim().toLowerCase();
+    if (name) parts.push('/' + name);
+  });
+  el.textContent = parts.join(' ');
 }
 </script>
 

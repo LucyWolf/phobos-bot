@@ -450,7 +450,20 @@ async def init_db():
                 prefix TEXT NOT NULL,
                 PRIMARY KEY (guild_id, instance_id)
             )""",
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_amp_cmd_prefix ON amp_instance_commands(guild_id, prefix)",
+            # A single shared prefix (generating {prefix}-start/-stop/-restart) turned out not
+            # to be what was wanted - "ich kann dort nur start befehl anpassen ich will aber
+            # auch getrent vom start auch stop und restart befehl anpassen können" - replaced by
+            # three fully independent, freely-named columns. `prefix` itself is left in place,
+            # unused (same "don't drop columns" convention as elsewhere in this file) - every
+            # future write always supplies '' for it since the column is still NOT NULL. The old
+            # per-prefix unique index no longer makes sense once every row's prefix is just ''
+            # (would reject a second instance's row outright) - name collisions across the three
+            # new columns are checked at the application level in main.py instead, since a
+            # single-column UNIQUE INDEX can't express "unique across any of these 3 columns".
+            "DROP INDEX IF EXISTS idx_amp_cmd_prefix",
+            "ALTER TABLE amp_instance_commands ADD COLUMN start_name TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE amp_instance_commands ADD COLUMN stop_name TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE amp_instance_commands ADD COLUMN restart_name TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

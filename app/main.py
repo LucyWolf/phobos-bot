@@ -2619,7 +2619,10 @@ async def amp_delete_web(request: Request, guild_id: int):
 
 
 @web.post("/servers/{guild_id}/amp/instance/{instance_id}/command-name")
-async def amp_instance_command_name(request: Request, guild_id: int, instance_id: str, prefix: str = Form("")):
+async def amp_instance_command_name(
+    request: Request, guild_id: int, instance_id: str,
+    start_name: str = Form(""), stop_name: str = Form(""), restart_name: str = Form(""),
+):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
@@ -2627,33 +2630,58 @@ async def amp_instance_command_name(request: Request, guild_id: int, instance_id
     amp_cog = guild_bot.cogs.get("AMP") if guild_bot else None
     if not amp_cog:
         return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
-    prefix = prefix.strip()
-    if not prefix:
+
+    validated = {}
+    for field, raw in (("start_name", start_name), ("stop_name", stop_name), ("restart_name", restart_name)):
+        raw = raw.strip()
+        if not raw:
+            validated[field] = ""
+            continue
+        valid = amp_cog._valid_command_name(raw)
+        if not valid:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=amp&error=Ungültiger+Befehlsname+(nur+a-z,+0-9,+-,+_,+max.+32+Zeichen)",
+                status_code=302,
+            )
+        validated[field] = valid
+
+    # A plain per-column UNIQUE index can't express "unique across any of these 3 columns, for
+    # any instance in this guild" - checked here instead. Own three values must also not
+    # collide with each other (e.g. the same name typed for both start and stop).
+    new_names = [v for v in validated.values() if v]
+    if len(new_names) != len(set(new_names)):
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=amp&error=Die+drei+Befehlsnamen+müssen+sich+voneinander+unterscheiden",
+            status_code=302,
+        )
+    if new_names:
+        other_rows = await db_rows(
+            "SELECT start_name, stop_name, restart_name FROM amp_instance_commands "
+            "WHERE guild_id=? AND instance_id!=?",
+            (str(guild_id), instance_id),
+        )
+        used = {row[col] for row in other_rows for col in ("start_name", "stop_name", "restart_name") if row[col]}
+        if used & set(new_names):
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=amp&error=Befehlsname+wird+bereits+von+einer+anderen+Instanz+genutzt",
+                status_code=302,
+            )
+
+    if not any(validated.values()):
         await db_exec(
             "DELETE FROM amp_instance_commands WHERE guild_id=? AND instance_id=?",
             (str(guild_id), instance_id),
         )
     else:
-        valid = amp_cog._valid_prefix(prefix)
-        if not valid:
-            return RedirectResponse(
-                f"/servers/{guild_id}?tab=amp&error=Ungültiger+Befehlsname+(nur+a-z,+0-9,+-,+_,+max.+20+Zeichen)",
-                status_code=302,
-            )
-        try:
-            await db_exec(
-                "INSERT INTO amp_instance_commands (guild_id, instance_id, prefix) VALUES (?,?,?) "
-                "ON CONFLICT(guild_id, instance_id) DO UPDATE SET prefix=excluded.prefix",
-                (str(guild_id), instance_id, valid),
-            )
-        except Exception:
-            # UNIQUE(guild_id, prefix) violation - another instance in this guild already has it.
-            return RedirectResponse(
-                f"/servers/{guild_id}?tab=amp&error=Befehlsname+wird+bereits+von+einer+anderen+Instanz+genutzt",
-                status_code=302,
-            )
+        await db_exec(
+            "INSERT INTO amp_instance_commands (guild_id, instance_id, prefix, start_name, stop_name, restart_name) "
+            "VALUES (?,?,?,?,?,?) "
+            "ON CONFLICT(guild_id, instance_id) DO UPDATE SET "
+            "start_name=excluded.start_name, stop_name=excluded.stop_name, restart_name=excluded.restart_name",
+            (str(guild_id), instance_id, "", validated["start_name"], validated["stop_name"], validated["restart_name"]),
+        )
     await amp_cog.resync_guild_commands(guild_id)
-    return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Befehlsname+gespeichert", status_code=302)
+    return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Befehlsnamen+gespeichert", status_code=302)
 
 
 @web.get("/servers/{guild_id}/amp/instances.json")
@@ -4255,16 +4283,19 @@ async def server_config(
             amp_raw_debug = listing.get("raw_debug")
             if listing["instances"]:
                 amp_instances = listing["instances"]
-                cmd_prefixes = {
-                    r["instance_id"]: r["prefix"]
+                cmd_names = {
+                    r["instance_id"]: r
                     for r in await db_rows(
-                        "SELECT instance_id, prefix FROM amp_instance_commands WHERE guild_id=?",
+                        "SELECT instance_id, start_name, stop_name, restart_name FROM amp_instance_commands WHERE guild_id=?",
                         (str(guild_id),),
                     )
                 }
                 for inst in amp_instances:
                     inst["label"] = _amp_state_label(inst["state"], _tr_tickets)
-                    inst["command_prefix"] = cmd_prefixes.get(inst["id"], "")
+                    row = cmd_names.get(inst["id"])
+                    inst["cmd_start"] = row["start_name"] if row else ""
+                    inst["cmd_stop"] = row["stop_name"] if row else ""
+                    inst["cmd_restart"] = row["restart_name"] if row else ""
             elif listing.get("connection_error"):
                 # A real timeout/connect/login failure, not "this connection has no ADS layer" -
                 # reported live as confusing (User: "wenn der nicht richtig die Seite lädt lande

@@ -439,7 +439,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "amp_btn_restart":   "🔄 Neustarten",
         "amp_confirm_delete": "Verbindung zu „{name}“ wirklich löschen? Der Bot kann diesen Gameserver danach nicht mehr steuern.",
         "amp_cmd_settings_title": "Eigene Befehle",
-        "amp_cmd_prefix_label": "Befehlsname (z.B. „wa“ ergibt /wa-start, /wa-stop, /wa-restart)",
+        "amp_cmd_settings_hint": "Eigene, frei wählbare Slash-Befehlsnamen für diese Instanz — jeweils unabhängig voneinander, leer lassen um keinen eigenen Befehl anzulegen.",
+        "amp_cmd_start_label": "Befehlsname zum Starten",
+        "amp_cmd_stop_label": "Befehlsname zum Stoppen",
+        "amp_cmd_restart_label": "Befehlsname zum Neustarten",
         "amp_instances_error_hint": "Mehrere-Spiele-Erkennung fehlgeschlagen (fällt auf diese Einzelansicht zurück)",
         "amp_raw_debug_label": "🔍 AMP-Rohantwort anzeigen (Debug)",
         # Tickets
@@ -993,7 +996,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "amp_btn_restart":   "🔄 Restart",
         "amp_confirm_delete": "Really delete the connection to \"{name}\"? The bot won't be able to control this gameserver afterwards.",
         "amp_cmd_settings_title": "Custom commands",
-        "amp_cmd_prefix_label": "Command name (e.g. \"wa\" gives you /wa-start, /wa-stop, /wa-restart)",
+        "amp_cmd_settings_hint": "Freely-chosen slash command names for this instance — each fully independent, leave a field empty to skip creating a command for it.",
+        "amp_cmd_start_label": "Start command name",
+        "amp_cmd_stop_label": "Stop command name",
+        "amp_cmd_restart_label": "Restart command name",
         "amp_instances_error_hint": "Multi-game detection failed (falling back to this single-connection view)",
         "amp_raw_debug_label": "🔍 Show AMP raw response (debug)",
         # Tickets

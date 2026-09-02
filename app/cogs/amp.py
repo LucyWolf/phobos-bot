@@ -655,11 +655,14 @@ class AMP(commands.Cog):
     # User-requested: "kanst du bei jeden server ein zahnrad dran machen wo ich dann befehle
     # selber eingeben kan wie die dan heisen sollen" - confirmed via follow-up as dedicated
     # per-instance slash commands (e.g. /wa-start), not just aliases for the server: parameter
-    # on the existing global commands above. One admin-chosen prefix per instance (stored in
-    # amp_instance_commands) generates {prefix}-start/-stop/-restart automatically - matching
-    # exactly the tile's 3 action buttons (explicitly NOT a 4th {prefix}-status command, which
-    # a first version generated unasked - "ich meinte führ alle 3 buttons nicht nur einen" -
-    # status stays covered by the existing global /gameserver-status only).
+    # on the existing global commands above. First version used one shared prefix generating
+    # {prefix}-start/-stop/-restart automatically - turned out not to be what was wanted either:
+    # "ich kann dort nur start befehl anpassen ich will aber auch getrent vom start auch stop
+    # und restart befehl anpassen können" - each of the 3 actions now has its own fully
+    # independent, freely-typed command name (amp_instance_commands.start_name/stop_name/
+    # restart_name), no shared prefix/suffix pattern at all. Status stays covered by the
+    # existing global /gameserver-status only (explicitly declined, see the v1.14.33 note in
+    # CLAUDE.md's changelog).
     #
     # Registered as GUILD commands (tree.add_command(..., guild=...) + tree.sync(guild=...)),
     # not global ones - main.py's only existing tree.sync() call (on_ready) syncs globally,
@@ -667,28 +670,30 @@ class AMP(commands.Cog):
     # types a name into the dashboard can't wait that long; guild-scoped commands sync in
     # seconds, completely independent of the global sync.
 
-    _RESERVED_PREFIXES = {"gameserver"}  # would collide with the existing global commands above
+    _RESERVED_COMMAND_NAMES = {  # would collide with the existing global commands above
+        "gameserver-status", "gameserver-start", "gameserver-stop", "gameserver-restart",
+    }
 
     @staticmethod
-    def _valid_prefix(prefix: str) -> str | None:
-        """Returns the normalized prefix if valid, else None. 20 chars leaves safe room under
-        Discord's 32-char command name limit once the longest suffix ("-restart", 8 chars) is
-        appended."""
-        prefix = (prefix or "").strip().lower()
-        if not prefix or len(prefix) > 20:
+    def _valid_command_name(name: str) -> str | None:
+        """Returns the normalized command name if valid, else None. These are full Discord
+        slash command names now (no fixed suffix gets appended anymore), so the real 32-char
+        Discord limit applies directly."""
+        name = (name or "").strip().lower()
+        if not name or len(name) > 32:
             return None
-        if not re.fullmatch(r"[a-z0-9_-]+", prefix):
+        if not re.fullmatch(r"[a-z0-9_-]+", name):
             return None
-        if prefix in AMP._RESERVED_PREFIXES:
+        if name in AMP._RESERVED_COMMAND_NAMES:
             return None
-        return prefix
+        return name
 
-    def _build_instance_commands(self, cfg: dict, instance_id: str, prefix: str) -> list[app_commands.Command]:
-        """Builds the 4 commands for one instance+prefix. Instance is re-resolved by ID against
-        a fresh _list_instances() call on every single invocation (not captured once here) -
-        the instance could have been renamed in AMP since the prefix was configured, and
-        instance_name (not the stable id) is what ADSModule's Start/Stop/RestartInstance
-        actually take."""
+    def _build_instance_commands(self, cfg: dict, instance_id: str, names: dict) -> list[app_commands.Command]:
+        """Builds one command per non-empty entry in `names` ({"Start": "...", "Stop": "...",
+        "Restart": "..."}, any subset). Instance is re-resolved by ID against a fresh
+        _list_instances() call on every single invocation (not captured once here) - it could
+        have been renamed in AMP since the command name was configured, and instance_name (not
+        the stable id) is what ADSModule's Start/Stop/RestartInstance actually take."""
         async def _resolve(interaction: discord.Interaction) -> dict | None:
             listing = await self._list_instances(cfg)
             match = next((i for i in listing["instances"] if i["id"] == instance_id), None)
@@ -723,13 +728,16 @@ class AMP(commands.Cog):
             return callback
 
         commands_ = []
-        for method, icon, verb, suffix in (
-            ("Start", "🟢", "Startbefehl", "start"),
-            ("Stop", "🔴", "Stoppbefehl", "stop"),
-            ("Restart", "🔄", "Neustart-Befehl", "restart"),
+        for method, icon, verb in (
+            ("Start", "🟢", "Startbefehl"),
+            ("Stop", "🔴", "Stoppbefehl"),
+            ("Restart", "🔄", "Neustart-Befehl"),
         ):
+            name = names.get(method)
+            if not name:
+                continue
             cmd = app_commands.Command(
-                name=f"{prefix}-{suffix}", description=f"{verb} für diese Instanz",
+                name=name, description=f"{verb} für diese Instanz",
                 callback=_action_callback(method, icon, verb),
             )
             cmd.default_permissions = discord.Permissions(manage_guild=True)
@@ -746,10 +754,12 @@ class AMP(commands.Cog):
         cfg = await self._get_config(guild_id)
         if cfg:
             rows = await db_rows(
-                "SELECT instance_id, prefix FROM amp_instance_commands WHERE guild_id=?", (str(guild_id),)
+                "SELECT instance_id, start_name, stop_name, restart_name FROM amp_instance_commands WHERE guild_id=?",
+                (str(guild_id),),
             )
             for row in rows:
-                for cmd in self._build_instance_commands(cfg, row["instance_id"], row["prefix"]):
+                names = {"Start": row["start_name"], "Stop": row["stop_name"], "Restart": row["restart_name"]}
+                for cmd in self._build_instance_commands(cfg, row["instance_id"], names):
                     self.bot.tree.add_command(cmd, guild=guild_obj)
         await self.bot.tree.sync(guild=guild_obj)
 
