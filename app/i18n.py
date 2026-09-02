@@ -438,6 +438,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "amp_btn_stop":      "🔴 Stoppen",
         "amp_btn_restart":   "🔄 Neustarten",
         "amp_confirm_delete": "Verbindung zu „{name}“ wirklich löschen? Der Bot kann diesen Gameserver danach nicht mehr steuern.",
+        "amp_cmd_settings_title": "Eigene Befehle",
+        "amp_cmd_prefix_label": "Befehlsname (z.B. „wa“ ergibt /wa-start, /wa-stop, /wa-restart, /wa-status)",
         "amp_instances_error_hint": "Mehrere-Spiele-Erkennung fehlgeschlagen (fällt auf diese Einzelansicht zurück)",
         "amp_raw_debug_label": "🔍 AMP-Rohantwort anzeigen (Debug)",
         # Tickets
@@ -990,6 +992,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "amp_btn_stop":      "🔴 Stop",
         "amp_btn_restart":   "🔄 Restart",
         "amp_confirm_delete": "Really delete the connection to \"{name}\"? The bot won't be able to control this gameserver afterwards.",
+        "amp_cmd_settings_title": "Custom commands",
+        "amp_cmd_prefix_label": "Command name (e.g. \"wa\" gives you /wa-start, /wa-stop, /wa-restart, /wa-status)",
         "amp_instances_error_hint": "Multi-game detection failed (falling back to this single-connection view)",
         "amp_raw_debug_label": "🔍 Show AMP raw response (debug)",
         # Tickets

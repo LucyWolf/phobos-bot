@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 
 import discord
@@ -9,7 +10,7 @@ from discord.ext import commands
 
 import aiohttp
 
-from database import db_one
+from database import db_one, db_rows
 
 
 def _err_text(e: Exception) -> str:
@@ -649,6 +650,136 @@ class AMP(commands.Cog):
             f"Dieser Befehl ist nur in {where} erlaubt.", ephemeral=True
         )
         return False
+
+    # ── Custom per-instance slash commands ──────────────────────────────────────────────────
+    # User-requested: "kanst du bei jeden server ein zahnrad dran machen wo ich dann befehle
+    # selber eingeben kan wie die dan heisen sollen" - confirmed via follow-up as dedicated
+    # per-instance slash commands (e.g. /wa-start), not just aliases for the server: parameter
+    # on the existing global commands above. One admin-chosen prefix per instance (stored in
+    # amp_instance_commands) generates {prefix}-start/-stop/-restart/-status automatically.
+    #
+    # Registered as GUILD commands (tree.add_command(..., guild=...) + tree.sync(guild=...)),
+    # not global ones - main.py's only existing tree.sync() call (on_ready) syncs globally,
+    # which can take up to an hour to propagate. A feature that changes the moment an admin
+    # types a name into the dashboard can't wait that long; guild-scoped commands sync in
+    # seconds, completely independent of the global sync.
+
+    _RESERVED_PREFIXES = {"gameserver"}  # would collide with the existing global commands above
+
+    @staticmethod
+    def _valid_prefix(prefix: str) -> str | None:
+        """Returns the normalized prefix if valid, else None. 20 chars leaves safe room under
+        Discord's 32-char command name limit once the longest suffix ("-restart", 8 chars) is
+        appended."""
+        prefix = (prefix or "").strip().lower()
+        if not prefix or len(prefix) > 20:
+            return None
+        if not re.fullmatch(r"[a-z0-9_-]+", prefix):
+            return None
+        if prefix in AMP._RESERVED_PREFIXES:
+            return None
+        return prefix
+
+    def _build_instance_commands(self, cfg: dict, instance_id: str, prefix: str) -> list[app_commands.Command]:
+        """Builds the 4 commands for one instance+prefix. Instance is re-resolved by ID against
+        a fresh _list_instances() call on every single invocation (not captured once here) -
+        the instance could have been renamed in AMP since the prefix was configured, and
+        instance_name (not the stable id) is what ADSModule's Start/Stop/RestartInstance
+        actually take."""
+        async def _resolve(interaction: discord.Interaction) -> dict | None:
+            listing = await self._list_instances(cfg)
+            match = next((i for i in listing["instances"] if i["id"] == instance_id), None)
+            if not match:
+                await interaction.followup.send(
+                    "⚠️ Instanz nicht mehr gefunden (evtl. inzwischen entfernt?)", ephemeral=True
+                )
+            return match
+
+        def _action_callback(method: str, icon: str, verb: str):
+            async def callback(interaction: discord.Interaction):
+                cfg_now = await self._get_config(interaction.guild_id)
+                if not cfg_now:
+                    await interaction.response.send_message(
+                        "Für diesen Server ist kein Gameserver verknüpft.", ephemeral=True
+                    )
+                    return
+                if not await self._check_command_channel(interaction, cfg_now):
+                    return
+                await interaction.response.defer(ephemeral=True)
+                match = await _resolve(interaction)
+                if not match:
+                    return
+                ok, err = await self._instance_action(cfg_now, match["instance_name"], method)
+                if ok:
+                    await interaction.followup.send(f"{icon} **{match['name']}** {verb} gesendet.", ephemeral=True)
+                    if method == "Start":
+                        asyncio.create_task(self._notify_when_online(
+                            interaction, cfg_now, instance_id, match["name"], match.get("game_name") or ""))
+                else:
+                    await interaction.followup.send(f"⚠️ **{match['name']}** {verb} fehlgeschlagen: {err}", ephemeral=True)
+            return callback
+
+        async def _status_callback(interaction: discord.Interaction):
+            cfg_now = await self._get_config(interaction.guild_id)
+            if not cfg_now:
+                await interaction.response.send_message(
+                    "Für diesen Server ist kein Gameserver verknüpft.", ephemeral=True
+                )
+                return
+            await interaction.response.defer()
+            match = await _resolve(interaction)
+            if not match:
+                return
+            icon, text = _STATE_LABELS.get(match["state"], _STATE_LABELS["error"])
+            game = f" ({match['game_name']})" if match.get("game_name") else ""
+            await interaction.followup.send(f"{icon} **{match['name']}**{game}: {text}")
+
+        commands_ = []
+        for method, icon, verb, suffix in (
+            ("Start", "🟢", "Startbefehl", "start"),
+            ("Stop", "🔴", "Stoppbefehl", "stop"),
+            ("Restart", "🔄", "Neustart-Befehl", "restart"),
+        ):
+            cmd = app_commands.Command(
+                name=f"{prefix}-{suffix}", description=f"{verb} für diese Instanz",
+                callback=_action_callback(method, icon, verb),
+            )
+            cmd.default_permissions = discord.Permissions(manage_guild=True)
+            commands_.append(cmd)
+        commands_.append(app_commands.Command(
+            name=f"{prefix}-status", description="Zeigt den Status dieser Instanz",
+            callback=_status_callback,
+        ))
+        return commands_
+
+    async def resync_guild_commands(self, guild_id: int) -> None:
+        """Rebuilds and re-syncs this guild's custom per-instance commands from scratch -
+        called both after a save/delete in the dashboard (immediate effect) and once per guild
+        on every bot startup (dynamically-added tree commands don't persist across a process
+        restart, unlike the statically-decorated global ones above)."""
+        guild_obj = discord.Object(id=guild_id)
+        self.bot.tree.clear_commands(guild=guild_obj)
+        cfg = await self._get_config(guild_id)
+        if cfg:
+            rows = await db_rows(
+                "SELECT instance_id, prefix FROM amp_instance_commands WHERE guild_id=?", (str(guild_id),)
+            )
+            for row in rows:
+                for cmd in self._build_instance_commands(cfg, row["instance_id"], row["prefix"]):
+                    self.bot.tree.add_command(cmd, guild=guild_obj)
+        await self.bot.tree.sync(guild=guild_obj)
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        for guild in self.bot.guilds:
+            rows = await db_rows(
+                "SELECT 1 FROM amp_instance_commands WHERE guild_id=? LIMIT 1", (str(guild.id),)
+            )
+            if rows:
+                try:
+                    await self.resync_guild_commands(guild.id)
+                except Exception as e:
+                    print(f"[AMP] Guild-Befehl-Sync für {guild.id} fehlgeschlagen: {_err_text(e)}")
 
     @app_commands.command(name="gameserver-start", description="Startet den verknüpften Gameserver")
     @app_commands.describe(server="Name des Spiels (nur nötig wenn mehrere verknüpft sind)")

@@ -1866,6 +1866,27 @@ function toggleAdEdit(id) {
           <button type="submit" class="btn btn-secondary" style="width:100%;padding:0.4rem 0.3rem;font-size:0.76rem;line-height:1;white-space:nowrap;">{{ tr.amp_btn_restart }}</button>
         </form>
       </div>
+      <div style="margin-top:0.6rem;">
+        <button type="button" class="btn btn-secondary" onclick="toggleInstanceCmdEdit('{{ inst.id }}')"
+                style="font-size:0.72rem;padding:0.2rem 0.55rem;" title="{{ tr.amp_cmd_settings_title }}">
+          ⚙ {{ tr.amp_cmd_settings_title }}
+        </button>
+        <div id="amp-cmd-edit-{{ inst.id }}" style="display:none;margin-top:0.6rem;">
+          <form method="post" action="/servers/{{ guild.id }}/amp/instance/{{ inst.id }}/command-name" style="margin:0;">
+            <label class="hint" style="display:block;margin-bottom:0.3rem;">{{ tr.amp_cmd_prefix_label }}</label>
+            <div style="display:flex;gap:0.4rem;">
+              <input type="text" name="prefix" value="{{ inst.command_prefix }}" placeholder="z.B. wa"
+                     maxlength="20" pattern="[a-z0-9_-]+"
+                     oninput="updateAmpCmdPreview('{{ inst.id }}', this.value)"
+                     style="flex:1;">
+              <button type="submit" class="btn btn-secondary" style="flex-shrink:0;">{{ tr.btn_save }}</button>
+            </div>
+            <p class="hint" id="amp-cmd-preview-{{ inst.id }}" style="margin-top:0.4rem;font-family:monospace;font-size:0.74rem;">
+              {% if inst.command_prefix %}/{{ inst.command_prefix }}-start /{{ inst.command_prefix }}-stop /{{ inst.command_prefix }}-restart /{{ inst.command_prefix }}-status{% endif %}
+            </p>
+          </form>
+        </div>
+      </div>
     </div>
   </div>
   {% endfor %}
@@ -2013,6 +2034,16 @@ document.addEventListener('click', function(e) {
 function toggleAmpEdit() {
   const card = document.getElementById('amp-edit-card');
   if (card) card.style.display = card.style.display === 'none' ? '' : 'none';
+}
+function toggleInstanceCmdEdit(id) {
+  const el = document.getElementById('amp-cmd-edit-' + id);
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+function updateAmpCmdPreview(id, value) {
+  const el = document.getElementById('amp-cmd-preview-' + id);
+  if (!el) return;
+  const prefix = (value || '').trim().toLowerCase();
+  el.textContent = prefix ? ['start', 'stop', 'restart', 'status'].map(s => '/' + prefix + '-' + s).join(' ') : '';
 }
 </script>
 

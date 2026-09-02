@@ -444,6 +444,13 @@ async def init_db():
                 password TEXT NOT NULL DEFAULT ''
             )""",
             "ALTER TABLE amp_configs ADD COLUMN command_channel_id TEXT DEFAULT ''",
+            """CREATE TABLE IF NOT EXISTS amp_instance_commands (
+                guild_id TEXT NOT NULL,
+                instance_id TEXT NOT NULL,
+                prefix TEXT NOT NULL,
+                PRIMARY KEY (guild_id, instance_id)
+            )""",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_amp_cmd_prefix ON amp_instance_commands(guild_id, prefix)",
         ]:
             try:
                 await db.execute(col)

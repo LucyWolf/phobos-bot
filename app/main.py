@@ -2591,7 +2591,55 @@ async def amp_delete_web(request: Request, guild_id: int):
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
     await db_exec("DELETE FROM amp_configs WHERE guild_id=?", (str(guild_id),))
+    had_custom_commands = await db_exec_rowcount(
+        "DELETE FROM amp_instance_commands WHERE guild_id=?", (str(guild_id),)
+    )
+    if had_custom_commands:
+        # Removes any custom /prefix-* commands this guild had - otherwise they'd linger,
+        # pointing at a connection that no longer exists.
+        guild_bot = bot._bot_for_guild(guild_id)
+        amp_cog = guild_bot.cogs.get("AMP") if guild_bot else None
+        if amp_cog:
+            await amp_cog.resync_guild_commands(guild_id)
     return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Verbindung+gelöscht", status_code=302)
+
+
+@web.post("/servers/{guild_id}/amp/instance/{instance_id}/command-name")
+async def amp_instance_command_name(request: Request, guild_id: int, instance_id: str, prefix: str = Form("")):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    guild_bot = bot._bot_for_guild(guild_id)
+    amp_cog = guild_bot.cogs.get("AMP") if guild_bot else None
+    if not amp_cog:
+        return RedirectResponse(f"/servers/{guild_id}?tab=amp&error=Bot+nicht+verbunden", status_code=302)
+    prefix = prefix.strip()
+    if not prefix:
+        await db_exec(
+            "DELETE FROM amp_instance_commands WHERE guild_id=? AND instance_id=?",
+            (str(guild_id), instance_id),
+        )
+    else:
+        valid = amp_cog._valid_prefix(prefix)
+        if not valid:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=amp&error=Ungültiger+Befehlsname+(nur+a-z,+0-9,+-,+_,+max.+20+Zeichen)",
+                status_code=302,
+            )
+        try:
+            await db_exec(
+                "INSERT INTO amp_instance_commands (guild_id, instance_id, prefix) VALUES (?,?,?) "
+                "ON CONFLICT(guild_id, instance_id) DO UPDATE SET prefix=excluded.prefix",
+                (str(guild_id), instance_id, valid),
+            )
+        except Exception:
+            # UNIQUE(guild_id, prefix) violation - another instance in this guild already has it.
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=amp&error=Befehlsname+wird+bereits+von+einer+anderen+Instanz+genutzt",
+                status_code=302,
+            )
+    await amp_cog.resync_guild_commands(guild_id)
+    return RedirectResponse(f"/servers/{guild_id}?tab=amp&success=Befehlsname+gespeichert", status_code=302)
 
 
 @web.get("/servers/{guild_id}/amp/instances.json")
@@ -4193,8 +4241,16 @@ async def server_config(
             amp_raw_debug = listing.get("raw_debug")
             if listing["instances"]:
                 amp_instances = listing["instances"]
+                cmd_prefixes = {
+                    r["instance_id"]: r["prefix"]
+                    for r in await db_rows(
+                        "SELECT instance_id, prefix FROM amp_instance_commands WHERE guild_id=?",
+                        (str(guild_id),),
+                    )
+                }
                 for inst in amp_instances:
                     inst["label"] = _amp_state_label(inst["state"], _tr_tickets)
+                    inst["command_prefix"] = cmd_prefixes.get(inst["id"], "")
             elif listing.get("connection_error"):
                 # A real timeout/connect/login failure, not "this connection has no ADS layer" -
                 # reported live as confusing (User: "wenn der nicht richtig die Seite lädt lande
