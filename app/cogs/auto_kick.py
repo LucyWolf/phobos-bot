@@ -7,12 +7,16 @@ from database import db_one, db_rows, db_exec, get_guild_config
 
 # User-requested ("die wenn die eine bestimte zeit nicht frei gegeben sind ... dann gekickt
 # wirt also eine pm ... das wen der das nicht bals macht kekickt wirt", later: "mach das so
-# das man mehrer zeiten einstelen kann"): members who haven't received a given role within a
-# configurable time after joining get one or more reminder DMs at admin-configured offsets,
-# then get kicked at a final, separately configurable time if they still don't have it. What
-# the role actually represents (age verification via a support ticket + photo ID, in the
-# requesting user's case) stays entirely manual/staff-side - this only automates the
-# "remind repeatedly, then remove" part for whoever never finishes it.
+# das man mehrer zeiten einstelen kann", then "mach das so wenn mann noch die rolle hat wirt
+# gekickt die bekommen ja ein standart rolle aber denoch wehlbar"): the tracked role is a
+# "not yet verified" MARKER a member already gets automatically on join (e.g. via this
+# project's own `autorole` feature) - staff remove it manually once the member is actually
+# verified. Members who STILL have that role within a configurable time after joining get one
+# or more reminder DMs at admin-configured offsets, then get kicked at a final, separately
+# configurable time if they still have it. What the role actually represents (age verification
+# via a support ticket + photo ID, in the requesting user's case) stays entirely manual/
+# staff-side - this only automates the "remind repeatedly, then remove" part for whoever
+# never gets the marker role taken away.
 DEFAULT_REMINDER_MESSAGE = (
     "Hallo {user}! Auf **{server}** ist eine Freigabe nötig, die du noch nicht abgeschlossen "
     "hast. Bitte kümmere dich zeitnah darum, sonst wirst du automatisch vom Server entfernt, "
@@ -79,7 +83,13 @@ class AutoKick(commands.Cog):
         now = datetime.datetime.now(datetime.timezone.utc)
         kick_delta = datetime.timedelta(hours=cfg["kick_hours"])
         for member in guild.members:
-            if member.bot or role in member.roles:
+            # Inverted from the original design on request ("wenn mann noch die rolle hat wirt
+            # gekickt") - the tracked role is now a "not yet verified" MARKER a new member
+            # already has (e.g. auto-assigned on join, see this project's own `autorole`
+            # feature) rather than something they earn later. Staff remove it manually once
+            # verified; STILL having it past the deadline is what triggers a reminder/kick now,
+            # not the absence of a separate "verified" role.
+            if member.bot or role not in member.roles:
                 continue
             # Guild owner and anyone with real admin-level access is skipped unconditionally -
             # staff/the owner often predate the tracked role entirely and would otherwise risk
