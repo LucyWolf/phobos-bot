@@ -154,6 +154,7 @@ COGS = [
     "cogs.scheduler",
     "cogs.birthday",
     "cogs.amp",
+    "cogs.age_verify",
 ]
 
 
@@ -4201,7 +4202,7 @@ _SERVER_CONFIG_TAB_LABELS = {
     "giveaways": "🎉 Giveaways", "warnings": "⚠️ Warnungen", "users": "👥 Nutzer",
     "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant", "events": "🗓️ Events",
     "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
-    "amp": "🎮 Gameserver",
+    "amp": "🎮 Gameserver", "ageverify": "🔞 Altersverifizierung",
 }
 
 # Features an admin can hide from THIS server's own sidebar to cut down on clutter for
@@ -4217,7 +4218,7 @@ _TOGGLEABLE_FEATURES = {
     "warnings": "⚠️ Warnungen", "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant",
     "events": "🗓️ Events", "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
     "amp": "🎮 Gameserver", "notifications": "🟣 Streaming", "freestuff": "🎁 Free Stuff",
-    "log": "📋 Log",
+    "log": "📋 Log", "ageverify": "🔞 Altersverifizierung",
 }
 
 
@@ -4522,12 +4523,19 @@ _TAB_TEXT_KEYS = {
         "automod_banned_words", "automod_action", "automod_warn_message",
     ],
     "birthday": ["birthday_channel", "birthday_message"],
+    "ageverify": [
+        "age_verify_role_id", "age_verify_warn_hours", "age_verify_kick_hours", "age_verify_message",
+    ],
 }
 _TAB_CHECKBOX_KEYS = {
     "config": ["welcome_card_enabled"],
     "leveling": ["leveling_enabled", "leveling_voice_enabled"],
     "automod": ["automod_enabled", "automod_links"],
     "birthday": [],
+    # age_verify_enabled deliberately NOT here - it needs the previous saved value to detect an
+    # off→on transition (see the dedicated handling in server_config_save below), the generic
+    # loop below has no way to express that.
+    "ageverify": [],
 }
 
 
@@ -4575,7 +4583,7 @@ async def server_config_save(request: Request, guild_id: int):
     # channel keys above, it isn't even guild-scoped-safe by construction (get_role() degrades
     # to a silent no-op for a wrong ID, but a non-numeric value saved via a raw POST would raise
     # an unhandled ValueError in welcome.py's on_member_join for every future join).
-    role_keys = ["autorole"]
+    role_keys = ["autorole", "age_verify_role_id"]
     valid_role_ids = {str(ro.id) for ro in guild.roles if not ro.is_default()}
     for key in role_keys:
         value = str(form.get(key, ""))
@@ -4598,6 +4606,10 @@ async def server_config_save(request: Request, guild_id: int):
         ("leveling_voice_curve_quad", 0, 1000, "Voice-Level-Kurve (quadratisch)"),
         ("leveling_voice_curve_linear", 0, 10000, "Voice-Level-Kurve (linear)"),
         ("leveling_voice_curve_base", 1, 100000, "Voice-Level-Kurve (Basis-XP)"),
+        # 720h = 30 days, same generous-but-bounded ceiling as automod_timeout_minutes above -
+        # long enough for any realistic grace period, short enough to reject an obvious typo.
+        ("age_verify_warn_hours", 1, 720, "Warn-Frist (Altersverifizierung)"),
+        ("age_verify_kick_hours", 1, 720, "Kick-Frist (Altersverifizierung)"),
     ]
     for field, lo, hi, label in numeric_fields:
         value = str(form.get(field, "")).strip()
@@ -4610,6 +4622,18 @@ async def server_config_save(request: Request, guild_id: int):
                     f"/servers/{guild_id}?tab={tab}&error=Ungültiger+Wert+({label})", status_code=302
                 )
 
+    if tab == "ageverify":
+        # The kick delay has to be strictly after the warn delay - equal or shorter would mean
+        # a member gets kicked at the same moment they'd otherwise just be warned, or even
+        # before, silently skipping the warning entirely.
+        warn_v = str(form.get("age_verify_warn_hours", "")).strip()
+        kick_v = str(form.get("age_verify_kick_hours", "")).strip()
+        if warn_v and kick_v and int(kick_v) <= int(warn_v):
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab={tab}&error=Kick-Frist+muss+länger+als+die+Warn-Frist+sein",
+                status_code=302,
+            )
+
     for key in _TAB_TEXT_KEYS[tab]:
         await set_guild_config(guild_id, key, str(form.get(key, "")))
     for key in _TAB_CHECKBOX_KEYS[tab]:
@@ -4618,6 +4642,21 @@ async def server_config_save(request: Request, guild_id: int):
         # Multi-select, needs form.getlist() - can't go through the generic single-value loop above.
         leveling_channels = ",".join(c for c in form.getlist("leveling_channels") if c in valid_channel_ids)
         await set_guild_config(guild_id, "leveling_channels", leveling_channels)
+    if tab == "ageverify":
+        # Only members who join AFTER this is turned on are ever subject to it (explicit
+        # request - avoids sweeping up existing unverified members the instant this is
+        # enabled). That means the "on" timestamp has to be tracked and only refreshed on a
+        # genuine off→on transition, never on a save that just tweaks the hours/message while
+        # already on - otherwise every settings tweak would silently exempt everyone who
+        # joined before that particular save.
+        was_enabled = await get_guild_config(guild_id, "age_verify_enabled") == "1"
+        now_enabled = bool(form.get("age_verify_enabled"))
+        if now_enabled and not was_enabled:
+            await set_guild_config(
+                guild_id, "age_verify_enabled_at",
+                datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            )
+        await set_guild_config(guild_id, "age_verify_enabled", "1" if now_enabled else "0")
     return RedirectResponse(f"/servers/{guild_id}?tab={tab}&saved=true", status_code=303)
 
 

@@ -1679,6 +1679,70 @@ document.addEventListener('click', function(e) {
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Altersverifizierung                                             -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-ageverify">
+
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="toggleAgeVerifyInfo()" title="{{ tr.ageverify_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="ageverify-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:300px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.ageverify_info_title }}</div>
+    <ul style="margin:0 0 0 1.1rem;padding:0;color:var(--muted);line-height:1.6;">
+      <li>{{ tr.ageverify_info_item_what }}</li>
+      <li>{{ tr.ageverify_info_item_timing }}</li>
+      <li>{{ tr.ageverify_info_item_existing }}</li>
+      <li>{{ tr.ageverify_info_item_admin }}</li>
+    </ul>
+  </div>
+</div>
+
+<form method="post" action="/servers/{{ guild.id }}">
+<input type="hidden" name="tab" value="ageverify">
+<div class="card">
+  <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
+    <input type="checkbox" name="age_verify_enabled" value="1" {% if cfg.get('age_verify_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> {{ tr.ageverify_enabled_label }}
+  </label>
+  <label>{{ tr.ageverify_role_label }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.ageverify_role_hint }}</span></label>
+  <select name="age_verify_role_id">
+    <option value="">{{ tr.ageverify_role_placeholder }}</option>
+    {% for ro in roles %}<option value="{{ ro.id }}" {% if cfg.get('age_verify_role_id') == ro.id %}selected{% endif %}>{{ ro.name }}</option>{% endfor %}
+  </select>
+  <div class="grid-2" style="gap:1rem;margin-top:1rem;">
+    <div>
+      <label>{{ tr.ageverify_warn_hours_label }}</label>
+      <input type="number" name="age_verify_warn_hours" value="{{ cfg.get('age_verify_warn_hours', '24') }}" min="1" max="720">
+    </div>
+    <div>
+      <label>{{ tr.ageverify_kick_hours_label }}</label>
+      <input type="number" name="age_verify_kick_hours" value="{{ cfg.get('age_verify_kick_hours', '48') }}" min="1" max="720">
+    </div>
+  </div>
+  <label style="margin-top:1rem;">{{ tr.ageverify_message_label }}</label>
+  <textarea name="age_verify_message" rows="3" style="width:100%;resize:vertical;">{{ cfg.get('age_verify_message', 'Hallo {user}! Auf **{server}** ist eine Altersverifizierung nötig, die du noch nicht abgeschlossen hast. Bitte erstelle dafür ein Ticket, sonst wirst du automatisch vom Server entfernt, sobald {kick_hours} Stunden seit deinem Beitritt vergangen sind.') }}</textarea>
+  <p class="hint" style="margin-top:0.3rem;">{{ tr.ageverify_message_hint }}</p>
+  <button type="submit" class="btn btn-primary" style="margin-top:0.75rem;">{{ tr.btn_save }}</button>
+</div>
+</form>
+
+</div>
+
+<script>
+function toggleAgeVerifyInfo() {
+  const box = document.getElementById('ageverify-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('ageverify-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleAgeVerifyInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <!-- TAB: Auto-Delete                                                     -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-autodelete">
@@ -2106,7 +2170,7 @@ function updateAmpCmdPreview(id, action, value) {
 </script>
 
 <script>
-const TABS = ['config','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete','amp'];
+const TABS = ['config','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete','amp','ageverify'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {

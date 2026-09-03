@@ -464,6 +464,18 @@ async def init_db():
             "ALTER TABLE amp_instance_commands ADD COLUMN start_name TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE amp_instance_commands ADD COLUMN stop_name TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE amp_instance_commands ADD COLUMN restart_name TEXT NOT NULL DEFAULT ''",
+            # Tracks who has already received the age-verification warning DM, keyed together
+            # with the exact member.joined_at this row was warned for - if that no longer
+            # matches the member's CURRENT joined_at (they left and rejoined), the row is stale
+            # and cogs/age_verify.py treats it as if no warning was ever sent, so a rejoin always
+            # gets a fresh warn/kick cycle instead of silently inheriting a leftover row from a
+            # previous membership.
+            """CREATE TABLE IF NOT EXISTS age_verify_warned (
+                guild_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                joined_at TEXT NOT NULL,
+                PRIMARY KEY (guild_id, user_id)
+            )""",
         ]:
             try:
                 await db.execute(col)

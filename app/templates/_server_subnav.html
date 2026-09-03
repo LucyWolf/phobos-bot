@@ -18,6 +18,7 @@
   {% if enabled_features is none or 'birthday' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=birthday"   class="ssnav-item {% if active_page == 'birthday' %}active{% endif %}">🎂 Geburtstage</a>{% endif %}
   {% if enabled_features is none or 'autodelete' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=autodelete" class="ssnav-item {% if active_page == 'autodelete' %}active{% endif %}">🗑️ Auto-Delete</a>{% endif %}
   {% if enabled_features is none or 'amp' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=amp"        class="ssnav-item {% if active_page == 'amp' %}active{% endif %}">🎮 Gameserver</a>{% endif %}
+  {% if enabled_features is none or 'ageverify' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=ageverify" class="ssnav-item {% if active_page == 'ageverify' %}active{% endif %}">🔞 Altersverifizierung</a>{% endif %}
   {% if enabled_features is none or 'notifications' in enabled_features %}<a href="/servers/{{ guild_id }}/notifications"  class="ssnav-item {% if active_page == 'notifications' %}active{% endif %}">🟣 Streaming</a>{% endif %}
   {% if enabled_features is none or 'freestuff' in enabled_features %}<a href="/servers/{{ guild_id }}/freestuff"      class="ssnav-item {% if active_page == 'freestuff' %}active{% endif %}">🎁 Free Stuff</a>{% endif %}
   {% if enabled_features is none or 'log' in enabled_features %}<a href="/servers/{{ guild_id }}/log"            class="ssnav-item {% if active_page == 'log' %}active{% endif %}">📋 Log</a>{% endif %}
