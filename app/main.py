@@ -4628,6 +4628,19 @@ async def server_config_save(request: Request, guild_id: int):
                     f"/servers/{guild_id}?tab={tab}&error=Ungültiger+Wert+({label})", status_code=302
                 )
 
+    if tab == "autokick" and form.get("auto_kick_enabled") and not str(form.get("auto_kick_role_id", "")).strip():
+        # Every OTHER required-together-with-"enabled" case in this route (channel_keys,
+        # role_keys above) only rejects an INVALID value, not a genuinely EMPTY one - correct
+        # for those, since an empty channel/role there just means "not using that optional
+        # feature". Here an empty role with the checkbox ticked would instead silently do
+        # nothing at all: cogs/auto_kick.py's _get_config() already fails safe and no-ops
+        # without a role_id, so nothing crashes, but the admin would see the checkbox
+        # checked and quietly get no reminders or kicks ever, with no error anywhere telling
+        # them why - reject up front instead, before anything gets saved.
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab={tab}&error=Bitte+eine+Rolle+für+Auto-Kick+auswählen", status_code=302
+        )
+
     for key in _TAB_TEXT_KEYS[tab]:
         await set_guild_config(guild_id, key, str(form.get(key, "")))
     for key in _TAB_CHECKBOX_KEYS[tab]:
@@ -4667,6 +4680,18 @@ async def auto_kick_reminder_add(request: Request, guild_id: int, hours: str = F
     message = message.strip()
     if not message:
         return RedirectResponse(f"/servers/{guild_id}?tab=autokick&error=Nachricht+erforderlich", status_code=302)
+    # Discord's hard limit for a normal (non-embed) message is 2000 characters. Unchecked, a
+    # too-long reminder would fail on every single send - and completely silently: cogs/
+    # auto_kick.py's _remind_if_needed() catches discord.HTTPException with a bare `pass`
+    # (deliberately, so a member with DMs closed doesn't get retried forever) and marks the
+    # reminder as sent regardless of whether it actually went out, so a too-long message would
+    # never surface anywhere, for any member, ever - same bug class already fixed for custom
+    # commands' response text and giveaway prize text elsewhere in this project. Capped at 1900,
+    # not the full 2000 - {server} alone can add up to ~92 characters once substituted with a
+    # real (up to 100-char) server name, {user} a further ~15 as a real mention - same "leave a
+    # safety margin for variable substitution" fix already applied to ticket panel descriptions.
+    if len(message) > 1900:
+        return RedirectResponse(f"/servers/{guild_id}?tab=autokick&error=Nachricht+zu+lang+(max.+1900+Zeichen)", status_code=302)
     try:
         hours_int = int(hours)
         if not (1 <= hours_int <= 720):

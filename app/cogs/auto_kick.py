@@ -135,7 +135,7 @@ class AutoKick(commands.Cog):
 
     async def _kick(self, guild: discord.Guild, member: discord.Member):
         try:
-            await guild.kick(member, reason="Frist ohne erforderliche Rolle abgelaufen (Auto-Kick)")
+            await guild.kick(member, reason="Markierungs-Rolle nicht rechtzeitig entfernt (Auto-Kick)")
         except discord.Forbidden:
             # Missing "Mitglieder kicken" permission - nothing to clean up, just retry next tick.
             return
