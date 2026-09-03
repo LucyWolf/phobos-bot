@@ -1679,64 +1679,85 @@ document.addEventListener('click', function(e) {
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<!-- TAB: Altersverifizierung                                             -->
+<!-- TAB: Auto-Kick                                                       -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<div class="tab-pane" id="pane-ageverify">
+<div class="tab-pane" id="pane-autokick">
 
 <div style="position:relative;margin-bottom:1.25rem;">
-  <button type="button" onclick="toggleAgeVerifyInfo()" title="{{ tr.ageverify_info_tooltip }}"
+  <button type="button" onclick="toggleAutoKickInfo()" title="{{ tr.autokick_info_tooltip }}"
     style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
-  <div id="ageverify-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+  <div id="autokick-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
        background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
        font-size:0.78rem;min-width:300px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
-    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.ageverify_info_title }}</div>
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.autokick_info_title }}</div>
     <ul style="margin:0 0 0 1.1rem;padding:0;color:var(--muted);line-height:1.6;">
-      <li>{{ tr.ageverify_info_item_what }}</li>
-      <li>{{ tr.ageverify_info_item_timing }}</li>
-      <li>{{ tr.ageverify_info_item_existing }}</li>
-      <li>{{ tr.ageverify_info_item_admin }}</li>
+      <li>{{ tr.autokick_info_item_what }}</li>
+      <li>{{ tr.autokick_info_item_timing }}</li>
+      <li>{{ tr.autokick_info_item_existing }}</li>
+      <li>{{ tr.autokick_info_item_admin }}</li>
     </ul>
   </div>
 </div>
 
 <form method="post" action="/servers/{{ guild.id }}">
-<input type="hidden" name="tab" value="ageverify">
+<input type="hidden" name="tab" value="autokick">
 <div class="card">
   <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
-    <input type="checkbox" name="age_verify_enabled" value="1" {% if cfg.get('age_verify_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> {{ tr.ageverify_enabled_label }}
+    <input type="checkbox" name="auto_kick_enabled" value="1" {% if cfg.get('auto_kick_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;"> {{ tr.autokick_enabled_label }}
   </label>
-  <label>{{ tr.ageverify_role_label }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.ageverify_role_hint }}</span></label>
-  <select name="age_verify_role_id">
-    <option value="">{{ tr.ageverify_role_placeholder }}</option>
-    {% for ro in roles %}<option value="{{ ro.id }}" {% if cfg.get('age_verify_role_id') == ro.id %}selected{% endif %}>{{ ro.name }}</option>{% endfor %}
+  <label>{{ tr.autokick_role_label }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.autokick_role_hint }}</span></label>
+  <select name="auto_kick_role_id">
+    <option value="">{{ tr.autokick_role_placeholder }}</option>
+    {% for ro in roles %}<option value="{{ ro.id }}" {% if cfg.get('auto_kick_role_id') == ro.id %}selected{% endif %}>{{ ro.name }}</option>{% endfor %}
   </select>
-  <div class="grid-2" style="gap:1rem;margin-top:1rem;">
-    <div>
-      <label>{{ tr.ageverify_warn_hours_label }}</label>
-      <input type="number" name="age_verify_warn_hours" value="{{ cfg.get('age_verify_warn_hours', '24') }}" min="1" max="720">
-    </div>
-    <div>
-      <label>{{ tr.ageverify_kick_hours_label }}</label>
-      <input type="number" name="age_verify_kick_hours" value="{{ cfg.get('age_verify_kick_hours', '48') }}" min="1" max="720">
-    </div>
-  </div>
-  <label style="margin-top:1rem;">{{ tr.ageverify_message_label }}</label>
-  <textarea name="age_verify_message" rows="3" style="width:100%;resize:vertical;">{{ cfg.get('age_verify_message', 'Hallo {user}! Auf **{server}** ist eine Altersverifizierung nötig, die du noch nicht abgeschlossen hast. Bitte erstelle dafür ein Ticket, sonst wirst du automatisch vom Server entfernt, sobald {kick_hours} Stunden seit deinem Beitritt vergangen sind.') }}</textarea>
-  <p class="hint" style="margin-top:0.3rem;">{{ tr.ageverify_message_hint }}</p>
+  <label style="margin-top:1rem;">{{ tr.autokick_kick_hours_label }}</label>
+  <input type="number" name="auto_kick_kick_hours" value="{{ cfg.get('auto_kick_kick_hours', '48') }}" min="1" max="720">
   <button type="submit" class="btn btn-primary" style="margin-top:0.75rem;">{{ tr.btn_save }}</button>
 </div>
 </form>
 
+<div class="card" style="margin-top:1rem;">
+  <div class="feat-header">{{ tr.autokick_reminders_title }}</div>
+  <p class="hint" style="margin-bottom:0.75rem;">{{ tr.autokick_reminders_hint }}</p>
+  {% if auto_kick_reminders %}
+  {% for rem in auto_kick_reminders %}
+  <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.6rem;">
+    <span class="badge" style="background:var(--accent-light);color:#a78bfa;white-space:nowrap;">{{ rem.hours }}h</span>
+    <span style="flex:1;font-size:0.85rem;">{{ rem.message }}</span>
+    <form method="post" action="/servers/{{ guild.id }}/auto-kick/reminders/delete/{{ rem.id }}" style="margin:0;"
+          onsubmit="return confirm({{ tr.autokick_reminder_confirm_delete.replace('{hours}', rem.hours|string) | js }})">
+      <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">✕</button>
+    </form>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p style="font-size:0.83rem;color:var(--muted);">{{ tr.autokick_reminders_empty }}</p>
+  {% endif %}
+
+  <form method="post" action="/servers/{{ guild.id }}/auto-kick/reminders/add" style="display:flex;gap:0.5rem;align-items:end;margin-top:0.5rem;padding-top:0.75rem;border-top:1px solid var(--border);">
+    <div style="min-width:80px;">
+      <label style="font-size:0.72rem;">{{ tr.autokick_reminder_hours_label }}</label>
+      <input type="number" name="hours" min="1" max="720" required style="margin:0;">
+    </div>
+    <div style="flex:1;">
+      <label style="font-size:0.72rem;">{{ tr.autokick_reminder_message_label }}</label>
+      <input type="text" name="message" required style="margin:0;" placeholder="{{ tr.autokick_reminder_message_placeholder }}">
+    </div>
+    <button type="submit" class="btn btn-primary" style="padding:0.4rem 0.6rem;" title="{{ tr.btn_add }}">➕</button>
+  </form>
+  <p class="hint" style="margin-top:0.5rem;">{{ tr.autokick_reminder_placeholders_hint }}</p>
+</div>
+
 </div>
 
 <script>
-function toggleAgeVerifyInfo() {
-  const box = document.getElementById('ageverify-info-box');
+function toggleAutoKickInfo() {
+  const box = document.getElementById('autokick-info-box');
   box.style.display = box.style.display === 'none' ? '' : 'none';
 }
 document.addEventListener('click', function(e) {
-  const box = document.getElementById('ageverify-info-box');
-  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleAgeVerifyInfo()"]')) {
+  const box = document.getElementById('autokick-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleAutoKickInfo()"]')) {
     box.style.display = 'none';
   }
 });
@@ -2170,7 +2191,7 @@ function updateAmpCmdPreview(id, action, value) {
 </script>
 
 <script>
-const TABS = ['config','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete','amp','ageverify'];
+const TABS = ['config','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete','amp','autokick'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {

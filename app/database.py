@@ -464,17 +464,34 @@ async def init_db():
             "ALTER TABLE amp_instance_commands ADD COLUMN start_name TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE amp_instance_commands ADD COLUMN stop_name TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE amp_instance_commands ADD COLUMN restart_name TEXT NOT NULL DEFAULT ''",
-            # Tracks who has already received the age-verification warning DM, keyed together
-            # with the exact member.joined_at this row was warned for - if that no longer
-            # matches the member's CURRENT joined_at (they left and rejoined), the row is stale
-            # and cogs/age_verify.py treats it as if no warning was ever sent, so a rejoin always
-            # gets a fresh warn/kick cycle instead of silently inheriting a leftover row from a
-            # previous membership.
-            """CREATE TABLE IF NOT EXISTS age_verify_warned (
+            # Renamed from age_verify_* to auto_kick_* (v1.14.50 shipped under the old name for
+            # under a day before the rename request came in) - the single warn_hours/message
+            # pair also became a full list of admin-managed reminders at that same rename, so
+            # the old age_verify_warned tracking table's shape no longer fits either. Nothing
+            # to migrate forward (the feature had just shipped, not yet in real use) - dropped
+            # outright rather than left behind as a permanently dead table.
+            "DROP TABLE IF EXISTS age_verify_warned",
+            # One row per configured reminder DM for a guild - hours is the offset after join it
+            # fires at, admin-managed via the dashboard (add/delete rows), same list-of-rows
+            # pattern as level_roles/automod_word_presets elsewhere in this file.
+            """CREATE TABLE IF NOT EXISTS auto_kick_reminders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                hours INTEGER NOT NULL,
+                message TEXT NOT NULL
+            )""",
+            # Tracks which specific reminder(s) a member has already received, keyed together
+            # with the exact member.joined_at each row was sent for - if that no longer matches
+            # the member's CURRENT joined_at (they left and rejoined), the row is stale and
+            # cogs/auto_kick.py treats it as if that reminder was never sent, so a rejoin always
+            # gets a fresh reminder/kick cycle instead of silently inheriting leftover rows from
+            # a previous membership.
+            """CREATE TABLE IF NOT EXISTS auto_kick_sent (
                 guild_id TEXT NOT NULL,
                 user_id TEXT NOT NULL,
+                reminder_id INTEGER NOT NULL,
                 joined_at TEXT NOT NULL,
-                PRIMARY KEY (guild_id, user_id)
+                PRIMARY KEY (guild_id, user_id, reminder_id)
             )""",
         ]:
             try:

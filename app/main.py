@@ -154,7 +154,7 @@ COGS = [
     "cogs.scheduler",
     "cogs.birthday",
     "cogs.amp",
-    "cogs.age_verify",
+    "cogs.auto_kick",
 ]
 
 
@@ -4202,7 +4202,7 @@ _SERVER_CONFIG_TAB_LABELS = {
     "giveaways": "🎉 Giveaways", "warnings": "⚠️ Warnungen", "users": "👥 Nutzer",
     "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant", "events": "🗓️ Events",
     "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
-    "amp": "🎮 Gameserver", "ageverify": "🔞 Altersverifizierung",
+    "amp": "🎮 Gameserver", "autokick": "🚪 Auto-Kick",
 }
 
 # Features an admin can hide from THIS server's own sidebar to cut down on clutter for
@@ -4218,7 +4218,7 @@ _TOGGLEABLE_FEATURES = {
     "warnings": "⚠️ Warnungen", "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant",
     "events": "🗓️ Events", "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
     "amp": "🎮 Gameserver", "notifications": "🟣 Streaming", "freestuff": "🎁 Free Stuff",
-    "log": "📋 Log", "ageverify": "🔞 Altersverifizierung",
+    "log": "📋 Log", "autokick": "🚪 Auto-Kick",
 }
 
 
@@ -4278,6 +4278,11 @@ async def server_config(
     # Level rewards
     level_rewards = await db_rows(
         "SELECT * FROM level_rewards WHERE guild_id=? ORDER BY level", (str(guild_id),)
+    )
+
+    # Auto-Kick reminders
+    auto_kick_reminders = await db_rows(
+        "SELECT * FROM auto_kick_reminders WHERE guild_id=? ORDER BY hours", (str(guild_id),)
     )
 
     # Reaction roles
@@ -4484,6 +4489,7 @@ async def server_config(
         "leveling_channels": leveling_channels,
         "level_roles": level_roles,
         "level_rewards": level_rewards,
+        "auto_kick_reminders": auto_kick_reminders,
         "auto_delete_entries": await db_rows(
             "SELECT * FROM auto_delete_channels WHERE guild_id=?", (str(guild_id),)
         ),
@@ -4523,19 +4529,20 @@ _TAB_TEXT_KEYS = {
         "automod_banned_words", "automod_action", "automod_warn_message",
     ],
     "birthday": ["birthday_channel", "birthday_message"],
-    "ageverify": [
-        "age_verify_role_id", "age_verify_warn_hours", "age_verify_kick_hours", "age_verify_message",
-    ],
+    # The reminder DMs themselves (offset + message, plural) are a separate list managed via
+    # their own add/delete routes below, not a fixed set of form fields - only the required
+    # role and the single final kick delay go through the generic per-tab save here.
+    "autokick": ["auto_kick_role_id", "auto_kick_kick_hours"],
 }
 _TAB_CHECKBOX_KEYS = {
     "config": ["welcome_card_enabled"],
     "leveling": ["leveling_enabled", "leveling_voice_enabled"],
     "automod": ["automod_enabled", "automod_links"],
     "birthday": [],
-    # age_verify_enabled deliberately NOT here - it needs the previous saved value to detect an
+    # auto_kick_enabled deliberately NOT here - it needs the previous saved value to detect an
     # off→on transition (see the dedicated handling in server_config_save below), the generic
     # loop below has no way to express that.
-    "ageverify": [],
+    "autokick": [],
 }
 
 
@@ -4583,7 +4590,7 @@ async def server_config_save(request: Request, guild_id: int):
     # channel keys above, it isn't even guild-scoped-safe by construction (get_role() degrades
     # to a silent no-op for a wrong ID, but a non-numeric value saved via a raw POST would raise
     # an unhandled ValueError in welcome.py's on_member_join for every future join).
-    role_keys = ["autorole", "age_verify_role_id"]
+    role_keys = ["autorole", "auto_kick_role_id"]
     valid_role_ids = {str(ro.id) for ro in guild.roles if not ro.is_default()}
     for key in role_keys:
         value = str(form.get(key, ""))
@@ -4608,8 +4615,7 @@ async def server_config_save(request: Request, guild_id: int):
         ("leveling_voice_curve_base", 1, 100000, "Voice-Level-Kurve (Basis-XP)"),
         # 720h = 30 days, same generous-but-bounded ceiling as automod_timeout_minutes above -
         # long enough for any realistic grace period, short enough to reject an obvious typo.
-        ("age_verify_warn_hours", 1, 720, "Warn-Frist (Altersverifizierung)"),
-        ("age_verify_kick_hours", 1, 720, "Kick-Frist (Altersverifizierung)"),
+        ("auto_kick_kick_hours", 1, 720, "Kick-Frist (Auto-Kick)"),
     ]
     for field, lo, hi, label in numeric_fields:
         value = str(form.get(field, "")).strip()
@@ -4622,18 +4628,6 @@ async def server_config_save(request: Request, guild_id: int):
                     f"/servers/{guild_id}?tab={tab}&error=Ungültiger+Wert+({label})", status_code=302
                 )
 
-    if tab == "ageverify":
-        # The kick delay has to be strictly after the warn delay - equal or shorter would mean
-        # a member gets kicked at the same moment they'd otherwise just be warned, or even
-        # before, silently skipping the warning entirely.
-        warn_v = str(form.get("age_verify_warn_hours", "")).strip()
-        kick_v = str(form.get("age_verify_kick_hours", "")).strip()
-        if warn_v and kick_v and int(kick_v) <= int(warn_v):
-            return RedirectResponse(
-                f"/servers/{guild_id}?tab={tab}&error=Kick-Frist+muss+länger+als+die+Warn-Frist+sein",
-                status_code=302,
-            )
-
     for key in _TAB_TEXT_KEYS[tab]:
         await set_guild_config(guild_id, key, str(form.get(key, "")))
     for key in _TAB_CHECKBOX_KEYS[tab]:
@@ -4642,22 +4636,59 @@ async def server_config_save(request: Request, guild_id: int):
         # Multi-select, needs form.getlist() - can't go through the generic single-value loop above.
         leveling_channels = ",".join(c for c in form.getlist("leveling_channels") if c in valid_channel_ids)
         await set_guild_config(guild_id, "leveling_channels", leveling_channels)
-    if tab == "ageverify":
+    if tab == "autokick":
         # Only members who join AFTER this is turned on are ever subject to it (explicit
-        # request - avoids sweeping up existing unverified members the instant this is
-        # enabled). That means the "on" timestamp has to be tracked and only refreshed on a
-        # genuine off→on transition, never on a save that just tweaks the hours/message while
-        # already on - otherwise every settings tweak would silently exempt everyone who
-        # joined before that particular save.
-        was_enabled = await get_guild_config(guild_id, "age_verify_enabled") == "1"
-        now_enabled = bool(form.get("age_verify_enabled"))
+        # request - avoids sweeping up existing untagged members the instant this is enabled).
+        # That means the "on" timestamp has to be tracked and only refreshed on a genuine
+        # off→on transition, never on a save that just tweaks the role/kick delay while already
+        # on - otherwise every settings tweak would silently exempt everyone who joined before
+        # that particular save.
+        was_enabled = await get_guild_config(guild_id, "auto_kick_enabled") == "1"
+        now_enabled = bool(form.get("auto_kick_enabled"))
         if now_enabled and not was_enabled:
             await set_guild_config(
-                guild_id, "age_verify_enabled_at",
+                guild_id, "auto_kick_enabled_at",
                 datetime.datetime.now(datetime.timezone.utc).isoformat(),
             )
-        await set_guild_config(guild_id, "age_verify_enabled", "1" if now_enabled else "0")
+        await set_guild_config(guild_id, "auto_kick_enabled", "1" if now_enabled else "0")
     return RedirectResponse(f"/servers/{guild_id}?tab={tab}&saved=true", status_code=303)
+
+
+# ── Auto-Kick reminders ──────────────────────────────────────────────────────
+# One or more DM reminders at admin-configured offsets after joining, leading up to the single
+# kick delay saved via the generic tab form above - user-requested ("mach das so das man mehrer
+# zeiten einstelen kann") after the first version only supported one fixed warning.
+
+@web.post("/servers/{guild_id}/auto-kick/reminders/add")
+async def auto_kick_reminder_add(request: Request, guild_id: int, hours: str = Form(...), message: str = Form(...)):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
+    message = message.strip()
+    if not message:
+        return RedirectResponse(f"/servers/{guild_id}?tab=autokick&error=Nachricht+erforderlich", status_code=302)
+    try:
+        hours_int = int(hours)
+        if not (1 <= hours_int <= 720):
+            raise ValueError
+    except ValueError:
+        return RedirectResponse(f"/servers/{guild_id}?tab=autokick&error=Ungültige+Stundenzahl", status_code=302)
+    await db_exec(
+        "INSERT INTO auto_kick_reminders (guild_id, hours, message) VALUES (?,?,?)",
+        (str(guild_id), hours_int, message),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=autokick&success=Erinnerung+hinzugefügt", status_code=303)
+
+
+@web.post("/servers/{guild_id}/auto-kick/reminders/delete/{reminder_id}")
+async def auto_kick_reminder_delete(request: Request, guild_id: int, reminder_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
+    await db_exec(
+        "DELETE FROM auto_kick_reminders WHERE id=? AND guild_id=?", (reminder_id, str(guild_id))
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=autokick&success=Erinnerung+entfernt", status_code=303)
 
 
 # ── Auto-Mod word-list presets ──────────────────────────────────────────────────
