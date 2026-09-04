@@ -697,6 +697,7 @@ document.addEventListener('click', function(e) {
       <li>{{ tr.tickets_info_item_create }}</li>
       <li>{{ tr.tickets_info_item_access }}</li>
       <li>{{ tr.tickets_info_item_edit }}</li>
+      <li>{{ tr.tickets_info_item_placeholders }}</li>
       <li>{{ tr.tickets_info_item_close }}</li>
     </ul>
   </div>
@@ -799,7 +800,15 @@ document.addEventListener('click', function(e) {
                     </div>
                     {% endfor %}
                   </div>
-                  <button type="button" class="btn btn-secondary" onclick="addTicketBlock('desc-blocks-{{ p.id }}', 'description_block')" style="font-size:0.75rem;padding:0.3rem 0.7rem;">{{ tr.tickets_add_embed }}</button>
+                  <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                    <button type="button" class="btn btn-secondary" onclick="addTicketBlock('desc-blocks-{{ p.id }}', 'description_block')" style="font-size:0.75rem;padding:0.3rem 0.7rem;">{{ tr.tickets_add_embed }}</button>
+                    {% if roles %}
+                    <select onchange="insertTicketRoleMention(this, 'desc-blocks-{{ p.id }}')" style="width:auto;margin:0;font-size:0.75rem;padding:0.3rem 0.5rem;">
+                      <option value="">{{ tr.tickets_insert_role_label }}</option>
+                      {% for r in roles %}<option value="{{ r.id }}">@{{ r.name }}</option>{% endfor %}
+                    </select>
+                    {% endif %}
+                  </div>
                 </div>
                 <div style="grid-column:1/-1;">
                   <label>{{ tr.tickets_ticket_message_label }}</label>
@@ -815,7 +824,15 @@ document.addEventListener('click', function(e) {
                     </div>
                     {% endfor %}
                   </div>
-                  <button type="button" class="btn btn-secondary" onclick="addTicketBlock('ticket-msg-blocks-{{ p.id }}', 'ticket_message_block')" style="font-size:0.75rem;padding:0.3rem 0.7rem;">{{ tr.tickets_add_embed }}</button>
+                  <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                    <button type="button" class="btn btn-secondary" onclick="addTicketBlock('ticket-msg-blocks-{{ p.id }}', 'ticket_message_block')" style="font-size:0.75rem;padding:0.3rem 0.7rem;">{{ tr.tickets_add_embed }}</button>
+                    {% if roles %}
+                    <select onchange="insertTicketRoleMention(this, 'ticket-msg-blocks-{{ p.id }}')" style="width:auto;margin:0;font-size:0.75rem;padding:0.3rem 0.5rem;">
+                      <option value="">{{ tr.tickets_insert_role_label }}</option>
+                      {% for r in roles %}<option value="{{ r.id }}">@{{ r.name }}</option>{% endfor %}
+                    </select>
+                    {% endif %}
+                  </div>
                 </div>
               </div>
               <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
@@ -903,6 +920,36 @@ function addTicketBlock(containerId, fieldName) {
   row.appendChild(btn);
   container.appendChild(row);
   textarea.focus();
+}
+// User-requested ("wäre es cool wenn der die dan auch anzeigt im text ... das solte das
+// einfacher machen wenn rollen im texte eingebunden werden") - typing Discord's raw role-
+// mention syntax (<@&123456789012345678>) by hand is impractical, so a role picked from this
+// dropdown gets inserted as a real mention at the cursor position of whichever description_
+// block/ticket_message_block textarea was last focused, instead of requiring the admin to know
+// or look up the role's numeric ID themselves.
+let _ticketLastFocusedTextarea = {};
+document.addEventListener('focusin', function(e) {
+  if (e.target.tagName !== 'TEXTAREA') return;
+  const container = e.target.closest('[id^="desc-blocks-"], [id^="ticket-msg-blocks-"]');
+  if (container) _ticketLastFocusedTextarea[container.id] = e.target;
+});
+function insertTicketRoleMention(selectEl, containerId) {
+  const roleId = selectEl.value;
+  if (!roleId) return;
+  const container = document.getElementById(containerId);
+  let target = _ticketLastFocusedTextarea[containerId];
+  if (!target || !container.contains(target)) {
+    const textareas = container.querySelectorAll('textarea');
+    target = textareas[textareas.length - 1];
+  }
+  selectEl.value = '';
+  if (!target) return;
+  const mention = '<@&' + roleId + '>';
+  const start = target.selectionStart ?? target.value.length;
+  const end = target.selectionEnd ?? target.value.length;
+  target.value = target.value.slice(0, start) + mention + target.value.slice(end);
+  target.focus();
+  target.selectionStart = target.selectionEnd = start + mention.length;
 }
 function toggleTicketsInfo() {
   const box = document.getElementById('tickets-info-box');
