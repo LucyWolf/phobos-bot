@@ -4628,18 +4628,28 @@ async def server_config_save(request: Request, guild_id: int):
                     f"/servers/{guild_id}?tab={tab}&error=Ungültiger+Wert+({label})", status_code=302
                 )
 
-    if tab == "autokick" and form.get("auto_kick_enabled") and not str(form.get("auto_kick_role_id", "")).strip():
+    if tab == "autokick" and form.get("auto_kick_enabled"):
         # Every OTHER required-together-with-"enabled" case in this route (channel_keys,
         # role_keys above) only rejects an INVALID value, not a genuinely EMPTY one - correct
         # for those, since an empty channel/role there just means "not using that optional
-        # feature". Here an empty role with the checkbox ticked would instead silently do
-        # nothing at all: cogs/auto_kick.py's _get_config() already fails safe and no-ops
-        # without a role_id, so nothing crashes, but the admin would see the checkbox
-        # checked and quietly get no reminders or kicks ever, with no error anywhere telling
-        # them why - reject up front instead, before anything gets saved.
-        return RedirectResponse(
-            f"/servers/{guild_id}?tab={tab}&error=Bitte+eine+Rolle+für+Auto-Kick+auswählen", status_code=302
-        )
+        # feature". Here an empty role/kick-hours with the checkbox ticked would instead
+        # silently do nothing at all: cogs/auto_kick.py's _get_config() already fails safe and
+        # no-ops without both, so nothing crashes, but the admin would see the checkbox checked
+        # and quietly get no reminders or kicks ever, with no error anywhere telling them why -
+        # reject up front instead, before anything gets saved. kick_hours is normally always
+        # pre-filled by the template's own default and has no "clear it" affordance in the UI
+        # (unlike the role dropdown's empty placeholder option), so this half is defense in
+        # depth against a hand-crafted request more than something the rendered form itself
+        # can trigger - kept for the same reason the role check exists, not because it's
+        # equally reachable by accident.
+        if not str(form.get("auto_kick_role_id", "")).strip():
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab={tab}&error=Bitte+eine+Rolle+für+Auto-Kick+auswählen", status_code=302
+            )
+        if not str(form.get("auto_kick_kick_hours", "")).strip():
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab={tab}&error=Bitte+eine+Kick-Frist+für+Auto-Kick+angeben", status_code=302
+            )
 
     for key in _TAB_TEXT_KEYS[tab]:
         await set_guild_config(guild_id, key, str(form.get(key, "")))
@@ -4686,12 +4696,18 @@ async def auto_kick_reminder_add(request: Request, guild_id: int, hours: str = F
     # (deliberately, so a member with DMs closed doesn't get retried forever) and marks the
     # reminder as sent regardless of whether it actually went out, so a too-long message would
     # never surface anywhere, for any member, ever - same bug class already fixed for custom
-    # commands' response text and giveaway prize text elsewhere in this project. Capped at 1900,
-    # not the full 2000 - {server} alone can add up to ~92 characters once substituted with a
-    # real (up to 100-char) server name, {user} a further ~15 as a real mention - same "leave a
-    # safety margin for variable substitution" fix already applied to ticket panel descriptions.
-    if len(message) > 1900:
-        return RedirectResponse(f"/servers/{guild_id}?tab=autokick&error=Nachricht+zu+lang+(max.+1900+Zeichen)", status_code=302)
+    # commands' response text and giveaway prize text elsewhere in this project.
+    #
+    # Capped well under 2000, not just barely under it - {server} alone can grow by up to ~92
+    # characters once substituted with a real (up to 100-char) server name, {user} a further
+    # ~15 as a real mention. A first attempt at this cap used 1900, which still isn't safe: a
+    # message using BOTH placeholders once each can grow by ~107, landing at ~2007 - over the
+    # limit despite the "margin". 1850 leaves real headroom for that combination instead of
+    # just barely missing it - same "leave a safety margin for variable substitution" principle
+    # already applied to ticket panel descriptions elsewhere in this project, just computed
+    # more carefully here after the first pass undercounted it.
+    if len(message) > 1850:
+        return RedirectResponse(f"/servers/{guild_id}?tab=autokick&error=Nachricht+zu+lang+(max.+1850+Zeichen)", status_code=302)
     try:
         hours_int = int(hours)
         if not (1 <= hours_int <= 720):
