@@ -2298,7 +2298,47 @@ function toggleAdEdit(id) {
   </form>
   {% endif %}
 </div>
+</div>
 
+<script>
+function toggleAmpInfo() {
+  const box = document.getElementById('amp-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('amp-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleAmpInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+function toggleAmpEdit() {
+  const card = document.getElementById('amp-edit-card');
+  if (card) card.style.display = card.style.display === 'none' ? '' : 'none';
+}
+function toggleInstanceCmdEdit(id) {
+  const el = document.getElementById('amp-cmd-edit-' + id);
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+function updateAmpCmdPreview(id, action, value) {
+  const container = document.getElementById('amp-cmd-edit-' + id);
+  const el = document.getElementById('amp-cmd-preview-' + id);
+  if (!container || !el) return;
+  const fieldNames = {start: 'start_name', stop: 'stop_name', restart: 'restart_name'};
+  const parts = [];
+  Object.keys(fieldNames).forEach(function(key) {
+    const raw = key === action ? value : (container.querySelector('[name="' + fieldNames[key] + '"]') || {}).value;
+    const name = (raw || '').trim().toLowerCase();
+    if (name) parts.push('/' + name);
+  });
+  el.textContent = parts.join(' ');
+}
+</script>
+
+<!-- User-requested standalone feature ("ich will damit texte in schanels dort eintragen ...
+     wo ich die chanels auswählen kann und der das dan einbettet") - was accidentally nested
+     INSIDE pane-amp on first ship (v1.14.67): its own tab-pane never got .active because the
+     PARENT pane-amp (lacking .active) sat at display:none, hiding this child regardless of
+     its own active class. Moved here as a proper sibling. -->
 <div class="tab-pane" id="pane-embeds">
 <div style="position:relative;margin-bottom:1.25rem;">
   <button type="button" onclick="toggleEmbedsInfo()" title="{{ tr.embeds_info_tooltip }}"
@@ -2435,42 +2475,6 @@ document.addEventListener('click', function(e) {
     box.style.display = 'none';
   }
 });
-</script>
-
-</div>
-
-<script>
-function toggleAmpInfo() {
-  const box = document.getElementById('amp-info-box');
-  box.style.display = box.style.display === 'none' ? '' : 'none';
-}
-document.addEventListener('click', function(e) {
-  const box = document.getElementById('amp-info-box');
-  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleAmpInfo()"]')) {
-    box.style.display = 'none';
-  }
-});
-function toggleAmpEdit() {
-  const card = document.getElementById('amp-edit-card');
-  if (card) card.style.display = card.style.display === 'none' ? '' : 'none';
-}
-function toggleInstanceCmdEdit(id) {
-  const el = document.getElementById('amp-cmd-edit-' + id);
-  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
-}
-function updateAmpCmdPreview(id, action, value) {
-  const container = document.getElementById('amp-cmd-edit-' + id);
-  const el = document.getElementById('amp-cmd-preview-' + id);
-  if (!container || !el) return;
-  const fieldNames = {start: 'start_name', stop: 'stop_name', restart: 'restart_name'};
-  const parts = [];
-  Object.keys(fieldNames).forEach(function(key) {
-    const raw = key === action ? value : (container.querySelector('[name="' + fieldNames[key] + '"]') || {}).value;
-    const name = (raw || '').trim().toLowerCase();
-    if (name) parts.push('/' + name);
-  });
-  el.textContent = parts.join(' ');
-}
 </script>
 
 <script>
