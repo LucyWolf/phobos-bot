@@ -45,7 +45,7 @@ except ImportError:
     # No prebuilt Android wheel and no C toolchain available under Chaquopy - the rest of the
     # bot doesn't need it, only get_system_stats() below (the Bot-Info dashboard page) does.
     psutil = None
-from cogs.tickets import OpenTicketView as _TicketView
+from cogs.tickets import OpenTicketView as _TicketView, close_ticket_channel as _close_ticket_channel
 from cogs.leveling import xp_for_level as _xp_for_level, cumulative_xp_for_level as _cumulative_xp_for_level
 from i18n import get_tr
 import uvicorn
@@ -5090,6 +5090,7 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     emoji = form.get("emoji", "🎫")
     support_role_id = form.get("support_role_id", "")
     category_id = form.get("category_id", "")
+    archive_category_id = form.get("archive_category_id", "")
     # Each is a LIST of blocks now, one <textarea> per block in the form - "+" adds a genuinely
     # separate Discord embed, not just another line inside the same one ("es ist bewusst zwei
     # einbettungen ... wenn ich bei den text + mache das es auch eine neuen einbettung ist").
@@ -5107,6 +5108,8 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Rolle", status_code=302)
     if category_id and category_id not in {str(c.id) for c in guild.categories}:
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Kategorie", status_code=302)
+    if archive_category_id and archive_category_id not in {str(c.id) for c in guild.categories}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Archiv-Kategorie", status_code=302)
     if len(name.strip()) > 100:
         # Same reasoning as tickets_panel_create - ends up in the embed title.
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Name+zu+lang+(max.+100+Zeichen)", status_code=302)
@@ -5147,9 +5150,9 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     new_ticket_message = _djson.dumps(ticket_message_blocks)
     await db_exec(
         "UPDATE ticket_panels SET name=?, button_label=?, description=?, ticket_message=?, emoji=?, "
-        "support_role_id=?, category_id=? WHERE id=? AND guild_id=?",
+        "support_role_id=?, category_id=?, archive_category_id=? WHERE id=? AND guild_id=?",
         (new_name, new_label, new_description, new_ticket_message, new_emoji,
-         support_role_id, category_id, panel_id, guild_id),
+         support_role_id, category_id, archive_category_id, panel_id, guild_id),
     )
     # A published panel's button/embed lives on an already-sent Discord message - saving name/
     # button_label/emoji/description here only touched the DB row until now, so the dashboard
@@ -5284,17 +5287,15 @@ async def ticket_close(request: Request, guild_id: int, ticket_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Bot+nicht+online", status_code=302)
     ch = b.get_channel(ticket["channel_id"])
     if ch:
-        try:
-            await ch.delete(reason="Ticket via Dashboard geschlossen")
-        except discord.NotFound:
-            pass
-        except Exception as e:
-            # Same reasoning as the "bot not online" branch above: if the channel is still
-            # there and we couldn't actually delete it (e.g. missing permission right now),
-            # don't mark the ticket closed - that would hide it from the open-tickets list
-            # with no way to retry.
-            print(f"[Tickets] channel delete failed for ticket {ticket_id}: {e}")
-            return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Kanal+konnte+nicht+gelöscht+werden", status_code=302)
+        guild_obj = b.get_guild(guild_id)
+        panel = await db_one(
+            "SELECT archive_category_id FROM ticket_panels WHERE id=?", (ticket["panel_id"],)
+        ) if ticket.get("panel_id") else None
+        # Same reasoning as the "bot not online" branch above: if the channel is still there and
+        # we couldn't actually close it (e.g. missing permission right now), don't mark the
+        # ticket closed - that would hide it from the open-tickets list with no way to retry.
+        if not await _close_ticket_channel(ch, guild_obj, panel, "Ticket via Dashboard geschlossen"):
+            return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ticket+konnte+nicht+geschlossen+werden", status_code=302)
     await db_exec(
         "UPDATE tickets SET status='closed' WHERE id=? AND guild_id=?",
         (ticket_id, guild_id),

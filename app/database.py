@@ -531,6 +531,11 @@ async def init_db():
                 offset_minutes INTEGER NOT NULL,
                 message TEXT NOT NULL
             )""",
+            # User-requested ("ich wil halt auch tikets damit aufbewahren die wichtig sind") -
+            # optional per-panel category a closed ticket's channel gets MOVED to instead of
+            # being deleted, so important tickets can be kept for later reference. Empty =
+            # unchanged default behavior (delete on close).
+            "ALTER TABLE ticket_panels ADD COLUMN archive_category_id TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

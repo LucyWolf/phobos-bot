@@ -35,23 +35,59 @@ def _parse_ticket_blocks(raw) -> list:
     return [raw]
 
 
+async def close_ticket_channel(channel, guild: discord.Guild, panel: dict | None, reason: str) -> bool:
+    """Shared by all three "close a ticket" entry points (the in-channel button, /ticket-close,
+    and the dashboard's close route in main.py - imported from there, safe in that one
+    direction since main.py already imports OTHER things from this module). Moves the channel
+    to the panel's configured archive category instead of deleting it, if one is set and still
+    resolvable to a real category ("ich wil halt auch tikets damit aufbewahren die wichtig
+    sind") - otherwise deletes it exactly as before. Returns True on success (archived or
+    deleted - a channel already gone, discord.NotFound, counts as success either way), False on
+    a real failure, so the caller can decide not to mark the ticket closed and let it be retried."""
+    archive_category = None
+    if panel and panel.get("archive_category_id"):
+        try:
+            cat = guild.get_channel(int(panel["archive_category_id"]))
+            if isinstance(cat, discord.CategoryChannel):
+                archive_category = cat
+        except (ValueError, TypeError):
+            pass
+    try:
+        if archive_category:
+            await channel.edit(category=archive_category, reason=reason)
+        else:
+            await channel.delete(reason=reason)
+    except discord.NotFound:
+        pass
+    except Exception as e:
+        print(f"[Tickets] failed to close channel {channel.id}: {e}")
+        return False
+    return True
+
+
 class CloseTicketView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @ui.button(label="Ticket schließen", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="close_ticket")
     async def close_ticket(self, interaction: discord.Interaction, button: ui.Button):
+        ticket = await db_one(
+            "SELECT * FROM tickets WHERE channel_id=? AND status='open'", (interaction.channel_id,)
+        )
+        if not ticket:
+            # The button's own message survives an archived (moved, not deleted) ticket - a
+            # second click needs a real "already closed" response instead of blindly retrying,
+            # which the pre-archive code never had to guard against since the channel (and with
+            # it, the button) was always gone after the first successful close.
+            await interaction.response.send_message("Dieses Ticket ist bereits geschlossen.", ephemeral=True)
+            return
         await interaction.response.send_message("Ticket wird geschlossen...", ephemeral=True)
-        try:
-            await interaction.channel.delete(reason=f"Ticket geschlossen von {interaction.user}")
-        except discord.NotFound:
-            pass
-        except Exception as e:
-            # Don't mark the ticket closed if we couldn't actually delete the channel (e.g.
-            # missing permission) - the DB would otherwise say "closed" while the channel is
-            # still sitting there, with no way to retry (the dashboard/close-command only
-            # surface tickets with status='open').
-            print(f"[Tickets] channel delete failed for {interaction.channel_id}: {e}")
+        panel = await db_one(
+            "SELECT archive_category_id FROM ticket_panels WHERE id=?", (ticket["panel_id"],)
+        ) if ticket.get("panel_id") else None
+        if not await close_ticket_channel(
+            interaction.channel, interaction.guild, panel, f"Ticket geschlossen von {interaction.user}"
+        ):
             return
         await db_exec("UPDATE tickets SET status='closed' WHERE channel_id=?", (interaction.channel_id,))
 
@@ -232,19 +268,19 @@ class Tickets(commands.Cog):
     @app_commands.command(name="ticket-close", description="Dieses Ticket schließen")
     async def ticket_close(self, interaction: discord.Interaction):
         ticket = await db_one(
-            "SELECT id FROM tickets WHERE channel_id=? AND status='open'",
+            "SELECT * FROM tickets WHERE channel_id=? AND status='open'",
             (interaction.channel_id,),
         )
         if not ticket:
             await interaction.response.send_message("Dieser Kanal ist kein offenes Ticket.", ephemeral=True)
             return
         await interaction.response.send_message("Ticket wird geschlossen...")
-        try:
-            await interaction.channel.delete(reason=f"Ticket geschlossen von {interaction.user}")
-        except discord.NotFound:
-            pass
-        except Exception as e:
-            print(f"[Tickets] channel delete failed for {interaction.channel_id}: {e}")
+        panel = await db_one(
+            "SELECT archive_category_id FROM ticket_panels WHERE id=?", (ticket["panel_id"],)
+        ) if ticket.get("panel_id") else None
+        if not await close_ticket_channel(
+            interaction.channel, interaction.guild, panel, f"Ticket geschlossen von {interaction.user}"
+        ):
             return
         await db_exec("UPDATE tickets SET status='closed' WHERE channel_id=?", (interaction.channel_id,))
 

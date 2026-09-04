@@ -787,6 +787,14 @@ document.addEventListener('click', function(e) {
                   </select>
                 </div>
                 <div style="grid-column:1/-1;">
+                  <label>{{ tr.tickets_archive_category_label }}</label>
+                  <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.tickets_archive_category_hint }}</p>
+                  <select name="archive_category_id" style="margin-bottom:0;">
+                    <option value="">{{ tr.tickets_archive_category_none }}</option>
+                    {% for c in categories %}<option value="{{ c.id }}" {% if p.archive_category_id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div style="grid-column:1/-1;">
                   <label>{{ tr.tickets_description_label }}</label>
                   <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.tickets_description_hint }}</p>
                   <div id="desc-blocks-{{ p.id }}">
