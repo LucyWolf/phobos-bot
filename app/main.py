@@ -4944,18 +4944,24 @@ async def tickets_panel_create(request: Request, guild_id: int, name: str = Form
 
 
 @web.post("/servers/{guild_id}/tickets/panels/{panel_id}/update")
-async def tickets_panel_update(
-    request: Request, guild_id: int, panel_id: int,
-    name: str = Form(""), button_label: str = Form("Ticket öffnen"),
-    description: str = Form(""), emoji: str = Form("🎫"),
-    support_role_id: str = Form(""), category_id: str = Form(""),
-):
+async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
     guild = bot.get_guild(guild_id)
     if not guild:
         return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    name = form.get("name", "")
+    button_label = form.get("button_label", "Ticket öffnen")
+    emoji = form.get("emoji", "🎫")
+    support_role_id = form.get("support_role_id", "")
+    category_id = form.get("category_id", "")
+    # User-requested ("mehre text felder ... mach ein +") - the single description field is
+    # now several "+"-addable lines, joined back into one multi-line string. Each line is
+    # stripped individually (trims stray whitespace from typing/pasting) but blank lines are
+    # kept - lets an admin add a deliberate paragraph break between two lines.
+    description = "\n".join(l.strip() for l in form.getlist("description_line"))
     if support_role_id and support_role_id not in {str(ro.id) for ro in guild.roles}:
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Rolle", status_code=302)
     if category_id and category_id not in {str(c.id) for c in guild.categories}:

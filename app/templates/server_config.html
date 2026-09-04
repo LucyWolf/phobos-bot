@@ -787,7 +787,16 @@ document.addEventListener('click', function(e) {
                 </div>
                 <div style="grid-column:1/-1;">
                   <label>{{ tr.tickets_description_label }}</label>
-                  <input type="text" name="description" value="{{ p.description or '' }}" placeholder="{{ tr.tickets_description_placeholder }}" maxlength="3900" style="margin-bottom:0;">
+                  <div id="desc-lines-{{ p.id }}">
+                    {% set desc_lines = (p.description or '').split('\n') %}
+                    {% for line in desc_lines %}
+                    <div style="display:flex;gap:0.4rem;margin-bottom:0.4rem;">
+                      <input type="text" name="description_line" value="{{ line }}" placeholder="{{ tr.tickets_description_placeholder if loop.first else '' }}" style="margin:0;flex:1;">
+                      <button type="button" class="btn btn-danger" onclick="this.parentElement.remove()" style="padding:0.3rem 0.6rem;font-size:0.75rem;" title="{{ tr.btn_delete }}">✕</button>
+                    </div>
+                    {% endfor %}
+                  </div>
+                  <button type="button" class="btn btn-secondary" onclick="addTicketDescLine({{ p.id }})" style="font-size:0.75rem;padding:0.3rem 0.7rem;">➕</button>
                 </div>
               </div>
               <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
@@ -854,6 +863,25 @@ document.addEventListener('click', function(e) {
 function togglePanelEdit(id) {
   const row = document.getElementById('panel-edit-' + id);
   if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+function addTicketDescLine(panelId) {
+  const container = document.getElementById('desc-lines-' + panelId);
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:0.4rem;margin-bottom:0.4rem;';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.name = 'description_line';
+  input.style.cssText = 'margin:0;flex:1;';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-danger';
+  btn.style.cssText = 'padding:0.3rem 0.6rem;font-size:0.75rem;';
+  btn.textContent = '✕';
+  btn.onclick = function() { row.remove(); };
+  row.appendChild(input);
+  row.appendChild(btn);
+  container.appendChild(row);
+  input.focus();
 }
 function toggleTicketsInfo() {
   const box = document.getElementById('tickets-info-box');
