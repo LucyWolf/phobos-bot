@@ -2351,6 +2351,7 @@ function updateAmpCmdPreview(id, action, value) {
       <li>{{ tr.embeds_info_item_create }}</li>
       <li>{{ tr.embeds_info_item_edit }}</li>
       <li>{{ tr.embeds_info_item_channel }}</li>
+      <li>{{ tr.embeds_info_item_image }}</li>
     </ul>
   </div>
 </div>
@@ -2394,6 +2395,16 @@ function updateAmpCmdPreview(id, action, value) {
           {% for r in roles %}<option value="{{ r.id }}">@{{ r.name }}</option>{% endfor %}
         </select>
         {% endif %}
+      </div>
+      <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
+        <div>
+          <label>{{ tr.embeds_image_label }}</label>
+          <input type="url" name="image_url" placeholder="{{ tr.embeds_image_placeholder }}" style="margin-bottom:0;">
+        </div>
+        <div>
+          <label>{{ tr.embeds_footer_label }}</label>
+          <input type="text" name="footer_text" maxlength="2048" placeholder="{{ tr.embeds_footer_placeholder }}" style="margin-bottom:0;">
+        </div>
       </div>
       <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.embeds_btn_post }}</button>
     </form>
@@ -2449,6 +2460,16 @@ function updateAmpCmdPreview(id, action, value) {
                   {% for r in roles %}<option value="{{ r.id }}">@{{ r.name }}</option>{% endfor %}
                 </select>
                 {% endif %}
+              </div>
+              <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
+                <div>
+                  <label>{{ tr.embeds_image_label }}</label>
+                  <input type="url" name="image_url" value="{{ ep.image_url or '' }}" placeholder="{{ tr.embeds_image_placeholder }}" style="margin-bottom:0;">
+                </div>
+                <div>
+                  <label>{{ tr.embeds_footer_label }}</label>
+                  <input type="text" name="footer_text" value="{{ ep.footer_text or '' }}" maxlength="2048" placeholder="{{ tr.embeds_footer_placeholder }}" style="margin-bottom:0;">
+                </div>
               </div>
               <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
             </form>

@@ -555,6 +555,12 @@ async def init_db():
                 message_id TEXT NOT NULL DEFAULT '',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )""",
+            # User-requested ("bei den einbettungen wäre es cool noch bilder an hängen zu
+            # können und einen so genannten footer hinzu zu fügen") - per confirmed answer, ONE
+            # image + ONE footer per whole post (not per "+" block) - Discord's image/footer are
+            # per-embed properties, applied to the LAST embed in the post's block list.
+            "ALTER TABLE embed_posts ADD COLUMN image_url TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE embed_posts ADD COLUMN footer_text TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

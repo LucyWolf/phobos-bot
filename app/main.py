@@ -5335,13 +5335,21 @@ async def ticket_delete(request: Request, guild_id: int, ticket_id: int):
 # editable from the dashboard afterward (the actual point: editing multi-line rich text in a
 # browser textarea beats Discord's own message box, which has no native embed authoring at all).
 
-def _build_freeform_embeds(content_raw) -> list:
+def _build_freeform_embeds(content_raw, image_url: str = "", footer_text: str = "") -> list:
     """Like _build_panel_embeds, but with no forced title/emoji on the first embed - this
     feature has no "name" concept baked into the posted content itself (unlike a ticket panel,
     which always shows its configured name+emoji as a title), it's meant to stay fully
-    freeform. Capped at 10 blocks, same Discord hard limit as everywhere else blocks are used."""
+    freeform. Capped at 10 blocks, same Discord hard limit as everywhere else blocks are used.
+    image/footer are per-POST, not per-block (confirmed by explicit user answer - Discord
+    itself only supports them per individual embed, so they land on the LAST embed rather than
+    needing one field per "+"-added block)."""
     blocks = _parse_ticket_blocks(content_raw) or [""]
-    return [discord.Embed(description=block, color=0x7C3AED) for block in blocks[:10]]
+    embeds = [discord.Embed(description=block, color=0x7C3AED) for block in blocks[:10]]
+    if image_url:
+        embeds[-1].set_image(url=image_url)
+    if footer_text:
+        embeds[-1].set_footer(text=footer_text)
+    return embeds
 
 
 @web.post("/servers/{guild_id}/embeds/create")
@@ -5356,6 +5364,8 @@ async def embed_post_create(request: Request, guild_id: int):
     name = form.get("name", "").strip()
     channel_id = form.get("channel_id", "")
     blocks = [b.strip() for b in form.getlist("content_block") if b.strip()]
+    image_url = form.get("image_url", "").strip()
+    footer_text = form.get("footer_text", "").strip()
     if not name:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Name+erforderlich", status_code=302)
     if len(name) > 100:
@@ -5368,17 +5378,25 @@ async def embed_post_create(request: Request, guild_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Zu+viele+Embeds+(max.+10)", status_code=302)
     if any(len(b) > 3900 for b in blocks):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Ein+Embed+ist+zu+lang+(max.+3900+Zeichen)", status_code=302)
+    if image_url and not image_url.startswith(("http://", "https://")):
+        # Discord's API rejects a non-URL image value outright - caught here with a clear
+        # cause instead of a raw "Discord-Fehler:" surfacing the API's own wording.
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Bild-URL+muss+mit+http(s)://+beginnen", status_code=302)
+    if len(footer_text) > 2048:
+        # Discord's own hard limit for embed footer text.
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Footer-Text+zu+lang+(max.+2048+Zeichen)", status_code=302)
     channel = guild.get_channel(int(channel_id))
     if not channel:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Kanal+nicht+gefunden", status_code=302)
     content = _djson.dumps(blocks)
     try:
-        msg = await channel.send(embeds=_build_freeform_embeds(content))
+        msg = await channel.send(embeds=_build_freeform_embeds(content, image_url, footer_text))
     except discord.HTTPException as e:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
     await db_exec(
-        "INSERT INTO embed_posts (guild_id, name, channel_id, content, message_id) VALUES (?,?,?,?,?)",
-        (str(guild_id), name, channel_id, content, str(msg.id)),
+        "INSERT INTO embed_posts (guild_id, name, channel_id, content, message_id, image_url, footer_text) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (str(guild_id), name, channel_id, content, str(msg.id), image_url, footer_text),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&success=Gepostet", status_code=302)
 
@@ -5398,6 +5416,8 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
     name = form.get("name", "").strip()
     channel_id = form.get("channel_id", "")
     blocks = [b.strip() for b in form.getlist("content_block") if b.strip()]
+    image_url = form.get("image_url", "").strip()
+    footer_text = form.get("footer_text", "").strip()
     if not name:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Name+erforderlich", status_code=302)
     if len(name) > 100:
@@ -5410,8 +5430,12 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Zu+viele+Embeds+(max.+10)", status_code=302)
     if any(len(b) > 3900 for b in blocks):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Ein+Embed+ist+zu+lang+(max.+3900+Zeichen)", status_code=302)
+    if image_url and not image_url.startswith(("http://", "https://")):
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Bild-URL+muss+mit+http(s)://+beginnen", status_code=302)
+    if len(footer_text) > 2048:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Footer-Text+zu+lang+(max.+2048+Zeichen)", status_code=302)
     content = _djson.dumps(blocks)
-    embeds = _build_freeform_embeds(content)
+    embeds = _build_freeform_embeds(content, image_url, footer_text)
     new_message_id = post["message_id"]
     if channel_id != post["channel_id"]:
         # Moved to a different channel - an embed lives on a specific message in a specific
@@ -5449,8 +5473,9 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
             except Exception as e:
                 return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e}", status_code=302)
     await db_exec(
-        "UPDATE embed_posts SET name=?, channel_id=?, content=?, message_id=? WHERE id=? AND guild_id=?",
-        (name, channel_id, content, new_message_id, post_id, guild_id),
+        "UPDATE embed_posts SET name=?, channel_id=?, content=?, message_id=?, image_url=?, footer_text=? "
+        "WHERE id=? AND guild_id=?",
+        (name, channel_id, content, new_message_id, image_url, footer_text, post_id, guild_id),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&success=Gespeichert", status_code=302)
 
