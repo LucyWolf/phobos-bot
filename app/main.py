@@ -5388,6 +5388,15 @@ async def embed_post_create(request: Request, guild_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Zu+viele+Embeds+(max.+10)", status_code=302)
     if any(len(b) > 3900 for b in blocks):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Ein+Embed+ist+zu+lang+(max.+3900+Zeichen)", status_code=302)
+    # Discord's per-embed 4096-char description limit (cushioned to 3900 above) is separate
+    # from its OTHER hard limit: title+description+footer+field text summed across ALL embeds
+    # in one message must stay under 6000 - easily reachable here since up to 10 blocks are
+    # each allowed close to 3900 chars (10*3900 far exceeds 6000). Without this check, Discord
+    # would reject the send() call outright and the admin would see a raw, confusing
+    # "Discord-Fehler:" instead of a clear cause - checked with a safety margin (5900) for the
+    # footer text that also counts toward the same combined total.
+    if sum(len(b) for b in blocks) + len(footer_text) > 5900:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Alle+Embeds+zusammen+sind+zu+lang+(max.+5900+Zeichen+insgesamt)", status_code=302)
     if image_url and not image_url.startswith(("http://", "https://")):
         # Discord's API rejects a non-URL image value outright - caught here with a clear
         # cause instead of a raw "Discord-Fehler:" surfacing the API's own wording.
@@ -5440,6 +5449,9 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Zu+viele+Embeds+(max.+10)", status_code=302)
     if any(len(b) > 3900 for b in blocks):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Ein+Embed+ist+zu+lang+(max.+3900+Zeichen)", status_code=302)
+    # Same combined-total check as embed_post_create - see the comment there.
+    if sum(len(b) for b in blocks) + len(footer_text) > 5900:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Alle+Embeds+zusammen+sind+zu+lang+(max.+5900+Zeichen+insgesamt)", status_code=302)
     if image_url and not image_url.startswith(("http://", "https://")):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Bild-URL+muss+mit+http(s)://+beginnen", status_code=302)
     if len(footer_text) > 2048:
