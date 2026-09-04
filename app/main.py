@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import calendar
 import datetime
 import email.mime.text
 import io
@@ -312,6 +313,26 @@ def _aware(dt_naive: datetime.datetime, tz) -> datetime.datetime:
     (the Android fallback). Plain .replace(tzinfo=pytz_tz) gives wrong UTC offsets; pytz needs
     .localize() instead. zoneinfo.ZoneInfo has no .localize, so this only branches under pytz."""
     return tz.localize(dt_naive) if hasattr(tz, "localize") else dt_naive.replace(tzinfo=tz)
+
+
+def _add_recurrence_interval(dt: datetime.datetime, recurrence: str) -> datetime.datetime:
+    """Advances a (timezone-aware) datetime by one event_series recurrence step. "monthly"
+    clamps the day to the target month's actual length (Jan 31 + 1 month -> Feb 28/29, not an
+    invalid Mar 3 rollover) instead of using a fixed day count, since months vary in length.
+    Duplicated (not imported) in cogs/scheduler.py, which is the actual caller - matches this
+    project's established pattern of small self-contained helpers over cross-module imports
+    between main.py and dynamically-loaded cogs (see e.g. _parse_ticket_blocks)."""
+    if recurrence == "daily":
+        return dt + datetime.timedelta(days=1)
+    if recurrence == "weekly":
+        return dt + datetime.timedelta(days=7)
+    if recurrence == "monthly":
+        month = dt.month + 1
+        year = dt.year + (month - 1) // 12
+        month = (month - 1) % 12 + 1
+        day = min(dt.day, calendar.monthrange(year, month)[1])
+        return dt.replace(year=year, month=month, day=day)
+    return dt
 
 
 def _fmt_dt(value) -> str:
@@ -3201,6 +3222,25 @@ def _add_event_send_at_fields(row: dict) -> None:
         row["send_at_edit"] = row["send_at"]
 
 
+def _add_series_next_start_display(row: dict) -> None:
+    """Same Europe/Berlin wall-clock storage convention as _add_event_send_at_fields above,
+    applied to event_series.next_start_at."""
+    try:
+        next_dt = _aware(datetime.datetime.fromisoformat(row["next_start_at"]), ZoneInfo("Europe/Berlin"))
+        row["next_start_display"] = next_dt.astimezone(_request_tz.get()).strftime("%d.%m.%Y %H:%M")
+    except ValueError:
+        row["next_start_display"] = row["next_start_at"]
+
+
+async def _event_series_list(guild_id) -> list[dict]:
+    rows = await db_rows(
+        "SELECT * FROM event_series WHERE guild_id=? AND active=1 ORDER BY next_start_at", (str(guild_id),)
+    )
+    for row in rows:
+        _add_series_next_start_display(row)
+    return rows
+
+
 async def _event_reminders_by_event(guild_id) -> dict[str, list[dict]]:
     rows = await db_rows(
         "SELECT * FROM scheduled_messages WHERE guild_id=? AND sent=0 AND event_id IS NOT NULL ORDER BY send_at",
@@ -3232,6 +3272,9 @@ async def events_create(request: Request, guild_id: int):
     location = form.get("location", "").strip()
     announce_channel_id = form.get("announce_channel_id", "")
     notify_end = form.get("notify_end") == "1"
+    recurrence = form.get("recurrence", "")
+    if recurrence not in ("daily", "weekly", "monthly"):
+        recurrence = ""
 
     reminders = []
     for off, msg in zip(form.getlist("reminder_offset"), form.getlist("reminder_message")):
@@ -3319,6 +3362,29 @@ async def events_create(request: Request, guild_id: int):
             await db_exec(
                 "INSERT INTO scheduled_messages (guild_id, channel_id, message, send_at, event_id) VALUES (?,?,?,?,?)",
                 (str(guild_id), announce_channel_id, _EVENT_END_MESSAGE, fire_at_end.strftime("%Y-%m-%dT%H:%M"), str(event.id)),
+            )
+
+    # User-requested ("ich will bei den events wiederholende sachen da auch eintragen können") -
+    # this first occurrence is created exactly as before; a series row just records everything
+    # needed to recreate the NEXT one (cogs/scheduler.py's periodic check does the actual
+    # recreating, see database.py's event_series migration comment for why - no native
+    # discord.py support to build on here).
+    if recurrence:
+        berlin_tz = ZoneInfo("Europe/Berlin")
+        duration_minutes = int((end_dt - start_dt).total_seconds() // 60) if end_dt else None
+        next_start = _add_recurrence_interval(start_dt, recurrence).astimezone(berlin_tz)
+        series_id = await db_insert(
+            "INSERT INTO event_series (guild_id, name, description, entity_type, channel_id, location, "
+            "duration_minutes, announce_channel_id, notify_end, recurrence, next_start_at, last_discord_event_id) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (str(guild_id), name, description, entity_type, channel_id, location, duration_minutes,
+             announce_channel_id, int(notify_end), recurrence,
+             next_start.strftime("%Y-%m-%dT%H:%M"), str(event.id)),
+        )
+        for off_min, msg in reminders:
+            await db_exec(
+                "INSERT INTO event_series_reminders (series_id, offset_minutes, message) VALUES (?,?,?)",
+                (series_id, off_min, msg),
             )
 
     return RedirectResponse(f"/servers/{guild_id}?tab=events&success=Event+erstellt", status_code=302)
@@ -3437,6 +3503,20 @@ async def events_delete(request: Request, guild_id: int, event_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Discord-Fehler:+{e.text}", status_code=302)
     await db_exec("DELETE FROM scheduled_messages WHERE event_id=? AND sent=0", (str(event_id),))
     return RedirectResponse(f"/servers/{guild_id}?tab=events&success=Event+gelöscht", status_code=302)
+
+
+@web.post("/servers/{guild_id}/events/series/delete/{series_id}")
+async def events_series_delete(request: Request, guild_id: int, series_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    # Only stops FUTURE occurrences from being created - deliberately does not touch the
+    # already-created current/most recent Discord event or its pending reminders, same
+    # "don't retroactively undo something already live" principle as e.g. deleting a ticket
+    # panel not affecting tickets already opened from it.
+    await db_exec("DELETE FROM event_series WHERE id=? AND guild_id=?", (series_id, str(guild_id)))
+    await db_exec("DELETE FROM event_series_reminders WHERE series_id=?", (series_id,))
+    return RedirectResponse(f"/servers/{guild_id}?tab=events&success=Wiederholung+beendet", status_code=302)
 
 
 # ── Temp Voice ────────────────────────────────────────────────────────────────
@@ -4522,6 +4602,7 @@ async def server_config(
         "birthdays": _birthdays,
         "events_list": sorted(guild.scheduled_events, key=lambda e: e.start_time),
         "event_reminders": await _event_reminders_by_event(guild_id),
+        "event_series": await _event_series_list(guild_id),
     })
 
 

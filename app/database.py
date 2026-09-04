@@ -493,6 +493,44 @@ async def init_db():
                 joined_at TEXT NOT NULL,
                 PRIMARY KEY (guild_id, user_id, reminder_id)
             )""",
+            # User-requested ("ich will bei den events wiederholende sachen da auch eintragen
+            # können") - Discord's own native recurring-event field (recurrence_rule) is still
+            # unsupported by discord.py even as of its latest release (Rapptz/discord.py#9685,
+            # open since 2024, unmerged) - checked directly against the library's GitHub repo
+            # before building this, an upgrade would not have helped. This table instead drives
+            # a bot-side workaround: cogs/scheduler.py periodically creates a fresh one-off
+            # Discord scheduled event whenever `next_start_at` is reached, then advances it by
+            # one recurrence interval - functionally recurring, without ever depending on
+            # Discord's own (nonexistent) recurrence support. Everything needed to recreate the
+            # NEXT occurrence's `create_scheduled_event()` call lives here; `duration_minutes`
+            # (not an absolute end_at) so a fresh end_time can be derived relative to each new
+            # occurrence's own start instead of drifting toward a single fixed original end.
+            """CREATE TABLE IF NOT EXISTS event_series (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                entity_type TEXT NOT NULL,
+                channel_id TEXT NOT NULL DEFAULT '',
+                location TEXT NOT NULL DEFAULT '',
+                duration_minutes INTEGER,
+                announce_channel_id TEXT NOT NULL DEFAULT '',
+                notify_end INTEGER NOT NULL DEFAULT 0,
+                recurrence TEXT NOT NULL,
+                next_start_at TEXT NOT NULL,
+                last_discord_event_id TEXT NOT NULL DEFAULT '',
+                active INTEGER NOT NULL DEFAULT 1
+            )""",
+            # Reminder TEMPLATES (offset+message), copied from the series' first occurrence at
+            # creation time - re-instantiated as fresh scheduled_messages rows (with a fresh
+            # event_id) for every future occurrence the series creates, per explicit request
+            # ("Ja, automatisch mitübernehmen").
+            """CREATE TABLE IF NOT EXISTS event_series_reminders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                series_id INTEGER NOT NULL,
+                offset_minutes INTEGER NOT NULL,
+                message TEXT NOT NULL
+            )""",
         ]:
             try:
                 await db.execute(col)

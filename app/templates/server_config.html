@@ -1445,9 +1445,13 @@ function toggleScheduledEdit(id) {
       <div style="font-weight:600;">{{ tr.events_info_announce_title }}</div>
       <div style="color:var(--muted);">{{ tr.events_info_announce_example }}</div>
     </div>
-    <div>
+    <div style="margin-bottom:0.6rem;">
       <div style="font-weight:600;">{{ tr.events_info_reminder_title }}</div>
       <div style="color:var(--muted);">{{ tr.events_info_reminder_example }}</div>
+    </div>
+    <div>
+      <div style="font-weight:600;">{{ tr.events_info_recurrence_title }}</div>
+      <div style="color:var(--muted);">{{ tr.events_info_recurrence_example }}</div>
     </div>
     <div style="margin-top:0.6rem;color:var(--muted);font-size:0.72rem;">{{ tr.events_info_footer }}</div>
   </div>
@@ -1557,6 +1561,34 @@ function toggleScheduledEdit(id) {
   </table>
   {% endif %}
 
+  {% if event_series %}
+  <div style="font-weight:600;font-size:0.85rem;margin-bottom:0.5rem;">{{ tr.events_series_title }}</div>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:1.25rem;">
+    <thead>
+      <tr style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;">
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.label_name }}</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.events_series_col_recurrence }}</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.events_series_col_next }}</th>
+        <th style="padding:0.4rem 0.5rem;"></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for s in event_series %}
+    <tr style="border-top:1px solid var(--border);font-size:0.85rem;">
+      <td style="padding:0.5rem;">🔁 {{ s.name }}</td>
+      <td style="padding:0.5rem;">{{ tr.get('events_recurrence_' + s.recurrence, s.recurrence) }}</td>
+      <td style="padding:0.5rem;white-space:nowrap;">{{ s.next_start_display }}</td>
+      <td style="padding:0.5rem;text-align:right;white-space:nowrap;">
+        <form method="post" action="/servers/{{ guild.id }}/events/series/delete/{{ s.id }}" style="margin:0;display:inline;" onsubmit="return confirm({{ tr.events_series_confirm_stop.replace('{name}', s.name) | js }})">
+          <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);" title="{{ tr.events_series_btn_stop }}">✕</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
   <form method="post" action="/servers/{{ guild.id }}/events/create">
     <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
       <div>
@@ -1606,6 +1638,15 @@ function toggleScheduledEdit(id) {
           <input type="checkbox" name="notify_end" value="1" onchange="evNotifyEndToggled(this)"> {{ tr.events_notify_end_label }}
         </label>
         <div style="font-size:0.75rem;color:var(--muted);margin-top:0.15rem;">{{ tr.events_notify_end_hint }}</div>
+      </div>
+      <div style="grid-column:1/-1;">
+        <label style="font-size:0.82rem;">{{ tr.events_field_recurrence }} <span style="color:var(--muted);">{{ tr.events_recurrence_hint }}</span></label>
+        <select name="recurrence" style="max-width:260px;">
+          <option value="">{{ tr.events_recurrence_none }}</option>
+          <option value="daily">{{ tr.events_recurrence_daily }}</option>
+          <option value="weekly">{{ tr.events_recurrence_weekly }}</option>
+          <option value="monthly">{{ tr.events_recurrence_monthly }}</option>
+        </select>
       </div>
       <div style="grid-column:1/-1;">
         <label style="font-size:0.82rem;">{{ tr.events_field_reminders }} <span style="color:var(--muted);">{{ tr.events_reminders_hint }}</span></label>
