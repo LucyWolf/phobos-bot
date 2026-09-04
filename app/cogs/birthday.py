@@ -1,3 +1,7 @@
+"""Birthday reminders: "!geburtstag TT.MM" sets/clears a member's birthday, a daily check
+around 08:00 posts a congratulations message for anyone whose birthday matches today
+(birthday_sent tracks who's already been congratulated this year, cleared if the date is
+later corrected)."""
 import datetime
 import discord
 from discord.ext import commands, tasks

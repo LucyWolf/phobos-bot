@@ -1,3 +1,7 @@
+"""Kicks a member who still carries an admin-configured "not yet verified" marker role after
+a configurable grace period, sending one or more reminder DMs beforehand (auto_kick_reminders/
+auto_kick_sent). Only applies to members who joined after the feature was enabled. Configured
+via main.py's "Auto-Kick reminders" section."""
 import datetime
 import re
 

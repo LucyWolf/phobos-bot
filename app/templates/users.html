@@ -1,3 +1,7 @@
+{# Admin-only global user management: create/deactivate dashboard accounts, set a moderator's
+   role/email, and grant/revoke access to individual guilds here. The per-guild mirror of that
+   last part (grant/revoke for ONE specific server) lives in server_config.html's own
+   "Server User Access" tab instead. #}
 {% extends "base.html" %}
 
 {% block title %}{{ app_name }} – Benutzerverwaltung{% endblock %}

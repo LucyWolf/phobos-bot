@@ -1,3 +1,6 @@
+{# Bot name/avatar editor (main.py's "Bot Design" section, admin-only). With multiple bot
+   tokens, edits the token that serves whichever guild_id is in the query string (defaults to
+   the first connected one); Discord allows only 2 name/avatar changes per hour per token. #}
 {% extends "base.html" %}
 
 {% block title %}{{ app_name }} – {{ tr.nav_bot_design }}{% endblock %}

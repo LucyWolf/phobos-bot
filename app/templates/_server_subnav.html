@@ -1,7 +1,11 @@
 {% macro server_subnav(guild_id, active_page='', enabled_features=none) %}
-{# enabled_features=none (not passed) falls back to "show everything" - keeps every OTHER
-   caller safe even if a template forgets to pass it, rather than silently hiding every
-   optional tab for anyone who does. #}
+{# Sidebar sub-navigation shared by server_config.html and its standalone sibling pages
+   (freestuff.html, notifications.html, server_log.html, bot_design.html - anywhere that
+   belongs "inside" one specific guild). Labels here are hardcoded German by design, mirroring
+   _SERVER_CONFIG_TAB_LABELS in main.py (that one's German too) - keep both in sync if a tab
+   is ever renamed. enabled_features=none (not passed) falls back to "show everything" - keeps
+   every OTHER caller safe even if a template forgets to pass it, rather than silently hiding
+   every optional tab for anyone who does. #}
 <div class="server-subnav">
   <a href="/servers/{{ guild_id }}?tab=config"     class="ssnav-item {% if active_page == 'config' %}active{% endif %}">⚙️ Config</a>
   {% if enabled_features is none or 'automod' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=automod"    class="ssnav-item {% if active_page == 'automod' %}active{% endif %}">🛡️ Spam-Schutz</a>{% endif %}

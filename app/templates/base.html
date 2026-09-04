@@ -1,3 +1,8 @@
+<!-- Shared layout every logged-in page extends ({% extends "base.html" %}): sidebar nav,
+     theme CSS, the "title"/"page_title"/"content" blocks pages override. Sidebar
+     collapsed-state and which nav group is open are rendered server-side from
+     users.sidebar_collapsed/nav_settings_open (POST /profile/ui-state keeps them updated) -
+     not localStorage, so the state follows the account across devices/browsers. -->
 <!DOCTYPE html>
 <html lang="de">
 <head>

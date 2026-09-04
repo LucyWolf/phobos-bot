@@ -1,3 +1,6 @@
+{# Admin-only, "Token Management" in main.py: add/rename/enable-disable Discord bot tokens.
+   Each enabled token runs its own bot connection (BotManager) and can serve a different set
+   of guilds - this is what makes the whole multi-bot-instance setup possible. Not i18n'd. #}
 {% extends "base.html" %}
 {% block title %}{{ app_name }} – Bot-Tokens{% endblock %}
 {% block page_title %}🔑 Bot-Tokens{% endblock %}

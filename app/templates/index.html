@@ -1,3 +1,6 @@
+{# The "/" home page (main.py's dashboard() route) - recent mod actions + guild overview,
+   scoped to what the logged-in user can see (all guilds for admins, only their own for
+   moderators). #}
 {% extends "base.html" %}
 {% block title %}{{ app_name }} – Dashboard{% endblock %}
 {% block page_title %}📊 Dashboard{% endblock %}

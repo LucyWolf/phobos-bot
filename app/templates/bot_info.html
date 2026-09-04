@@ -1,3 +1,6 @@
+{# Status/uptime/CPU-RAM page, open to any logged-in user (not admin-only). Polls
+   GET /bot/info/stats for live updates; on Android falls back to reading /proc directly
+   since psutil has no prebuilt wheel there - see main.py's _proc_stats(). #}
 {% extends "base.html" %}
 
 {% block title %}{{ app_name }} – Bot-Info{% endblock %}

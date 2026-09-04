@@ -1,3 +1,7 @@
+"""Server event log (joins/leaves, bans, role changes, message edits/deletes, voice/channel
+events, boosts, ...). Every event writes to server_logs (shown on the dashboard's Log page,
+pruned to the last 200 rows per guild) and optionally posts live to a configured Discord
+channel too."""
 import asyncio
 import datetime
 import discord

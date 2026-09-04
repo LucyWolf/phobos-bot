@@ -1,3 +1,5 @@
+"""Auto-created temporary voice channels: joining a configured trigger channel spawns a new
+voice channel from a name template (e.g. "{user}'s Room #{count}"), auto-deleted once empty."""
 import datetime
 import discord
 from discord.ext import commands

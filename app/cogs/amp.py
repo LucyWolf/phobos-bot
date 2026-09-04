@@ -1,3 +1,9 @@
+"""CubeCoders AMP gameserver integration. Detects every instance managed by an AMP ADS
+controller (not just a single legacy connection), exposes /gameserver-status/-start/-stop/
+-restart slash commands plus dashboard buttons for each, and lets an admin give each instance
+its own custom per-guild slash commands (e.g. "/wa-start") synced live via guild-scoped
+commands rather than the slow global sync. See main.py's "AMP Gameserver" section for the
+dashboard routes that call into this cog."""
 from __future__ import annotations
 
 import asyncio

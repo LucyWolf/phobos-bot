@@ -1,3 +1,5 @@
+"""Core moderation slash commands: /warn, /kick, /ban, /unban, /timeout, /clear. Every action
+logs to mod_actions via database.log_mod_action() (shown on the dashboard home page)."""
 import datetime
 import discord
 from discord import app_commands

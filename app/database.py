@@ -1,3 +1,23 @@
+"""SQLite access layer - a handful of generic query helpers, then init_db() which both
+creates the schema on a fresh install AND runs every later migration on an existing one.
+
+Layout of this file, top to bottom:
+  - db_rows/db_one/db_exec/db_exec_rowcount/db_insert - generic query helpers used
+    everywhere else in the app instead of raw aiosqlite calls
+  - get_config/set_config, get_guild_config/set_guild_config/get_all_guild_config -
+    thin wrappers around the "config" (global) and "guild_configs" (per-server) key/value
+    tables that most features store their settings in
+  - init_db() - the original CREATE TABLE statements (two executescript() blocks, then a
+    few standalone db.execute() calls) for the tables that existed from early on, followed
+    by a long list of ALTER TABLE / later CREATE TABLE statements, each run individually in
+    its own try/except so an already-applied migration on an existing install is a silent
+    no-op instead of crashing startup. New tables/columns always go at the END of that list,
+    never edited into the original CREATE TABLE - that's what keeps this idempotent across
+    every existing deployment. Most entries carry their own comment explaining which user
+    request/feature they belong to - grep for a feature name (e.g. "embed_posts") to find it.
+  - log_mod_action() - shared helper for writing to "mod_actions", used by every
+    moderation-style command across the cogs (warn/kick/ban/timeout/...)
+"""
 import os
 import aiosqlite
 from pathlib import Path
@@ -90,6 +110,7 @@ async def get_all_guild_config(guild_id: int) -> dict:
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript("""
+            -- Core dashboard state: global settings, dashboard accounts, per-guild settings
             CREATE TABLE IF NOT EXISTS config (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -107,6 +128,8 @@ async def init_db():
                 value TEXT NOT NULL,
                 PRIMARY KEY (guild_id, key)
             );
+
+            -- Moderation: /warn, /kick, /ban etc. all log to mod_actions; warnings is just /warn
             CREATE TABLE IF NOT EXISTS mod_actions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 action TEXT NOT NULL,
@@ -126,6 +149,8 @@ async def init_db():
                 reason TEXT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             );
+            -- Leveling (cogs/leveling.py): one row per member per guild, chat XP only here -
+            -- voice_xp/voice_level/voice_minutes were added much later, see the migration list
             CREATE TABLE IF NOT EXISTS levels (
                 user_id INTEGER NOT NULL,
                 guild_id INTEGER NOT NULL,
@@ -134,6 +159,8 @@ async def init_db():
                 messages INTEGER DEFAULT 0,
                 PRIMARY KEY (user_id, guild_id)
             );
+
+            -- Reaction Roles (cogs/reaction_roles.py)
             CREATE TABLE IF NOT EXISTS reaction_roles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id INTEGER NOT NULL,
@@ -142,6 +169,8 @@ async def init_db():
                 emoji TEXT NOT NULL,
                 role_id INTEGER NOT NULL
             );
+
+            -- Custom Commands (cogs/custom_commands.py): admin-defined "!trigger" -> response
             CREATE TABLE IF NOT EXISTS custom_commands (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id INTEGER NOT NULL,
@@ -149,6 +178,9 @@ async def init_db():
                 response TEXT NOT NULL,
                 UNIQUE(guild_id, trigger)
             );
+
+            -- Tickets (cogs/tickets.py): one row per open/closed ticket channel; the panel
+            -- config itself (name/description/button/etc.) is ticket_panels, added later
             CREATE TABLE IF NOT EXISTS tickets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id INTEGER NOT NULL,
@@ -157,6 +189,8 @@ async def init_db():
                 status TEXT DEFAULT 'open',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
+
+            -- Giveaways (cogs/giveaways.py)
             CREATE TABLE IF NOT EXISTS giveaways (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id INTEGER NOT NULL,
@@ -168,6 +202,9 @@ async def init_db():
                 ended INTEGER DEFAULT 0,
                 created_by INTEGER NOT NULL
             );
+
+            -- Free Stuff (cogs/freestuff.py): free-game alerts; deal-related columns
+            -- (deal_max_price/deal_channel_id/...) were added later, see migration list
             CREATE TABLE IF NOT EXISTS freestuff_channels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL UNIQUE,
@@ -180,6 +217,8 @@ async def init_db():
                 platform TEXT NOT NULL,
                 PRIMARY KEY (guild_id, game_id, platform)
             );
+
+            -- Notifications (cogs/notifications.py): Twitch live-stream alerts
             CREATE TABLE IF NOT EXISTS notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL,
@@ -194,6 +233,7 @@ async def init_db():
             );
         """)
         await db.executescript("""
+            -- Server Log (cogs/logging_cog.py): one row per logged Discord event
             CREATE TABLE IF NOT EXISTS server_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL,
@@ -202,6 +242,8 @@ async def init_db():
                 description TEXT DEFAULT '',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
+
+            -- Dashboard auth / multi-bot-token / access control
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
                 token TEXT PRIMARY KEY,
                 user_id INTEGER NOT NULL,
@@ -234,7 +276,12 @@ async def init_db():
                     )
         except Exception:
             pass
-        # Column migrations for existing installs
+        # Feature tables added after the two executescript() blocks above, each as its own
+        # db.execute() call - one CREATE TABLE per statement, in the order the feature shipped:
+        # invite_codes, ticket_panels, auto_delete_channels/_pending, automod_word_presets,
+        # level_roles, level_rewards, temp_voice_config/_active, scheduled_messages,
+        # birthdays/_sent, twitch_apis/_access. The actual ALTER TABLE column migrations start
+        # further down, at "for col in [".
         await db.execute("""
             CREATE TABLE IF NOT EXISTS invite_codes (
                 code TEXT PRIMARY KEY,
@@ -380,6 +427,13 @@ async def init_db():
                 )
         except Exception:
             pass
+        # ── Migration list ──────────────────────────────────────────────────────────
+        # Everything from here on is ALTER TABLE (add a column to an existing table) or
+        # CREATE TABLE (a whole new feature table) mixed together in chronological order -
+        # each entry runs individually in its own try/except a few lines below, so an
+        # already-applied one on an existing install just fails silently and moves on. Add
+        # new entries at the END of this list, never edit an earlier one in place - most
+        # carry their own short comment naming the feature/user-request they belong to.
         for col in [
             "ALTER TABLE tickets ADD COLUMN panel_id INTEGER",
             "ALTER TABLE freestuff_channels ADD COLUMN deal_max_price REAL",

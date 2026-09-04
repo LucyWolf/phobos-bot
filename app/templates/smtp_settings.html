@@ -1,3 +1,6 @@
+{# Admin-only outgoing-mail config, used only for password-reset emails (main.py's
+   "SMTP Settings" section / _send_reset_email). Provider dropdown just auto-fills the
+   host/port fields client-side - no server-side effect. #}
 {% extends "base.html" %}
 {% block title %}{{ app_name }} – E-Mail / SMTP{% endblock %}
 {% block page_title %}📧 E-Mail / SMTP{% endblock %}

@@ -1,3 +1,15 @@
+{# The big per-guild "/servers/{id}" config page (main.py's "Server Config" section builds
+   ALL of the context below in one go, even though only one tab is visible at a time). Every
+   "<!-- TAB: Name -->"-headed tab-pane div (id="pane-X") is a flat, top-level sibling in this
+   file, never nested inside another one (see the .tab-pane/.active CSS below and the TABS
+   array further down for why nesting silently hides a tab). Search for a tab's own
+   "<!-- TAB: ... -->" header to jump straight to it:
+     Konfiguration, Spam-Schutz (Auto-Mod), Leveling, Reaction Roles, Custom Commands,
+     Tickets, Giveaways, Warnungen, Benutzer (Admin only), Temp Voice, Geplante Nachrichten,
+     Discord-Events, Geburtstage, Auto-Kick, Auto-Delete, AMP Gameserver, Embed-Nachrichten
+   Which tabs actually show in the sidebar for a given guild is controlled by
+   enabled_features (see _server_subnav.html) - a tab's HTML is always rendered here
+   regardless, just not linked to. #}
 {% extends "base.html" %}
 
 {% block title %}{{ guild.name }} – Verwaltung{% endblock %}

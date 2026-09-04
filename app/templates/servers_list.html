@@ -1,3 +1,6 @@
+{# "/servers" overview: every guild the bot is actually connected to (live from bot.guilds,
+   not cached) that this user can access, plus a per-server "🔄 Neu einladen" button locked to
+   that one guild via Discord's own OAuth params. Each card links into server_config.html. #}
 {% extends "base.html" %}
 
 {% block title %}{{ app_name }} – Server{% endblock %}

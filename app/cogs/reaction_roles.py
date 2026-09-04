@@ -1,3 +1,6 @@
+"""Reaction-role messages: react with an emoji on a tracked message to get/lose a role.
+Managed via /reactionrole-add/-remove/-list or the dashboard "Reaction Roles" tab - adding one
+also actually places the reaction on the Discord message, not just a DB row."""
 import discord
 from discord import app_commands
 from discord.ext import commands

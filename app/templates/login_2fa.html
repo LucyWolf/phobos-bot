@@ -1,3 +1,8 @@
+<!-- Second login step, only reached after a correct password when the account has 2FA enabled
+     (main.py's login_2fa_page/login_2fa_submit, GET/POST /login/2fa). Session carries
+     pending_2fa_user_id, deliberately separate from the real user_id used everywhere else -
+     no dashboard access until this step also succeeds. 5 wrong codes locks the account
+     15 minutes, tracked in the DB (users.totp_fail_count/totp_locked_until), not the session. -->
 <!DOCTYPE html>
 <html lang="de">
 <head>

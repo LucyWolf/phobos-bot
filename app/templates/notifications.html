@@ -1,3 +1,6 @@
+{# Per-guild Twitch streamer list + which announce channel/Twitch API app to use (main.py's
+   "Notifications" section, cogs/notifications.py polls Helix). The Twitch API app itself
+   (client ID/secret) is managed separately, admin-only, in notif_settings.html. #}
 {% extends "base.html" %}
 
 {% block title %}{{ app_name }} – Streaming{% endblock %}

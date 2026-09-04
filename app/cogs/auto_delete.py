@@ -1,3 +1,6 @@
+"""Deletes messages posted in admin-configured channels after a delay (5 minutes to 7 days).
+Pending deletions are persisted to auto_delete_pending so they survive a bot restart - see
+_resume_pending()/on_ready. Configured via main.py's "Auto-Delete" section."""
 import asyncio
 import datetime
 import discord

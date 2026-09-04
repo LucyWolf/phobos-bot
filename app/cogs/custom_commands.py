@@ -1,3 +1,6 @@
+"""Admin-defined "!trigger" -> response text commands, manageable via /addcommand, /delcommand,
+/commands, or the "Custom Commands" dashboard tab. Trigger can't collide with a real bot
+command (checked dynamically against self.bot.commands)."""
 import discord
 from discord import app_commands
 from discord.ext import commands

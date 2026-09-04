@@ -1,3 +1,6 @@
+"""Welcome/leave messages (with an optional generated welcome-card image, see _make_card()) and
+autorole on join. Both the welcome message and the autorole assignment run independently of
+each other - a server with no welcome channel configured still gets autorole."""
 import io
 import re
 import discord

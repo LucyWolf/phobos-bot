@@ -1,3 +1,6 @@
+"""Giveaways via /giveaway-start, /giveaway-reroll (or the dashboard). Winners are drawn from
+message reactors, excluding anyone in winner_ids from prior rerolls so a reroll can't just
+re-pick the same person."""
 import asyncio
 import datetime
 import random

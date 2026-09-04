@@ -1,3 +1,7 @@
+"""Twitch live-stream notifications (Streaming tab). Polls the Helix API every few minutes per
+registered Twitch API (twitch_apis/twitch_api_access - multiple dashboard users/servers can
+share one app's client ID+secret) and posts an embed with a cache-busted thumbnail URL when a
+tracked streamer goes live."""
 from __future__ import annotations
 
 import asyncio

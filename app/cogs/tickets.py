@@ -1,3 +1,9 @@
+"""Ticket panels: a published panel posts a message with an "Open Ticket" button
+(PanelButton/OpenTicketView) that creates a private channel per ticket. close_ticket_channel()
+either deletes the channel or moves it to an archive category, shared by the in-channel close
+button, /ticket-close, and the dashboard's close route. _parse_ticket_blocks() here mirrors
+main.py's copy of the same function (kept separate to avoid a circular import, since main.py
+already imports from this module)."""
 import json
 import re
 

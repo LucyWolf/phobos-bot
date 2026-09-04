@@ -1,3 +1,8 @@
+"""Two things share this cog because they both send a message at a future time: one-off
+scheduled_messages (the "Geplant" tab), and Discord Event reminders/recurrence - since
+discord.py has no native support for Discord's recurrence_rule, a "recurring" event is faked
+by recreating the next single occurrence via event_series/event_series_reminders once the
+current one starts."""
 import calendar
 import datetime
 try:

@@ -1,3 +1,6 @@
+"""Free-game and deal alerts (Free Stuff & Deals tab). Polls GamerPower (free games across 10
+platforms) and CheapShark (real discounts on the 5 platforms it covers: Steam/GOG/Humble/
+Fanatical/GMG) hourly, posts new items to a configured channel, deduped via freestuff_posted."""
 from __future__ import annotations
 
 import asyncio

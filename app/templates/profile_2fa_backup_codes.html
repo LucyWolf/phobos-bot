@@ -1,3 +1,6 @@
+{# Shows the 8 one-time 2FA backup codes, either right after initial setup or after
+   regenerating them from the profile page (main.py's profile_2fa_setup_confirm /
+   profile_2fa_backup_codes_regenerate) - codes are only ever shown once, right here. #}
 {% extends "base.html" %}
 {% block title %}{{ app_name }} – Backup-Codes{% endblock %}
 {% block page_title %}🔑 Backup-Codes{% endblock %}

@@ -1,3 +1,6 @@
+{# Own-account settings (main.py's "Profile" section): password, language, timezone, avatar,
+   and the 2FA enable/disable entry point (setup itself lives in profile_2fa_setup.html /
+   profile_2fa_backup_codes.html). #}
 {% extends "base.html" %}
 {% block title %}{{ app_name }} – {{ tr.nav_profile }}{% endblock %}
 {% block page_title %}👤 {{ tr.nav_profile }}{% endblock %}

@@ -1,3 +1,7 @@
+{# Admin-only, "Update Check" section in main.py. Shows the current vs. latest GitHub version
+   and triggers the platform-specific updater on confirm: git pull + process restart under
+   Docker/Termux, or an APK download + install-dialog trigger under Android (see
+   _do_git_update()/_do_android_update() and IS_ANDROID). #}
 {% extends "base.html" %}
 
 {% block title %}{{ app_name }} – Updates{% endblock %}

@@ -1,3 +1,6 @@
+"""Spam/link/word filter (Spam-Schutz tab). Deletes matching messages and applies an
+admin-configured action (warn/timeout/kick/ban) - see _punish(). Word categories shown as
+"+"-buttons in the dashboard come from automod_word_presets, not hardcoded here."""
 import datetime
 import re
 import time

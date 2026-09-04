@@ -1,3 +1,7 @@
+{# Admin-only: register Twitch API apps (client ID+secret from dev.twitch.tv) and share access
+   to them with specific dashboard users (twitch_apis/twitch_api_access). Per-guild streamer
+   lists that actually USE one of these apps live in notifications.html instead. Not
+   i18n'd (hardcoded German), unlike most of the dashboard. #}
 {% extends "base.html" %}
 
 {% block title %}{{ app_name }} – Streaming-API{% endblock %}

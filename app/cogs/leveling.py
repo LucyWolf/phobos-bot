@@ -1,3 +1,7 @@
+"""Chat + voice XP/leveling. Chat and voice progress are fully separate (own XP, own level,
+own configurable curve) - a level-role reacts to whichever track reaches it first. /rank,
+/leaderboard, /setxp. xp_for_level()/level_from_xp()/cumulative_xp_for_level() are also
+imported directly by main.py's dashboard leaderboard route."""
 from __future__ import annotations
 
 import random

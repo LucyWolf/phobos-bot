@@ -1,3 +1,61 @@
+"""Phobos Bot - dashboard + web server (FastAPI) and the Discord bot process itself.
+
+Everything below is grouped under "# ── Section Name ──" header comments, in the order
+listed here - search for one (e.g. "── AMP Gameserver") to jump straight to it instead of
+scrolling. Route groups generally follow the shape: GET page -> POST save/add -> POST edit ->
+POST delete, mirroring the dashboard tab they belong to.
+
+  Discord Bot                 - BotManager (multi-token registry), per-token connect/reconnect
+                                loop, run_bot() startup
+  Web UI                      - shared Jinja filters (dt/dtlocal/js/jsraw/log_bar_class), the
+                                global error handler, and the core auth/guild-access helpers
+                                (session, auth_redirect, admin_redirect, _guild_access,
+                                _guild_list) used by nearly every route below
+  Auth                        - login, 2FA verification, logout
+  Profile                     - own-account settings: password, language, timezone, avatar,
+                                2FA
+  Backup / Restore            - full/per-user/per-guild JSON export + import
+                                (_BACKUP_FEATURE_TABLES/_BACKUP_TBL_INSERT list every table a
+                                guild backup covers - add new feature tables there)
+  Password Reset              - forgot-password email flow
+  Dashboard                   - the "/" home page (recent mod actions, guild overview)
+  Settings                    - Discord bot token, default app name/avatar
+  Bot Design                  - bot name/avatar editor (per guild if multi-token, else global)
+  Bot Info                    - status/uptime/system-stats page
+  Update Check                - GitHub-version polling + the git/Docker or Android in-app
+                                updater
+  Invite / Self-Registration  - admin invite links, self-service signup via a code
+  AMP Gameserver              - CubeCoders AMP connection + per-instance custom Discord
+                                commands
+  Free Stuff                  - free-game/deal channel config (Epic/Steam/GOG/...)
+  Auto-Delete                 - scheduled message deletion per channel
+  Scheduled Messages          - one-off messages sent at a future time
+  Discord Events              - native Discord scheduled events + reminders + recurrence
+  Temp Voice                  - auto-created temporary voice channels
+  Notifications               - Twitch live-stream alerts
+  SMTP Settings               - outgoing mail config (used for password resets)
+  Token Management            - add/rename/enable/disable Discord bot tokens
+  User Email                  - per-user email address (admin-set, used for password resets)
+  Servers List                - the "/servers" overview page
+  Leaderboard                 - standalone "/leaderboard" page + its XP-curve helper
+  Server Config               - the big per-guild "/servers/{id}" page: gathers every tab's
+                                data for the GET route, plus the generic multi-tab save route
+  Auto-Kick reminders         - reminder DMs sent before the auto-kick tab's kick delay fires
+  Auto-Mod word-list presets  - reusable "+"-button word categories for the banned-words field
+  Level roles                 - level-threshold -> role assignments
+  Level rewards               - level-threshold -> free-text prize announcements
+  Reset a member's XP         - dashboard XP wipe for one member
+  Ticket Panels               - ticket panel CRUD, publish/unpublish, block-parsing helpers
+                                shared with Embed Posts below
+  Embed Posts                 - standalone multi-block embed messages, editable after posting
+  Server User Access          - grant/revoke one moderator's access to one specific guild
+  Reaction Roles              - reaction-role message CRUD
+  Custom Commands             - admin-defined "!trigger" -> response text
+  Giveaways                   - start/end/reroll a giveaway from the dashboard
+  Warnings                    - clear a member's warnings
+  API                         - small JSON endpoints used by the dashboard's own JS
+  Startup                     - app init, static asset routes, uvicorn entrypoint
+"""
 from __future__ import annotations
 
 import asyncio
