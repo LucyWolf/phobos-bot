@@ -2334,11 +2334,9 @@ function updateAmpCmdPreview(id, action, value) {
 }
 </script>
 
-<!-- User-requested standalone feature ("ich will damit texte in schanels dort eintragen ...
-     wo ich die chanels auswählen kann und der das dan einbettet") - was accidentally nested
-     INSIDE pane-amp on first ship (v1.14.67): its own tab-pane never got .active because the
-     PARENT pane-amp (lacking .active) sat at display:none, hiding this child regardless of
-     its own active class. Moved here as a proper sibling. -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Embed-Nachrichten                                               -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-embeds">
 <div style="position:relative;margin-bottom:1.25rem;">
   <button type="button" onclick="toggleEmbedsInfo()" title="{{ tr.embeds_info_tooltip }}"
