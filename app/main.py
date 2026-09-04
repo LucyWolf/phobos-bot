@@ -4972,16 +4972,17 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     emoji = form.get("emoji", "🎫")
     support_role_id = form.get("support_role_id", "")
     category_id = form.get("category_id", "")
-    # User-requested ("mehre text felder ... mach ein +") - the single description field is
-    # now several "+"-addable lines, joined back into one multi-line string. Each line is
-    # stripped individually (trims stray whitespace from typing/pasting) but blank lines are
-    # kept - lets an admin add a deliberate paragraph break between two lines. Same treatment
-    # for ticket_message (added right after, "das mann in den tiket eine eigene nachricht
-    # verfassen kann") - previously the SAME description text was reused verbatim inside every
-    # newly created ticket (cogs/tickets.py's _create_ticket), now it's its own independent
-    # field so a long panel-advertisement text doesn't have to be repeated inside the ticket.
-    description = "\n".join(l.strip() for l in form.getlist("description_line"))
-    ticket_message = "\n".join(l.strip() for l in form.getlist("ticket_message_line"))
+    # Both are plain multi-line <textarea> fields (main.py reads them verbatim, no per-line
+    # splitting/rejoining) - an earlier "+"-addable-lines-list version (v1.14.57/59) turned out
+    # to mangle any already richly formatted, multi-paragraph text pasted in wholesale (each of
+    # its own newlines became a separate row instead of showing the text as it was actually
+    # saved) - reverted back to one plain textarea per field on direct user feedback.
+    # ticket_message is independent of description (added right after, "das mann in den tiket
+    # eine eigene nachricht verfassen kann") - previously the SAME description text was reused
+    # verbatim inside every newly created ticket (cogs/tickets.py's _create_ticket), now it's
+    # its own field so a long panel-advertisement text doesn't have to repeat inside the ticket.
+    description = form.get("description", "")
+    ticket_message = form.get("ticket_message", "")
     if support_role_id and support_role_id not in {str(ro.id) for ro in guild.roles}:
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Rolle", status_code=302)
     if category_id and category_id not in {str(c.id) for c in guild.categories}:
