@@ -986,6 +986,8 @@ _BACKUP_FEATURE_TABLES = [
     # its whole purpose is transferring a server's configuration onto another guild (e.g. the
     # planned hosting model, see phobos_hosting_business_model memory).
     "amp_configs", "amp_instance_commands",
+    # Same gap, same fix, for Embed-Nachrichten posts - never added when the feature shipped.
+    "embed_posts",
 ]
 
 # Shared between the full-backup restore (/admin/backup/restore) and the per-server restore
@@ -1052,6 +1054,14 @@ _BACKUP_TBL_INSERT = {
         "VALUES (:guild_id,:instance_id,'',:start_name,:stop_name,:restart_name) "
         "ON CONFLICT(guild_id,instance_id) DO UPDATE SET start_name=excluded.start_name, "
         "stop_name=excluded.stop_name, restart_name=excluded.restart_name",
+    # message_id is deliberately NOT restored (left at its table default '') - same reasoning
+    # as ticket_panels above: a backed-up post could easily point at a Discord message that no
+    # longer exists by restore time. embed_post_update() already knows how to (re)post fresh
+    # for a row with an empty message_id, so the very next edit through the dashboard puts a
+    # real message behind it instead of silently saving content with nothing live in Discord.
+    "embed_posts":
+        "INSERT INTO embed_posts (guild_id,name,channel_id,content,image_url,footer_text) "
+        "VALUES (:guild_id,:name,:channel_id,:content,:image_url,:footer_text)",
 }
 
 
@@ -5458,7 +5468,9 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
         new_message_id = str(msg.id)
     else:
         ch = guild.get_channel(int(channel_id)) if channel_id else None
-        if ch and post["message_id"]:
+        if not ch:
+            return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Kanal+nicht+gefunden", status_code=302)
+        if post["message_id"]:
             try:
                 msg = await ch.fetch_message(int(post["message_id"]))
                 await msg.edit(embeds=embeds)
@@ -5472,6 +5484,15 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
                     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
             except Exception as e:
                 return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e}", status_code=302)
+        else:
+            # No live message yet - e.g. a post restored from a backup (message_id is never
+            # trusted across a restore, same as ticket_panels). Post it fresh instead of
+            # silently saving the new content with no actual Discord message behind it.
+            try:
+                msg = await ch.send(embeds=embeds)
+                new_message_id = str(msg.id)
+            except discord.HTTPException as e:
+                return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
     await db_exec(
         "UPDATE embed_posts SET name=?, channel_id=?, content=?, message_id=?, image_url=?, footer_text=? "
         "WHERE id=? AND guild_id=?",

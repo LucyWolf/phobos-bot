@@ -2436,6 +2436,7 @@ function updateAmpCmdPreview(id, action, value) {
                 <div>
                   <label>{{ tr.label_channel }}</label>
                   <select name="channel_id" required style="margin-bottom:0;">
+                    {% if not (channels | selectattr('id', 'equalto', ep.channel_id) | list) %}<option value="" selected disabled>{{ tr.tickets_channel_placeholder }}</option>{% endif %}
                     {% for ch in channels %}<option value="{{ ch.id }}" {% if ep.channel_id == ch.id|string %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
                   </select>
                 </div>
