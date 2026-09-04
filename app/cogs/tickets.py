@@ -125,11 +125,12 @@ class PanelButton(ui.Button):
             interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
             guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
         }
+        support_role = None
         if panel.get("support_role_id"):
             try:
-                role = guild.get_role(int(panel["support_role_id"]))
-                if role:
-                    overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+                support_role = guild.get_role(int(panel["support_role_id"]))
+                if support_role:
+                    overwrites[support_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
             except (ValueError, TypeError):
                 pass
 
@@ -170,13 +171,18 @@ class PanelButton(ui.Button):
                 if i == 0:
                     e.title = f"{panel.get('emoji', '🎫')} {panel['name']}"
                 embeds.append(e)
-            # User-reported ("die werden nicht gepinkt die leute") - a mention that only
-            # appears inside an embed's description does NOT trigger a real ping/notification
-            # for that user, by Discord's own design (embeds are meant for rich content, not
-            # notifications) - only a mention in the message's plain content does. The greeting
-            # mention used to sit inside the embed description above; moved out into `content`
-            # so the ticket creator actually gets notified, not just shown a clickable name.
-            await channel.send(content=interaction.user.mention, embeds=embeds, view=CloseTicketView())
+            # User-reported ("die werden nicht gepinkt die leute" / "die rolle sol gepinkt
+            # werden und der den tiket erstelt sol auch gepinkt werden") - a mention that only
+            # appears inside an embed's description does NOT trigger a real ping/notification,
+            # by Discord's own design (embeds are meant for rich content, not notifications) -
+            # only a mention in the message's plain content does. Both the ticket creator AND
+            # the panel's configured support role (if any - pinging is skipped entirely when no
+            # support role is set, same as the permission overwrite above) go into `content`,
+            # separate from the embeds which keep describing them in prose for readability.
+            ping = interaction.user.mention
+            if support_role:
+                ping += f" {support_role.mention}"
+            await channel.send(content=ping, embeds=embeds, view=CloseTicketView())
             await interaction.response.send_message(f"Ticket erstellt: {channel.mention}", ephemeral=True)
         except Exception as e:
             # If channel creation itself fails (missing "Manage Channels" permission, guild
