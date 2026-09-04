@@ -1,4 +1,4 @@
-<!-- Shared layout every logged-in page extends ({% extends "base.html" %}): sidebar nav,
+<!-- Shared layout every logged-in page extends via Jinja template inheritance: sidebar nav,
      theme CSS, the "title"/"page_title"/"content" blocks pages override. Sidebar
      collapsed-state and which nav group is open are rendered server-side from
      users.sidebar_collapsed/nav_settings_open (POST /profile/ui-state keeps them updated) -
