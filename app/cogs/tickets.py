@@ -1,7 +1,38 @@
+import json
+import re
+
 import discord
 from discord import app_commands, ui
 from discord.ext import commands
 from database import db_exec, db_one, db_rows
+
+
+def _fill_ticket_placeholders(text: str, member: discord.Member, guild: discord.Guild) -> str:
+    """Substitutes {user}/{server} in a single pass (not chained .replace() calls, which would
+    re-substitute a later placeholder's literal text if it happened to appear inside an earlier
+    substitution's value - the same bug class already fixed for welcome.py/automod.py/
+    auto_kick.py elsewhere in this project)."""
+    placeholders = {"{user}": member.mention, "{server}": guild.name}
+    return re.sub(
+        "|".join(re.escape(k) for k in placeholders), lambda m: placeholders[m.group(0)], text
+    )
+
+
+def _parse_ticket_blocks(raw) -> list:
+    """Mirrors main.py's _parse_ticket_blocks() exactly (duplicated rather than imported - main.py
+    already imports FROM this module, so importing back would be circular). A ticket_panels.
+    description/ticket_message value is either a legacy plain string (pre-dates the multi-embed
+    "+" feature - treated as a single block) or a JSON array of block strings, each of which
+    becomes its own Discord embed."""
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        if isinstance(data, list) and all(isinstance(b, str) for b in data):
+            return [b for b in data if b.strip()]
+    except (ValueError, TypeError):
+        pass
+    return [raw]
 
 
 class CloseTicketView(ui.View):
@@ -116,22 +147,36 @@ class PanelButton(ui.Button):
                 (guild.id, channel.id, interaction.user.id, panel_id),
             )
 
-            embed = discord.Embed(
-                title=f"{panel.get('emoji', '🎫')} {panel['name']}",
-                description=(
-                    f"Hallo {interaction.user.mention}!\n"
-                    # Own field since the dashboard split it from the panel's own advertisement
-                    # text ("description") - so a long panel message isn't repeated verbatim
-                    # inside every newly created ticket. Falls back to "description" only for
-                    # rows that predate this split (ticket_message empty from before the
-                    # database migration's one-time backfill, or a very old already-restored
-                    # backup) - never to a hardcoded default while a real description exists.
-                    + (panel.get("ticket_message") or panel.get("description")
-                       or "Beschreibe dein Anliegen und wir helfen dir so schnell wie möglich.")
-                ),
-                color=0x7C3AED,
-            )
-            await channel.send(embed=embed, view=CloseTicketView())
+            # ticket_message is its OWN field, split from the panel's advertisement text
+            # ("description") so a long panel message isn't repeated verbatim inside every
+            # newly created ticket. Falls back to "description" only for rows that predate this
+            # split (ticket_message empty from before the database migration's one-time
+            # backfill, or a very old already-restored backup) - never to a hardcoded default
+            # while a real description exists.
+            blocks = (_parse_ticket_blocks(panel.get("ticket_message"))
+                      or _parse_ticket_blocks(panel.get("description"))
+                      or ["Beschreibe dein Anliegen und wir helfen dir so schnell wie möglich."])
+            embeds = []
+            for i, block in enumerate(blocks[:10]):
+                # User-reported ("Hallo @Zerafi! {user}, your ticket has been created." - the
+                # admin had typed their own {user} placeholder expecting it to be substituted,
+                # same as the {user}/{server} placeholders already supported elsewhere in this
+                # project (welcome messages, Auto-Kick reminders) - there was no substitution at
+                # all before this, so it just showed up as literal, unreplaced text.
+                e = discord.Embed(
+                    description=_fill_ticket_placeholders(block, interaction.user, guild),
+                    color=0x7C3AED,
+                )
+                if i == 0:
+                    e.title = f"{panel.get('emoji', '🎫')} {panel['name']}"
+                embeds.append(e)
+            # User-reported ("die werden nicht gepinkt die leute") - a mention that only
+            # appears inside an embed's description does NOT trigger a real ping/notification
+            # for that user, by Discord's own design (embeds are meant for rich content, not
+            # notifications) - only a mention in the message's plain content does. The greeting
+            # mention used to sit inside the embed description above; moved out into `content`
+            # so the ticket creator actually gets notified, not just shown a clickable name.
+            await channel.send(content=interaction.user.mention, embeds=embeds, view=CloseTicketView())
             await interaction.response.send_message(f"Ticket erstellt: {channel.mention}", ephemeral=True)
         except Exception as e:
             # If channel creation itself fails (missing "Manage Channels" permission, guild

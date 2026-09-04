@@ -788,18 +788,34 @@ document.addEventListener('click', function(e) {
                 <div style="grid-column:1/-1;">
                   <label>{{ tr.tickets_description_label }}</label>
                   <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.tickets_description_hint }}</p>
-                  <textarea name="description" rows="6" placeholder="{{ tr.tickets_description_placeholder }}"
-                            style="margin:0;width:100%;box-sizing:border-box;background:var(--bg);color:var(--text);
-                                   border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.8rem;
-                                   font-size:0.875rem;line-height:1.5;resize:vertical;font-family:inherit;outline:none;">{{ p.description or '' }}</textarea>
+                  <div id="desc-blocks-{{ p.id }}">
+                    {% for block in p.description_blocks %}
+                    <div style="display:flex;gap:0.4rem;margin-bottom:0.4rem;align-items:flex-start;">
+                      <textarea name="description_block" rows="4" placeholder="{{ tr.tickets_description_placeholder if loop.first else '' }}"
+                                style="margin:0;flex:1;box-sizing:border-box;background:var(--bg);color:var(--text);
+                                       border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.8rem;
+                                       font-size:0.875rem;line-height:1.5;resize:vertical;font-family:inherit;outline:none;">{{ block }}</textarea>
+                      <button type="button" class="btn btn-danger" onclick="this.parentElement.remove()" style="padding:0.3rem 0.6rem;font-size:0.75rem;" title="{{ tr.btn_delete }}">✕</button>
+                    </div>
+                    {% endfor %}
+                  </div>
+                  <button type="button" class="btn btn-secondary" onclick="addTicketBlock('desc-blocks-{{ p.id }}', 'description_block')" style="font-size:0.75rem;padding:0.3rem 0.7rem;">{{ tr.tickets_add_embed }}</button>
                 </div>
                 <div style="grid-column:1/-1;">
                   <label>{{ tr.tickets_ticket_message_label }}</label>
                   <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.tickets_ticket_message_hint }}</p>
-                  <textarea name="ticket_message" rows="6" placeholder="{{ tr.tickets_ticket_message_placeholder }}"
-                            style="margin:0;width:100%;box-sizing:border-box;background:var(--bg);color:var(--text);
-                                   border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.8rem;
-                                   font-size:0.875rem;line-height:1.5;resize:vertical;font-family:inherit;outline:none;">{{ p.ticket_message or '' }}</textarea>
+                  <div id="ticket-msg-blocks-{{ p.id }}">
+                    {% for block in p.ticket_message_blocks %}
+                    <div style="display:flex;gap:0.4rem;margin-bottom:0.4rem;align-items:flex-start;">
+                      <textarea name="ticket_message_block" rows="4" placeholder="{{ tr.tickets_ticket_message_placeholder if loop.first else '' }}"
+                                style="margin:0;flex:1;box-sizing:border-box;background:var(--bg);color:var(--text);
+                                       border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.8rem;
+                                       font-size:0.875rem;line-height:1.5;resize:vertical;font-family:inherit;outline:none;">{{ block }}</textarea>
+                      <button type="button" class="btn btn-danger" onclick="this.parentElement.remove()" style="padding:0.3rem 0.6rem;font-size:0.75rem;" title="{{ tr.btn_delete }}">✕</button>
+                    </div>
+                    {% endfor %}
+                  </div>
+                  <button type="button" class="btn btn-secondary" onclick="addTicketBlock('ticket-msg-blocks-{{ p.id }}', 'ticket_message_block')" style="font-size:0.75rem;padding:0.3rem 0.7rem;">{{ tr.tickets_add_embed }}</button>
                 </div>
               </div>
               <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
@@ -866,6 +882,27 @@ document.addEventListener('click', function(e) {
 function togglePanelEdit(id) {
   const row = document.getElementById('panel-edit-' + id);
   if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+function addTicketBlock(containerId, fieldName) {
+  const container = document.getElementById(containerId);
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:0.4rem;margin-bottom:0.4rem;align-items:flex-start;';
+  const textarea = document.createElement('textarea');
+  textarea.name = fieldName;
+  textarea.rows = 4;
+  textarea.style.cssText = 'margin:0;flex:1;box-sizing:border-box;background:var(--bg);color:var(--text);'
+    + 'border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.8rem;'
+    + 'font-size:0.875rem;line-height:1.5;resize:vertical;font-family:inherit;outline:none;';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-danger';
+  btn.style.cssText = 'padding:0.3rem 0.6rem;font-size:0.75rem;';
+  btn.textContent = '✕';
+  btn.onclick = function() { row.remove(); };
+  row.appendChild(textarea);
+  row.appendChild(btn);
+  container.appendChild(row);
+  textarea.focus();
 }
 function toggleTicketsInfo() {
   const box = document.getElementById('tickets-info-box');

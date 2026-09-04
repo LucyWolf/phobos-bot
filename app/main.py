@@ -4360,6 +4360,8 @@ async def server_config(
                 p["channel_name"] = ch.name if ch else None
             except (ValueError, TypeError):
                 p["channel_name"] = None
+        p["description_blocks"] = _parse_ticket_blocks(p.get("description")) or [""]
+        p["ticket_message_blocks"] = _parse_ticket_blocks(p.get("ticket_message")) or [""]
 
     # Open tickets
     ticket_list = await db_rows(
@@ -4935,6 +4937,40 @@ async def levels_delete(request: Request, guild_id: int, user_id: int):
 
 # ── Ticket Panels ────────────────────────────────────────────────────────────
 
+def _parse_ticket_blocks(raw) -> list:
+    """A ticket_panels.description/ticket_message value is either a legacy plain string
+    (pre-dates the multi-embed "+" feature - treated as a single block) or a JSON array of
+    block strings, each of which becomes its OWN Discord embed when sent ("es ist bewusst zwei
+    einbettungen ... wenn ich bei den text + mache das es auch eine neuen einbettung ist" -
+    explicit user request for "+" to add a genuinely separate embed, not just another line
+    inside the same one). Always returns a list (possibly empty) - never raises on malformed
+    JSON, a plain non-list value, or a list containing non-string items."""
+    if not raw:
+        return []
+    try:
+        data = _djson.loads(raw)
+        if isinstance(data, list) and all(isinstance(b, str) for b in data):
+            return [b for b in data if b.strip()]
+    except (ValueError, TypeError):
+        pass
+    return [raw]
+
+
+def _build_panel_embeds(name: str, emoji: str, description_raw) -> list:
+    """One discord.Embed per block (see _parse_ticket_blocks) - only the first carries the
+    panel's title/emoji, the rest are plain description-only cards. Capped at 10, Discord's own
+    hard limit on embeds per message (also enforced at save time in tickets_panel_update, this
+    is just defense in depth against stale/malformed data)."""
+    blocks = _parse_ticket_blocks(description_raw) or ["Klicke unten um ein Ticket zu öffnen."]
+    embeds = []
+    for i, block in enumerate(blocks[:10]):
+        e = discord.Embed(description=block, color=0x7C3AED)
+        if i == 0:
+            e.title = f"{emoji} {name}"
+        embeds.append(e)
+    return embeds
+
+
 @web.post("/servers/{guild_id}/tickets/panels/create")
 async def tickets_panel_create(request: Request, guild_id: int, name: str = Form(...)):
     if r := auth_redirect(request): return r
@@ -4952,8 +4988,9 @@ async def tickets_panel_create(request: Request, guild_id: int, name: str = Form
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Name+zu+lang+(max.+100+Zeichen)", status_code=302)
     await db_exec(
         "INSERT INTO ticket_panels (guild_id, name, button_label, description, ticket_message, emoji) VALUES (?,?,?,?,?,?)",
-        (guild_id, name, "Ticket öffnen", "Klicke unten um ein Ticket zu öffnen.",
-         "Beschreibe dein Anliegen und wir helfen dir so schnell wie möglich.", "🎫"),
+        (guild_id, name, "Ticket öffnen",
+         _djson.dumps(["Klicke unten um ein Ticket zu öffnen."]),
+         _djson.dumps(["Beschreibe dein Anliegen und wir helfen dir so schnell wie möglich."]), "🎫"),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Panel+erstellt", status_code=302)
 
@@ -4972,17 +5009,19 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     emoji = form.get("emoji", "🎫")
     support_role_id = form.get("support_role_id", "")
     category_id = form.get("category_id", "")
-    # Both are plain multi-line <textarea> fields (main.py reads them verbatim, no per-line
-    # splitting/rejoining) - an earlier "+"-addable-lines-list version (v1.14.57/59) turned out
-    # to mangle any already richly formatted, multi-paragraph text pasted in wholesale (each of
-    # its own newlines became a separate row instead of showing the text as it was actually
-    # saved) - reverted back to one plain textarea per field on direct user feedback.
+    # Each is a LIST of blocks now, one <textarea> per block in the form - "+" adds a genuinely
+    # separate Discord embed, not just another line inside the same one ("es ist bewusst zwei
+    # einbettungen ... wenn ich bei den text + mache das es auch eine neuen einbettung ist").
+    # An earlier "+"-addable-LINES version (v1.14.57/59) turned out to mangle any already
+    # richly formatted, multi-paragraph text pasted into a single block (every one of its own
+    # newlines became a separate row) - each block here is its own free-form multi-line
+    # textarea, shown/edited exactly as saved, only the block BOUNDARY is "+"-controlled.
     # ticket_message is independent of description (added right after, "das mann in den tiket
     # eine eigene nachricht verfassen kann") - previously the SAME description text was reused
     # verbatim inside every newly created ticket (cogs/tickets.py's _create_ticket), now it's
     # its own field so a long panel-advertisement text doesn't have to repeat inside the ticket.
-    description = form.get("description", "")
-    ticket_message = form.get("ticket_message", "")
+    description_blocks = [b.strip() for b in form.getlist("description_block") if b.strip()]
+    ticket_message_blocks = [b.strip() for b in form.getlist("ticket_message_block") if b.strip()]
     if support_role_id and support_role_id not in {str(ro.id) for ro in guild.roles}:
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Rolle", status_code=302)
     if category_id and category_id not in {str(c.id) for c in guild.categories}:
@@ -4995,28 +5034,36 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
         # raise, which (before this fix) would have crashed /publish's request with an
         # unhandled 500 instead of a friendly error.
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Button-Text+zu+lang+(max.+80+Zeichen)", status_code=302)
-    if len(description.strip()) > 3900:
-        # Ends up as the /publish'd panel message's own embed description - Discord's hard
-        # limit there is 4096 characters, kept at the same 3900 cushion as before the
-        # description/ticket_message split (no urgent need to raise it now that this field no
-        # longer carries the "Hallo {mention}!\n" prefix - see ticket_message's check below).
-        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Beschreibung+zu+lang+(max.+3900+Zeichen)", status_code=302)
-    if len(ticket_message.strip()) > 3900:
-        # Ends up in the ticket-channel embed description as "Hallo {mention}!\n{ticket_message}"
-        # (cogs/tickets.py's _create_ticket) - Discord's hard limit there is 4096 characters.
-        # A too-long text wouldn't break /publish (that message doesn't use this field at all),
-        # it would instead make channel.send() fail silently for every future ticket creation
-        # from this panel - already caught by _create_ticket's own broad try/except (cleanup +
-        # a generic "couldn't create ticket" message), but with no way for the admin to tell WHY
-        # from that message alone. Rejecting it here, where the cause is obvious, is better than
-        # a mystery failure at every ticket open attempt.
-        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ticket-Nachricht+zu+lang+(max.+3900+Zeichen)", status_code=302)
+    # Discord's own hard cap on embeds per single message - a manually crafted POST could
+    # otherwise submit more "+" blocks than the UI itself ever lets you add, which would make
+    # every future channel.send(embeds=...) for this panel raise (caught, but with no
+    # obvious cause for the admin - same reasoning as the per-block length checks below).
+    if len(description_blocks) > 10:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Zu+viele+Beschreibungs-Embeds+(max.+10)", status_code=302)
+    if len(ticket_message_blocks) > 10:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Zu+viele+Embeds+in+der+Ticket-Nachricht+(max.+10)", status_code=302)
+    if any(len(b) > 3900 for b in description_blocks):
+        # Each block becomes its OWN embed's description now - Discord's hard limit per embed
+        # description is 4096 characters, kept at the same 3900-character cushion as before the
+        # description/ticket_message split (this field carries no placeholder substitution).
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ein+Beschreibungs-Embed+ist+zu+lang+(max.+3900+Zeichen)", status_code=302)
+    if any(len(b) > 3900 for b in ticket_message_blocks):
+        # Same per-embed 4096-character hard limit, cushioned to 3900 to leave room for
+        # {user}/{server} placeholder substitution growth (cogs/tickets.py's
+        # _fill_ticket_placeholders, applied per block at send time - can only ever GROW a
+        # block, never shrink it). A too-long block wouldn't break /publish (that route doesn't
+        # use this field at all), it would instead make channel.send() fail silently for every
+        # future ticket creation from this panel - already caught by _create_ticket's own broad
+        # try/except (cleanup + a generic "couldn't create ticket" message), but with no way for
+        # the admin to tell WHY from that message alone. Rejecting it here is better than a
+        # mystery failure at every ticket open attempt.
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ein+Embed+in+der+Ticket-Nachricht+ist+zu+lang+(max.+3900+Zeichen)", status_code=302)
     panel_before = await db_one("SELECT * FROM ticket_panels WHERE id=? AND guild_id=?", (panel_id, guild_id))
     new_name = name.strip()
     new_label = button_label.strip() or "Ticket öffnen"
     new_emoji = emoji.strip() or "🎫"
-    new_description = description.strip()
-    new_ticket_message = ticket_message.strip()
+    new_description = _djson.dumps(description_blocks)
+    new_ticket_message = _djson.dumps(ticket_message_blocks)
     await db_exec(
         "UPDATE ticket_panels SET name=?, button_label=?, description=?, ticket_message=?, emoji=?, "
         "support_role_id=?, category_id=? WHERE id=? AND guild_id=?",
@@ -5034,13 +5081,9 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
                 ch = b.get_channel(int(panel_before["channel_id"]))
                 if ch:
                     msg = await ch.fetch_message(int(panel_before["message_id"]))
-                    embed = discord.Embed(
-                        title=f"{new_emoji} {new_name}",
-                        description=new_description or "Klicke unten um ein Ticket zu öffnen.",
-                        color=0x7C3AED,
-                    )
+                    embeds = _build_panel_embeds(new_name, new_emoji, new_description)
                     view = _TicketView(panel_id, new_label, new_emoji)
-                    await msg.edit(embed=embed, view=view)
+                    await msg.edit(embeds=embeds, view=view)
                     b.add_view(view)
             except Exception:
                 pass
@@ -5098,14 +5141,10 @@ async def tickets_panel_publish(
             pass
     label = panel.get("button_label") or "Ticket öffnen"
     emoji = panel.get("emoji") or "🎫"
-    embed = discord.Embed(
-        title=f"{emoji} {panel['name']}",
-        description=panel.get("description") or "Klicke unten um ein Ticket zu öffnen.",
-        color=0x7C3AED,
-    )
+    embeds = _build_panel_embeds(panel["name"], emoji, panel.get("description"))
     try:
         view = _TicketView(panel_id, label, emoji)
-        msg = await ch.send(embed=embed, view=view)
+        msg = await ch.send(embeds=embeds, view=view)
     except Exception as e:
         # Nothing here was guarded before - an invalid emoji string (view construction itself
         # can raise), a name/label that's since grown past Discord's title/button-label limits,
