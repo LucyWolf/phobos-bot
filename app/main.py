@@ -1118,8 +1118,8 @@ _BACKUP_TBL_INSERT = {
     # for a row with an empty message_id, so the very next edit through the dashboard puts a
     # real message behind it instead of silently saving content with nothing live in Discord.
     "embed_posts":
-        "INSERT INTO embed_posts (guild_id,name,channel_id,content,image_url,footer_text) "
-        "VALUES (:guild_id,:name,:channel_id,:content,:image_url,:footer_text)",
+        "INSERT INTO embed_posts (guild_id,name,channel_id,content,image_url,footer_text,image_data,image_filename) "
+        "VALUES (:guild_id,:name,:channel_id,:content,:image_url,:footer_text,:image_data,:image_filename)",
 }
 
 
@@ -4522,6 +4522,11 @@ async def server_config(
             except (ValueError, TypeError):
                 ep["channel_name"] = None
         ep["content_blocks"] = _parse_ticket_blocks(ep.get("content")) or [""]
+        # image_data can be a sizeable base64 blob - the template only ever needs to know
+        # WHETHER an uploaded image exists (via image_filename) and fetches the actual bytes
+        # through its own dedicated /embeds/{id}/image route when previewing it, never
+        # straight out of this context.
+        ep.pop("image_data", None)
 
     # Open tickets
     ticket_list = await db_rows(
@@ -5403,21 +5408,77 @@ async def ticket_delete(request: Request, guild_id: int, ticket_id: int):
 # editable from the dashboard afterward (the actual point: editing multi-line rich text in a
 # browser textarea beats Discord's own message box, which has no native embed authoring at all).
 
-def _build_freeform_embeds(content_raw, image_url: str = "", footer_text: str = "") -> list:
+def _build_freeform_embeds(content_raw, image_url: str = "", footer_text: str = "", image_filename: str = "") -> list:
     """Like _build_panel_embeds, but with no forced title/emoji on the first embed - this
     feature has no "name" concept baked into the posted content itself (unlike a ticket panel,
     which always shows its configured name+emoji as a title), it's meant to stay fully
     freeform. Capped at 10 blocks, same Discord hard limit as everywhere else blocks are used.
     image/footer are per-POST, not per-block (confirmed by explicit user answer - Discord
     itself only supports them per individual embed, so they land on the LAST embed rather than
-    needing one field per "+"-added block)."""
+    needing one field per "+"-added block). image_filename (set only when the image came from
+    an upload, not a pasted URL) takes precedence over image_url and points the embed at
+    "attachment://<filename>" instead - the caller is responsible for actually attaching a
+    matching discord.File with that same filename, see _embed_post_files()."""
     blocks = _parse_ticket_blocks(content_raw) or [""]
     embeds = [discord.Embed(description=block, color=0x7C3AED) for block in blocks[:10]]
-    if image_url:
+    if image_filename:
+        embeds[-1].set_image(url=f"attachment://{image_filename}")
+    elif image_url:
         embeds[-1].set_image(url=image_url)
     if footer_text:
         embeds[-1].set_footer(text=footer_text)
     return embeds
+
+
+# Discord's baseline file-upload limit for a non-boosted guild - a safe cap that works
+# regardless of the target server's boost tier, matching the same "err on the safe/universal
+# side" reasoning as the other hard limits in this feature.
+_EMBED_IMAGE_MAX_BYTES = 8 * 1024 * 1024
+_EMBED_IMAGE_EXTS = {"png", "jpg", "jpeg", "gif", "webp"}
+
+
+async def _read_embed_image_upload(image_file):
+    """Validates and reads an uploaded embed image (User-requested: "mus das eine bild url
+    sein kanst du nicht beides machen eins reinladen und die url" - upload as an alternative
+    to pasting a URL). Returns (base64_data, filename) if a real file was provided, or
+    (None, None) if the field was empty/no file was chosen - callers treat that the same as
+    "no upload happened". Raises ValueError(message) with a dashboard-ready error string on an
+    invalid upload (too large / not a real image), same pattern as every other validation
+    error in this feature.
+    Deliberately does NOT re-encode the image through Pillow before storing it - only opens it
+    to confirm it's a real, undamaged image. Re-encoding would strip an animated GIF down to
+    its first frame and flatten PNG transparency, both real losses for something meant to be
+    posted as-is to Discord."""
+    if not image_file or not getattr(image_file, "filename", ""):
+        return None, None
+    data = await image_file.read()
+    if not data:
+        return None, None
+    if len(data) > _EMBED_IMAGE_MAX_BYTES:
+        raise ValueError("Bild+zu+groß+(max.+8+MB)")
+    try:
+        img = Image.open(io.BytesIO(data))
+        img.verify()
+    except Exception:
+        raise ValueError("Ungültiges+Bildformat")
+    ext = image_file.filename.rsplit(".", 1)[-1].lower() if "." in image_file.filename else ""
+    if ext not in _EMBED_IMAGE_EXTS:
+        ext = "png"
+    return base64.b64encode(data).decode("ascii"), f"image.{ext}"
+
+
+def _embed_post_files(image_data_b64: str, image_filename: str) -> list:
+    """Rebuilds the discord.File attachment list from the stored base64 image, if any - called
+    fresh on every send/edit rather than trusting Discord to have kept a prior attachment
+    around, so switching between an uploaded image / a URL / no image at all always ends up in
+    the exact state just saved, deterministically."""
+    if not image_data_b64 or not image_filename:
+        return []
+    try:
+        raw = base64.b64decode(image_data_b64)
+    except Exception:
+        return []
+    return [discord.File(io.BytesIO(raw), filename=image_filename)]
 
 
 @web.post("/servers/{guild_id}/embeds/create")
@@ -5434,6 +5495,8 @@ async def embed_post_create(request: Request, guild_id: int):
     blocks = [b.strip() for b in form.getlist("content_block") if b.strip()]
     image_url = form.get("image_url", "").strip()
     footer_text = form.get("footer_text", "").strip()
+    image_file = form.get("image_file")
+    has_upload = bool(image_file and getattr(image_file, "filename", ""))
     if not name:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Name+erforderlich", status_code=302)
     if len(name) > 100:
@@ -5455,6 +5518,8 @@ async def embed_post_create(request: Request, guild_id: int):
     # footer text that also counts toward the same combined total.
     if sum(len(b) for b in blocks) + len(footer_text) > 5900:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Alle+Embeds+zusammen+sind+zu+lang+(max.+5900+Zeichen+insgesamt)", status_code=302)
+    if image_url and has_upload:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Bitte+nur+Bild-URL+ODER+Datei+hochladen,+nicht+beides", status_code=302)
     if image_url and not image_url.startswith(("http://", "https://")):
         # Discord's API rejects a non-URL image value outright - caught here with a clear
         # cause instead of a raw "Discord-Fehler:" surfacing the API's own wording.
@@ -5462,18 +5527,25 @@ async def embed_post_create(request: Request, guild_id: int):
     if len(footer_text) > 2048:
         # Discord's own hard limit for embed footer text.
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Footer-Text+zu+lang+(max.+2048+Zeichen)", status_code=302)
+    try:
+        image_data_b64, image_filename = await _read_embed_image_upload(image_file)
+    except ValueError as msg:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error={msg}", status_code=302)
     channel = guild.get_channel(int(channel_id))
     if not channel:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Kanal+nicht+gefunden", status_code=302)
     content = _djson.dumps(blocks)
+    embeds = _build_freeform_embeds(content, image_url, footer_text, image_filename or "")
+    files = _embed_post_files(image_data_b64 or "", image_filename or "")
     try:
-        msg = await channel.send(embeds=_build_freeform_embeds(content, image_url, footer_text))
+        msg = await channel.send(embeds=embeds, files=files)
     except discord.HTTPException as e:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
     await db_exec(
-        "INSERT INTO embed_posts (guild_id, name, channel_id, content, message_id, image_url, footer_text) "
-        "VALUES (?,?,?,?,?,?,?)",
-        (str(guild_id), name, channel_id, content, str(msg.id), image_url, footer_text),
+        "INSERT INTO embed_posts (guild_id, name, channel_id, content, message_id, image_url, footer_text, image_data, image_filename) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (str(guild_id), name, channel_id, content, str(msg.id), image_url, footer_text,
+         image_data_b64 or "", image_filename or ""),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&success=Gepostet", status_code=302)
 
@@ -5495,6 +5567,9 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
     blocks = [b.strip() for b in form.getlist("content_block") if b.strip()]
     image_url = form.get("image_url", "").strip()
     footer_text = form.get("footer_text", "").strip()
+    image_file = form.get("image_file")
+    has_upload = bool(image_file and getattr(image_file, "filename", ""))
+    remove_image = form.get("remove_image") == "1"
     if not name:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Name+erforderlich", status_code=302)
     if len(name) > 100:
@@ -5510,12 +5585,35 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
     # Same combined-total check as embed_post_create - see the comment there.
     if sum(len(b) for b in blocks) + len(footer_text) > 5900:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Alle+Embeds+zusammen+sind+zu+lang+(max.+5900+Zeichen+insgesamt)", status_code=302)
+    if image_url and has_upload:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Bitte+nur+Bild-URL+ODER+Datei+hochladen,+nicht+beides", status_code=302)
     if image_url and not image_url.startswith(("http://", "https://")):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Bild-URL+muss+mit+http(s)://+beginnen", status_code=302)
     if len(footer_text) > 2048:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Footer-Text+zu+lang+(max.+2048+Zeichen)", status_code=302)
+    try:
+        new_image_data_b64, new_image_filename = await _read_embed_image_upload(image_file)
+    except ValueError as msg:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error={msg}", status_code=302)
+    # A file input can never be pre-filled with "the image already on this post" (browsers
+    # don't allow that, for security reasons) - so an empty file field on a normal re-submit
+    # must NOT be read as "remove the image", or every text-only edit would silently wipe out
+    # a previously uploaded image. Same "leave blank to keep the existing value" convention
+    # already used for e.g. the SMTP password field. Removal instead needs the explicit
+    # "🗑 Bild entfernen" checkbox (edit form only, nothing to remove yet when creating).
+    if remove_image:
+        final_image_url, final_image_data, final_image_filename = "", "", ""
+    elif has_upload:
+        final_image_url, final_image_data, final_image_filename = "", new_image_data_b64 or "", new_image_filename or ""
+    elif image_url:
+        final_image_url, final_image_data, final_image_filename = image_url, "", ""
+    else:
+        final_image_url = post.get("image_url") or ""
+        final_image_data = post.get("image_data") or ""
+        final_image_filename = post.get("image_filename") or ""
     content = _djson.dumps(blocks)
-    embeds = _build_freeform_embeds(content, image_url, footer_text)
+    embeds = _build_freeform_embeds(content, final_image_url, footer_text, final_image_filename)
+    files = _embed_post_files(final_image_data, final_image_filename)
     new_message_id = post["message_id"]
     if channel_id != post["channel_id"]:
         # Moved to a different channel - an embed lives on a specific message in a specific
@@ -5532,7 +5630,7 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
         if not new_ch:
             return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Kanal+nicht+gefunden", status_code=302)
         try:
-            msg = await new_ch.send(embeds=embeds)
+            msg = await new_ch.send(embeds=embeds, files=files)
         except discord.HTTPException as e:
             return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
         new_message_id = str(msg.id)
@@ -5543,12 +5641,16 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
         if post["message_id"]:
             try:
                 msg = await ch.fetch_message(int(post["message_id"]))
-                await msg.edit(embeds=embeds)
+                # attachments is always passed explicitly (even as []) rather than left out -
+                # otherwise Discord would keep whatever attachment the message already had,
+                # which breaks the moment an admin switches away from an uploaded image (to a
+                # URL, or removes it) since the stale attachment would just sit there unused.
+                await msg.edit(embeds=embeds, attachments=files)
             except discord.NotFound:
                 # The live message was deleted directly in Discord - repost it fresh instead of
                 # silently leaving the saved content with no actual message behind it.
                 try:
-                    msg = await ch.send(embeds=embeds)
+                    msg = await ch.send(embeds=embeds, files=files)
                     new_message_id = str(msg.id)
                 except discord.HTTPException as e:
                     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
@@ -5559,14 +5661,15 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
             # trusted across a restore, same as ticket_panels). Post it fresh instead of
             # silently saving the new content with no actual Discord message behind it.
             try:
-                msg = await ch.send(embeds=embeds)
+                msg = await ch.send(embeds=embeds, files=files)
                 new_message_id = str(msg.id)
             except discord.HTTPException as e:
                 return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
     await db_exec(
-        "UPDATE embed_posts SET name=?, channel_id=?, content=?, message_id=?, image_url=?, footer_text=? "
+        "UPDATE embed_posts SET name=?, channel_id=?, content=?, message_id=?, image_url=?, footer_text=?, image_data=?, image_filename=? "
         "WHERE id=? AND guild_id=?",
-        (name, channel_id, content, new_message_id, image_url, footer_text, post_id, guild_id),
+        (name, channel_id, content, new_message_id, final_image_url, footer_text,
+         final_image_data, final_image_filename, post_id, guild_id),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&success=Gespeichert", status_code=302)
 
@@ -5588,6 +5691,36 @@ async def embed_post_delete(request: Request, guild_id: int, post_id: int):
             pass
     await db_exec("DELETE FROM embed_posts WHERE id=? AND guild_id=?", (post_id, guild_id))
     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&success=Gelöscht", status_code=302)
+
+
+_EMBED_IMAGE_MEDIA_TYPES = {
+    "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+    "gif": "image/gif", "webp": "image/webp",
+}
+
+
+@web.get("/servers/{guild_id}/embeds/{post_id}/image")
+async def embed_post_image(request: Request, guild_id: int, post_id: int):
+    """Serves an uploaded embed image for the dashboard's OWN edit-form preview only - never
+    used as the actual Discord embed URL (that goes via a real message attachment instead, see
+    _embed_post_files()). Same auth/guild-access gate as every other route here, so this never
+    needs to be reachable from outside the dashboard."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    post = await db_one(
+        "SELECT image_data, image_filename FROM embed_posts WHERE id=? AND guild_id=?",
+        (post_id, guild_id),
+    )
+    if not post or not post.get("image_data"):
+        raise HTTPException(status_code=404)
+    try:
+        raw = base64.b64decode(post["image_data"])
+    except Exception:
+        raise HTTPException(status_code=404)
+    ext = (post.get("image_filename") or "").rsplit(".", 1)[-1].lower()
+    media_type = _EMBED_IMAGE_MEDIA_TYPES.get(ext, "application/octet-stream")
+    return Response(content=raw, media_type=media_type)
 
 
 # ── Server User Access ────────────────────────────────────────────────────────

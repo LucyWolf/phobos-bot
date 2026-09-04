@@ -615,6 +615,23 @@ async def init_db():
             # per-embed properties, applied to the LAST embed in the post's block list.
             "ALTER TABLE embed_posts ADD COLUMN image_url TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE embed_posts ADD COLUMN footer_text TEXT NOT NULL DEFAULT ''",
+            # User-requested ("mus das eine bild url sein kanst du nicht beides machen eins
+            # reinladen und die url") - an uploaded file and a pasted URL are mutually
+            # exclusive per post (only one of image_url / image_data ever populated at once),
+            # enforced in main.py's embed_post_create/embed_post_update. image_data is TEXT,
+            # not BLOB - stores the raw uploaded bytes base64-encoded, deliberately NOT re-
+            # encoded through Pillow so animated GIFs/transparency survive untouched. TEXT
+            # instead of BLOB matters here: every backup/restore path (_build_full_backup/
+            # _build_guild_backup) does a blanket "SELECT *" per table and dumps the result
+            # straight to JSON - a real BLOB/bytes value would crash json.dumps() the moment
+            # any guild has an uploaded image, for EVERY table in that same backup, not just
+            # this one. Sent to Discord as a real message attachment
+            # (embed.set_image(url="attachment://" + image_filename)) rather than a URL, which
+            # works regardless of whether this dashboard is itself publicly reachable (Discord
+            # hosts the file once it's attached, unlike a self-served URL Discord would need to
+            # be able to fetch).
+            "ALTER TABLE embed_posts ADD COLUMN image_data TEXT",
+            "ALTER TABLE embed_posts ADD COLUMN image_filename TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

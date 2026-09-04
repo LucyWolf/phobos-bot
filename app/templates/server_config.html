@@ -2373,7 +2373,7 @@ function updateAmpCmdPreview(id, action, value) {
   </div>
 
   <div id="create-embed-box" style="display:none;padding:1rem 1.25rem;border-bottom:1px solid var(--border);background:var(--bg);">
-    <form method="post" action="/servers/{{ guild.id }}/embeds/create">
+    <form method="post" action="/servers/{{ guild.id }}/embeds/create" enctype="multipart/form-data">
       <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
         <div>
           <label>{{ tr.label_name }}</label>
@@ -2410,6 +2410,8 @@ function updateAmpCmdPreview(id, action, value) {
         <div>
           <label>{{ tr.embeds_image_label }}</label>
           <input type="url" name="image_url" placeholder="{{ tr.embeds_image_placeholder }}" style="margin-bottom:0;">
+          <input type="file" name="image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin-top:0.4rem;margin-bottom:0;font-size:0.78rem;">
+          <div style="font-size:0.72rem;color:var(--muted);margin-top:0.2rem;">{{ tr.embeds_image_either_hint }}</div>
         </div>
         <div>
           <label>{{ tr.embeds_footer_label }}</label>
@@ -2437,7 +2439,7 @@ function updateAmpCmdPreview(id, action, value) {
         </tr>
         <tr id="panel-edit-ep-{{ ep.id }}" style="display:none;" class="panel-edit-row">
           <td colspan="3" style="padding:1rem 1.25rem;">
-            <form method="post" action="/servers/{{ guild.id }}/embeds/{{ ep.id }}/update">
+            <form method="post" action="/servers/{{ guild.id }}/embeds/{{ ep.id }}/update" enctype="multipart/form-data">
               <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
                 <div>
                   <label>{{ tr.label_name }}</label>
@@ -2475,7 +2477,17 @@ function updateAmpCmdPreview(id, action, value) {
               <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
                 <div>
                   <label>{{ tr.embeds_image_label }}</label>
+                  {% if ep.image_filename %}
+                  <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+                    <img src="/servers/{{ guild.id }}/embeds/{{ ep.id }}/image" alt="" style="max-height:48px;max-width:96px;border-radius:0.4rem;border:1px solid var(--border);object-fit:cover;">
+                    <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;color:var(--muted);margin:0;">
+                      <input type="checkbox" name="remove_image" value="1"> {{ tr.embeds_remove_image_label }}
+                    </label>
+                  </div>
+                  {% endif %}
                   <input type="url" name="image_url" value="{{ ep.image_url or '' }}" placeholder="{{ tr.embeds_image_placeholder }}" style="margin-bottom:0;">
+                  <input type="file" name="image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin-top:0.4rem;margin-bottom:0;font-size:0.78rem;">
+                  <div style="font-size:0.72rem;color:var(--muted);margin-top:0.2rem;">{{ tr.embeds_image_either_hint }}</div>
                 </div>
                 <div>
                   <label>{{ tr.embeds_footer_label }}</label>
