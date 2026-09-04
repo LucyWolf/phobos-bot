@@ -4296,7 +4296,7 @@ _SERVER_CONFIG_TAB_LABELS = {
     "giveaways": "🎉 Giveaways", "warnings": "⚠️ Warnungen", "users": "👥 Nutzer",
     "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant", "events": "🗓️ Events",
     "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
-    "amp": "🎮 Gameserver", "autokick": "🚪 Auto-Kick",
+    "amp": "🎮 Gameserver", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
 }
 
 # Features an admin can hide from THIS server's own sidebar to cut down on clutter for
@@ -4312,7 +4312,7 @@ _TOGGLEABLE_FEATURES = {
     "warnings": "⚠️ Warnungen", "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant",
     "events": "🗓️ Events", "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
     "amp": "🎮 Gameserver", "notifications": "🟣 Streaming", "freestuff": "🎁 Free Stuff",
-    "log": "📋 Log", "autokick": "🚪 Auto-Kick",
+    "log": "📋 Log", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
 }
 
 
@@ -4442,6 +4442,18 @@ async def server_config(
                 p["channel_name"] = None
         p["description_blocks"] = _parse_ticket_blocks(p.get("description")) or [""]
         p["ticket_message_blocks"] = _parse_ticket_blocks(p.get("ticket_message")) or [""]
+
+    embed_posts = await db_rows(
+        "SELECT * FROM embed_posts WHERE guild_id=? ORDER BY created_at DESC", (guild_id,)
+    )
+    for ep in embed_posts:
+        if ep.get("channel_id"):
+            try:
+                ch = guild.get_channel(int(ep["channel_id"]))
+                ep["channel_name"] = ch.name if ch else None
+            except (ValueError, TypeError):
+                ep["channel_name"] = None
+        ep["content_blocks"] = _parse_ticket_blocks(ep.get("content")) or [""]
 
     # Open tickets
     ticket_list = await db_rows(
@@ -4579,6 +4591,7 @@ async def server_config(
         "rr_list": rr_list, "cmd_list": cmd_list,
         "leaderboard": lb, "warn_groups": warn_groups,
         "ticket_panels": ticket_panels, "ticket_list": ticket_list, "ga_list": ga_list,
+        "embed_posts": embed_posts,
         "subs": subs, "twitch_configured": twitch_configured,
         "all_users": all_users, "server_perms": server_perms,
         "automod_presets": automod_presets,
@@ -5310,6 +5323,155 @@ async def ticket_delete(request: Request, guild_id: int, ticket_id: int):
         return RedirectResponse("/servers", status_code=302)
     await db_exec("DELETE FROM tickets WHERE id=? AND guild_id=?", (ticket_id, guild_id))
     return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Ticket+gelöscht", status_code=302)
+
+
+# ── Embed Posts ──────────────────────────────────────────────────────────────
+# User-requested ("ich will damit texte in schanels dort eintragen im bot ist es einfacher die
+# zu bearbeiten also in dc selber deswegen sowas wo ich die chanels auswählen kann und der das
+# dan einbettet") - a standalone rich-text/embed poster, independent of tickets/events/anything
+# else: pick a channel, write one or more embed blocks (same "+"-adds-a-separate-embed model as
+# ticket_panels' description/ticket_message, same JSON-array-of-blocks storage via
+# _parse_ticket_blocks), the bot posts it - and unlike a manual Discord message, it stays
+# editable from the dashboard afterward (the actual point: editing multi-line rich text in a
+# browser textarea beats Discord's own message box, which has no native embed authoring at all).
+
+def _build_freeform_embeds(content_raw) -> list:
+    """Like _build_panel_embeds, but with no forced title/emoji on the first embed - this
+    feature has no "name" concept baked into the posted content itself (unlike a ticket panel,
+    which always shows its configured name+emoji as a title), it's meant to stay fully
+    freeform. Capped at 10 blocks, same Discord hard limit as everywhere else blocks are used."""
+    blocks = _parse_ticket_blocks(content_raw) or [""]
+    return [discord.Embed(description=block, color=0x7C3AED) for block in blocks[:10]]
+
+
+@web.post("/servers/{guild_id}/embeds/create")
+async def embed_post_create(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Server+nicht+gefunden", status_code=302)
+    form = await request.form()
+    name = form.get("name", "").strip()
+    channel_id = form.get("channel_id", "")
+    blocks = [b.strip() for b in form.getlist("content_block") if b.strip()]
+    if not name:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Name+erforderlich", status_code=302)
+    if len(name) > 100:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Name+zu+lang+(max.+100+Zeichen)", status_code=302)
+    if channel_id not in {str(c.id) for c in guild.text_channels}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Ungültiger+Kanal", status_code=302)
+    if not blocks:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Mindestens+ein+Embed+erforderlich", status_code=302)
+    if len(blocks) > 10:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Zu+viele+Embeds+(max.+10)", status_code=302)
+    if any(len(b) > 3900 for b in blocks):
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Ein+Embed+ist+zu+lang+(max.+3900+Zeichen)", status_code=302)
+    channel = guild.get_channel(int(channel_id))
+    if not channel:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Kanal+nicht+gefunden", status_code=302)
+    content = _djson.dumps(blocks)
+    try:
+        msg = await channel.send(embeds=_build_freeform_embeds(content))
+    except discord.HTTPException as e:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
+    await db_exec(
+        "INSERT INTO embed_posts (guild_id, name, channel_id, content, message_id) VALUES (?,?,?,?,?)",
+        (str(guild_id), name, channel_id, content, str(msg.id)),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=embeds&success=Gepostet", status_code=302)
+
+
+@web.post("/servers/{guild_id}/embeds/{post_id}/update")
+async def embed_post_update(request: Request, guild_id: int, post_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Server+nicht+gefunden", status_code=302)
+    post = await db_one("SELECT * FROM embed_posts WHERE id=? AND guild_id=?", (post_id, guild_id))
+    if not post:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Nicht+gefunden", status_code=302)
+    form = await request.form()
+    name = form.get("name", "").strip()
+    channel_id = form.get("channel_id", "")
+    blocks = [b.strip() for b in form.getlist("content_block") if b.strip()]
+    if not name:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Name+erforderlich", status_code=302)
+    if len(name) > 100:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Name+zu+lang+(max.+100+Zeichen)", status_code=302)
+    if channel_id not in {str(c.id) for c in guild.text_channels}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Ungültiger+Kanal", status_code=302)
+    if not blocks:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Mindestens+ein+Embed+erforderlich", status_code=302)
+    if len(blocks) > 10:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Zu+viele+Embeds+(max.+10)", status_code=302)
+    if any(len(b) > 3900 for b in blocks):
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Ein+Embed+ist+zu+lang+(max.+3900+Zeichen)", status_code=302)
+    content = _djson.dumps(blocks)
+    embeds = _build_freeform_embeds(content)
+    new_message_id = post["message_id"]
+    if channel_id != post["channel_id"]:
+        # Moved to a different channel - an embed lives on a specific message in a specific
+        # channel, there's no "move a message to another channel" API, so this deletes the old
+        # one (best-effort, it may already be gone) and posts fresh in the new channel instead.
+        old_ch = guild.get_channel(int(post["channel_id"])) if post["channel_id"] else None
+        if old_ch and post["message_id"]:
+            try:
+                old_msg = await old_ch.fetch_message(int(post["message_id"]))
+                await old_msg.delete()
+            except Exception:
+                pass
+        new_ch = guild.get_channel(int(channel_id))
+        if not new_ch:
+            return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Kanal+nicht+gefunden", status_code=302)
+        try:
+            msg = await new_ch.send(embeds=embeds)
+        except discord.HTTPException as e:
+            return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
+        new_message_id = str(msg.id)
+    else:
+        ch = guild.get_channel(int(channel_id)) if channel_id else None
+        if ch and post["message_id"]:
+            try:
+                msg = await ch.fetch_message(int(post["message_id"]))
+                await msg.edit(embeds=embeds)
+            except discord.NotFound:
+                # The live message was deleted directly in Discord - repost it fresh instead of
+                # silently leaving the saved content with no actual message behind it.
+                try:
+                    msg = await ch.send(embeds=embeds)
+                    new_message_id = str(msg.id)
+                except discord.HTTPException as e:
+                    return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
+            except Exception as e:
+                return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e}", status_code=302)
+    await db_exec(
+        "UPDATE embed_posts SET name=?, channel_id=?, content=?, message_id=? WHERE id=? AND guild_id=?",
+        (name, channel_id, content, new_message_id, post_id, guild_id),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=embeds&success=Gespeichert", status_code=302)
+
+
+@web.post("/servers/{guild_id}/embeds/{post_id}/delete")
+async def embed_post_delete(request: Request, guild_id: int, post_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    post = await db_one("SELECT * FROM embed_posts WHERE id=? AND guild_id=?", (post_id, guild_id))
+    if post and post.get("message_id") and post.get("channel_id"):
+        try:
+            guild = bot.get_guild(guild_id)
+            ch = guild.get_channel(int(post["channel_id"])) if guild else None
+            if ch:
+                msg = await ch.fetch_message(int(post["message_id"]))
+                await msg.delete()
+        except Exception:
+            pass
+    await db_exec("DELETE FROM embed_posts WHERE id=? AND guild_id=?", (post_id, guild_id))
+    return RedirectResponse(f"/servers/{guild_id}?tab=embeds&success=Gelöscht", status_code=302)
 
 
 # ── Server User Access ────────────────────────────────────────────────────────

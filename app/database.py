@@ -536,6 +536,25 @@ async def init_db():
             # being deleted, so important tickets can be kept for later reference. Empty =
             # unchanged default behavior (delete on close).
             "ALTER TABLE ticket_panels ADD COLUMN archive_category_id TEXT NOT NULL DEFAULT ''",
+            # User-requested ("ich will damit texte in schanels dort eintragen im bot ist es
+            # einfacher die zu bearbeiten also in dc selber ... wo ich die chanels auswählen
+            # kann und der das dan einbettet") - standalone, admin-composed rich-text posts
+            # (one or more embeds each, same "+"-adds-a-separate-embed block model as
+            # ticket_panels' description/ticket_message) that get posted to a chosen channel
+            # and stay editable afterward from the dashboard - the actual point of the request,
+            # editing a multi-line embed in a browser textarea beats doing it in Discord's own
+            # message box, which has no native rich-embed authoring at all. `content` mirrors
+            # ticket_panels' JSON-array-of-blocks storage format exactly (same
+            # _parse_ticket_blocks()-style parsing, reused rather than reinvented).
+            """CREATE TABLE IF NOT EXISTS embed_posts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                channel_id TEXT NOT NULL DEFAULT '',
+                content TEXT NOT NULL DEFAULT '',
+                message_id TEXT NOT NULL DEFAULT '',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )""",
         ]:
             try:
                 await db.execute(col)

@@ -938,7 +938,7 @@ function addTicketBlock(containerId, fieldName) {
 let _ticketLastFocusedTextarea = {};
 document.addEventListener('focusin', function(e) {
   if (e.target.tagName !== 'TEXTAREA') return;
-  const container = e.target.closest('[id^="desc-blocks-"], [id^="ticket-msg-blocks-"]');
+  const container = e.target.closest('[id^="desc-blocks-"], [id^="ticket-msg-blocks-"], [id^="embed-blocks-"]');
   if (container) _ticketLastFocusedTextarea[container.id] = e.target;
 });
 function insertTicketRoleMention(selectEl, containerId) {
@@ -2299,6 +2299,144 @@ function toggleAdEdit(id) {
   {% endif %}
 </div>
 
+<div class="tab-pane" id="pane-embeds">
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="toggleEmbedsInfo()" title="{{ tr.embeds_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="embeds-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:300px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.embeds_info_title }}</div>
+    <ul style="margin:0 0 0 1.1rem;padding:0;color:var(--muted);line-height:1.6;">
+      <li>{{ tr.embeds_info_item_create }}</li>
+      <li>{{ tr.embeds_info_item_edit }}</li>
+      <li>{{ tr.embeds_info_item_channel }}</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:1.25rem;">
+  <div style="padding:0.85rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-weight:700;font-size:0.95rem;">{{ tr.embeds_title }} <span style="font-weight:400;color:var(--muted);font-size:0.8rem;">{{ embed_posts|length }}</span></div>
+    <button class="btn btn-primary" style="font-size:0.78rem;padding:0.3rem 0.75rem;" onclick="const b=document.getElementById('create-embed-box');b.style.display=b.style.display?'':'block';">{{ tr.embeds_btn_new }}</button>
+  </div>
+
+  <div id="create-embed-box" style="display:none;padding:1rem 1.25rem;border-bottom:1px solid var(--border);background:var(--bg);">
+    <form method="post" action="/servers/{{ guild.id }}/embeds/create">
+      <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
+        <div>
+          <label>{{ tr.label_name }}</label>
+          <input type="text" name="name" required maxlength="100" style="margin-bottom:0;">
+        </div>
+        <div>
+          <label>{{ tr.label_channel }}</label>
+          <select name="channel_id" required style="margin-bottom:0;">
+            <option value="">{{ tr.tickets_channel_placeholder }}</option>
+            {% for ch in channels %}<option value="{{ ch.id }}">#{{ ch.name }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <label>{{ tr.embeds_content_label }}</label>
+      <div id="embed-blocks-new">
+        <div style="display:flex;gap:0.4rem;margin-bottom:0.4rem;align-items:flex-start;">
+          <textarea name="content_block" rows="4" placeholder="{{ tr.embeds_content_placeholder }}"
+                    style="margin:0;flex:1;box-sizing:border-box;background:var(--bg);color:var(--text);
+                           border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.8rem;
+                           font-size:0.875rem;line-height:1.5;resize:vertical;font-family:inherit;outline:none;"></textarea>
+          <button type="button" class="btn btn-danger" onclick="this.parentElement.remove()" style="padding:0.3rem 0.6rem;font-size:0.75rem;" title="{{ tr.btn_delete }}">✕</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.75rem;">
+        <button type="button" class="btn btn-secondary" onclick="addTicketBlock('embed-blocks-new', 'content_block')" style="font-size:0.75rem;padding:0.3rem 0.7rem;">{{ tr.tickets_add_embed }}</button>
+        {% if roles %}
+        <select onchange="insertTicketRoleMention(this, 'embed-blocks-new')" style="width:auto;margin:0;font-size:0.75rem;padding:0.3rem 0.5rem;">
+          <option value="">{{ tr.tickets_insert_role_label }}</option>
+          {% for r in roles %}<option value="{{ r.id }}">@{{ r.name }}</option>{% endfor %}
+        </select>
+        {% endif %}
+      </div>
+      <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.embeds_btn_post }}</button>
+    </form>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>{{ tr.label_name }}</th><th>{{ tr.label_channel }}</th><th></th></tr></thead>
+      <tbody>
+        {% for ep in embed_posts %}
+        <tr>
+          <td style="font-weight:600;font-size:0.88rem;">{{ ep.name }}</td>
+          <td style="color:var(--muted);font-size:0.8rem;">{% if ep.channel_id %}#{{ ep.channel_name or ep.channel_id }}{% else %}—{% endif %}</td>
+          <td style="text-align:right;white-space:nowrap;">
+            <button type="button" class="btn btn-secondary" onclick="togglePanelEdit('ep-{{ ep.id }}')" style="padding:0.2rem 0.6rem;font-size:0.78rem;" title="{{ tr.btn_settings }}">⚙</button>
+            <form method="post" action="/servers/{{ guild.id }}/embeds/{{ ep.id }}/delete" style="margin:0;display:inline;" onsubmit="return confirm({{ tr.embeds_confirm_delete.replace('{name}', ep.name) | js }})">
+              <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
+            </form>
+          </td>
+        </tr>
+        <tr id="panel-edit-ep-{{ ep.id }}" style="display:none;" class="panel-edit-row">
+          <td colspan="3" style="padding:1rem 1.25rem;">
+            <form method="post" action="/servers/{{ guild.id }}/embeds/{{ ep.id }}/update">
+              <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
+                <div>
+                  <label>{{ tr.label_name }}</label>
+                  <input type="text" name="name" value="{{ ep.name }}" required maxlength="100" style="margin-bottom:0;">
+                </div>
+                <div>
+                  <label>{{ tr.label_channel }}</label>
+                  <select name="channel_id" required style="margin-bottom:0;">
+                    {% for ch in channels %}<option value="{{ ch.id }}" {% if ep.channel_id == ch.id|string %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
+                  </select>
+                </div>
+              </div>
+              <label>{{ tr.embeds_content_label }}</label>
+              <div id="embed-blocks-{{ ep.id }}">
+                {% for block in ep.content_blocks %}
+                <div style="display:flex;gap:0.4rem;margin-bottom:0.4rem;align-items:flex-start;">
+                  <textarea name="content_block" rows="4"
+                            style="margin:0;flex:1;box-sizing:border-box;background:var(--bg);color:var(--text);
+                                   border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.8rem;
+                                   font-size:0.875rem;line-height:1.5;resize:vertical;font-family:inherit;outline:none;">{{ block }}</textarea>
+                  <button type="button" class="btn btn-danger" onclick="this.parentElement.remove()" style="padding:0.3rem 0.6rem;font-size:0.75rem;" title="{{ tr.btn_delete }}">✕</button>
+                </div>
+                {% endfor %}
+              </div>
+              <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.75rem;">
+                <button type="button" class="btn btn-secondary" onclick="addTicketBlock('embed-blocks-{{ ep.id }}', 'content_block')" style="font-size:0.75rem;padding:0.3rem 0.7rem;">{{ tr.tickets_add_embed }}</button>
+                {% if roles %}
+                <select onchange="insertTicketRoleMention(this, 'embed-blocks-{{ ep.id }}')" style="width:auto;margin:0;font-size:0.75rem;padding:0.3rem 0.5rem;">
+                  <option value="">{{ tr.tickets_insert_role_label }}</option>
+                  {% for r in roles %}<option value="{{ r.id }}">@{{ r.name }}</option>{% endfor %}
+                </select>
+                {% endif %}
+              </div>
+              <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not embed_posts %}
+        <tr><td colspan="3" style="text-align:center;padding:2rem;color:var(--muted);">{{ tr.embeds_empty }}</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+
+<script>
+function toggleEmbedsInfo() {
+  const box = document.getElementById('embeds-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('embeds-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleEmbedsInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+</script>
+
 </div>
 
 <script>
@@ -2336,7 +2474,7 @@ function updateAmpCmdPreview(id, action, value) {
 </script>
 
 <script>
-const TABS = ['config','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete','amp','autokick'];
+const TABS = ['config','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete','amp','autokick','embeds'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {
