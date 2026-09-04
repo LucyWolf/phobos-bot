@@ -787,6 +787,7 @@ document.addEventListener('click', function(e) {
                 </div>
                 <div style="grid-column:1/-1;">
                   <label>{{ tr.tickets_description_label }}</label>
+                  <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.tickets_description_hint }}</p>
                   <div id="desc-lines-{{ p.id }}">
                     {% set desc_lines = (p.description or '').split('\n') %}
                     {% for line in desc_lines %}
@@ -800,6 +801,23 @@ document.addEventListener('click', function(e) {
                     {% endfor %}
                   </div>
                   <button type="button" class="btn btn-secondary" onclick="addTicketDescLine({{ p.id }})" style="font-size:0.75rem;padding:0.3rem 0.7rem;">➕</button>
+                </div>
+                <div style="grid-column:1/-1;">
+                  <label>{{ tr.tickets_ticket_message_label }}</label>
+                  <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.tickets_ticket_message_hint }}</p>
+                  <div id="ticket-msg-lines-{{ p.id }}">
+                    {% set ticket_msg_lines = (p.ticket_message or '').split('\n') %}
+                    {% for line in ticket_msg_lines %}
+                    <div style="display:flex;gap:0.4rem;margin-bottom:0.4rem;align-items:flex-start;">
+                      <textarea name="ticket_message_line" rows="2" placeholder="{{ tr.tickets_ticket_message_placeholder if loop.first else '' }}"
+                                style="margin:0;flex:1;box-sizing:border-box;background:var(--bg);color:var(--text);
+                                       border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.8rem;
+                                       font-size:0.875rem;line-height:1.5;resize:vertical;font-family:inherit;outline:none;">{{ line }}</textarea>
+                      <button type="button" class="btn btn-danger" onclick="this.parentElement.remove()" style="padding:0.3rem 0.6rem;font-size:0.75rem;" title="{{ tr.btn_delete }}">✕</button>
+                    </div>
+                    {% endfor %}
+                  </div>
+                  <button type="button" class="btn btn-secondary" onclick="addTicketMsgLine({{ p.id }})" style="font-size:0.75rem;padding:0.3rem 0.7rem;">➕</button>
                 </div>
               </div>
               <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
@@ -867,12 +885,12 @@ function togglePanelEdit(id) {
   const row = document.getElementById('panel-edit-' + id);
   if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
 }
-function addTicketDescLine(panelId) {
-  const container = document.getElementById('desc-lines-' + panelId);
+function addTicketTextLine(containerId, fieldName) {
+  const container = document.getElementById(containerId);
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;gap:0.4rem;margin-bottom:0.4rem;align-items:flex-start;';
   const textarea = document.createElement('textarea');
-  textarea.name = 'description_line';
+  textarea.name = fieldName;
   textarea.rows = 2;
   textarea.style.cssText = 'margin:0;flex:1;box-sizing:border-box;background:var(--bg);color:var(--text);'
     + 'border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.8rem;'
@@ -887,6 +905,12 @@ function addTicketDescLine(panelId) {
   row.appendChild(btn);
   container.appendChild(row);
   textarea.focus();
+}
+function addTicketDescLine(panelId) {
+  addTicketTextLine('desc-lines-' + panelId, 'description_line');
+}
+function addTicketMsgLine(panelId) {
+  addTicketTextLine('ticket-msg-lines-' + panelId, 'ticket_message_line');
 }
 function toggleTicketsInfo() {
   const box = document.getElementById('tickets-info-box');

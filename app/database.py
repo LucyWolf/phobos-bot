@@ -506,6 +506,20 @@ async def init_db():
             """)
         except Exception:
             pass
+        # User-requested ("das mann es einstelen kann das mann in den tiket eine eigene
+        # nachricht verfassen kann") - the panel's own posted message and the message shown
+        # inside a newly created ticket used to share the single `description` column
+        # (cogs/tickets.py's _create_ticket() reused it verbatim). Splitting them into two
+        # independent columns must not silently blank the in-ticket text for panels that were
+        # already configured - the ALTER + backfill sit in the SAME try block so the backfill
+        # only ever runs once, exactly when the column is first added: on every later restart
+        # the ALTER TABLE fails first (column already exists), so this whole block is skipped
+        # and a since-cleared ticket_message is never overwritten again.
+        try:
+            await db.execute("ALTER TABLE ticket_panels ADD COLUMN ticket_message TEXT NOT NULL DEFAULT ''")
+            await db.execute("UPDATE ticket_panels SET ticket_message=description")
+        except Exception:
+            pass
         await db.commit()
 
 

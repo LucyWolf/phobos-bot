@@ -120,7 +120,14 @@ class PanelButton(ui.Button):
                 title=f"{panel.get('emoji', '🎫')} {panel['name']}",
                 description=(
                     f"Hallo {interaction.user.mention}!\n"
-                    + (panel.get("description") or "Beschreibe dein Anliegen und wir helfen dir so schnell wie möglich.")
+                    # Own field since the dashboard split it from the panel's own advertisement
+                    # text ("description") - so a long panel message isn't repeated verbatim
+                    # inside every newly created ticket. Falls back to "description" only for
+                    # rows that predate this split (ticket_message empty from before the
+                    # database migration's one-time backfill, or a very old already-restored
+                    # backup) - never to a hardcoded default while a real description exists.
+                    + (panel.get("ticket_message") or panel.get("description")
+                       or "Beschreibe dein Anliegen und wir helfen dir so schnell wie möglich.")
                 ),
                 color=0x7C3AED,
             )

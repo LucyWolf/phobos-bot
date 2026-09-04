@@ -1004,7 +1004,8 @@ _BACKUP_TBL_INSERT = {
     # consciously re-publish, rather than risk the bot creating tickets around a message
     # that was never actually re-created.
     "ticket_panels":
-        "INSERT INTO ticket_panels (guild_id,name,description,button_label,emoji,support_role_id,category_id) VALUES (:guild_id,:name,:description,:button_label,:emoji,:support_role_id,:category_id)",
+        "INSERT INTO ticket_panels (guild_id,name,description,ticket_message,button_label,emoji,support_role_id,category_id) "
+        "VALUES (:guild_id,:name,:description,:ticket_message,:button_label,:emoji,:support_role_id,:category_id)",
     "level_roles":
         "INSERT OR IGNORE INTO level_roles (guild_id,level,role_id) VALUES (:guild_id,:level,:role_id)",
     "level_rewards":
@@ -1285,6 +1286,13 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
             rows = data.get(tbl, [])
             for row in rows:
                 try:
+                    # A backup taken before ticket_message existed as its own field won't have
+                    # the key at all - the named-parameter INSERT below would otherwise raise
+                    # (missing :ticket_message) and silently drop the WHOLE panel, not just the
+                    # new field. Same one-time fallback as the DB migration itself: default it
+                    # to the panel's existing description instead of losing the row.
+                    if tbl == "ticket_panels" and "ticket_message" not in row:
+                        row = {**row, "ticket_message": row.get("description", "")}
                     await db.execute(sql, row)
                 except Exception:
                     pass
@@ -1439,7 +1447,13 @@ async def server_backup_restore(request: Request, guild_id: int, backup_file: Up
                     # would otherwise raise an unhandled TypeError right here ({**row, ...}
                     # requires a mapping) instead of just skipping that one bad row like every
                     # other malformed-row case in this loop already does.
-                    await db.execute(sql, {**row, "guild_id": gid_str})
+                    merged = {**row, "guild_id": gid_str}
+                    if tbl == "ticket_panels" and "ticket_message" not in row:
+                        # Same pre-ticket_message backup fallback as the full-backup restore
+                        # path above - default to the existing description instead of losing
+                        # the whole panel to a missing named parameter.
+                        merged["ticket_message"] = row.get("description", "")
+                    await db.execute(sql, merged)
                 except Exception:
                     pass
             if rows:
@@ -4937,8 +4951,9 @@ async def tickets_panel_create(request: Request, guild_id: int, name: str = Form
         # request with an unhandled 500 instead of a friendly error.
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Name+zu+lang+(max.+100+Zeichen)", status_code=302)
     await db_exec(
-        "INSERT INTO ticket_panels (guild_id, name, button_label, description, emoji) VALUES (?,?,?,?,?)",
-        (guild_id, name, "Ticket öffnen", "Klicke unten um ein Ticket zu öffnen.", "🎫"),
+        "INSERT INTO ticket_panels (guild_id, name, button_label, description, ticket_message, emoji) VALUES (?,?,?,?,?,?)",
+        (guild_id, name, "Ticket öffnen", "Klicke unten um ein Ticket zu öffnen.",
+         "Beschreibe dein Anliegen und wir helfen dir so schnell wie möglich.", "🎫"),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Panel+erstellt", status_code=302)
 
@@ -4960,8 +4975,13 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     # User-requested ("mehre text felder ... mach ein +") - the single description field is
     # now several "+"-addable lines, joined back into one multi-line string. Each line is
     # stripped individually (trims stray whitespace from typing/pasting) but blank lines are
-    # kept - lets an admin add a deliberate paragraph break between two lines.
+    # kept - lets an admin add a deliberate paragraph break between two lines. Same treatment
+    # for ticket_message (added right after, "das mann in den tiket eine eigene nachricht
+    # verfassen kann") - previously the SAME description text was reused verbatim inside every
+    # newly created ticket (cogs/tickets.py's _create_ticket), now it's its own independent
+    # field so a long panel-advertisement text doesn't have to be repeated inside the ticket.
     description = "\n".join(l.strip() for l in form.getlist("description_line"))
+    ticket_message = "\n".join(l.strip() for l in form.getlist("ticket_message_line"))
     if support_role_id and support_role_id not in {str(ro.id) for ro in guild.roles}:
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Rolle", status_code=302)
     if category_id and category_id not in {str(c.id) for c in guild.categories}:
@@ -4975,25 +4995,31 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
         # unhandled 500 instead of a friendly error.
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Button-Text+zu+lang+(max.+80+Zeichen)", status_code=302)
     if len(description.strip()) > 3900:
-        # Ends up in the ticket-channel embed description as "Hallo {mention}!\n{description}"
-        # (cogs/tickets.py's _create_ticket) - Discord's hard limit there is 4096 characters.
-        # Unlike name/button_label above, this wasn't checked at all: a too-long description
-        # wouldn't break /publish (that message only ever shows the raw description, no
-        # greeting prefix), it would instead make channel.send() fail silently for every
-        # future ticket creation from this panel - already caught by _create_ticket's own
-        # broad try/except (cleanup + a generic "couldn't create ticket" message), but with no
-        # way for the admin to tell WHY from that message alone. Rejecting it here, where the
-        # cause is obvious, is better than a mystery failure at every ticket open attempt.
+        # Ends up as the /publish'd panel message's own embed description - Discord's hard
+        # limit there is 4096 characters, kept at the same 3900 cushion as before the
+        # description/ticket_message split (no urgent need to raise it now that this field no
+        # longer carries the "Hallo {mention}!\n" prefix - see ticket_message's check below).
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Beschreibung+zu+lang+(max.+3900+Zeichen)", status_code=302)
+    if len(ticket_message.strip()) > 3900:
+        # Ends up in the ticket-channel embed description as "Hallo {mention}!\n{ticket_message}"
+        # (cogs/tickets.py's _create_ticket) - Discord's hard limit there is 4096 characters.
+        # A too-long text wouldn't break /publish (that message doesn't use this field at all),
+        # it would instead make channel.send() fail silently for every future ticket creation
+        # from this panel - already caught by _create_ticket's own broad try/except (cleanup +
+        # a generic "couldn't create ticket" message), but with no way for the admin to tell WHY
+        # from that message alone. Rejecting it here, where the cause is obvious, is better than
+        # a mystery failure at every ticket open attempt.
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ticket-Nachricht+zu+lang+(max.+3900+Zeichen)", status_code=302)
     panel_before = await db_one("SELECT * FROM ticket_panels WHERE id=? AND guild_id=?", (panel_id, guild_id))
     new_name = name.strip()
     new_label = button_label.strip() or "Ticket öffnen"
     new_emoji = emoji.strip() or "🎫"
     new_description = description.strip()
+    new_ticket_message = ticket_message.strip()
     await db_exec(
-        "UPDATE ticket_panels SET name=?, button_label=?, description=?, emoji=?, "
+        "UPDATE ticket_panels SET name=?, button_label=?, description=?, ticket_message=?, emoji=?, "
         "support_role_id=?, category_id=? WHERE id=? AND guild_id=?",
-        (new_name, new_label, new_description, new_emoji,
+        (new_name, new_label, new_description, new_ticket_message, new_emoji,
          support_role_id, category_id, panel_id, guild_id),
     )
     # A published panel's button/embed lives on an already-sent Discord message - saving name/
