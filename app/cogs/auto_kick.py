@@ -1,4 +1,5 @@
 import datetime
+import re
 
 import discord
 from discord.ext import commands, tasks
@@ -73,6 +74,24 @@ class AutoKick(commands.Cog):
     async def _before_check(self):
         await self.bot.wait_until_ready()
 
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member):
+        # User-requested cleanup ("reume auf um daten reste loss zu werden"): _kick() below
+        # already clears a member's auto_kick_sent rows when THIS bot is the one that removed
+        # them, but that left every other way a member can leave - quitting on their own,
+        # a manual kick/ban by staff, a kick from a different bot token in a multi-bot setup -
+        # with no cleanup at all. Those rows would sit there forever: harmless to the actual
+        # reminder/kick logic (a rejoin already gets a fresh cycle via the joined_at comparison
+        # in _remind_if_needed(), a stale row for an OLD membership simply never matches a NEW
+        # one), but still real leftover data with no further purpose once someone's gone.
+        try:
+            await db_exec(
+                "DELETE FROM auto_kick_sent WHERE guild_id=? AND user_id=?",
+                (str(member.guild.id), str(member.id)),
+            )
+        except Exception as e:
+            print(f"[AutoKick] Aufräumen für {member.id} in Guild {member.guild.id} fehlgeschlagen: {e}")
+
     async def _check_guild(self, guild: discord.Guild):
         cfg = await self._get_config(guild.id)
         if not cfg:
@@ -120,9 +139,19 @@ class AutoKick(commands.Cog):
         )
         if row and row["joined_at"] == joined_iso:
             return  # this specific reminder was already sent for this exact membership
-        text = (reminder["message"].replace("{user}", member.mention)
-                                    .replace("{server}", guild.name)
-                                    .replace("{kick_hours}", str(kick_hours)))
+        # Single-pass substitution instead of chained .replace() calls: a server name (or,
+        # less plausibly, a mention) could itself contain the literal text of a LATER
+        # placeholder (e.g. a server named "Cooler {kick_hours} Server") and get re-substituted
+        # by a subsequent .replace() in the chain - the exact bug class already fixed for
+        # welcome.py's fill() and automod.py's warn message elsewhere in this project.
+        placeholders = {
+            "{user}": member.mention, "{server}": guild.name, "{kick_hours}": str(kick_hours),
+        }
+        text = re.sub(
+            "|".join(re.escape(k) for k in placeholders),
+            lambda m: placeholders[m.group(0)],
+            reminder["message"],
+        )
         try:
             await member.send(text)
         except discord.HTTPException:

@@ -4729,6 +4729,13 @@ async def auto_kick_reminder_delete(request: Request, guild_id: int, reminder_id
     await db_exec(
         "DELETE FROM auto_kick_reminders WHERE id=? AND guild_id=?", (reminder_id, str(guild_id))
     )
+    # auto_kick_reminders.id is never reused (AUTOINCREMENT), so leaving these rows behind
+    # couldn't cause a future reminder to wrongly inherit "already sent" tracking - but they'd
+    # otherwise just sit there forever with nothing left to reference, pure leftover data for
+    # a reminder that no longer exists (user-requested cleanup, "daten reste loss werden").
+    await db_exec(
+        "DELETE FROM auto_kick_sent WHERE guild_id=? AND reminder_id=?", (str(guild_id), reminder_id)
+    )
     return RedirectResponse(f"/servers/{guild_id}?tab=autokick&success=Erinnerung+entfernt", status_code=303)
 
 
