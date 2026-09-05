@@ -1888,14 +1888,24 @@ async def users_toggle_active(request: Request, user_id: int):
     return RedirectResponse(f"/users?success={'Konto+aktiviert' if new_active else 'Konto+deaktiviert'}", status_code=302)
 
 
-def _cgroup_ram() -> tuple[int, int] | None:
-    """Return (used_bytes, limit_bytes) from cgroup memory, or None if unavailable."""
+def _cgroup_ram() -> tuple[int, int | None] | None:
+    """Return (used_bytes, limit_bytes) from THIS container's own cgroup memory accounting, or
+    None if the cgroup files aren't readable at all (not running in a container, or some other
+    reason). limit_bytes is None when the container has no memory limit configured (cgroup v2's
+    "max" / v1's near-2**63 no-limit sentinel) - used_bytes is still returned in that case,
+    since cgroups track actual usage independently of whether a cap is set. Confirmed live: a
+    container with no configured memory limit (`docker inspect` showing HostConfig.Memory=0)
+    still has a perfectly readable, meaningful memory.current - discarding it just because
+    there's no memory.max to divide it by (the previous behavior here) meant get_system_stats()
+    fell all the way back to psutil's HOST-wide numbers, which look identical across every
+    container running on the same machine regardless of each one's actual own footprint."""
     NO_LIMIT = 2 ** 62
     # cgroups v2 (modern Docker / systemd)
     try:
-        limit = int(Path("/sys/fs/cgroup/memory.max").read_text().strip())
-        used  = int(Path("/sys/fs/cgroup/memory.current").read_text().strip())
-        if 0 < limit < NO_LIMIT:
+        raw_limit = Path("/sys/fs/cgroup/memory.max").read_text().strip()
+        used = int(Path("/sys/fs/cgroup/memory.current").read_text().strip())
+        limit = None if raw_limit == "max" else int(raw_limit)
+        if limit is None or 0 < limit < NO_LIMIT:
             return used, limit
     except Exception:
         pass
@@ -1905,6 +1915,8 @@ def _cgroup_ram() -> tuple[int, int] | None:
         used  = int(Path("/sys/fs/cgroup/memory/memory.usage_in_bytes").read_text().strip())
         if 0 < limit < NO_LIMIT:
             return used, limit
+        if limit >= NO_LIMIT:
+            return used, None
     except Exception:
         pass
     return None
@@ -1985,14 +1997,29 @@ def get_system_stats() -> dict:
         proc = psutil.Process()
         cg = _cgroup_ram()
         if cg:
-            ram_used  = cg[0] // (1024 ** 2)
-            ram_total = cg[1] // (1024 ** 2)
-            ram_pct   = round(cg[0] / cg[1] * 100, 1)
+            used, limit = cg
+            ram_used = used // (1024 ** 2)
+            if limit is not None:
+                ram_total = limit // (1024 ** 2)
+                ram_pct   = round(used / limit * 100, 1)
+            else:
+                # No memory limit configured for this container - the host's total is the
+                # practical ceiling, but ram_used stays THIS container's own actual usage
+                # (not the host's aggregate, which would look identical for every container
+                # on the same machine regardless of what each one is actually doing).
+                vm = psutil.virtual_memory()
+                ram_total = vm.total // (1024 ** 2)
+                ram_pct   = round(used / vm.total * 100, 1) if vm.total else 0
         else:
             vm = psutil.virtual_memory()
             ram_used  = vm.used  // (1024 ** 2)
             ram_total = vm.total // (1024 ** 2)
-            ram_pct   = round(vm.percent, 1)
+            # vm.percent and vm.used use different internal definitions of "used" memory
+            # (percent factors in reclaimable cache/buffers differently) - they can disagree
+            # by a percentage point or more on a real host, looking inconsistent side by side
+            # on the same card. Deriving the percentage from the exact same used/total shown
+            # here keeps the bar and the numbers in agreement.
+            ram_pct   = round(vm.used / vm.total * 100, 1) if vm.total else 0
         cpu = psutil.cpu_percent(interval=0.1)
         proc_ram = proc.memory_info().rss // (1024 ** 2)
     else:
@@ -5430,10 +5457,12 @@ def _build_freeform_embeds(content_raw, image_url: str = "", footer_text: str = 
     return embeds
 
 
-# Discord's baseline file-upload limit for a non-boosted guild - a safe cap that works
-# regardless of the target server's boost tier, matching the same "err on the safe/universal
-# side" reasoning as the other hard limits in this feature.
-_EMBED_IMAGE_MAX_BYTES = 8 * 1024 * 1024
+# No app-level size cap by design (explicit user request: "mach die grenze weg mach nur eine
+# warung hin ab wann dc sich dan beschwert und es nicht klapen könnte") - Discord itself is the
+# real, sole size enforcement (its actual limit varies by the target guild's boost level, from
+# 10 MB up to 500 MB), surfaced to the admin via the existing discord.HTTPException handler in
+# embed_post_create/_update if a given upload turns out to be too big for that specific server.
+# The dashboard hint text next to the file field spells this out instead of guessing a number.
 _EMBED_IMAGE_EXTS = {"png", "jpg", "jpeg", "gif", "webp"}
 
 
@@ -5443,8 +5472,8 @@ async def _read_embed_image_upload(image_file):
     to pasting a URL). Returns (base64_data, filename) if a real file was provided, or
     (None, None) if the field was empty/no file was chosen - callers treat that the same as
     "no upload happened". Raises ValueError(message) with a dashboard-ready error string on an
-    invalid upload (too large / not a real image), same pattern as every other validation
-    error in this feature.
+    invalid upload (not a real image), same pattern as every other validation error in this
+    feature. No size check here - see the module-level comment above.
     Deliberately does NOT re-encode the image through Pillow before storing it - only opens it
     to confirm it's a real, undamaged image. Re-encoding would strip an animated GIF down to
     its first frame and flatten PNG transparency, both real losses for something meant to be
@@ -5454,8 +5483,6 @@ async def _read_embed_image_upload(image_file):
     data = await image_file.read()
     if not data:
         return None, None
-    if len(data) > _EMBED_IMAGE_MAX_BYTES:
-        raise ValueError("Bild+zu+groß+(max.+8+MB)")
     try:
         img = Image.open(io.BytesIO(data))
         img.verify()
