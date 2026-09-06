@@ -4610,6 +4610,11 @@ async def server_config(
     role_rules_debug_log = []
     _rr_guild_bot = bot._bot_for_guild(guild_id)
     _rr_cog = _rr_guild_bot.get_cog("RoleRules") if _rr_guild_bot else None
+    # Distinguish "cog genuinely has nothing to show yet" from "the cog isn't even loaded on
+    # the bot instance connected to this guild" (e.g. a startup error in cogs/role_rules.py) -
+    # the latter would otherwise look identical to "no events yet" and send an admin chasing
+    # the wrong problem.
+    role_rules_cog_missing = _rr_cog is None
     if _rr_cog:
         _rr_relevant_ids = {str(guild_id)} | {rr["action_guild_id"] for rr in role_rules}
         role_rules_debug_log = [
@@ -4750,6 +4755,7 @@ async def server_config(
         "role_rule_target_roles": role_rule_target_roles,
         "role_rules_interval": role_rules_interval,
         "role_rules_debug_log": role_rules_debug_log,
+        "role_rules_cog_missing": role_rules_cog_missing,
         "roles": roles, "categories": categories,
         "token_set": token_set, "saved": saved,
         "active": f"server_{guild_id}",

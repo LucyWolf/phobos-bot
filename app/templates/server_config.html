@@ -2757,7 +2757,9 @@ function updateAmpCmdPreview(id, action, value) {
   <details {% if role_rules_debug_log %}open{% endif %}>
     <summary class="hint" style="cursor:pointer;font-weight:700;color:var(--text);">{{ tr.rolerules_debug_label }}</summary>
     <div style="font-size:0.72rem;color:var(--muted);margin:0.4rem 0;">{{ tr.rolerules_debug_hint }}</div>
-    {% if role_rules_debug_log %}
+    {% if role_rules_cog_missing %}
+    <div class="hint" style="color:var(--danger);">{{ tr.rolerules_debug_cog_missing }}</div>
+    {% elif role_rules_debug_log %}
     <pre style="white-space:pre-wrap;word-break:break-all;font-size:0.7rem;color:var(--muted);max-height:320px;overflow-y:auto;margin:0;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;padding:0.6rem 0.8rem;">{% for line in role_rules_debug_log %}{{ line }}
 {% endfor %}</pre>
     {% else %}

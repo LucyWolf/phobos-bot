@@ -212,6 +212,8 @@ class RoleRules(commands.Cog):
                 if now - last < interval * 60:
                     continue
                 self._last_run[guild.id] = now
+                self._log(f"Periodische Prüfung gestartet für Guild {guild.id} ({guild.name}): "
+                          f"{len(guild.members)} Mitglied(er), Intervall={interval}min")
                 for member in guild.members:
                     try:
                         await self._evaluate_member(guild, member)
