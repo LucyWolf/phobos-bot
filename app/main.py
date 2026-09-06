@@ -4811,6 +4811,7 @@ _TAB_TEXT_KEYS = {
         "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
         "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",
         "welcome_card_heading_text", "welcome_card_subtitle_text",
+        "welcome_card_avatar_shape", "welcome_card_avatar_position",
     ],
     "leveling": [
         "level_channel", "leveling_voice_xp_per_min", "leveling_role_mode",

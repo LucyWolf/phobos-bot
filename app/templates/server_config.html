@@ -117,6 +117,26 @@
             </div>
           </div>
         </div>
+        <div class="grid-2" style="gap:1rem;margin-top:0.75rem;">
+          <div>
+            <label style="font-size:0.82rem;">{{ tr.config_card_avatar_shape_label }}</label>
+            <select name="welcome_card_avatar_shape">
+              <option value="" {% if not cfg.get('welcome_card_avatar_shape') %}selected{% endif %}>{{ tr.config_card_shape_circle }}</option>
+              <option value="hexagon" {% if cfg.get('welcome_card_avatar_shape') == 'hexagon' %}selected{% endif %}>{{ tr.config_card_shape_hexagon }}</option>
+              <option value="octagon" {% if cfg.get('welcome_card_avatar_shape') == 'octagon' %}selected{% endif %}>{{ tr.config_card_shape_octagon }}</option>
+              <option value="square" {% if cfg.get('welcome_card_avatar_shape') == 'square' %}selected{% endif %}>{{ tr.config_card_shape_square }}</option>
+              <option value="diamond" {% if cfg.get('welcome_card_avatar_shape') == 'diamond' %}selected{% endif %}>{{ tr.config_card_shape_diamond }}</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:0.82rem;">{{ tr.config_card_avatar_position_label }}</label>
+            <select name="welcome_card_avatar_position">
+              <option value="" {% if not cfg.get('welcome_card_avatar_position') %}selected{% endif %}>{{ tr.config_card_position_left }}</option>
+              <option value="center" {% if cfg.get('welcome_card_avatar_position') == 'center' %}selected{% endif %}>{{ tr.config_card_position_center }}</option>
+              <option value="right" {% if cfg.get('welcome_card_avatar_position') == 'right' %}selected{% endif %}>{{ tr.config_card_position_right }}</option>
+            </select>
+          </div>
+        </div>
         <p style="font-size:0.75rem;color:var(--muted);margin-top:0.75rem;">
           {{ tr.config_card_preview_hint }}
         </p>

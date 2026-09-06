@@ -3,6 +3,7 @@ autorole on join. Both the welcome message and the autorole assignment run indep
 each other - a server with no welcome channel configured still gets autorole."""
 import base64
 import io
+import math
 import re
 import discord
 from discord.ext import commands
@@ -49,9 +50,39 @@ def _cover_crop(img, target_w: int, target_h: int):
     return img.crop((left, top, left + target_w, top + target_h))
 
 
+def _shape_mask(shape: str, w: int, h: int):
+    """Builds an 'L'-mode 255/0 mask for the given avatar-frame shape - used for BOTH the
+    avatar's own alpha mask and the colored ring drawn behind it, so the two can never end up
+    showing different shapes. Anything not explicitly matched (empty string, "circle", or an
+    unrecognized value from a hand-crafted request) falls through to the plain ellipse - the
+    exact shape this project always drew before the shape became configurable, so a server
+    that never touches this setting renders pixel-identical to before."""
+    from PIL import Image, ImageDraw
+    mask = Image.new("L", (w, h), 0)
+    draw = ImageDraw.Draw(mask)
+    if shape == "hexagon":
+        cx, cy, r = w / 2, h / 2, min(w, h) / 2
+        pts = [(cx + r * math.cos(math.radians(-90 + 60 * i)),
+                cy + r * math.sin(math.radians(-90 + 60 * i))) for i in range(6)]
+        draw.polygon(pts, fill=255)
+    elif shape == "octagon":
+        cx, cy, r = w / 2, h / 2, min(w, h) / 2
+        pts = [(cx + r * math.cos(math.radians(-90 + 45 * i)),
+                cy + r * math.sin(math.radians(-90 + 45 * i))) for i in range(8)]
+        draw.polygon(pts, fill=255)
+    elif shape == "square":
+        draw.rounded_rectangle((0, 0, w - 1, h - 1), radius=int(min(w, h) * 0.15), fill=255)
+    elif shape == "diamond":
+        draw.polygon([(w / 2, 0), (w, h / 2), (w / 2, h), (0, h / 2)], fill=255)
+    else:
+        draw.ellipse((0, 0, w - 1, h - 1), fill=255)
+    return mask
+
+
 async def _make_card(member: discord.Member, circle_color: str, text_color: str, username_color: str,
                       bg_image_b64: str | None = None, heading_text: str = "WELCOME",
-                      subtitle_text: str | None = None) -> io.BytesIO:
+                      subtitle_text: str | None = None, avatar_shape: str = "circle",
+                      avatar_position: str = "left") -> io.BytesIO:
     import aiohttp
     from PIL import Image, ImageDraw
 
@@ -100,46 +131,77 @@ async def _make_card(member: discord.Member, circle_color: str, text_color: str,
 
     draw = ImageDraw.Draw(bg)
 
-    # Subtle divider line
-    draw.rectangle([(238, 35), (240, H - 35)], fill=(60, 65, 90, 200))
+    avatar_shape = (avatar_shape or "circle").strip().lower()
+    avatar_position = (avatar_position or "left").strip().lower()
 
-    # --- Avatar ---
-    avatar_img = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA").resize((160, 160), Image.LANCZOS)
-    mask = Image.new("L", (160, 160), 0)
-    ImageDraw.Draw(mask).ellipse((0, 0, 159, 159), fill=255)
-    avatar_img.putalpha(mask)
-
-    # Border circle
-    bw = 178
-    border = Image.new("RGBA", (bw, bw), (0, 0, 0, 0))
     cr, cg, cb = _hex_to_rgb(circle_color)
-    ImageDraw.Draw(border).ellipse((0, 0, bw - 1, bw - 1), fill=(cr, cg, cb, 255))
-
-    bx, by = 31, 51
-    bg.paste(border, (bx, by), border)
-    bg.paste(avatar_img, (bx + 9, by + 9), avatar_img)
-
-    # --- Text ---
-    font_welcome = _load_font(52)
-    font_name = _load_font(34)
-    font_count = _load_font(22, bold=False)
-
-    tx = 265
+    tr, tg, tb = _hex_to_rgb(text_color)
+    ur, ug, ub = _hex_to_rgb(username_color)
 
     # Falls back to the original hardcoded text if the caller passes an empty string (e.g. a
     # guild_config value that's set but blank) rather than None - keeps this function safe to
     # call regardless of exactly how the caller distinguishes "not configured" from "empty".
     heading_text = (heading_text or "").strip() or "WELCOME"
     subtitle_text = (subtitle_text or "").strip() or f"Mitglied #{member.guild.member_count}"
-
-    tr, tg, tb = _hex_to_rgb(text_color)
-    draw.text((tx, 72), heading_text, font=font_welcome, fill=(tr, tg, tb, 255))
-
-    ur, ug, ub = _hex_to_rgb(username_color)
     name = member.display_name if len(member.display_name) <= 24 else member.display_name[:21] + "..."
-    draw.text((tx, 146), name, font=font_name, fill=(ur, ug, ub, 255))
 
-    draw.text((tx, 202), subtitle_text, font=font_count, fill=(140, 140, 160, 255))
+    # Each branch below sets bw/bx/by (the avatar+ring box) and draws the divider (if any) and
+    # the three text lines for that layout - avatar_shape/avatar_position are otherwise fully
+    # orthogonal to each other, so the shape mask itself is built once, after this, regardless
+    # of which position branch ran.
+    if avatar_position == "right":
+        # Exact mirror of the "left"/default branch below - every x-coordinate reflected about
+        # the canvas's vertical center (W - x), same avatar size/margins, divider width, and
+        # font sizes, just flipped so the avatar sits on the right and the text block sits to
+        # its left, right-aligned.
+        bw = 178
+        bx, by = W - bw - 31, 51
+        draw.rectangle([(W - 240, 35), (W - 238, H - 35)], fill=(60, 65, 90, 200))
+        font_welcome, font_name, font_count = _load_font(52), _load_font(34), _load_font(22, bold=False)
+        text_right_edge = W - 265
+        for text, y, font, color in (
+            (heading_text, 72, font_welcome, (tr, tg, tb, 255)),
+            (name, 146, font_name, (ur, ug, ub, 255)),
+            (subtitle_text, 202, font_count, (140, 140, 160, 255)),
+        ):
+            draw.text((text_right_edge - draw.textlength(text, font=font), y), text, font=font, fill=color)
+    elif avatar_position == "center":
+        # A vertical stack instead of a left/right split - no divider line to draw, and a
+        # smaller avatar so all three (also smaller) text lines still fit underneath it inside
+        # the unchanged 280px card height.
+        bw = 130
+        bx, by = (W - bw) // 2, 16
+        font_welcome, font_name, font_count = _load_font(40), _load_font(30), _load_font(20, bold=False)
+        for text, y, font, color in (
+            (heading_text, 158, font_welcome, (tr, tg, tb, 255)),
+            (name, 206, font_name, (ur, ug, ub, 255)),
+            (subtitle_text, 244, font_count, (140, 140, 160, 255)),
+        ):
+            draw.text(((W - draw.textlength(text, font=font)) / 2, y), text, font=font, fill=color)
+    else:
+        # Default/fallback (also covers an unrecognized value) - unchanged from before avatar
+        # position existed as a setting, so an existing server without this configured renders
+        # exactly as it always has.
+        bw = 178
+        bx, by = 31, 51
+        draw.rectangle([(238, 35), (240, H - 35)], fill=(60, 65, 90, 200))
+        font_welcome, font_name, font_count = _load_font(52), _load_font(34), _load_font(22, bold=False)
+        tx = 265
+        draw.text((tx, 72), heading_text, font=font_welcome, fill=(tr, tg, tb, 255))
+        draw.text((tx, 146), name, font=font_name, fill=(ur, ug, ub, 255))
+        draw.text((tx, 202), subtitle_text, font=font_count, fill=(140, 140, 160, 255))
+
+    # --- Avatar (shape from avatar_shape, box from whichever position branch ran above) ---
+    avatar_size = bw - 18
+    avatar_img = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA").resize((avatar_size, avatar_size), Image.LANCZOS)
+    avatar_img.putalpha(_shape_mask(avatar_shape, avatar_size, avatar_size))
+
+    border = Image.new("RGBA", (bw, bw), (0, 0, 0, 0))
+    color_layer = Image.new("RGBA", (bw, bw), (cr, cg, cb, 255))
+    border.paste(color_layer, (0, 0), _shape_mask(avatar_shape, bw, bw))
+
+    bg.paste(border, (bx, by), border)
+    bg.paste(avatar_img, (bx + 9, by + 9), avatar_img)
 
     buf = io.BytesIO()
     bg.convert("RGB").save(buf, format="PNG")
@@ -198,10 +260,13 @@ class Welcome(commands.Cog):
                 subtitle_raw  = await get_guild_config(member.guild.id, "welcome_card_subtitle_text")
                 heading_text  = fill(heading_raw, member) if heading_raw else None
                 subtitle_text = fill(subtitle_raw, member) if subtitle_raw else None
+                avatar_shape  = await get_guild_config(member.guild.id, "welcome_card_avatar_shape")
+                avatar_position = await get_guild_config(member.guild.id, "welcome_card_avatar_position")
                 try:
                     buf  = await _make_card(member, circle_color, text_color, username_color,
                                              bg_image_b64=bg_image_b64, heading_text=heading_text,
-                                             subtitle_text=subtitle_text)
+                                             subtitle_text=subtitle_text, avatar_shape=avatar_shape,
+                                             avatar_position=avatar_position)
                     file = discord.File(buf, filename="welcome.png")
                     if message:
                         embed = discord.Embed(description=fill(message, member), color=0x5865F2)
