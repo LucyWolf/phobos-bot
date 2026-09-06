@@ -105,6 +105,7 @@ except ImportError:
     psutil = None
 from cogs.tickets import OpenTicketView as _TicketView, close_ticket_channel as _close_ticket_channel
 from cogs.leveling import xp_for_level as _xp_for_level, cumulative_xp_for_level as _cumulative_xp_for_level
+from cogs.welcome import _make_card as _welcome_make_card, fill as _welcome_fill
 from i18n import get_tr
 import uvicorn
 from discord.ext import commands
@@ -4393,7 +4394,8 @@ _AUTOMOD_DEFAULT_PRESETS = [
 # header instead of a static guild name, since every tab switch here is a real page reload
 # (a plain <a href="?tab=..."> link, not client-side-only JS) and can render this correctly.
 _SERVER_CONFIG_TAB_LABELS = {
-    "config": "⚙️ Config", "automod": "🛡️ Spam-Schutz", "leveling": "🏆 Leveling",
+    "config": "⚙️ Config", "welcome": "👋 Willkommen", "automod": "🛡️ Spam-Schutz",
+    "leveling": "🏆 Leveling",
     "rr": "🎭 Reaction Roles", "commands": "📢 Commands", "tickets": "🎫 Tickets",
     "giveaways": "🎉 Giveaways", "warnings": "⚠️ Warnungen", "users": "👥 Nutzer",
     "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant", "events": "🗓️ Events",
@@ -4410,6 +4412,7 @@ _SERVER_CONFIG_TAB_LABELS = {
 # manually-typed URL to it still works, this is about decluttering navigation, not gating
 # access (that's what user_guild_permissions/admin-only routes already handle separately).
 _TOGGLEABLE_FEATURES = {
+    "welcome": "👋 Willkommen",
     "automod": "🛡️ Spam-Schutz", "leveling": "🏆 Leveling", "rr": "🎭 Reaction Roles",
     "commands": "📢 Commands", "tickets": "🎫 Tickets", "giveaways": "🎉 Giveaways",
     "warnings": "⚠️ Warnungen", "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant",
@@ -4807,7 +4810,12 @@ async def server_config(
 # key regardless of which form was submitted would silently blank out every OTHER tab's
 # settings on every single save (e.g. saving Leveling would reset Auto-Mod/Welcome to empty).
 _TAB_TEXT_KEYS = {
-    "config": [
+    # Config itself owns no text fields anymore - the welcome/leave/autorole/card settings
+    # moved to their own "welcome" tab (see below), leaving config with only the always-visible
+    # feature-toggle and server-backup cards which don't go through this per-tab save loop at
+    # all. The key still has to exist (server_config_save() indexes into it unconditionally).
+    "config": [],
+    "welcome": [
         "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
         "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",
         "welcome_card_heading_text", "welcome_card_subtitle_text",
@@ -4829,7 +4837,8 @@ _TAB_TEXT_KEYS = {
     "autokick": ["auto_kick_role_id", "auto_kick_kick_hours"],
 }
 _TAB_CHECKBOX_KEYS = {
-    "config": ["welcome_card_enabled"],
+    "config": [],
+    "welcome": ["welcome_card_enabled"],
     "leveling": ["leveling_enabled", "leveling_voice_enabled"],
     "automod": ["automod_enabled", "automod_links"],
     "birthday": [],
@@ -4962,10 +4971,10 @@ async def server_config_save(request: Request, guild_id: int):
         await set_guild_config(guild_id, key, str(form.get(key, "")))
     for key in _TAB_CHECKBOX_KEYS[tab]:
         await set_guild_config(guild_id, key, "1" if form.get(key) else "0")
-    if tab == "config":
+    if tab == "welcome":
         # File uploads can't go through the generic text-key loop above (form.get() would
         # return the UploadFile object itself, not a string) - handled separately here, only
-        # reachable on the config tab's form which is the only one with enctype=multipart/
+        # reachable on the welcome tab's form which is the only one with enctype=multipart/
         # form-data. Same "leave untouched unless a new file is uploaded, explicit checkbox to
         # actually clear it" convention as the SMTP password field and the embed image feature.
         if form.get("remove_welcome_card_bg"):
@@ -6013,6 +6022,86 @@ async def welcome_card_bg_image(request: Request, guild_id: int):
     except Exception:
         raise HTTPException(status_code=404)
     return Response(content=raw, media_type="image/png")
+
+
+class _PreviewAvatar:
+    """Stands in for discord.Member.display_avatar - only the one call _make_card() actually
+    makes (.replace(format=, size=) then str(...)) needs to work, always resolving to Discord's
+    own public default-avatar CDN asset. No real member lookup, no privacy question."""
+    def replace(self, format=None, size=None):
+        return self
+
+    def __str__(self):
+        return "https://cdn.discordapp.com/embed/avatars/0.png"
+
+
+class _PreviewMember:
+    """A minimal stand-in for discord.Member, used only by welcome_card_preview() below so the
+    dashboard's live preview can call the exact same _make_card()/fill() the bot uses for a real
+    join, without an actual member ever joining. Exposes only the handful of attributes those
+    two functions touch - display_avatar/display_name/mention for the card itself, guild.
+    member_count so the default "Mitglied #X" subtitle looks realistic even before anything is
+    typed in."""
+    def __init__(self, guild):
+        self.display_name = "Preview User"
+        self.guild = guild
+        self.display_avatar = _PreviewAvatar()
+        self.mention = "@Preview User"
+
+    def __str__(self):
+        return "Preview User"
+
+
+@web.post("/servers/{guild_id}/welcome-card/preview")
+async def welcome_card_preview(request: Request, guild_id: int):
+    """Live preview for the welcome card - renders whatever is CURRENTLY in the dashboard form
+    (not yet saved) using the exact same _make_card() the bot calls on a real join, so the
+    preview can never visually drift from the real thing. Pure read/render, no guild_configs
+    write - safe to call on every debounced keystroke from the frontend."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        raise HTTPException(status_code=404)
+    form = await request.form()
+
+    # Mirrors server_config_save()'s background-image precedence exactly, just without writing
+    # anything: a file picked in THIS request wins, then an explicit removal checkbox, else
+    # whatever is already saved for this guild. An invalid upload falls back silently instead of
+    # erroring - a live preview shouldn't interrupt someone mid-edit with a failed request.
+    try:
+        new_bg = await _read_welcome_bg_upload(form.get("welcome_card_bg_image"))
+    except ValueError:
+        new_bg = None
+    if form.get("remove_welcome_card_bg"):
+        bg_image_b64 = None
+    elif new_bg is not None:
+        bg_image_b64 = new_bg
+    else:
+        bg_image_b64 = await get_guild_config(guild_id, "welcome_card_bg_image")
+
+    member = _PreviewMember(guild)
+    heading_raw = str(form.get("welcome_card_heading_text", ""))
+    subtitle_raw = str(form.get("welcome_card_subtitle_text", ""))
+    heading_text = _welcome_fill(heading_raw, member) if heading_raw else None
+    subtitle_text = _welcome_fill(subtitle_raw, member) if subtitle_raw else None
+
+    try:
+        buf = await _welcome_make_card(
+            member,
+            str(form.get("welcome_card_circle_color") or "#5865F2"),
+            str(form.get("welcome_card_text_color") or "#FFFFFF"),
+            str(form.get("welcome_card_username_color") or "#FFDA85"),
+            bg_image_b64=bg_image_b64,
+            heading_text=heading_text,
+            subtitle_text=subtitle_text,
+            avatar_shape=str(form.get("welcome_card_avatar_shape") or ""),
+            avatar_position=str(form.get("welcome_card_avatar_position") or ""),
+        )
+    except Exception:
+        raise HTTPException(status_code=500)
+    return Response(content=buf.getvalue(), media_type="image/png")
 
 
 # ── Role Rules ──────────────────────────────────────────────────────────────

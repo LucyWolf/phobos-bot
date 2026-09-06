@@ -8,6 +8,7 @@
    every optional tab for anyone who does. #}
 <div class="server-subnav">
   <a href="/servers/{{ guild_id }}?tab=config"     class="ssnav-item {% if active_page == 'config' %}active{% endif %}">⚙️ Config</a>
+  {% if enabled_features is none or 'welcome' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=welcome"    class="ssnav-item {% if active_page == 'welcome' %}active{% endif %}">👋 Willkommen</a>{% endif %}
   {% if enabled_features is none or 'automod' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=automod"    class="ssnav-item {% if active_page == 'automod' %}active{% endif %}">🛡️ Spam-Schutz</a>{% endif %}
   {% if enabled_features is none or 'leveling' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=leveling"   class="ssnav-item {% if active_page == 'leveling' %}active{% endif %}">🏆 Leveling</a>{% endif %}
   {% if enabled_features is none or 'rr' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=rr"         class="ssnav-item {% if active_page == 'rr' %}active{% endif %}">🎭 Reaction Roles</a>{% endif %}

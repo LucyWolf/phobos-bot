@@ -4,7 +4,7 @@
    file, never nested inside another one (see the .tab-pane/.active CSS below and the TABS
    array further down for why nesting silently hides a tab). Search for a tab's own
    "<!-- TAB: ... -->" header to jump straight to it:
-     Konfiguration, Spam-Schutz (Auto-Mod), Leveling, Reaction Roles, Custom Commands,
+     Konfiguration, Willkommen, Spam-Schutz (Auto-Mod), Leveling, Reaction Roles, Custom Commands,
      Tickets, Giveaways, Warnungen, Benutzer (Admin only), Temp Voice, Geplante Nachrichten,
      Discord-Events, Geburtstage, Auto-Kick, Auto-Delete, AMP Gameserver, Embed-Nachrichten
    Which tabs actually show in the sidebar for a given guild is controlled by
@@ -57,8 +57,34 @@
 </div>
 {% endif %}
 
+{% if role == 'admin' %}
+<div class="card" style="margin-top:1.25rem;">
+  <div class="feat-header" style="margin-bottom:0.5rem;">{{ tr.server_backup_title }}</div>
+  <p class="hint" style="margin-bottom:0.85rem;">{{ tr.server_backup_hint }}</p>
+  <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-end;">
+    <a href="/servers/{{ guild.id }}/backup" class="btn btn-secondary">{{ tr.server_backup_download }}</a>
+    <form method="post" action="/servers/{{ guild.id }}/backup/restore" enctype="multipart/form-data"
+          style="display:flex;gap:0.6rem;align-items:flex-end;flex-wrap:wrap;"
+          onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='⏳';">
+      <div style="margin:0;">
+        <label style="margin:0;">{{ tr.server_backup_file_label }}</label>
+        <input type="file" name="backup_file" accept=".json,application/json" required style="margin:0;">
+      </div>
+      <button type="submit" class="btn btn-primary">{{ tr.server_backup_restore_btn }}</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Willkommen                                                     -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-welcome">
+
 <form method="post" action="/servers/{{ guild.id }}" enctype="multipart/form-data">
-<input type="hidden" name="tab" value="config">
+<input type="hidden" name="tab" value="welcome">
 
   <div class="card">
     <div class="grid-2">
@@ -94,6 +120,10 @@
         <span>{{ tr.config_welcome_card_label }}</span>
       </label>
       <div id="wc-colors" style="{% if cfg.get('welcome_card_enabled') != '1' %}display:none;{% endif %}">
+        <div style="margin-bottom:1rem;">
+          <label style="font-size:0.82rem;">{{ tr.config_card_preview_caption }}</label>
+          <img id="wc-preview-img" src="" alt="" style="width:100%;max-width:500px;display:block;border-radius:0.5rem;border:1px solid var(--border);background:var(--bg);">
+        </div>
         <div class="grid-2" style="gap:1rem;">
           <div>
             <label style="font-size:0.82rem;">{{ tr.config_card_circle_label }}</label>
@@ -168,25 +198,6 @@
 
   <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
 </form>
-
-{% if role == 'admin' %}
-<div class="card" style="margin-top:1.25rem;">
-  <div class="feat-header" style="margin-bottom:0.5rem;">{{ tr.server_backup_title }}</div>
-  <p class="hint" style="margin-bottom:0.85rem;">{{ tr.server_backup_hint }}</p>
-  <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-end;">
-    <a href="/servers/{{ guild.id }}/backup" class="btn btn-secondary">{{ tr.server_backup_download }}</a>
-    <form method="post" action="/servers/{{ guild.id }}/backup/restore" enctype="multipart/form-data"
-          style="display:flex;gap:0.6rem;align-items:flex-end;flex-wrap:wrap;"
-          onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='⏳';">
-      <div style="margin:0;">
-        <label style="margin:0;">{{ tr.server_backup_file_label }}</label>
-        <input type="file" name="backup_file" accept=".json,application/json" required style="margin:0;">
-      </div>
-      <button type="submit" class="btn btn-primary">{{ tr.server_backup_restore_btn }}</button>
-    </form>
-  </div>
-</div>
-{% endif %}
 </div>
 
 
@@ -2957,7 +2968,7 @@ document.addEventListener('click', function(e) {
 </script>
 
 <script>
-const TABS = ['config','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete','amp','autokick','embeds','rolerules'];
+const TABS = ['config','welcome','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete','amp','autokick','embeds','rolerules'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {
@@ -2991,5 +3002,37 @@ document.querySelectorAll('input[type=color]').forEach(picker => {
     if (hexInput) hexInput.value = picker.value;
   });
 });
+
+// Live welcome-card preview - regenerates server-side on every change (debounced) via the
+// exact same _make_card() the bot itself uses at join time, so what's shown here can never
+// visually drift from the real thing like a separate JS re-implementation could.
+(function() {
+  const wcForm = document.getElementById('pane-welcome')?.querySelector('form');
+  const wcPreviewImg = document.getElementById('wc-preview-img');
+  if (!wcForm || !wcPreviewImg) return;
+  const wcPreviewUrl = {{ ('/servers/' ~ guild.id ~ '/welcome-card/preview') | js }};
+  let wcPreviewTimer = null;
+  let wcPreviewLastUrl = null;
+  async function refreshWcPreview() {
+    try {
+      const resp = await fetch(wcPreviewUrl, { method: 'POST', body: new FormData(wcForm) });
+      if (!resp.ok) return;
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      wcPreviewImg.src = url;
+      if (wcPreviewLastUrl) URL.revokeObjectURL(wcPreviewLastUrl);
+      wcPreviewLastUrl = url;
+    } catch (e) { /* network hiccup mid-edit - the next change retries */ }
+  }
+  wcForm.addEventListener('input', () => {
+    clearTimeout(wcPreviewTimer);
+    wcPreviewTimer = setTimeout(refreshWcPreview, 400);
+  });
+  wcForm.addEventListener('change', () => {
+    clearTimeout(wcPreviewTimer);
+    wcPreviewTimer = setTimeout(refreshWcPreview, 400);
+  });
+  refreshWcPreview();
+})();
 </script>
 {% endblock %}

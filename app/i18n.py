@@ -352,6 +352,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "config_card_position_left":         "Links",
         "config_card_position_center":       "Mittig",
         "config_card_position_right":        "Rechts",
+        "config_card_preview_caption":       "🔍 Vorschau",
         # Geplante Nachrichten
         "scheduled_hint":             "Nachrichten werden automatisch zum gewählten Zeitpunkt in den Kanal gesendet.",
         "scheduled_col_time":         "Zeitpunkt",
@@ -1040,6 +1041,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "config_card_position_left":         "Left",
         "config_card_position_center":       "Center",
         "config_card_position_right":        "Right",
+        "config_card_preview_caption":       "🔍 Preview",
         # Scheduled Messages
         "scheduled_hint":             "Messages are sent to the channel automatically at the chosen time.",
         "scheduled_col_time":         "Time",
