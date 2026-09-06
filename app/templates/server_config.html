@@ -3007,10 +3007,11 @@ document.querySelectorAll('input[type=color]').forEach(picker => {
 // exact same _make_card() the bot itself uses at join time, so what's shown here can never
 // visually drift from the real thing like a separate JS re-implementation could.
 (function() {
-  const wcForm = document.getElementById('pane-welcome')?.querySelector('form');
+  const wcPaneEl = document.getElementById('pane-welcome');
+  const wcForm = wcPaneEl ? wcPaneEl.querySelector('form') : null;
   const wcPreviewImg = document.getElementById('wc-preview-img');
   if (!wcForm || !wcPreviewImg) return;
-  const wcPreviewUrl = {{ ('/servers/' ~ guild.id ~ '/welcome-card/preview') | js }};
+  const wcPreviewUrl = {{ ('/servers/' ~ guild.id ~ '/welcome-card/preview') | jsraw }};
   let wcPreviewTimer = null;
   let wcPreviewLastUrl = null;
   async function refreshWcPreview() {
