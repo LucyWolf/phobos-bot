@@ -198,11 +198,6 @@
 
         <div style="margin-top:1rem;">
           <label style="font-size:0.82rem;">{{ tr.config_card_overlay_label }}</label>
-          {% if cfg.get('welcome_card_overlay_image') %}
-          <div style="margin-bottom:0.5rem;">
-            <img src="/servers/{{ guild.id }}/welcome-card/overlay-image" alt="" style="width:120px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--border);background:repeating-conic-gradient(#8884 0% 25%, transparent 0% 50%) 0 0/10px 10px;">
-          </div>
-          {% endif %}
           <input type="file" name="welcome_card_overlay_image" accept="image/*">
           <p style="font-size:0.72rem;color:var(--muted);margin-top:0.35rem;">
             {{ tr.config_card_overlay_resolution_hint }}

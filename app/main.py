@@ -6069,23 +6069,6 @@ async def welcome_card_bg_image(request: Request, guild_id: int):
     return Response(content=raw, media_type="image/png")
 
 
-@web.get("/servers/{guild_id}/welcome-card/overlay-image")
-async def welcome_card_overlay_image(request: Request, guild_id: int):
-    """Serves the stored welcome-card overlay image for the dashboard's own preview <img> -
-    same admin-preview-only pattern as welcome_card_bg_image() above."""
-    if r := auth_redirect(request): return r
-    if not await _guild_access(request, guild_id):
-        return RedirectResponse("/servers", status_code=302)
-    overlay_b64 = await get_guild_config(guild_id, "welcome_card_overlay_image")
-    if not overlay_b64:
-        raise HTTPException(status_code=404)
-    try:
-        raw = base64.b64decode(overlay_b64)
-    except Exception:
-        raise HTTPException(status_code=404)
-    return Response(content=raw, media_type="image/png")
-
-
 # Built-in overlay presets shipped with the bot itself (app/assets/), so admins have something
 # to pick from a menu instead of needing to source their own transparent overlay image first -
 # user request: "am besten mach da im bot ein menü teil dafür für vorgefertigte sachen wo die
