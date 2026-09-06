@@ -4986,6 +4986,15 @@ async def server_config_save(request: Request, guild_id: int):
                 return RedirectResponse(f"/servers/{guild_id}?tab={tab}&error={e}", status_code=302)
             if new_bg is not None:
                 await set_guild_config(guild_id, "welcome_card_bg_image", new_bg)
+        if form.get("remove_welcome_card_overlay"):
+            await set_guild_config(guild_id, "welcome_card_overlay_image", "")
+        else:
+            try:
+                new_overlay = await _read_welcome_overlay_upload(form.get("welcome_card_overlay_image"))
+            except ValueError as e:
+                return RedirectResponse(f"/servers/{guild_id}?tab={tab}&error={e}", status_code=302)
+            if new_overlay is not None:
+                await set_guild_config(guild_id, "welcome_card_overlay_image", new_overlay)
     if tab == "leveling":
         # Multi-select, needs form.getlist() - can't go through the generic single-value loop above.
         leveling_channels = ",".join(c for c in form.getlist("leveling_channels") if c in valid_channel_ids)
@@ -5658,6 +5667,34 @@ async def _read_welcome_bg_upload(upload_file, max_dim: int = 1600) -> str | Non
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
+async def _read_welcome_overlay_upload(upload_file, max_dim: int = 1600) -> str | None:
+    """Validates and reads an uploaded welcome-card OVERLAY image - a separate function from
+    _read_welcome_bg_upload() above rather than a shared one with a flag, same "different
+    requirements deserve their own clearly-named function" precedent that already separates
+    _read_embed_image_upload() from _read_welcome_bg_upload(). The one thing that actually
+    differs: this converts to RGBA, not RGB, so the overlay keeps its transparency - the whole
+    point of an overlay (e.g. a "shattered glass" crack texture) is to sit on top of the
+    finished card with see-through areas, which _read_welcome_bg_upload's RGB conversion would
+    destroy. Same downscale-to-1600px-max and base64 PNG return convention otherwise."""
+    if not upload_file or not getattr(upload_file, "filename", ""):
+        return None
+    data = await upload_file.read()
+    if not data:
+        return None
+    try:
+        img = Image.open(io.BytesIO(data))
+        img.load()
+        img = img.convert("RGBA")
+    except Exception:
+        raise ValueError("Ungültiges+Bildformat")
+    if img.width > max_dim or img.height > max_dim:
+        scale = max_dim / max(img.width, img.height)
+        img = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
 def _embed_channel_is_valid(guild, channel_id: str) -> bool:
     """Whether channel_id is a real text channel OR forum channel of this guild - the two
     target types Embed-Nachrichten supports posting to."""
@@ -6024,6 +6061,23 @@ async def welcome_card_bg_image(request: Request, guild_id: int):
     return Response(content=raw, media_type="image/png")
 
 
+@web.get("/servers/{guild_id}/welcome-card/overlay-image")
+async def welcome_card_overlay_image(request: Request, guild_id: int):
+    """Serves the stored welcome-card overlay image for the dashboard's own preview <img> -
+    same admin-preview-only pattern as welcome_card_bg_image() above."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    overlay_b64 = await get_guild_config(guild_id, "welcome_card_overlay_image")
+    if not overlay_b64:
+        raise HTTPException(status_code=404)
+    try:
+        raw = base64.b64decode(overlay_b64)
+    except Exception:
+        raise HTTPException(status_code=404)
+    return Response(content=raw, media_type="image/png")
+
+
 class _PreviewAvatar:
     """Stands in for discord.Member.display_avatar - only the one call _make_card() actually
     makes (.replace(format=, size=) then str(...)) needs to work, always resolving to Discord's
@@ -6082,6 +6136,18 @@ async def welcome_card_preview(request: Request, guild_id: int):
     else:
         bg_image_b64 = await get_guild_config(guild_id, "welcome_card_bg_image")
 
+    # Same precedence, same reasoning, for the overlay image.
+    try:
+        new_overlay = await _read_welcome_overlay_upload(form.get("welcome_card_overlay_image"))
+    except ValueError:
+        new_overlay = None
+    if form.get("remove_welcome_card_overlay"):
+        overlay_image_b64 = None
+    elif new_overlay is not None:
+        overlay_image_b64 = new_overlay
+    else:
+        overlay_image_b64 = await get_guild_config(guild_id, "welcome_card_overlay_image")
+
     member = _PreviewMember(guild)
     heading_raw = str(form.get("welcome_card_heading_text", ""))
     subtitle_raw = str(form.get("welcome_card_subtitle_text", ""))
@@ -6099,6 +6165,7 @@ async def welcome_card_preview(request: Request, guild_id: int):
             subtitle_text=subtitle_text,
             avatar_shape=str(form.get("welcome_card_avatar_shape") or ""),
             avatar_position=str(form.get("welcome_card_avatar_position") or ""),
+            overlay_image_b64=overlay_image_b64,
         )
     except Exception:
         raise HTTPException(status_code=500)

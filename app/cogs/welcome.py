@@ -82,7 +82,7 @@ def _shape_mask(shape: str, w: int, h: int):
 async def _make_card(member: discord.Member, circle_color: str, text_color: str, username_color: str,
                       bg_image_b64: str | None = None, heading_text: str = "WELCOME",
                       subtitle_text: str | None = None, avatar_shape: str = "circle",
-                      avatar_position: str = "left") -> io.BytesIO:
+                      avatar_position: str = "left", overlay_image_b64: str | None = None) -> io.BytesIO:
     import aiohttp
     from PIL import Image, ImageDraw
 
@@ -203,6 +203,24 @@ async def _make_card(member: discord.Member, circle_color: str, text_color: str,
     bg.paste(border, (bx, by), border)
     bg.paste(avatar_img, (bx + 9, by + 9), avatar_img)
 
+    if overlay_image_b64:
+        # Composited dead last, on top of background+avatar+text - unlike the background image
+        # (which is UNDER everything and gets .convert("RGB")'d away), the overlay's whole point
+        # is to sit over the finished card with its own transparency intact (e.g. a "shattered
+        # glass" crack texture, a frame, a watermark), so it's decoded as RGBA and never
+        # flattened. Stretched to exactly fill the 800x280 canvas rather than cover-cropped like
+        # _cover_crop does for the background - the card's very wide aspect ratio rarely matches
+        # a typical overlay asset's, and cropping would cut away most of an image like the
+        # reference crack texture (whose detail concentrates in one corner) instead of showing
+        # all of it. A corrupted/undecodable value is skipped rather than aborting the card, same
+        # fail-safe principle as the background image above.
+        try:
+            overlay_img = Image.open(io.BytesIO(base64.b64decode(overlay_image_b64))).convert("RGBA")
+            overlay_img = overlay_img.resize((W, H), Image.LANCZOS)
+            bg.paste(overlay_img, (0, 0), overlay_img)
+        except Exception:
+            pass
+
     buf = io.BytesIO()
     bg.convert("RGB").save(buf, format="PNG")
     buf.seek(0)
@@ -268,11 +286,13 @@ class Welcome(commands.Cog):
                 subtitle_text = fill(subtitle_raw, member, plain_mention=True) if subtitle_raw else None
                 avatar_shape  = await get_guild_config(member.guild.id, "welcome_card_avatar_shape")
                 avatar_position = await get_guild_config(member.guild.id, "welcome_card_avatar_position")
+                overlay_image_b64 = await get_guild_config(member.guild.id, "welcome_card_overlay_image")
                 try:
                     buf  = await _make_card(member, circle_color, text_color, username_color,
                                              bg_image_b64=bg_image_b64, heading_text=heading_text,
                                              subtitle_text=subtitle_text, avatar_shape=avatar_shape,
-                                             avatar_position=avatar_position)
+                                             avatar_position=avatar_position,
+                                             overlay_image_b64=overlay_image_b64)
                     file = discord.File(buf, filename="welcome.png")
                     if message:
                         embed = discord.Embed(description=fill(message, member), color=0x5865F2)
