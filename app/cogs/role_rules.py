@@ -8,7 +8,14 @@ its own commands.Bot instance (self.bot), never the module-level BotManager that
 across tokens (main.py imports from cogs, never the reverse - a cog reaching back into main.py
 would be circular). main.py's dashboard only ever lets an admin pick a same-token guild as the
 action target in the first place, so that constraint never actually bites at evaluation time.
+
+self._debug_log keeps a rolling buffer of every step below (not just failures) - unlike a
+docker-logs-only trace, main.py's dashboard reads this directly (via bot._bot_for_guild(...)
+.get_cog("RoleRules")._debug_log) to show it right on the CrossVerification tab, since asking a
+self-hoster to run docker exec commands for every troubleshooting round doesn't scale.
 """
+import collections
+import datetime
 import time
 
 import discord
@@ -23,6 +30,10 @@ from database import db_rows, get_guild_config
 # rule chain is expected to converge in a handful of hops at most.
 MAX_HOP_BUDGET = 8
 
+# Enough to cover several test attempts across multiple guilds without growing unbounded -
+# this is purely an in-memory ring buffer for the dashboard debug view, not persisted anywhere.
+DEBUG_LOG_MAXLEN = 200
+
 
 class RoleRules(commands.Cog):
     def __init__(self, bot):
@@ -33,10 +44,18 @@ class RoleRules(commands.Cog):
         # see there).
         self._processing: set[tuple[int, int]] = set()
         self._last_run: dict[int, float] = {}
+        self._debug_log: collections.deque = collections.deque(maxlen=DEBUG_LOG_MAXLEN)
         self._periodic.start()
 
     def cog_unload(self):
         self._periodic.cancel()
+
+    def _log(self, msg: str) -> None:
+        # Both a normal console/docker-logs line AND a dashboard-visible entry - see the module
+        # docstring for why this isn't just a plain print() like the rest of the project's cogs.
+        stamped = f"{datetime.datetime.now().strftime('%H:%M:%S')} {msg}"
+        print(f"[RoleRules] {stamped}")
+        self._debug_log.append(stamped)
 
     async def _get_rules(self, guild_id: int) -> list:
         return await db_rows(
@@ -59,10 +78,10 @@ class RoleRules(commands.Cog):
 
     async def _evaluate_member(self, guild: discord.Guild, member, hop_budget: int = MAX_HOP_BUDGET):
         if hop_budget <= 0 or member is None:
-            print(f"[RoleRules][debug] _evaluate_member abgebrochen: hop_budget={hop_budget}, member={member}")
+            self._log(f"Auswertung abgebrochen: hop_budget={hop_budget}, member={member}")
             return
         rules = await self._get_rules(guild.id)
-        print(f"[RoleRules][debug] Guild {guild.id} ({guild.name}): {len(rules)} aktive Regel(n) geladen für Mitglied {member.id}")
+        self._log(f"Guild {guild.id} ({guild.name}): {len(rules)} aktive Regel(n) geladen für Mitglied {member.id}")
         if not rules:
             return
         current = {r.id for r in member.roles}
@@ -77,9 +96,9 @@ class RoleRules(commands.Cog):
             # rules within one pass - keeps the ordering easy to reason about.
             if not self._matches(rule, current):
                 continue
-            print(f"[RoleRules][debug] Regel #{rule['id']} ({rule['name'] or '—'}) trifft zu für Mitglied {member.id}: "
-                  f"match_type={rule['match_type']} match_roles={rule['match_role_ids']} "
-                  f"-> action={rule['action']} action_guild={rule['action_guild_id']} action_roles={rule['action_role_ids']}")
+            self._log(f"Regel #{rule['id']} ({rule['name'] or '—'}) trifft zu für Mitglied {member.id}: "
+                      f"match_type={rule['match_type']} match_roles={rule['match_role_ids']} "
+                      f"-> action={rule['action']} action_guild={rule['action_guild_id']} action_roles={rule['action_role_ids']}")
             action_ids = {int(x) for x in (rule["action_role_ids"] or "").split(",") if x}
             if not action_ids:
                 continue
@@ -108,42 +127,42 @@ class RoleRules(commands.Cog):
                     await member.edit(roles=new_roles, reason="CrossVerification")
                     changed = True
                 except discord.HTTPException as e:
-                    print(f"[RoleRules] Anwenden auf {member.id} in Guild {guild.id} fehlgeschlagen: {e}")
+                    self._log(f"FEHLER: Anwenden auf {member.id} in Guild {guild.id} fehlgeschlagen: {e}")
         if cross_actions:
-            print(f"[RoleRules][debug] {len(cross_actions)} Cross-Server-Aktion(en) zu verarbeiten für Mitglied {member.id}: "
-                  f"{[(a, b) for a, b, _ in cross_actions]}")
+            self._log(f"{len(cross_actions)} Cross-Server-Aktion(en) zu verarbeiten für Mitglied {member.id}: "
+                      f"{[(a, b) for a, b, _ in cross_actions]}")
         for action_guild_id, action, role_ids in cross_actions:
             target_guild = self.bot.get_guild(int(action_guild_id))
             if not target_guild:
                 # Not reachable via this same bot token - the dashboard only ever offers
                 # same-token guilds as an action target, so this means the bot has since left
                 # that server. Nothing sensible to do but skip.
-                print(f"[RoleRules][debug] Zielserver {action_guild_id} über self.bot.get_guild() nicht erreichbar "
-                      f"(self.bot kennt {len(self.bot.guilds)} Server: {[g.id for g in self.bot.guilds]})")
+                self._log(f"FEHLER: Zielserver {action_guild_id} über self.bot.get_guild() nicht erreichbar "
+                          f"(dieser Bot-Token kennt {len(self.bot.guilds)} Server: {[g.id for g in self.bot.guilds]})")
                 continue
             target_member = target_guild.get_member(member.id)
             if target_member is None:
                 try:
                     target_member = await target_guild.fetch_member(member.id)
                 except discord.NotFound:
-                    print(f"[RoleRules][debug] Mitglied {member.id} ist nicht Teil von Guild {target_guild.id} ({target_guild.name})")
+                    self._log(f"Mitglied {member.id} ist nicht Teil von Guild {target_guild.id} ({target_guild.name})")
                     continue  # the user simply isn't a member of the target server
                 except discord.HTTPException as e:
-                    print(f"[RoleRules] Mitglied {member.id} auf Guild {target_guild.id} nicht auflösbar: {e}")
+                    self._log(f"FEHLER: Mitglied {member.id} auf Guild {target_guild.id} nicht auflösbar: {e}")
                     continue
             t_current = {r.id for r in target_member.roles}
             t_new_ids = (t_current | role_ids) if action == "add" else (t_current - role_ids)
-            print(f"[RoleRules][debug] Ziel-Mitglied {target_member.id} auf Guild {target_guild.id}: "
-                  f"aktuelle Rollen={t_current}, gewünscht={t_new_ids}, ändert sich={t_new_ids != t_current}")
+            self._log(f"Ziel-Mitglied {target_member.id} auf Guild {target_guild.id}: "
+                      f"aktuelle Rollen={t_current}, gewünscht={t_new_ids}, ändert sich={t_new_ids != t_current}")
             if t_new_ids != t_current:
                 t_new_roles = [r for r in (target_guild.get_role(rid) for rid in t_new_ids) if r]
-                print(f"[RoleRules][debug] Aufgelöste Ziel-Rollenobjekte: {[(r.id, r.name) for r in t_new_roles]} "
-                      f"(erwartet {len(t_new_ids)} IDs, {len(t_new_roles)} aufgelöst)")
+                self._log(f"Aufgelöste Ziel-Rollenobjekte: {[(r.id, r.name) for r in t_new_roles]} "
+                          f"(erwartet {len(t_new_ids)} IDs, {len(t_new_roles)} aufgelöst)")
                 try:
                     await target_member.edit(roles=t_new_roles, reason="CrossVerification (cross-server)")
-                    print(f"[RoleRules][debug] member.edit() auf Guild {target_guild.id} erfolgreich gesendet")
+                    self._log(f"member.edit() auf Guild {target_guild.id} erfolgreich gesendet")
                 except discord.HTTPException as e:
-                    print(f"[RoleRules] Cross-Server-Anwenden auf {target_guild.id} fehlgeschlagen: {e}")
+                    self._log(f"FEHLER: Cross-Server-Anwenden auf {target_guild.id} fehlgeschlagen: {e}")
             # Recurse into the target guild so ITS OWN rules see the new role state too, bounded
             # by hop_budget so two guilds whose rules reference each other can't loop forever.
             await self._evaluate_member(target_guild, target_member, hop_budget - 1)
@@ -157,26 +176,26 @@ class RoleRules(commands.Cog):
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         if before.roles == after.roles:
             return
-        print(f"[RoleRules][debug] on_member_update: Rollenänderung erkannt für {after.id} in Guild "
-              f"{after.guild.id} ({after.guild.name}) - vorher={ {r.id for r in before.roles} }, "
-              f"nachher={ {r.id for r in after.roles} }")
+        self._log(f"on_member_update: Rollenänderung erkannt für {after.id} in Guild "
+                  f"{after.guild.id} ({after.guild.name}) - vorher={ {r.id for r in before.roles} }, "
+                  f"nachher={ {r.id for r in after.roles} }")
         interval_raw = await get_guild_config(after.guild.id, "role_rules_interval_minutes")
         try:
             interval = int(interval_raw) if interval_raw else 0
         except ValueError:
             interval = 0
         if interval > 0:
-            print(f"[RoleRules][debug] Guild {after.guild.id} läuft im periodischen Modus (Intervall={interval}min) - Live-Auswertung übersprungen")
+            self._log(f"Guild {after.guild.id} läuft im periodischen Modus (Intervall={interval}min) - Live-Auswertung übersprungen")
             return  # this guild is in periodic mode - the loop below handles it instead
         key = (after.guild.id, after.id)
         if key in self._processing:
-            print(f"[RoleRules][debug] Guild {after.guild.id}/Mitglied {after.id} wird bereits verarbeitet - übersprungen")
+            self._log(f"Guild {after.guild.id}/Mitglied {after.id} wird bereits verarbeitet - übersprungen")
             return
         self._processing.add(key)
         try:
             await self._evaluate_member(after.guild, after)
         except Exception as e:
-            print(f"[RoleRules] Live-Auswertung für {after.id} in Guild {after.guild.id} fehlgeschlagen: {e}")
+            self._log(f"FEHLER: Live-Auswertung für {after.id} in Guild {after.guild.id} fehlgeschlagen: {e}")
         finally:
             self._processing.discard(key)
 
@@ -197,9 +216,9 @@ class RoleRules(commands.Cog):
                     try:
                         await self._evaluate_member(guild, member)
                     except Exception as e:
-                        print(f"[RoleRules] Periodische Prüfung für {member.id} in Guild {guild.id} fehlgeschlagen: {e}")
+                        self._log(f"FEHLER: Periodische Prüfung für {member.id} in Guild {guild.id} fehlgeschlagen: {e}")
             except Exception as e:
-                print(f"[RoleRules] Periodische Prüfung für Guild {guild.id} fehlgeschlagen: {e}")
+                self._log(f"FEHLER: Periodische Prüfung für Guild {guild.id} fehlgeschlagen: {e}")
 
     @_periodic.before_loop
     async def _before_periodic(self):

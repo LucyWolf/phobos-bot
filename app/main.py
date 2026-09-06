@@ -4601,6 +4601,21 @@ async def server_config(
         tg_obj = bot.get_guild(int(rr["action_guild_id"]))
         rr["action_guild_name"] = tg_obj.name if tg_obj else "?"
     role_rules_interval = await get_guild_config(guild_id, "role_rules_interval_minutes") or "0"
+    # Debug trace straight from the cog's own in-memory ring buffer (cogs/role_rules.py's
+    # self._debug_log) - shown on the dashboard itself instead of requiring a docker exec/logs
+    # round-trip for every troubleshooting attempt. Filtered to lines that mention THIS guild's
+    # id (covers on_member_update/rule-match lines logged under it, AND lines where it's the
+    # printed TARGET of a cross-server action from elsewhere) or any guild this tab's own rules
+    # target, so an admin sees the full chain without wading through unrelated servers' entries.
+    role_rules_debug_log = []
+    _rr_guild_bot = bot._bot_for_guild(guild_id)
+    _rr_cog = _rr_guild_bot.get_cog("RoleRules") if _rr_guild_bot else None
+    if _rr_cog:
+        _rr_relevant_ids = {str(guild_id)} | {rr["action_guild_id"] for rr in role_rules}
+        role_rules_debug_log = [
+            line for line in reversed(_rr_cog._debug_log)
+            if any(gid in line for gid in _rr_relevant_ids)
+        ][:100]
 
     # Open tickets
     ticket_list = await db_rows(
@@ -4734,6 +4749,7 @@ async def server_config(
         "role_rule_target_guilds": role_rule_target_guilds,
         "role_rule_target_roles": role_rule_target_roles,
         "role_rules_interval": role_rules_interval,
+        "role_rules_debug_log": role_rules_debug_log,
         "roles": roles, "categories": categories,
         "token_set": token_set, "saved": saved,
         "active": f"server_{guild_id}",
