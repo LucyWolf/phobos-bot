@@ -1,5 +1,5 @@
 """Admin-defined "IF a member has/lacks certain roles, THEN add/remove roles" rules
-(role_rules table, configured via main.py's "Role Rules" tab). Evaluated live whenever a
+(role_rules table, configured via main.py's "CrossVerification" tab). Evaluated live whenever a
 member's roles change, or on a fixed periodic interval instead if the guild is configured for
 that (guild_configs key role_rules_interval_minutes, 0 = live). An action can target a
 DIFFERENT guild than the one the condition was checked against, for cross-server role sync -
@@ -100,7 +100,7 @@ class RoleRules(commands.Cog):
                     new_roles.append(role)
             if {r.id for r in new_roles} != current:
                 try:
-                    await member.edit(roles=new_roles, reason="Role Rules")
+                    await member.edit(roles=new_roles, reason="CrossVerification")
                     changed = True
                 except discord.HTTPException as e:
                     print(f"[RoleRules] Anwenden auf {member.id} in Guild {guild.id} fehlgeschlagen: {e}")
@@ -125,7 +125,7 @@ class RoleRules(commands.Cog):
             if t_new_ids != t_current:
                 t_new_roles = [r for r in (target_guild.get_role(rid) for rid in t_new_ids) if r]
                 try:
-                    await target_member.edit(roles=t_new_roles, reason="Role Rules (cross-server)")
+                    await target_member.edit(roles=t_new_roles, reason="CrossVerification (cross-server)")
                 except discord.HTTPException as e:
                     print(f"[RoleRules] Cross-Server-Anwenden auf {target_guild.id} fehlgeschlagen: {e}")
             # Recurse into the target guild so ITS OWN rules see the new role state too, bounded

@@ -4399,7 +4399,7 @@ _SERVER_CONFIG_TAB_LABELS = {
     "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant", "events": "🗓️ Events",
     "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
     "amp": "🎮 Gameserver", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
-    "rolerules": "🔗 Rollen-Regeln",
+    "rolerules": "🔗 CrossVerification",
 }
 
 # Features an admin can hide from THIS server's own sidebar to cut down on clutter for
@@ -4416,7 +4416,7 @@ _TOGGLEABLE_FEATURES = {
     "events": "🗓️ Events", "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
     "amp": "🎮 Gameserver", "notifications": "🟣 Streaming", "freestuff": "🎁 Free Stuff",
     "log": "📋 Log", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
-    "rolerules": "🔗 Rollen-Regeln",
+    "rolerules": "🔗 CrossVerification",
 }
 
 
