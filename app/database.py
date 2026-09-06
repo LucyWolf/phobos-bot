@@ -632,6 +632,18 @@ async def init_db():
             # be able to fetch).
             "ALTER TABLE embed_posts ADD COLUMN image_data TEXT",
             "ALTER TABLE embed_posts ADD COLUMN image_filename TEXT NOT NULL DEFAULT ''",
+            # User-requested ("wäre cool wenn der bot embeded nachrichten auch in einem discord
+            # forum posten könnte") - a forum channel isn't directly messageable like a text
+            # channel; posting there creates a new THREAD (a "post"), and the actual embed
+            # content lives on that thread's starter message, not on the forum channel itself.
+            # thread_id is only ever populated when channel_id resolves to a discord.ForumChannel
+            # - '' means "channel_id is/was a normal text channel", exactly like message_id
+            # already means "no live message yet" when empty. Kept as a separate column rather
+            # than overloading message_id, since a forum post needs BOTH the thread id (to find
+            # it again / delete the whole post) and the starter message id (which happens to
+            # equal the thread id in Discord's own data model, but storing it explicitly avoids
+            # relying on that implementation detail staying true forever).
+            "ALTER TABLE embed_posts ADD COLUMN thread_id TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

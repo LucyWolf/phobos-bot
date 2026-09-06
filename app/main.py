@@ -4452,6 +4452,13 @@ async def server_config(
     cfg = await get_all_guild_config(guild_id)
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
     voice_channels = [{"id": str(c.id), "name": c.name} for c in guild.voice_channels]
+    # Embed-Nachrichten-only channel picker (text channels + forums) - deliberately kept
+    # separate from the plain `channels` list used everywhere else on this page (tickets,
+    # auto-delete, scheduled messages, ...), none of which can meaningfully target a forum.
+    embed_channels = (
+        [{"id": str(c.id), "name": c.name, "is_forum": False} for c in guild.text_channels]
+        + [{"id": str(c.id), "name": c.name, "is_forum": True} for c in guild.forums]
+    )
     roles = [{"id": str(ro.id), "name": ro.name} for ro in guild.roles if not ro.is_default()]
     categories = [{"id": str(c.id), "name": c.name} for c in guild.categories]
     leveling_channels = [c.strip() for c in cfg.get("leveling_channels", "").split(",") if c.strip()]
@@ -4682,7 +4689,8 @@ async def server_config(
         **session(request), "request": request,
         "guild": {"id": str(guild.id), "name": guild.name,
                   "icon": str(guild.icon.url) if guild.icon else None},
-        "cfg": cfg, "channels": channels, "roles": roles, "categories": categories,
+        "cfg": cfg, "channels": channels, "embed_channels": embed_channels,
+        "roles": roles, "categories": categories,
         "token_set": token_set, "saved": saved,
         "active": f"server_{guild_id}",
         "guilds": await _guild_list(request),
@@ -5508,6 +5516,47 @@ def _embed_post_files(image_data_b64: str, image_filename: str) -> list:
     return [discord.File(io.BytesIO(raw), filename=image_filename)]
 
 
+def _embed_channel_is_valid(guild, channel_id: str) -> bool:
+    """Whether channel_id is a real text channel OR forum channel of this guild - the two
+    target types Embed-Nachrichten supports posting to."""
+    return channel_id in {str(c.id) for c in guild.text_channels} | {str(c.id) for c in guild.forums}
+
+
+async def _post_embed_content(channel, name: str, embeds: list, files: list):
+    """Sends embed content to a target that's either a normal text channel (plain
+    channel.send) or a forum channel. A forum has no "send a message" concept - posting there
+    always means creating a new thread ("post"), which requires a title (Discord's own forum
+    thread name limit is 100 chars, matching the name field's existing max length here, so no
+    separate truncation surprises the admin). Returns (message_id, thread_id) as strings -
+    thread_id is '' for a text channel. Raises discord.HTTPException on failure exactly like
+    channel.send() would, so every existing caller's error handling keeps working unchanged."""
+    if isinstance(channel, discord.ForumChannel):
+        result = await channel.create_thread(name=name[:100], embeds=embeds, files=files)
+        return str(result.message.id), str(result.thread.id)
+    msg = await channel.send(embeds=embeds, files=files)
+    return str(msg.id), ""
+
+
+async def _fetch_embed_thread(guild, thread_id: int):
+    """Resolves a forum post's thread, trying the guild's cache first and falling back to a
+    live fetch (archived threads in particular tend to fall out of cache) - raises
+    discord.NotFound if the thread is genuinely gone, same as fetch_message() would for a
+    regular message, so callers can keep using one shared except-branch for both post types."""
+    thread = guild.get_thread(thread_id)
+    if thread is not None:
+        return thread
+    return await guild.fetch_channel(thread_id)
+
+
+async def _fetch_embed_starter_message(thread):
+    """A forum post's editable content lives on its thread's starter message, not on the
+    thread object itself (Thread.edit() only touches thread metadata like name/archived/locked,
+    never content/embeds/attachments) - starter_message is cache-dependent, fetching by the
+    thread's own id (a forum thread's id IS its starter message's id in Discord's data model)
+    is the reliable fallback."""
+    return thread.starter_message or await thread.fetch_message(thread.id)
+
+
 @web.post("/servers/{guild_id}/embeds/create")
 async def embed_post_create(request: Request, guild_id: int):
     if r := auth_redirect(request): return r
@@ -5528,7 +5577,7 @@ async def embed_post_create(request: Request, guild_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Name+erforderlich", status_code=302)
     if len(name) > 100:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Name+zu+lang+(max.+100+Zeichen)", status_code=302)
-    if channel_id not in {str(c.id) for c in guild.text_channels}:
+    if not _embed_channel_is_valid(guild, channel_id):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Ungültiger+Kanal", status_code=302)
     if not blocks:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Mindestens+ein+Embed+erforderlich", status_code=302)
@@ -5565,14 +5614,14 @@ async def embed_post_create(request: Request, guild_id: int):
     embeds = _build_freeform_embeds(content, image_url, footer_text, image_filename or "")
     files = _embed_post_files(image_data_b64 or "", image_filename or "")
     try:
-        msg = await channel.send(embeds=embeds, files=files)
+        new_message_id, new_thread_id = await _post_embed_content(channel, name, embeds, files)
     except discord.HTTPException as e:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
     await db_exec(
-        "INSERT INTO embed_posts (guild_id, name, channel_id, content, message_id, image_url, footer_text, image_data, image_filename) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
-        (str(guild_id), name, channel_id, content, str(msg.id), image_url, footer_text,
-         image_data_b64 or "", image_filename or ""),
+        "INSERT INTO embed_posts (guild_id, name, channel_id, content, message_id, image_url, footer_text, image_data, image_filename, thread_id) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (str(guild_id), name, channel_id, content, new_message_id, image_url, footer_text,
+         image_data_b64 or "", image_filename or "", new_thread_id),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&success=Gepostet", status_code=302)
 
@@ -5601,7 +5650,7 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Name+erforderlich", status_code=302)
     if len(name) > 100:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Name+zu+lang+(max.+100+Zeichen)", status_code=302)
-    if channel_id not in {str(c.id) for c in guild.text_channels}:
+    if not _embed_channel_is_valid(guild, channel_id):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Ungültiger+Kanal", status_code=302)
     if not blocks:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Mindestens+ein+Embed+erforderlich", status_code=302)
@@ -5642,30 +5691,55 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
     embeds = _build_freeform_embeds(content, final_image_url, footer_text, final_image_filename)
     files = _embed_post_files(final_image_data, final_image_filename)
     new_message_id = post["message_id"]
+    new_thread_id = post.get("thread_id") or ""
     if channel_id != post["channel_id"]:
-        # Moved to a different channel - an embed lives on a specific message in a specific
-        # channel, there's no "move a message to another channel" API, so this deletes the old
-        # one (best-effort, it may already be gone) and posts fresh in the new channel instead.
+        # Moved to a different channel/forum - an embed post lives on a specific message (or,
+        # for a forum, a specific thread) in a specific channel, there's no "move to another
+        # channel" API for either, so this deletes the old one (best-effort, it may already be
+        # gone) and posts fresh in the new target instead.
         old_ch = guild.get_channel(int(post["channel_id"])) if post["channel_id"] else None
-        if old_ch and post["message_id"]:
-            try:
+        try:
+            if post.get("thread_id"):
+                old_thread = await _fetch_embed_thread(guild, int(post["thread_id"]))
+                await old_thread.delete()
+            elif old_ch and post["message_id"]:
                 old_msg = await old_ch.fetch_message(int(post["message_id"]))
                 await old_msg.delete()
-            except Exception:
-                pass
+        except Exception:
+            pass
         new_ch = guild.get_channel(int(channel_id))
         if not new_ch:
             return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Kanal+nicht+gefunden", status_code=302)
         try:
-            msg = await new_ch.send(embeds=embeds, files=files)
+            new_message_id, new_thread_id = await _post_embed_content(new_ch, name, embeds, files)
         except discord.HTTPException as e:
             return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
-        new_message_id = str(msg.id)
     else:
         ch = guild.get_channel(int(channel_id)) if channel_id else None
         if not ch:
             return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Kanal+nicht+gefunden", status_code=302)
-        if post["message_id"]:
+        if post.get("thread_id"):
+            try:
+                thread = await _fetch_embed_thread(guild, int(post["thread_id"]))
+                starter = await _fetch_embed_starter_message(thread)
+                await starter.edit(embeds=embeds, attachments=files)
+                # The forum post's title is the thread's own name, separate from the message
+                # content - keeps it in sync with the "name" field an admin edits here (that
+                # field IS the visible post title for a forum, unlike for a plain text-channel
+                # post where it's admin-only). Requires "Manage Threads", same permission the
+                # bot already needs to have created the thread in the first place.
+                if thread.name != name[:100]:
+                    await thread.edit(name=name[:100])
+            except discord.NotFound:
+                # The thread or its starter message was deleted directly in Discord - repost a
+                # fresh thread instead of silently leaving the saved content with nothing live.
+                try:
+                    new_message_id, new_thread_id = await _post_embed_content(ch, name, embeds, files)
+                except discord.HTTPException as e:
+                    return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
+            except Exception as e:
+                return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e}", status_code=302)
+        elif post["message_id"]:
             try:
                 msg = await ch.fetch_message(int(post["message_id"]))
                 # attachments is always passed explicitly (even as []) rather than left out -
@@ -5677,26 +5751,24 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
                 # The live message was deleted directly in Discord - repost it fresh instead of
                 # silently leaving the saved content with no actual message behind it.
                 try:
-                    msg = await ch.send(embeds=embeds, files=files)
-                    new_message_id = str(msg.id)
+                    new_message_id, new_thread_id = await _post_embed_content(ch, name, embeds, files)
                 except discord.HTTPException as e:
                     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
             except Exception as e:
                 return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e}", status_code=302)
         else:
-            # No live message yet - e.g. a post restored from a backup (message_id is never
-            # trusted across a restore, same as ticket_panels). Post it fresh instead of
-            # silently saving the new content with no actual Discord message behind it.
+            # No live message/thread yet - e.g. a post restored from a backup (message_id/
+            # thread_id are never trusted across a restore, same as ticket_panels). Post it
+            # fresh instead of silently saving the new content with nothing live behind it.
             try:
-                msg = await ch.send(embeds=embeds, files=files)
-                new_message_id = str(msg.id)
+                new_message_id, new_thread_id = await _post_embed_content(ch, name, embeds, files)
             except discord.HTTPException as e:
                 return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
     await db_exec(
-        "UPDATE embed_posts SET name=?, channel_id=?, content=?, message_id=?, image_url=?, footer_text=?, image_data=?, image_filename=? "
+        "UPDATE embed_posts SET name=?, channel_id=?, content=?, message_id=?, image_url=?, footer_text=?, image_data=?, image_filename=?, thread_id=? "
         "WHERE id=? AND guild_id=?",
         (name, channel_id, content, new_message_id, final_image_url, footer_text,
-         final_image_data, final_image_filename, post_id, guild_id),
+         final_image_data, final_image_filename, new_thread_id, post_id, guild_id),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&success=Gespeichert", status_code=302)
 
@@ -5707,13 +5779,20 @@ async def embed_post_delete(request: Request, guild_id: int, post_id: int):
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
     post = await db_one("SELECT * FROM embed_posts WHERE id=? AND guild_id=?", (post_id, guild_id))
-    if post and post.get("message_id") and post.get("channel_id"):
+    if post:
         try:
             guild = bot.get_guild(guild_id)
-            ch = guild.get_channel(int(post["channel_id"])) if guild else None
-            if ch:
-                msg = await ch.fetch_message(int(post["message_id"]))
-                await msg.delete()
+            if guild and post.get("thread_id"):
+                # A forum post's live content IS the thread - deleting just the starter message
+                # isn't a thing Discord distinguishes from deleting the whole thread anyway, so
+                # go straight for the thread itself.
+                thread = await _fetch_embed_thread(guild, int(post["thread_id"]))
+                await thread.delete()
+            elif guild and post.get("message_id") and post.get("channel_id"):
+                ch = guild.get_channel(int(post["channel_id"]))
+                if ch:
+                    msg = await ch.fetch_message(int(post["message_id"]))
+                    await msg.delete()
         except Exception:
             pass
     await db_exec("DELETE FROM embed_posts WHERE id=? AND guild_id=?", (post_id, guild_id))
