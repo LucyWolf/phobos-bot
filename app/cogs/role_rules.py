@@ -59,8 +59,10 @@ class RoleRules(commands.Cog):
 
     async def _evaluate_member(self, guild: discord.Guild, member, hop_budget: int = MAX_HOP_BUDGET):
         if hop_budget <= 0 or member is None:
+            print(f"[RoleRules][debug] _evaluate_member abgebrochen: hop_budget={hop_budget}, member={member}")
             return
         rules = await self._get_rules(guild.id)
+        print(f"[RoleRules][debug] Guild {guild.id} ({guild.name}): {len(rules)} aktive Regel(n) geladen für Mitglied {member.id}")
         if not rules:
             return
         current = {r.id for r in member.roles}
@@ -75,6 +77,9 @@ class RoleRules(commands.Cog):
             # rules within one pass - keeps the ordering easy to reason about.
             if not self._matches(rule, current):
                 continue
+            print(f"[RoleRules][debug] Regel #{rule['id']} ({rule['name'] or '—'}) trifft zu für Mitglied {member.id}: "
+                  f"match_type={rule['match_type']} match_roles={rule['match_role_ids']} "
+                  f"-> action={rule['action']} action_guild={rule['action_guild_id']} action_roles={rule['action_role_ids']}")
             action_ids = {int(x) for x in (rule["action_role_ids"] or "").split(",") if x}
             if not action_ids:
                 continue
@@ -104,28 +109,39 @@ class RoleRules(commands.Cog):
                     changed = True
                 except discord.HTTPException as e:
                     print(f"[RoleRules] Anwenden auf {member.id} in Guild {guild.id} fehlgeschlagen: {e}")
+        if cross_actions:
+            print(f"[RoleRules][debug] {len(cross_actions)} Cross-Server-Aktion(en) zu verarbeiten für Mitglied {member.id}: "
+                  f"{[(a, b) for a, b, _ in cross_actions]}")
         for action_guild_id, action, role_ids in cross_actions:
             target_guild = self.bot.get_guild(int(action_guild_id))
             if not target_guild:
                 # Not reachable via this same bot token - the dashboard only ever offers
                 # same-token guilds as an action target, so this means the bot has since left
                 # that server. Nothing sensible to do but skip.
+                print(f"[RoleRules][debug] Zielserver {action_guild_id} über self.bot.get_guild() nicht erreichbar "
+                      f"(self.bot kennt {len(self.bot.guilds)} Server: {[g.id for g in self.bot.guilds]})")
                 continue
             target_member = target_guild.get_member(member.id)
             if target_member is None:
                 try:
                     target_member = await target_guild.fetch_member(member.id)
                 except discord.NotFound:
+                    print(f"[RoleRules][debug] Mitglied {member.id} ist nicht Teil von Guild {target_guild.id} ({target_guild.name})")
                     continue  # the user simply isn't a member of the target server
                 except discord.HTTPException as e:
                     print(f"[RoleRules] Mitglied {member.id} auf Guild {target_guild.id} nicht auflösbar: {e}")
                     continue
             t_current = {r.id for r in target_member.roles}
             t_new_ids = (t_current | role_ids) if action == "add" else (t_current - role_ids)
+            print(f"[RoleRules][debug] Ziel-Mitglied {target_member.id} auf Guild {target_guild.id}: "
+                  f"aktuelle Rollen={t_current}, gewünscht={t_new_ids}, ändert sich={t_new_ids != t_current}")
             if t_new_ids != t_current:
                 t_new_roles = [r for r in (target_guild.get_role(rid) for rid in t_new_ids) if r]
+                print(f"[RoleRules][debug] Aufgelöste Ziel-Rollenobjekte: {[(r.id, r.name) for r in t_new_roles]} "
+                      f"(erwartet {len(t_new_ids)} IDs, {len(t_new_roles)} aufgelöst)")
                 try:
                     await target_member.edit(roles=t_new_roles, reason="CrossVerification (cross-server)")
+                    print(f"[RoleRules][debug] member.edit() auf Guild {target_guild.id} erfolgreich gesendet")
                 except discord.HTTPException as e:
                     print(f"[RoleRules] Cross-Server-Anwenden auf {target_guild.id} fehlgeschlagen: {e}")
             # Recurse into the target guild so ITS OWN rules see the new role state too, bounded
@@ -141,15 +157,20 @@ class RoleRules(commands.Cog):
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         if before.roles == after.roles:
             return
+        print(f"[RoleRules][debug] on_member_update: Rollenänderung erkannt für {after.id} in Guild "
+              f"{after.guild.id} ({after.guild.name}) - vorher={ {r.id for r in before.roles} }, "
+              f"nachher={ {r.id for r in after.roles} }")
         interval_raw = await get_guild_config(after.guild.id, "role_rules_interval_minutes")
         try:
             interval = int(interval_raw) if interval_raw else 0
         except ValueError:
             interval = 0
         if interval > 0:
+            print(f"[RoleRules][debug] Guild {after.guild.id} läuft im periodischen Modus (Intervall={interval}min) - Live-Auswertung übersprungen")
             return  # this guild is in periodic mode - the loop below handles it instead
         key = (after.guild.id, after.id)
         if key in self._processing:
+            print(f"[RoleRules][debug] Guild {after.guild.id}/Mitglied {after.id} wird bereits verarbeitet - übersprungen")
             return
         self._processing.add(key)
         try:
