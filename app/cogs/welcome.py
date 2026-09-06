@@ -212,15 +212,21 @@ async def _make_card(member: discord.Member, circle_color: str, text_color: str,
 _PLACEHOLDER_RE = re.compile(r"\{user\}|\{username\}|\{server\}|\{count\}")
 
 
-def fill(template: str, member: discord.Member) -> str:
+def fill(template: str, member: discord.Member, *, plain_mention: bool = False) -> str:
     # Chained .replace() calls used to substitute one placeholder at a time - if an
     # already-substituted value (most plausibly the guild's own name, which admins can set to
     # anything, e.g. "Cool {count} Server") happened to literally contain another placeholder's
     # token, a LATER .replace() in the chain would go on to corrupt that already-inserted text
     # too. A single regex pass over the ORIGINAL template can't do that, since it never
     # re-scans text it has already substituted in.
+    #
+    # plain_mention=True is for text that ends up baked into the welcome-CARD image (heading/
+    # subtitle) rather than a real Discord message - a real mention (member.mention, "<@id>")
+    # only renders as a clickable ping inside actual Discord text; drawn as literal pixels on a
+    # PNG it would just show the raw "<@1234567890>" string. Card text substitutes the plain
+    # display name instead, same as {username} would show.
     values = {
-        "{user}": member.mention,
+        "{user}": member.display_name if plain_mention else member.mention,
         "{username}": str(member),
         "{server}": member.guild.name,
         "{count}": str(member.guild.member_count),
@@ -258,8 +264,8 @@ class Welcome(commands.Cog):
                 bg_image_b64  = await get_guild_config(member.guild.id, "welcome_card_bg_image")
                 heading_raw   = await get_guild_config(member.guild.id, "welcome_card_heading_text")
                 subtitle_raw  = await get_guild_config(member.guild.id, "welcome_card_subtitle_text")
-                heading_text  = fill(heading_raw, member) if heading_raw else None
-                subtitle_text = fill(subtitle_raw, member) if subtitle_raw else None
+                heading_text  = fill(heading_raw, member, plain_mention=True) if heading_raw else None
+                subtitle_text = fill(subtitle_raw, member, plain_mention=True) if subtitle_raw else None
                 avatar_shape  = await get_guild_config(member.guild.id, "welcome_card_avatar_shape")
                 avatar_position = await get_guild_config(member.guild.id, "welcome_card_avatar_position")
                 try:

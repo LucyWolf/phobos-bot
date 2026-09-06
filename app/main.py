@@ -6039,14 +6039,15 @@ class _PreviewMember:
     """A minimal stand-in for discord.Member, used only by welcome_card_preview() below so the
     dashboard's live preview can call the exact same _make_card()/fill() the bot uses for a real
     join, without an actual member ever joining. Exposes only the handful of attributes those
-    two functions touch - display_avatar/display_name/mention for the card itself, guild.
-    member_count so the default "Mitglied #X" subtitle looks realistic even before anything is
-    typed in."""
+    two functions touch - display_avatar/display_name for the card itself, guild.member_count
+    so the default "Mitglied #X" subtitle looks realistic even before anything is typed in. No
+    .mention attribute - the preview always calls fill(..., plain_mention=True) since card text
+    never uses a real Discord mention (see fill()'s own docstring), so nothing here ever reads
+    .mention in the first place."""
     def __init__(self, guild):
         self.display_name = "Preview User"
         self.guild = guild
         self.display_avatar = _PreviewAvatar()
-        self.mention = "@Preview User"
 
     def __str__(self):
         return "Preview User"
@@ -6084,8 +6085,8 @@ async def welcome_card_preview(request: Request, guild_id: int):
     member = _PreviewMember(guild)
     heading_raw = str(form.get("welcome_card_heading_text", ""))
     subtitle_raw = str(form.get("welcome_card_subtitle_text", ""))
-    heading_text = _welcome_fill(heading_raw, member) if heading_raw else None
-    subtitle_text = _welcome_fill(subtitle_raw, member) if subtitle_raw else None
+    heading_text = _welcome_fill(heading_raw, member, plain_mention=True) if heading_raw else None
+    subtitle_text = _welcome_fill(subtitle_raw, member, plain_mention=True) if subtitle_raw else None
 
     try:
         buf = await _welcome_make_card(
