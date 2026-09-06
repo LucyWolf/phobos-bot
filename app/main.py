@@ -4987,20 +4987,22 @@ async def server_config_save(request: Request, guild_id: int):
                 return RedirectResponse(f"/servers/{guild_id}?tab={tab}&error={e}", status_code=302)
             if new_bg is not None:
                 await set_guild_config(guild_id, "welcome_card_bg_image", new_bg)
-        if form.get("remove_welcome_card_overlay"):
-            await set_guild_config(guild_id, "welcome_card_overlay_image", "")
+        try:
+            new_overlay = await _read_welcome_overlay_upload(form.get("welcome_card_overlay_image"))
+        except ValueError as e:
+            return RedirectResponse(f"/servers/{guild_id}?tab={tab}&error={e}", status_code=302)
+        if new_overlay is not None:
+            # A freshly uploaded file always wins over the preset dropdown, same precedence as
+            # the background image - and replaces whatever preset was active before, if any.
+            await set_guild_config(guild_id, "welcome_card_overlay_image", new_overlay)
             await set_guild_config(guild_id, "welcome_card_overlay_preset", "")
         else:
-            try:
-                new_overlay = await _read_welcome_overlay_upload(form.get("welcome_card_overlay_image"))
-            except ValueError as e:
-                return RedirectResponse(f"/servers/{guild_id}?tab={tab}&error={e}", status_code=302)
-            if new_overlay is not None:
-                await set_guild_config(guild_id, "welcome_card_overlay_image", new_overlay)
-                # A manual upload replaces whatever gallery preset was active before, if any -
-                # clear the marker so a stale preset tile doesn't stay highlighted as "selected"
-                # once it's no longer what's actually configured.
-                await set_guild_config(guild_id, "welcome_card_overlay_preset", "")
+            explicit, image_b64, marker = await _resolve_welcome_overlay_choice(
+                str(form.get("welcome_card_overlay_choice", ""))
+            )
+            if explicit:
+                await set_guild_config(guild_id, "welcome_card_overlay_image", image_b64)
+                await set_guild_config(guild_id, "welcome_card_overlay_preset", marker)
     if tab == "leveling":
         # Multi-select, needs form.getlist() - can't go through the generic single-value loop above.
         leveling_channels = ",".join(c for c in form.getlist("leveling_channels") if c in valid_channel_ids)
@@ -6095,56 +6097,32 @@ async def welcome_card_overlay_image(request: Request, guild_id: int):
 _ASSETS_DIR = Path(__file__).parent / "assets"
 _WELCOME_OVERLAY_PRESETS = {
     "shattered_glass": {"label": "Zersprungenes Glas", "file": "welcome_card_overlay_example.png"},
+    "hearts": {"label": "Herzen", "file": "welcome_card_overlay_hearts.png"},
 }
 
 
-@web.get("/assets/welcome-card-overlay-presets/{preset_id}")
-async def welcome_card_overlay_preset_asset(request: Request, preset_id: str):
-    """Serves a bundled overlay-preset thumbnail - these ship with the bot itself (not per-guild
-    user data), so this only requires being logged in, no guild-scoping needed. preset_id is
-    checked against the fixed _WELCOME_OVERLAY_PRESETS dict, never used to build a path
-    directly, so an unrecognized id can't be used to read an arbitrary file off disk."""
-    if r := auth_redirect(request): return r
-    preset = _WELCOME_OVERLAY_PRESETS.get(preset_id)
-    if not preset:
-        raise HTTPException(status_code=404)
-    try:
-        raw = (_ASSETS_DIR / preset["file"]).read_bytes()
-    except OSError:
-        raise HTTPException(status_code=404)
-    return Response(content=raw, media_type="image/png")
-
-
-@web.post("/servers/{guild_id}/welcome-card/overlay-image/use-preset/{preset_id}")
-async def welcome_card_overlay_use_preset(request: Request, guild_id: int, preset_id: str):
-    """Applies a built-in overlay preset to this guild with one click - reads the bundled file
-    (already stored pre-processed at <=1600px RGBA, see the asset's own generation), no need to
-    run it back through _read_welcome_overlay_upload(). preset_id == "none" is a special,
-    always-available choice (not in _WELCOME_OVERLAY_PRESETS) that clears the overlay entirely -
-    lets the gallery offer "off" as just another tile alongside the real presets, rather than
-    needing a separate control for it.
-    welcome_card_overlay_preset tracks WHICH preset (if any) is currently active, purely so the
-    gallery can highlight the selected tile - it's not read anywhere in the actual card
-    rendering, only welcome_card_overlay_image is. Cleared to "" whenever the overlay comes from
-    a manual upload or the removal checkbox instead (see server_config_save()), so a stale
-    highlight never lingers on a preset tile that's no longer what's actually active."""
-    if r := auth_redirect(request): return r
-    if not await _guild_access(request, guild_id):
-        return RedirectResponse("/servers", status_code=302)
-    if preset_id == "none":
-        await set_guild_config(guild_id, "welcome_card_overlay_image", "")
-        await set_guild_config(guild_id, "welcome_card_overlay_preset", "")
-        return RedirectResponse(f"/servers/{guild_id}?tab=welcome&success=Gespeichert", status_code=303)
-    preset = _WELCOME_OVERLAY_PRESETS.get(preset_id)
-    if not preset:
-        return RedirectResponse(f"/servers/{guild_id}?tab=welcome&error=Unbekannte+Vorlage", status_code=302)
-    try:
-        raw = (_ASSETS_DIR / preset["file"]).read_bytes()
-    except OSError:
-        return RedirectResponse(f"/servers/{guild_id}?tab=welcome&error=Vorlage+nicht+gefunden", status_code=302)
-    await set_guild_config(guild_id, "welcome_card_overlay_image", base64.b64encode(raw).decode("ascii"))
-    await set_guild_config(guild_id, "welcome_card_overlay_preset", preset_id)
-    return RedirectResponse(f"/servers/{guild_id}?tab=welcome&success=Gespeichert", status_code=303)
+async def _resolve_welcome_overlay_choice(choice: str):
+    """Resolves the welcome_card_overlay_choice <select> value - shared by server_config_save()
+    (actually saving it) and welcome_card_preview() (showing it live before saving) so both stay
+    in sync automatically. Returns (explicit, image_b64, preset_marker):
+    - choice == "none" -> (True, "", "") - the admin explicitly chose "no overlay".
+    - choice is a known preset id -> (True, <base64 PNG>, choice) - reads the bundled file
+      (already pre-processed at <=1600px RGBA, see the asset's own generation), no need to run
+      it back through _read_welcome_overlay_upload().
+    - choice is empty/unrecognized (the placeholder option, or nothing submitted) -> (False,
+      None, None) - "no explicit choice was made this submission", caller should fall through to
+      whatever else already determines the overlay (a freshly uploaded file, or the guild's
+      currently saved value) rather than overwriting it."""
+    if choice == "none":
+        return True, "", ""
+    preset = _WELCOME_OVERLAY_PRESETS.get(choice)
+    if preset:
+        try:
+            raw = (_ASSETS_DIR / preset["file"]).read_bytes()
+        except OSError:
+            return True, "", ""  # bundled file missing somehow - fail safe to "no overlay"
+        return True, base64.b64encode(raw).decode("ascii"), choice
+    return False, None, None
 
 
 class _PreviewAvatar:
@@ -6205,17 +6183,23 @@ async def welcome_card_preview(request: Request, guild_id: int):
     else:
         bg_image_b64 = await get_guild_config(guild_id, "welcome_card_bg_image")
 
-    # Same precedence, same reasoning, for the overlay image.
+    # Same precedence for the overlay image, extended with the preset dropdown: a freshly
+    # uploaded file wins, then an explicit dropdown choice (see _resolve_welcome_overlay_choice),
+    # else whatever is already saved for this guild.
     try:
         new_overlay = await _read_welcome_overlay_upload(form.get("welcome_card_overlay_image"))
     except ValueError:
         new_overlay = None
-    if form.get("remove_welcome_card_overlay"):
-        overlay_image_b64 = None
-    elif new_overlay is not None:
+    if new_overlay is not None:
         overlay_image_b64 = new_overlay
     else:
-        overlay_image_b64 = await get_guild_config(guild_id, "welcome_card_overlay_image")
+        explicit, choice_image_b64, _marker = await _resolve_welcome_overlay_choice(
+            str(form.get("welcome_card_overlay_choice", ""))
+        )
+        if explicit:
+            overlay_image_b64 = choice_image_b64
+        else:
+            overlay_image_b64 = await get_guild_config(guild_id, "welcome_card_overlay_image")
 
     member = _PreviewMember(guild)
     heading_raw = str(form.get("welcome_card_heading_text", ""))
