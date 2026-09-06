@@ -23,6 +23,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 - [Auto-Delete](#auto-delete)
 - [Scheduled Messages](#scheduled-messages)
 - [Discord Events](#discord-events)
+- [CrossVerification](#crossverification)
 - [Birthday System](#birthday-system)
 - [Backup & Restore](#backup--restore)
 - [Two-Factor Authentication](#two-factor-authentication)
@@ -68,13 +69,14 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **Scheduled Messages** | Schedule messages to be sent to any channel at a specific date and time |
 | **Birthday System** | `!geburtstag DD.MM` — daily congratulations at 8 AM, configurable channel and message |
 | **Discord Events** | Create/edit native Discord scheduled events (voice or external) from the dashboard, with optional reminders and start/end announcements posted to a channel |
+| **CrossVerification** | "IF a member has/lacks certain roles, THEN add/remove roles" rules — live or on a configurable interval, optionally targeting a different server, with a test sandbox |
 
 ### Web Dashboard
 
 | Section | Function |
 |---|---|
 | **Dashboard** | Bot status, connected servers, moderation statistics — personalized per user |
-| **Per Server** | Config, Spam Protection, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Twitch, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, Birthdays, Auto-Delete, Bot Design |
+| **Per Server** | Config, Spam Protection, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Twitch, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, CrossVerification, Birthdays, Auto-Delete, Bot Design |
 | **Server List** | All connected servers, invite bot |
 | **🔑 Tokens** *(Admin)* | Manage multiple bot tokens — each token runs its own bot account, hot-reload without restart |
 | **👥 Users** *(Admin)* | Create/delete dashboard users, assign roles and server access, **download & restore backups** |
@@ -182,6 +184,17 @@ Under **Server → Events** you can create native Discord scheduled events direc
 Optional extras when creating an event:
 - **Announcement channel** — the bot posts a message there automatically once the event starts (and, if enabled, once it ends), including name, time, location and a link to the event
 - **Reminders** — any number of custom messages posted a chosen number of minutes before the event starts
+
+---
+
+## CrossVerification
+
+Under **Server → CrossVerification** you can define "IF a member has/lacks certain roles, THEN add/remove roles" rules. By default they're evaluated **live**, the instant a member's roles change — an optional per-server interval switches this to a periodic full re-check of every member instead (0 minutes = live).
+
+- **Condition** — has **any** / **all** / **none** of a chosen set of roles
+- **Action** — add or remove a chosen set of roles, either on this server or on a **different one** (cross-server sync for a network of servers sharing the same bot token — only guilds reachable that way appear in the target dropdown)
+- **Priority** — rules run in order (lowest number first); if two rules affect the same role, the one applied last wins
+- **Test sandbox** — simulate any role combination and see exactly what would happen, without touching a single real member
 
 ---
 
@@ -440,7 +453,8 @@ phobos-bot/
 │   │   ├── auto_delete.py    # Auto-delete messages by channel
 │   │   ├── temp_voice.py     # Join-to-Create temp voice channels
 │   │   ├── scheduler.py      # Scheduled messages
-│   │   └── birthday.py       # Birthday congratulations
+│   │   ├── birthday.py       # Birthday congratulations
+│   │   └── role_rules.py     # CrossVerification (role condition rules)
 │   └── templates/            # Jinja2 HTML templates
 ├── data/                     # SQLite database + secret key (auto-created, do not commit)
 └── data-*/                   # Additional instance databases (if using multi-instance)
@@ -494,6 +508,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 - [Auto-Delete](#auto-delete-1)
 - [Geplante Nachrichten](#geplante-nachrichten)
 - [Discord-Events](#discord-events-1)
+- [CrossVerification](#crossverification-1)
 - [Geburtstags-System](#geburtstags-system)
 - [Backup & Wiederherstellen](#backup--wiederherstellen)
 - [Zwei-Faktor-Authentifizierung](#zwei-faktor-authentifizierung)
@@ -539,13 +554,14 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **Geplante Nachrichten** | Nachrichten zu einem bestimmten Datum und Uhrzeit in jeden Kanal planen |
 | **Geburtstags-System** | `!geburtstag TT.MM` — tägliche Glückwünsche um 8 Uhr, konfigurierbarer Kanal und Text |
 | **Discord-Events** | Native Discord-Events (Voice oder extern) direkt im Dashboard erstellen/bearbeiten, mit optionalen Erinnerungen und Start-/Ende-Ankündigungen in einem Kanal |
+| **CrossVerification** | "Wenn Rollen X, dann Rollen Y hinzufügen/entfernen"-Regeln — live oder in einstellbarem Intervall, optional auf einem anderen Server, inkl. Test-Sandbox |
 
 ### Web-Dashboard
 
 | Bereich | Funktion |
 |---|---|
 | **Dashboard** | Bot-Status, verbundene Server, Moderations-Statistiken — personalisiert pro Nutzer |
-| **Pro Server** | Konfiguration, Spam-Schutz, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Twitch, Free Stuff, Log, Temp Voice, Geplant, Events, Geburtstage, Auto-Delete, Bot-Design |
+| **Pro Server** | Konfiguration, Spam-Schutz, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Twitch, Free Stuff, Log, Temp Voice, Geplant, Events, CrossVerification, Geburtstage, Auto-Delete, Bot-Design |
 | **Server-Übersicht** | Alle verbundenen Server, Bot einladen |
 | **🔑 Tokens** *(Admin)* | Mehrere Bot-Tokens verwalten – jeder Token startet einen eigenen Bot-Account, Hot-Reload ohne Neustart |
 | **👥 Benutzer** *(Admin)* | Dashboard-Nutzer anlegen/löschen, Rolle und Server-Zugriff vergeben, **Backups erstellen & einspielen** |
@@ -653,6 +669,17 @@ Unter **Server → Events** lassen sich native Discord-Events direkt im Dashboar
 Optionale Extras beim Erstellen:
 - **Ankündigungskanal** — der Bot postet dort automatisch eine Nachricht, sobald das Event startet (und optional, wenn es endet), mit Name, Zeit, Ort und einem Link zum Event
 - **Erinnerungen** — beliebig viele eigene Nachrichten, die eine wählbare Anzahl Minuten vor Start gepostet werden
+
+---
+
+## CrossVerification
+
+Unter **Server → CrossVerification** lassen sich "Wenn ein Mitglied bestimmte Rollen hat/nicht hat, dann Rollen hinzufügen/entfernen"-Regeln definieren. Standardmäßig werden sie **live** ausgewertet, sofort bei jeder Rollenänderung eines Mitglieds — ein optionales, pro Server einstellbares Intervall schaltet stattdessen auf einen periodischen Voll-Durchlauf über alle Mitglieder um (0 Minuten = live).
+
+- **Bedingung** — hat **mindestens eine** / **alle** / **keine** der gewählten Rollen
+- **Aktion** — gewählte Rollen hinzufügen oder entfernen, entweder auf diesem Server oder auf einem **anderen** (Cross-Server-Sync für ein Netzwerk aus Servern, die denselben Bot-Token teilen — nur so erreichbare Server erscheinen im Zielserver-Dropdown)
+- **Priorität** — Regeln laufen in Reihenfolge (niedrigste Zahl zuerst); betreffen zwei Regeln dieselbe Rolle, gewinnt die zuletzt angewendete
+- **Test-Sandbox** — simuliert eine beliebige Rollen-Kombination und zeigt, was passieren würde, ohne ein echtes Mitglied anzufassen
 
 ---
 
@@ -915,7 +942,8 @@ phobos-bot/
 │   │   ├── auto_delete.py    # Automatisches Löschen nach Zeit
 │   │   ├── temp_voice.py     # Join-to-Create Temp-Voice-Kanäle
 │   │   ├── scheduler.py      # Geplante Nachrichten
-│   │   └── birthday.py       # Geburtstags-Glückwünsche
+│   │   ├── birthday.py       # Geburtstags-Glückwünsche
+│   │   └── role_rules.py     # CrossVerification (Rollen-Bedingungsregeln)
 │   └── templates/            # Jinja2 HTML-Templates
 ├── data/                     # SQLite-Datenbank + Secret-Key (auto-erstellt, nicht committen)
 └── data-*/                   # Weitere Instanz-Datenbanken (bei Multi-Instanz)
