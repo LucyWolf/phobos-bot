@@ -4794,6 +4794,7 @@ async def server_config(
         "amp_cfg": amp_cfg, "amp_status": amp_status, "amp_instances": amp_instances,
         "amp_instances_error": amp_instances_error, "amp_connection_error": amp_connection_error,
         "amp_raw_debug": amp_raw_debug,
+        "welcome_overlay_presets": _WELCOME_OVERLAY_PRESETS,
         "toggleable_features": _TOGGLEABLE_FEATURES,
         "enabled_features": await _get_enabled_features(guild_id),
         "scheduled_messages": _scheduled_messages,
@@ -6076,6 +6077,56 @@ async def welcome_card_overlay_image(request: Request, guild_id: int):
     except Exception:
         raise HTTPException(status_code=404)
     return Response(content=raw, media_type="image/png")
+
+
+# Built-in overlay presets shipped with the bot itself (app/assets/), so admins have something
+# to pick from a menu instead of needing to source their own transparent overlay image first -
+# user request: "am besten mach da im bot ein menü teil dafür für vorgefertigte sachen wo die
+# leute sich da was einfach auswählen können". Keyed by a short, fixed id (never taken from
+# request input) so the serving/apply routes below can validate against this dict instead of
+# trusting an arbitrary filename - adding a future preset is just one more dict entry plus its
+# image file, nothing else needs to change. The one shipped preset was provided by the user for
+# this exact purpose (confirmed they hold the rights to redistribute it here).
+_ASSETS_DIR = Path(__file__).parent / "assets"
+_WELCOME_OVERLAY_PRESETS = {
+    "shattered_glass": {"label": "Zersprungenes Glas", "file": "welcome_card_overlay_example.png"},
+}
+
+
+@web.get("/assets/welcome-card-overlay-presets/{preset_id}")
+async def welcome_card_overlay_preset_asset(request: Request, preset_id: str):
+    """Serves a bundled overlay-preset thumbnail - these ship with the bot itself (not per-guild
+    user data), so this only requires being logged in, no guild-scoping needed. preset_id is
+    checked against the fixed _WELCOME_OVERLAY_PRESETS dict, never used to build a path
+    directly, so an unrecognized id can't be used to read an arbitrary file off disk."""
+    if r := auth_redirect(request): return r
+    preset = _WELCOME_OVERLAY_PRESETS.get(preset_id)
+    if not preset:
+        raise HTTPException(status_code=404)
+    try:
+        raw = (_ASSETS_DIR / preset["file"]).read_bytes()
+    except OSError:
+        raise HTTPException(status_code=404)
+    return Response(content=raw, media_type="image/png")
+
+
+@web.post("/servers/{guild_id}/welcome-card/overlay-image/use-preset/{preset_id}")
+async def welcome_card_overlay_use_preset(request: Request, guild_id: int, preset_id: str):
+    """Applies a built-in overlay preset to this guild with one click - reads the bundled file
+    (already stored pre-processed at <=1600px RGBA, see the asset's own generation), no need to
+    run it back through _read_welcome_overlay_upload()."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    preset = _WELCOME_OVERLAY_PRESETS.get(preset_id)
+    if not preset:
+        return RedirectResponse(f"/servers/{guild_id}?tab=welcome&error=Unbekannte+Vorlage", status_code=302)
+    try:
+        raw = (_ASSETS_DIR / preset["file"]).read_bytes()
+    except OSError:
+        return RedirectResponse(f"/servers/{guild_id}?tab=welcome&error=Vorlage+nicht+gefunden", status_code=302)
+    await set_guild_config(guild_id, "welcome_card_overlay_image", base64.b64encode(raw).decode("ascii"))
+    return RedirectResponse(f"/servers/{guild_id}?tab=welcome&success=Gespeichert", status_code=303)
 
 
 class _PreviewAvatar:

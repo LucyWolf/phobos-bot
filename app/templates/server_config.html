@@ -208,6 +208,21 @@
           </div>
           {% endif %}
           <input type="file" name="welcome_card_overlay_image" accept="image/*">
+          <p style="font-size:0.72rem;color:var(--muted);margin-top:0.35rem;">
+            {{ tr.config_card_overlay_resolution_hint }}
+          </p>
+          {% if welcome_overlay_presets %}
+          <p style="font-size:0.78rem;color:var(--muted);margin-top:0.6rem;margin-bottom:0.35rem;">{{ tr.config_card_overlay_presets_label }}</p>
+          <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
+            {% for pid, preset in welcome_overlay_presets.items() %}
+            <form method="post" action="/servers/{{ guild.id }}/welcome-card/overlay-image/use-preset/{{ pid }}" style="margin:0;">
+              <button type="submit" title="{{ preset.label }}" style="padding:0;border:1px solid var(--border);border-radius:6px;overflow:hidden;cursor:pointer;background:repeating-conic-gradient(#8884 0% 25%, transparent 0% 50%) 0 0/10px 10px;">
+                <img src="/assets/welcome-card-overlay-presets/{{ pid }}" alt="{{ preset.label }}" style="width:90px;height:31.5px;object-fit:cover;display:block;">
+              </button>
+            </form>
+            {% endfor %}
+          </div>
+          {% endif %}
         </div>
 
         <label style="font-size:0.82rem;margin-top:0.85rem;">{{ tr.config_card_heading_label }}</label>
