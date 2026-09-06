@@ -2545,20 +2545,42 @@ function updateAmpCmdPreview(id, action, value) {
 <!-- TAB: Role Rules                                                      -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-rolerules">
-<div style="position:relative;margin-bottom:1.25rem;">
-  <button type="button" onclick="toggleRoleRulesInfo()" title="{{ tr.rolerules_info_tooltip }}"
-    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
-  <div id="rolerules-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
-       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
-       font-size:0.78rem;min-width:300px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
-    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.rolerules_info_title }}</div>
-    <ul style="margin:0 0 0 1.1rem;padding:0;color:var(--muted);line-height:1.6;">
-      <li>{{ tr.rolerules_info_item_live }}</li>
-      <li>{{ tr.rolerules_info_item_priority }}</li>
-      <li>{{ tr.rolerules_info_item_cross }}</li>
-      <li>{{ tr.rolerules_info_item_sandbox }}</li>
-    </ul>
+<div style="display:flex;gap:0.4rem;margin-bottom:1.25rem;">
+  <div style="position:relative;">
+    <button type="button" onclick="toggleRoleRulesInfo()" title="{{ tr.rolerules_info_tooltip }}"
+      style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+    <div id="rolerules-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+         background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+         font-size:0.78rem;min-width:300px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+      <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.rolerules_info_title }}</div>
+      <ul style="margin:0 0 0 1.1rem;padding:0;color:var(--muted);line-height:1.6;">
+        <li>{{ tr.rolerules_info_item_live }}</li>
+        <li>{{ tr.rolerules_info_item_priority }}</li>
+        <li>{{ tr.rolerules_info_item_cross }}</li>
+        <li>{{ tr.rolerules_info_item_sandbox }}</li>
+      </ul>
+    </div>
   </div>
+  {% if role_rules or role_rules_debug_log or role_rules_cog_missing %}
+  <div style="position:relative;">
+    <button type="button" onclick="toggleRoleRulesDebug()" title="{{ tr.rolerules_debug_label }}"
+      style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">🔍</button>
+    <div id="rolerules-debug-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+         background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+         font-size:0.78rem;width:480px;max-width:min(600px,80vw);box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+      <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.rolerules_debug_label }}</div>
+      <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.6rem;">{{ tr.rolerules_debug_hint }}</div>
+      {% if role_rules_cog_missing %}
+      <div class="hint" style="color:var(--danger);">{{ tr.rolerules_debug_cog_missing }}</div>
+      {% elif role_rules_debug_log %}
+      <pre style="white-space:pre-wrap;word-break:break-all;font-size:0.7rem;color:var(--muted);max-height:320px;overflow-y:auto;margin:0;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;padding:0.6rem 0.8rem;">{% for line in role_rules_debug_log %}{{ line }}
+{% endfor %}</pre>
+      {% else %}
+      <div class="hint">{{ tr.rolerules_debug_empty }}</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
 </div>
 
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:1.25rem;">
@@ -2752,22 +2774,6 @@ function updateAmpCmdPreview(id, action, value) {
   {% endfor %}
 </div>
 
-{% if role_rules or role_rules_debug_log or role_rules_cog_missing %}
-<div class="card" style="margin-bottom:1.25rem;">
-  <details {% if role_rules_debug_log %}open{% endif %}>
-    <summary class="hint" style="cursor:pointer;font-weight:700;color:var(--text);">{{ tr.rolerules_debug_label }}</summary>
-    <div style="font-size:0.72rem;color:var(--muted);margin:0.4rem 0;">{{ tr.rolerules_debug_hint }}</div>
-    {% if role_rules_cog_missing %}
-    <div class="hint" style="color:var(--danger);">{{ tr.rolerules_debug_cog_missing }}</div>
-    {% elif role_rules_debug_log %}
-    <pre style="white-space:pre-wrap;word-break:break-all;font-size:0.7rem;color:var(--muted);max-height:320px;overflow-y:auto;margin:0;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;padding:0.6rem 0.8rem;">{% for line in role_rules_debug_log %}{{ line }}
-{% endfor %}</pre>
-    {% else %}
-    <div class="hint">{{ tr.rolerules_debug_empty }}</div>
-    {% endif %}
-  </details>
-</div>
-{% endif %}
 
 <div class="card" style="margin-bottom:1.25rem;">
   <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.5rem;">{{ tr.rolerules_interval_title }}</div>
@@ -2802,10 +2808,18 @@ function toggleRoleRulesInfo() {
   const box = document.getElementById('rolerules-info-box');
   box.style.display = box.style.display === 'none' ? '' : 'none';
 }
+function toggleRoleRulesDebug() {
+  const box = document.getElementById('rolerules-debug-box');
+  if (box) box.style.display = box.style.display === 'none' ? '' : 'none';
+}
 document.addEventListener('click', function(e) {
-  const box = document.getElementById('rolerules-info-box');
-  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleRoleRulesInfo()"]')) {
-    box.style.display = 'none';
+  const infoBox = document.getElementById('rolerules-info-box');
+  if (infoBox && !infoBox.contains(e.target) && !e.target.matches('[onclick="toggleRoleRulesInfo()"]')) {
+    infoBox.style.display = 'none';
+  }
+  const debugBox = document.getElementById('rolerules-debug-box');
+  if (debugBox && !debugBox.contains(e.target) && !e.target.matches('[onclick="toggleRoleRulesDebug()"]')) {
+    debugBox.style.display = 'none';
   }
 });
 function toggleRoleRuleEdit(id) {
