@@ -86,7 +86,7 @@ class RoleRules(commands.Cog):
             return
         current = {r.id for r in member.roles}
         to_add, to_remove = set(), set()
-        cross_actions = []  # list of (action_guild_id, action, role_ids)
+        cross_by_guild: dict = {}  # action_guild_id -> {"add": set(), "remove": set()}
         for rule in rules:
             # Rules are evaluated against the role set as it stood BEFORE this pass (not
             # incrementally re-checked against to_add/to_remove as they accumulate) - a single,
@@ -114,8 +114,24 @@ class RoleRules(commands.Cog):
                     to_add |= action_ids
                     to_remove -= action_ids
             else:
-                cross_actions.append((rule["action_guild_id"], rule["action"], action_ids))
+                # Grouped by target guild (not a flat list of per-rule actions) and merged with
+                # the same "later rule in priority order overrides" semantics as the same-guild
+                # case above - fixes a real bug: two rules targeting the SAME other guild used
+                # to each run their own separate member.edit() call, computed from separately
+                # fetched role snapshots. Discord's own gateway MEMBER_UPDATE confirming the
+                # first edit isn't guaranteed to have reached this bot's cache before the second
+                # edit reads it, so the second edit could easily read a stale role set and wipe
+                # out the first edit's change. One merged edit per target guild avoids that
+                # entirely, exactly like the same-guild to_add/to_remove sets already did.
+                bucket = cross_by_guild.setdefault(str(rule["action_guild_id"]), {"add": set(), "remove": set()})
+                if rule["action"] == "remove":
+                    bucket["remove"] |= action_ids
+                    bucket["add"] -= action_ids
+                else:
+                    bucket["add"] |= action_ids
+                    bucket["remove"] -= action_ids
         changed = False
+        updated_member = None
         if to_add or to_remove:
             new_roles = [r for r in member.roles if r.id not in to_remove]
             for rid in to_add:
@@ -124,14 +140,21 @@ class RoleRules(commands.Cog):
                     new_roles.append(role)
             if {r.id for r in new_roles} != current:
                 try:
-                    await member.edit(roles=new_roles, reason="CrossVerification")
+                    # discord.py's Member.edit(roles=...) returns a FRESH Member built straight
+                    # from the REST response - it does NOT update guild._members, so a
+                    # subsequent guild.get_member(member.id) would still return the stale
+                    # pre-edit object. Capturing the return value here (used below for the
+                    # same-guild chained-rules re-evaluation) is the only way to actually see
+                    # the role we just granted, verified directly against discord.py 2.3.2's
+                    # source rather than assumed.
+                    updated_member = await member.edit(roles=new_roles, reason="CrossVerification")
                     changed = True
                 except discord.HTTPException as e:
                     self._log(f"FEHLER: Anwenden auf {member.id} in Guild {guild.id} fehlgeschlagen: {e}")
-        if cross_actions:
-            self._log(f"{len(cross_actions)} Cross-Server-Aktion(en) zu verarbeiten für Mitglied {member.id}: "
-                      f"{[(a, b) for a, b, _ in cross_actions]}")
-        for action_guild_id, action, role_ids in cross_actions:
+        if cross_by_guild:
+            self._log(f"{len(cross_by_guild)} Ziel-Server-Aktion(en) zu verarbeiten für Mitglied {member.id}: "
+                      f"{ {gid: (b['add'], b['remove']) for gid, b in cross_by_guild.items()} }")
+        for action_guild_id, bucket in cross_by_guild.items():
             target_guild = self.bot.get_guild(int(action_guild_id))
             if not target_guild:
                 # Not reachable via this same bot token - the dashboard only ever offers
@@ -151,7 +174,7 @@ class RoleRules(commands.Cog):
                     self._log(f"FEHLER: Mitglied {member.id} auf Guild {target_guild.id} nicht auflösbar: {e}")
                     continue
             t_current = {r.id for r in target_member.roles}
-            t_new_ids = (t_current | role_ids) if action == "add" else (t_current - role_ids)
+            t_new_ids = (t_current | bucket["add"]) - bucket["remove"]
             self._log(f"Ziel-Mitglied {target_member.id} auf Guild {target_guild.id}: "
                       f"aktuelle Rollen={t_current}, gewünscht={t_new_ids}, ändert sich={t_new_ids != t_current}")
             if t_new_ids != t_current:
@@ -159,7 +182,9 @@ class RoleRules(commands.Cog):
                 self._log(f"Aufgelöste Ziel-Rollenobjekte: {[(r.id, r.name) for r in t_new_roles]} "
                           f"(erwartet {len(t_new_ids)} IDs, {len(t_new_roles)} aufgelöst)")
                 try:
-                    await target_member.edit(roles=t_new_roles, reason="CrossVerification (cross-server)")
+                    # Same staleness issue as above - use the returned Member (reflects the
+                    # edit we just made) for the recursion below, not the pre-edit target_member.
+                    target_member = await target_member.edit(roles=t_new_roles, reason="CrossVerification (cross-server)") or target_member
                     self._log(f"member.edit() auf Guild {target_guild.id} erfolgreich gesendet")
                 except discord.HTTPException as e:
                     self._log(f"FEHLER: Cross-Server-Anwenden auf {target_guild.id} fehlgeschlagen: {e}")
@@ -167,9 +192,10 @@ class RoleRules(commands.Cog):
             # by hop_budget so two guilds whose rules reference each other can't loop forever.
             await self._evaluate_member(target_guild, target_member, hop_budget - 1)
         if changed:
-            # Same-guild chained rules (rule 1 grants role B, rule 2 reacts to role B) - re-fetch
-            # rather than trust member.roles to already reflect our own edit locally.
-            fresh = guild.get_member(member.id) or member
+            # Same-guild chained rules (rule 1 grants role B, rule 2 reacts to role B) - use the
+            # Member returned by our own edit() above (see the comment there for why a fresh
+            # guild.get_member() lookup would still return the stale pre-edit object).
+            fresh = updated_member or member
             await self._evaluate_member(guild, fresh, hop_budget - 1)
 
     @commands.Cog.listener()

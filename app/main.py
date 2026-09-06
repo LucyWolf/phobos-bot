@@ -4596,10 +4596,18 @@ async def server_config(
         rr["match_role_names"] = [_role_names_by_id.get(i, "?") for i in match_ids]
         action_ids = [i for i in (rr.get("action_role_ids") or "").split(",") if i]
         rr["action_role_ids_list"] = action_ids
-        target_names_by_id = {ro["id"]: ro["name"] for ro in role_rule_target_roles.get(rr["action_guild_id"], [])}
-        rr["action_role_names"] = [target_names_by_id.get(i, "?") for i in action_ids]
+        # Resolved via the unrestricted bot.get_guild() (same as action_guild_name below), not
+        # the permission-filtered role_rule_target_roles dict used for the form's checkboxes -
+        # a rule's target could be a guild the CURRENT viewer no longer has dashboard access to
+        # (e.g. a moderator whose access was narrowed after another admin created the rule),
+        # which would otherwise show every role name as "?" despite the rule itself resolving
+        # and running just fine in the cog.
         tg_obj = bot.get_guild(int(rr["action_guild_id"]))
         rr["action_guild_name"] = tg_obj.name if tg_obj else "?"
+        target_names_by_id = (
+            {str(ro.id): ro.name for ro in tg_obj.roles if not ro.is_default()} if tg_obj else {}
+        )
+        rr["action_role_names"] = [target_names_by_id.get(i, "?") for i in action_ids]
     role_rules_interval = await get_guild_config(guild_id, "role_rules_interval_minutes") or "0"
     # Debug trace straight from the cog's own in-memory ring buffer (cogs/role_rules.py's
     # self._debug_log) - shown on the dashboard itself instead of requiring a docker exec/logs

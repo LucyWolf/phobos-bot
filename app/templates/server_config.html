@@ -2752,7 +2752,7 @@ function updateAmpCmdPreview(id, action, value) {
   {% endfor %}
 </div>
 
-{% if role_rules %}
+{% if role_rules or role_rules_debug_log or role_rules_cog_missing %}
 <div class="card" style="margin-bottom:1.25rem;">
   <details {% if role_rules_debug_log %}open{% endif %}>
     <summary class="hint" style="cursor:pointer;font-weight:700;color:var(--text);">{{ tr.rolerules_debug_label }}</summary>
