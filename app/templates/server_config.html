@@ -2541,6 +2541,335 @@ function updateAmpCmdPreview(id, action, value) {
 </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Role Rules                                                      -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-rolerules">
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="toggleRoleRulesInfo()" title="{{ tr.rolerules_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="rolerules-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:300px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.rolerules_info_title }}</div>
+    <ul style="margin:0 0 0 1.1rem;padding:0;color:var(--muted);line-height:1.6;">
+      <li>{{ tr.rolerules_info_item_live }}</li>
+      <li>{{ tr.rolerules_info_item_priority }}</li>
+      <li>{{ tr.rolerules_info_item_cross }}</li>
+      <li>{{ tr.rolerules_info_item_sandbox }}</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:1.25rem;">
+  <div style="padding:0.85rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-weight:700;font-size:0.95rem;">{{ tr.rolerules_title }} <span style="font-weight:400;color:var(--muted);font-size:0.8rem;">{{ role_rules|length }} {{ tr.rolerules_total }}</span></div>
+    <button class="btn btn-primary" style="font-size:0.78rem;padding:0.3rem 0.75rem;" onclick="const b=document.getElementById('create-rolerule-box');b.style.display=b.style.display?'':'block';">{{ tr.rolerules_btn_new }}</button>
+  </div>
+
+  <div id="create-rolerule-box" style="display:none;padding:1rem 1.25rem;border-bottom:1px solid var(--border);background:var(--bg);">
+    <form method="post" action="/servers/{{ guild.id }}/role-rules/add">
+      <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
+        <div>
+          <label>{{ tr.rolerules_name_label }}</label>
+          <input type="text" name="name" maxlength="100" placeholder="{{ tr.rolerules_name_placeholder }}" style="margin-bottom:0;">
+        </div>
+        <div>
+          <label>{{ tr.rolerules_condition_label }}</label>
+          <select name="match_type" style="margin-bottom:0;">
+            <option value="any">{{ tr.rolerules_match_any }}</option>
+            <option value="all">{{ tr.rolerules_match_all }}</option>
+            <option value="none">{{ tr.rolerules_match_none }}</option>
+          </select>
+        </div>
+      </div>
+      <label>{{ tr.rolerules_match_roles_label }}</label>
+      <div style="max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem 0.7rem;background:var(--surface);margin-bottom:0.75rem;">
+        {% for ro in all_guild_roles %}
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;padding:0.15rem 0;margin:0;">
+          <input type="checkbox" name="match_role_ids" value="{{ ro.id }}" data-role-name="{{ ro.name }}"> @{{ ro.name }}
+        </label>
+        {% endfor %}
+      </div>
+      <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
+        <div>
+          <label>{{ tr.rolerules_action_label }}</label>
+          <select name="action" style="margin-bottom:0;">
+            <option value="add">{{ tr.rolerules_action_add }}</option>
+            <option value="remove">{{ tr.rolerules_action_remove }}</option>
+          </select>
+        </div>
+        <div>
+          <label>{{ tr.rolerules_target_label }}</label>
+          <select name="action_guild_id" style="margin-bottom:0;" onchange="showRoleRuleActionPicker(this.value, 'new')">
+            {% for target in role_rule_target_guilds %}<option value="{{ target.id }}">{{ target.name }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <label>{{ tr.rolerules_action_roles_label }}</label>
+      {% for target in role_rule_target_guilds %}
+      <div id="rr-action-roles-new-{{ target.id }}" class="rr-action-picker" style="display:{{ 'block' if loop.first else 'none' }};max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem 0.7rem;background:var(--surface);margin-bottom:0.5rem;">
+        {% for ro in role_rule_target_roles.get(target.id, []) %}
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;padding:0.15rem 0;margin:0;">
+          <input type="checkbox" name="action_role_ids" value="{{ ro.id }}" data-role-name="{{ ro.name }}"> @{{ ro.name }}
+        </label>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      <div class="grid-2" style="gap:0.75rem;margin:0.75rem 0;">
+        <div>
+          <label>{{ tr.rolerules_priority_label }}</label>
+          <input type="number" name="priority" min="1" max="1000" value="100" style="margin-bottom:0;">
+          <div style="font-size:0.72rem;color:var(--muted);margin-top:0.2rem;">{{ tr.rolerules_priority_hint }}</div>
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <label style="display:flex;align-items:center;gap:0.4rem;margin:0;">
+            <input type="checkbox" name="enabled" value="1" checked> {{ tr.rolerules_enabled_label }}
+          </label>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.rolerules_btn_create }}</button>
+    </form>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>{{ tr.rolerules_col_rule }}</th><th>{{ tr.rolerules_col_action }}</th><th>{{ tr.rolerules_col_priority }}</th><th></th><th></th></tr></thead>
+      <tbody>
+        {% for rr in role_rules %}
+        <tr>
+          <td>
+            <div style="font-weight:600;font-size:0.88rem;">{{ rr.name or '—' }}</div>
+            <div style="font-size:0.72rem;color:var(--muted);">
+              {% if rr.match_type == 'all' %}{{ tr.rolerules_match_all }}{% elif rr.match_type == 'none' %}{{ tr.rolerules_match_none }}{% else %}{{ tr.rolerules_match_any }}{% endif %}:
+              {% for n in rr.match_role_names %}@{{ n }}{% if not loop.last %}, {% endif %}{% endfor %}
+            </div>
+          </td>
+          <td style="font-size:0.82rem;">
+            {% if rr.action == 'remove' %}{{ tr.rolerules_action_remove }}{% else %}{{ tr.rolerules_action_add }}{% endif %}:
+            {% for n in rr.action_role_names %}@{{ n }}{% if not loop.last %}, {% endif %}{% endfor %}
+            {% if rr.action_guild_id != guild.id %}<div style="color:var(--muted);font-size:0.72rem;">→ {{ rr.action_guild_name }}</div>{% endif %}
+          </td>
+          <td style="text-align:center;">{{ rr.priority }}</td>
+          <td>
+            <form method="post" action="/servers/{{ guild.id }}/role-rules/toggle/{{ rr.id }}" style="display:inline;">
+              <button type="submit" class="panel-badge {% if rr.enabled %}panel-status-pub{% else %}panel-status-draft{% endif %}" style="border-width:1px;cursor:pointer;">
+                {% if rr.enabled %}{{ tr.rolerules_status_enabled }}{% else %}{{ tr.rolerules_status_disabled }}{% endif %}
+              </button>
+            </form>
+          </td>
+          <td style="text-align:right;white-space:nowrap;">
+            <button type="button" class="btn btn-secondary" onclick="toggleRoleRuleEdit({{ rr.id }})" style="padding:0.2rem 0.6rem;font-size:0.78rem;" title="{{ tr.btn_settings }}">⚙</button>
+            <form method="post" action="/servers/{{ guild.id }}/role-rules/delete/{{ rr.id }}" style="display:inline;" onsubmit="return confirm({{ tr.rolerules_confirm_delete.replace('{name}', rr.name or ('#' ~ rr.id)) | js }})">
+              <button type="submit" class="btn btn-danger" style="padding:0.2rem 0.6rem;font-size:0.78rem;">✕</button>
+            </form>
+          </td>
+        </tr>
+        <tr id="rolerule-edit-{{ rr.id }}" style="display:none;" class="panel-edit-row">
+          <td colspan="5" style="padding:1.1rem 1.25rem;">
+            <form method="post" action="/servers/{{ guild.id }}/role-rules/edit/{{ rr.id }}">
+              <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
+                <div>
+                  <label>{{ tr.rolerules_name_label }}</label>
+                  <input type="text" name="name" maxlength="100" value="{{ rr.name }}" style="margin-bottom:0;">
+                </div>
+                <div>
+                  <label>{{ tr.rolerules_condition_label }}</label>
+                  <select name="match_type" style="margin-bottom:0;">
+                    <option value="any" {% if rr.match_type == 'any' %}selected{% endif %}>{{ tr.rolerules_match_any }}</option>
+                    <option value="all" {% if rr.match_type == 'all' %}selected{% endif %}>{{ tr.rolerules_match_all }}</option>
+                    <option value="none" {% if rr.match_type == 'none' %}selected{% endif %}>{{ tr.rolerules_match_none }}</option>
+                  </select>
+                </div>
+              </div>
+              <label>{{ tr.rolerules_match_roles_label }}</label>
+              <div style="max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem 0.7rem;background:var(--bg);margin-bottom:0.75rem;">
+                {% for ro in all_guild_roles %}
+                <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;padding:0.15rem 0;margin:0;">
+                  <input type="checkbox" name="match_role_ids" value="{{ ro.id }}" data-role-name="{{ ro.name }}" {% if ro.id in rr.match_role_ids_list %}checked{% endif %}> @{{ ro.name }}
+                </label>
+                {% endfor %}
+              </div>
+              <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
+                <div>
+                  <label>{{ tr.rolerules_action_label }}</label>
+                  <select name="action" style="margin-bottom:0;">
+                    <option value="add" {% if rr.action == 'add' %}selected{% endif %}>{{ tr.rolerules_action_add }}</option>
+                    <option value="remove" {% if rr.action == 'remove' %}selected{% endif %}>{{ tr.rolerules_action_remove }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label>{{ tr.rolerules_target_label }}</label>
+                  <select name="action_guild_id" style="margin-bottom:0;" onchange="showRoleRuleActionPicker(this.value, '{{ rr.id }}')">
+                    {% for target in role_rule_target_guilds %}<option value="{{ target.id }}" {% if target.id == rr.action_guild_id %}selected{% endif %}>{{ target.name }}</option>{% endfor %}
+                  </select>
+                </div>
+              </div>
+              <label>{{ tr.rolerules_action_roles_label }}</label>
+              {% for target in role_rule_target_guilds %}
+              <div id="rr-action-roles-{{ rr.id }}-{{ target.id }}" class="rr-action-picker" style="display:{{ 'block' if target.id == rr.action_guild_id else 'none' }};max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem 0.7rem;background:var(--bg);margin-bottom:0.5rem;">
+                {% for ro in role_rule_target_roles.get(target.id, []) %}
+                <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;padding:0.15rem 0;margin:0;">
+                  <input type="checkbox" name="action_role_ids" value="{{ ro.id }}" data-role-name="{{ ro.name }}" {% if target.id == rr.action_guild_id and ro.id in rr.action_role_ids_list %}checked{% endif %}> @{{ ro.name }}
+                </label>
+                {% endfor %}
+              </div>
+              {% endfor %}
+              <div class="grid-2" style="gap:0.75rem;margin:0.75rem 0;">
+                <div>
+                  <label>{{ tr.rolerules_priority_label }}</label>
+                  <input type="number" name="priority" min="1" max="1000" value="{{ rr.priority }}" style="margin-bottom:0;">
+                  <div style="font-size:0.72rem;color:var(--muted);margin-top:0.2rem;">{{ tr.rolerules_priority_hint }}</div>
+                </div>
+                <div style="display:flex;align-items:flex-end;">
+                  <label style="display:flex;align-items:center;gap:0.4rem;margin:0;">
+                    <input type="checkbox" name="enabled" value="1" {% if rr.enabled %}checked{% endif %}> {{ tr.rolerules_enabled_label }}
+                  </label>
+                </div>
+              </div>
+              <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not role_rules %}
+        <tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--muted);">{{ tr.rolerules_empty }}</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Hidden per-rule data for the client-side test sandbox below - deliberately plain data-*
+     attributes (comma-separated ids), not JSON-in-JS: this project's js/jsraw filters only
+     handle single scalar strings, and this is a list of structured rule objects. -->
+<div style="display:none;">
+  {% for rr in role_rules %}
+  <div class="rr-rule-data" data-id="{{ rr.id }}" data-name="{{ rr.name }}" data-match-type="{{ rr.match_type }}"
+       data-match-roles="{{ rr.match_role_ids }}" data-action="{{ rr.action }}"
+       data-action-guild="{{ rr.action_guild_id }}" data-action-guild-name="{{ rr.action_guild_name }}"
+       data-action-roles="{{ rr.action_role_ids }}" data-priority="{{ rr.priority }}" data-enabled="{{ rr.enabled }}"></div>
+  {% endfor %}
+</div>
+
+<div class="card" style="margin-bottom:1.25rem;">
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.5rem;">{{ tr.rolerules_interval_title }}</div>
+  <form method="post" action="/servers/{{ guild.id }}/role-rules/save-interval" style="display:flex;gap:0.6rem;align-items:flex-end;flex-wrap:wrap;">
+    <div style="flex:1;min-width:160px;">
+      <label>{{ tr.rolerules_interval_label }}</label>
+      <input type="number" name="interval_minutes" min="0" max="1440" value="{{ role_rules_interval }}" style="margin-bottom:0;">
+    </div>
+    <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
+  </form>
+  <div style="font-size:0.72rem;color:var(--muted);margin-top:0.4rem;">{{ tr.rolerules_interval_hint }}</div>
+</div>
+
+<div class="card">
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.5rem;">{{ tr.rolerules_sandbox_title }}</div>
+  <p class="hint" style="margin-bottom:0.75rem;">{{ tr.rolerules_sandbox_hint }}</p>
+  <label>{{ tr.rolerules_sandbox_roles_label }}</label>
+  <div id="rr-sandbox-roles" style="max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem 0.7rem;background:var(--bg);margin-bottom:0.75rem;">
+    {% for ro in all_guild_roles %}
+    <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;padding:0.15rem 0;margin:0;">
+      <input type="checkbox" value="{{ ro.id }}" data-role-name="{{ ro.name }}"> @{{ ro.name }}
+    </label>
+    {% endfor %}
+  </div>
+  <button type="button" class="btn btn-secondary" onclick="testRoleRules()">{{ tr.rolerules_sandbox_btn_run }}</button>
+  <div id="rr-sandbox-result" style="margin-top:0.9rem;font-size:0.85rem;"></div>
+</div>
+</div>
+
+<script>
+function toggleRoleRulesInfo() {
+  const box = document.getElementById('rolerules-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('rolerules-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleRoleRulesInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+function toggleRoleRuleEdit(id) {
+  const row = document.getElementById('rolerule-edit-' + id);
+  if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+function showRoleRuleActionPicker(guildId, suffix) {
+  document.querySelectorAll('.rr-action-picker[id^="rr-action-roles-' + suffix + '-"]').forEach(function(el) {
+    const isTarget = el.id === ('rr-action-roles-' + suffix + '-' + guildId);
+    el.style.display = isTarget ? 'block' : 'none';
+  });
+}
+function testRoleRules() {
+  const roleNames = {};
+  document.querySelectorAll('[data-role-name]').forEach(function(el) {
+    roleNames[el.value] = el.dataset.roleName;
+  });
+  const nameOf = function(id) { return roleNames[id] || ('#' + id); };
+  const current = new Set();
+  document.querySelectorAll('#rr-sandbox-roles input[type=checkbox]:checked').forEach(function(cb) {
+    current.add(cb.value);
+  });
+  const rules = Array.from(document.querySelectorAll('.rr-rule-data'))
+    .filter(function(el) { return el.dataset.enabled === '1'; })
+    .map(function(el) {
+      return {
+        id: el.dataset.id, name: el.dataset.name,
+        matchType: el.dataset.matchType,
+        matchRoles: el.dataset.matchRoles ? el.dataset.matchRoles.split(',') : [],
+        action: el.dataset.action,
+        actionGuild: el.dataset.actionGuild,
+        actionGuildName: el.dataset.actionGuildName,
+        actionRoles: el.dataset.actionRoles ? el.dataset.actionRoles.split(',') : [],
+        priority: parseInt(el.dataset.priority, 10) || 100,
+      };
+    })
+    .sort(function(a, b) { return a.priority - b.priority; });
+
+  const toAdd = new Set(), toRemove = new Set(), crossActions = [], used = [];
+  const currentGuildId = {{ guild.id | js }};
+  rules.forEach(function(rule) {
+    let matched;
+    if (rule.matchType === 'all') {
+      matched = rule.matchRoles.length > 0 && rule.matchRoles.every(function(r) { return current.has(r); });
+    } else if (rule.matchType === 'none') {
+      matched = rule.matchRoles.length > 0 && !rule.matchRoles.some(function(r) { return current.has(r); });
+    } else {
+      matched = rule.matchRoles.some(function(r) { return current.has(r); });
+    }
+    if (!matched || rule.actionRoles.length === 0) return;
+    used.push(rule);
+    if (rule.actionGuild === currentGuildId) {
+      rule.actionRoles.forEach(function(r) {
+        if (rule.action === 'add') { toAdd.add(r); toRemove.delete(r); }
+        else { toRemove.add(r); toAdd.delete(r); }
+      });
+    } else {
+      crossActions.push(rule);
+    }
+  });
+
+  let html = '';
+  if (used.length === 0) {
+    html = '<div class="hint">' + {{ tr.rolerules_sandbox_none | js }} + '</div>';
+  } else {
+    if (toAdd.size) html += '<div><strong>' + {{ tr.rolerules_sandbox_added | js }} + ':</strong> ' + Array.from(toAdd).map(nameOf).map(function(n){return '@'+n;}).join(', ') + '</div>';
+    if (toRemove.size) html += '<div><strong>' + {{ tr.rolerules_sandbox_removed | js }} + ':</strong> ' + Array.from(toRemove).map(nameOf).map(function(n){return '@'+n;}).join(', ') + '</div>';
+    if (crossActions.length) {
+      html += '<div style="margin-top:0.4rem;"><strong>' + {{ tr.rolerules_sandbox_cross | js }} + ':</strong><ul style="margin:0.2rem 0 0 1.1rem;padding:0;">';
+      crossActions.forEach(function(rule) {
+        const actionLabel = rule.action === 'add' ? {{ tr.rolerules_action_add | js }} : {{ tr.rolerules_action_remove | js }};
+        html += '<li>' + rule.actionGuildName + ' — ' + actionLabel + ': ' + rule.actionRoles.map(nameOf).map(function(n){return '@'+n;}).join(', ') + '</li>';
+      });
+      html += '</ul></div>';
+    }
+    html += '<div style="margin-top:0.4rem;color:var(--muted);font-size:0.8rem;">' + {{ tr.rolerules_sandbox_used | js }} + ': ' + used.map(function(r){return r.name || ('#'+r.id);}).join(', ') + '</div>';
+  }
+  document.getElementById('rr-sandbox-result').innerHTML = html;
+}
+</script>
+
 <script>
 function toggleEmbedsInfo() {
   const box = document.getElementById('embeds-info-box');
@@ -2555,7 +2884,7 @@ document.addEventListener('click', function(e) {
 </script>
 
 <script>
-const TABS = ['config','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete','amp','autokick','embeds'];
+const TABS = ['config','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete','amp','autokick','embeds','rolerules'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {

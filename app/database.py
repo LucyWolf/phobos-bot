@@ -652,6 +652,29 @@ async def init_db():
             # tags are metadata on the THREAD, not on its starter message like the embed
             # content is, so this is edited through a different call than the message content.
             "ALTER TABLE embed_posts ADD COLUMN applied_tags TEXT NOT NULL DEFAULT ''",
+            # User-requested ("ich will das du das einbaust", role-management screenshots of a
+            # competing bot's dashboard) - admin-defined "IF a member has/lacks certain roles,
+            # THEN add/remove roles" rules, evaluated live on every role change
+            # (on_member_update in cogs/role_rules.py) or on a configurable periodic interval
+            # instead (guild_configs key role_rules_interval_minutes, 0 = live). The action can
+            # target a DIFFERENT guild than the one the condition was checked against
+            # (action_guild_id != guild_id) for cross-server role sync between servers sharing
+            # the same bot token - see cogs/role_rules.py for why that's the only reachable
+            # cross-server case. match_role_ids/action_role_ids are comma-separated Discord role
+            # ids, resolved defensively at evaluation time (a since-deleted role id is just
+            # skipped, same convention as every other comma-list-of-ids column in this project).
+            """CREATE TABLE IF NOT EXISTS role_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                match_type TEXT NOT NULL DEFAULT 'any',
+                match_role_ids TEXT NOT NULL DEFAULT '',
+                action TEXT NOT NULL DEFAULT 'add',
+                action_guild_id TEXT NOT NULL,
+                action_role_ids TEXT NOT NULL DEFAULT '',
+                priority INTEGER NOT NULL DEFAULT 100,
+                enabled INTEGER NOT NULL DEFAULT 1
+            )""",
         ]:
             try:
                 await db.execute(col)

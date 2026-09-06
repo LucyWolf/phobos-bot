@@ -214,6 +214,7 @@ COGS = [
     "cogs.birthday",
     "cogs.amp",
     "cogs.auto_kick",
+    "cogs.role_rules",
 ]
 
 
@@ -1046,6 +1047,9 @@ _BACKUP_FEATURE_TABLES = [
     "amp_configs", "amp_instance_commands",
     # Same gap, same fix, for Embed-Nachrichten posts - never added when the feature shipped.
     "embed_posts",
+    # Role Rules, added at the same time the feature itself shipped this time (see the entries
+    # above for what happens when this step gets forgotten).
+    "role_rules",
 ]
 
 # Shared between the full-backup restore (/admin/backup/restore) and the per-server restore
@@ -1120,6 +1124,9 @@ _BACKUP_TBL_INSERT = {
     "embed_posts":
         "INSERT INTO embed_posts (guild_id,name,channel_id,content,image_url,footer_text,image_data,image_filename) "
         "VALUES (:guild_id,:name,:channel_id,:content,:image_url,:footer_text,:image_data,:image_filename)",
+    "role_rules":
+        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,priority,enabled) "
+        "VALUES (:guild_id,:name,:match_type,:match_role_ids,:action,:action_guild_id,:action_role_ids,:priority,:enabled)",
 }
 
 
@@ -4392,6 +4399,7 @@ _SERVER_CONFIG_TAB_LABELS = {
     "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant", "events": "🗓️ Events",
     "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
     "amp": "🎮 Gameserver", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
+    "rolerules": "🔗 Rollen-Regeln",
 }
 
 # Features an admin can hide from THIS server's own sidebar to cut down on clutter for
@@ -4408,6 +4416,7 @@ _TOGGLEABLE_FEATURES = {
     "events": "🗓️ Events", "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
     "amp": "🎮 Gameserver", "notifications": "🟣 Streaming", "freestuff": "🎁 Free Stuff",
     "log": "📋 Log", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
+    "rolerules": "🔗 Rollen-Regeln",
 }
 
 
@@ -4567,6 +4576,32 @@ async def server_config(
         # straight out of this context.
         ep.pop("image_data", None)
 
+    # Role Rules
+    role_rules = await db_rows(
+        "SELECT * FROM role_rules WHERE guild_id=? ORDER BY priority ASC, id ASC", (str(guild_id),)
+    )
+    _all_guild_roles = [{"id": str(ro.id), "name": ro.name} for ro in guild.roles if not ro.is_default()]
+    _role_names_by_id = {ro["id"]: ro["name"] for ro in _all_guild_roles}
+    role_rule_target_guilds = await _role_rule_target_guilds(request, guild_id)
+    role_rule_target_roles = {}
+    for tg in role_rule_target_guilds:
+        tg_obj = bot.get_guild(int(tg["id"]))
+        role_rule_target_roles[tg["id"]] = (
+            [{"id": str(ro.id), "name": ro.name} for ro in tg_obj.roles if not ro.is_default()]
+            if tg_obj else []
+        )
+    for rr in role_rules:
+        match_ids = [i for i in (rr.get("match_role_ids") or "").split(",") if i]
+        rr["match_role_ids_list"] = match_ids
+        rr["match_role_names"] = [_role_names_by_id.get(i, "?") for i in match_ids]
+        action_ids = [i for i in (rr.get("action_role_ids") or "").split(",") if i]
+        rr["action_role_ids_list"] = action_ids
+        target_names_by_id = {ro["id"]: ro["name"] for ro in role_rule_target_roles.get(rr["action_guild_id"], [])}
+        rr["action_role_names"] = [target_names_by_id.get(i, "?") for i in action_ids]
+        tg_obj = bot.get_guild(int(rr["action_guild_id"]))
+        rr["action_guild_name"] = tg_obj.name if tg_obj else "?"
+    role_rules_interval = await get_guild_config(guild_id, "role_rules_interval_minutes") or "0"
+
     # Open tickets
     ticket_list = await db_rows(
         "SELECT * FROM tickets WHERE guild_id=? AND status='open' ORDER BY created_at DESC",
@@ -4695,6 +4730,10 @@ async def server_config(
         "guild": {"id": str(guild.id), "name": guild.name,
                   "icon": str(guild.icon.url) if guild.icon else None},
         "cfg": cfg, "channels": channels, "embed_channels": embed_channels,
+        "role_rules": role_rules, "all_guild_roles": _all_guild_roles,
+        "role_rule_target_guilds": role_rule_target_guilds,
+        "role_rule_target_roles": role_rule_target_roles,
+        "role_rules_interval": role_rules_interval,
         "roles": roles, "categories": categories,
         "token_set": token_set, "saved": saved,
         "active": f"server_{guild_id}",
@@ -5867,6 +5906,145 @@ async def embed_post_image(request: Request, guild_id: int, post_id: int):
     ext = (post.get("image_filename") or "").rsplit(".", 1)[-1].lower()
     media_type = _EMBED_IMAGE_MEDIA_TYPES.get(ext, "application/octet-stream")
     return Response(content=raw, media_type=media_type)
+
+
+# ── Role Rules ──────────────────────────────────────────────────────────────
+# "IF a member has/lacks certain roles, THEN add/remove roles", live-evaluated by
+# cogs/role_rules.py. An action can target a different guild for cross-server sync, but only
+# one served by the SAME bot token as the source guild - see _role_rule_target_guilds() and the
+# module docstring of cogs/role_rules.py for why that's the only reachable case at evaluation
+# time, and why the dropdown below therefore never offers anything else in the first place.
+
+async def _role_rule_target_guilds(request: Request, guild_id: int) -> list:
+    guild_bot = bot._bot_for_guild(guild_id)
+    if not guild_bot:
+        return []
+    same_token_ids = {g.id for g in guild_bot.guilds}
+    return [g for g in await _guild_list(request) if int(g["id"]) in same_token_ids]
+
+
+def _role_rule_match_type_valid(v: str) -> bool:
+    return v in ("any", "all", "none")
+
+
+async def _role_rule_form_data(request: Request, guild: discord.Guild, form) -> tuple[dict | None, str | None]:
+    """Shared validation for role-rules/add and .../edit - returns (row_dict, None) on success
+    or (None, error_message) on the first validation failure, same "fail with a clear message
+    instead of a silent fallback" convention as level_role_add."""
+    name = form.get("name", "").strip()[:100]
+    match_type = form.get("match_type", "any")
+    if not _role_rule_match_type_valid(match_type):
+        return None, "Ungültige+Bedingung"
+    valid_role_ids = {str(ro.id) for ro in guild.roles if not ro.is_default()}
+    match_role_ids = [r for r in form.getlist("match_role_ids") if r in valid_role_ids]
+    if not match_role_ids:
+        return None, "Mindestens+eine+Bedingungs-Rolle+erforderlich"
+    action = form.get("action", "add")
+    if action not in ("add", "remove"):
+        return None, "Ungültige+Aktion"
+    action_guild_id = form.get("action_guild_id", "")
+    allowed_targets = {g["id"] for g in await _role_rule_target_guilds(request, guild.id)}
+    if action_guild_id not in allowed_targets:
+        return None, "Ungültiger+Zielserver"
+    target_guild = bot.get_guild(int(action_guild_id))
+    if not target_guild:
+        return None, "Zielserver+nicht+gefunden"
+    valid_action_role_ids = {str(ro.id) for ro in target_guild.roles if not ro.is_default()}
+    action_role_ids = [r for r in form.getlist("action_role_ids") if r in valid_action_role_ids]
+    if not action_role_ids:
+        return None, "Mindestens+eine+Aktions-Rolle+erforderlich"
+    try:
+        priority = int(form.get("priority", "100"))
+        if not (1 <= priority <= 1000):
+            raise ValueError
+    except ValueError:
+        return None, "Ungültige+Priorität+(1-1000)"
+    enabled = 1 if form.get("enabled") == "1" else 0
+    return {
+        "name": name, "match_type": match_type, "match_role_ids": ",".join(match_role_ids),
+        "action": action, "action_guild_id": action_guild_id,
+        "action_role_ids": ",".join(action_role_ids), "priority": priority, "enabled": enabled,
+    }, None
+
+
+@web.post("/servers/{guild_id}/role-rules/add")
+async def role_rule_add(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    data, error = await _role_rule_form_data(request, guild, form)
+    if error:
+        return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error={error}", status_code=302)
+    await db_exec(
+        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,priority,enabled) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (str(guild_id), data["name"], data["match_type"], data["match_role_ids"], data["action"],
+         data["action_guild_id"], data["action_role_ids"], data["priority"], data["enabled"]),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Regel+hinzugefügt", status_code=303)
+
+
+@web.post("/servers/{guild_id}/role-rules/edit/{rule_id}")
+async def role_rule_edit(request: Request, guild_id: int, rule_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    data, error = await _role_rule_form_data(request, guild, form)
+    if error:
+        return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error={error}", status_code=302)
+    await db_exec(
+        "UPDATE role_rules SET name=?, match_type=?, match_role_ids=?, action=?, action_guild_id=?, "
+        "action_role_ids=?, priority=?, enabled=? WHERE id=? AND guild_id=?",
+        (data["name"], data["match_type"], data["match_role_ids"], data["action"],
+         data["action_guild_id"], data["action_role_ids"], data["priority"], data["enabled"],
+         rule_id, str(guild_id)),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Regel+gespeichert", status_code=303)
+
+
+@web.post("/servers/{guild_id}/role-rules/delete/{rule_id}")
+async def role_rule_delete(request: Request, guild_id: int, rule_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    await db_exec("DELETE FROM role_rules WHERE id=? AND guild_id=?", (rule_id, str(guild_id)))
+    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Regel+entfernt", status_code=303)
+
+
+@web.post("/servers/{guild_id}/role-rules/toggle/{rule_id}")
+async def role_rule_toggle(request: Request, guild_id: int, rule_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    await db_exec(
+        "UPDATE role_rules SET enabled = 1 - enabled WHERE id=? AND guild_id=?",
+        (rule_id, str(guild_id)),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Aktualisiert", status_code=303)
+
+
+@web.post("/servers/{guild_id}/role-rules/save-interval")
+async def role_rule_save_interval(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    try:
+        interval = int(form.get("interval_minutes", "0"))
+        if not (0 <= interval <= 1440):
+            raise ValueError
+    except ValueError:
+        return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error=Ungültiges+Intervall+(0-1440)", status_code=302)
+    await set_guild_config(guild_id, "role_rules_interval_minutes", str(interval))
+    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Intervall+gespeichert", status_code=303)
 
 
 # ── Server User Access ────────────────────────────────────────────────────────
