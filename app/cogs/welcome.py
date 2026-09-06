@@ -1,6 +1,7 @@
 """Welcome/leave messages (with an optional generated welcome-card image, see _make_card()) and
 autorole on join. Both the welcome message and the autorole assignment run independently of
 each other - a server with no welcome channel configured still gets autorole."""
+import base64
 import io
 import re
 import discord
@@ -33,7 +34,24 @@ def _load_font(size: int, bold: bool = True):
     return ImageFont.load_default()
 
 
-async def _make_card(member: discord.Member, circle_color: str, text_color: str, username_color: str) -> io.BytesIO:
+def _cover_crop(img, target_w: int, target_h: int):
+    """Scales img up just enough that it fully covers a target_w x target_h box (like CSS
+    background-size:cover), then center-crops the overflow - so an admin-uploaded image of any
+    aspect ratio always fills the card canvas with no letterboxing, at the cost of cropping
+    whatever doesn't fit rather than squishing it."""
+    from PIL import Image
+    src_w, src_h = img.size
+    scale = max(target_w / src_w, target_h / src_h)
+    new_w, new_h = max(1, round(src_w * scale)), max(1, round(src_h * scale))
+    img = img.resize((new_w, new_h), Image.LANCZOS)
+    left = (new_w - target_w) // 2
+    top = (new_h - target_h) // 2
+    return img.crop((left, top, left + target_w, top + target_h))
+
+
+async def _make_card(member: discord.Member, circle_color: str, text_color: str, username_color: str,
+                      bg_image_b64: str | None = None, heading_text: str = "WELCOME",
+                      subtitle_text: str | None = None) -> io.BytesIO:
     import aiohttp
     from PIL import Image, ImageDraw
 
@@ -48,14 +66,37 @@ async def _make_card(member: discord.Member, circle_color: str, text_color: str,
 
     W, H = 800, 280
 
-    # Dark background with subtle blue-right gradient
-    bg = Image.new("RGBA", (W, H), (20, 21, 30, 255))
-    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    ov_draw = ImageDraw.Draw(overlay)
-    for x in range(W):
-        a = int(18 * x / W)
-        ov_draw.line([(x, 0), (x, H)], fill=(80, 100, 255, a))
-    bg = Image.alpha_composite(bg, overlay)
+    bg = None
+    if bg_image_b64:
+        # An admin-uploaded custom background - stored already re-encoded/downscaled at upload
+        # time (see main.py's _read_welcome_bg_upload), so this is just decode+cover-crop, no
+        # further validation needed. A corrupted/undecodable value (shouldn't happen via the
+        # dashboard's own upload path, but guards against a hand-edited DB row) falls back to
+        # the default background below rather than aborting the whole card - a member still
+        # joining without their custom look is much better than the join message vanishing
+        # entirely into the outer try/except's plain-embed fallback.
+        try:
+            custom = Image.open(io.BytesIO(base64.b64decode(bg_image_b64))).convert("RGB")
+            bg = _cover_crop(custom, W, H).convert("RGBA")
+            # Fixed dark scrim on top, independent of the uploaded image's own brightness/
+            # colors - guarantees the text (drawn in whatever color the admin picked for
+            # circle/text/username, none of which are guaranteed to contrast with an arbitrary
+            # photo) stays legible regardless of what was uploaded.
+            scrim = Image.new("RGBA", (W, H), (0, 0, 0, 100))
+            bg = Image.alpha_composite(bg, scrim)
+        except Exception:
+            bg = None
+
+    if bg is None:
+        # Default look, unchanged from before this feature existed - dark background with a
+        # subtle blue-right gradient.
+        bg = Image.new("RGBA", (W, H), (20, 21, 30, 255))
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ov_draw = ImageDraw.Draw(overlay)
+        for x in range(W):
+            a = int(18 * x / W)
+            ov_draw.line([(x, 0), (x, H)], fill=(80, 100, 255, a))
+        bg = Image.alpha_composite(bg, overlay)
 
     draw = ImageDraw.Draw(bg)
 
@@ -85,14 +126,20 @@ async def _make_card(member: discord.Member, circle_color: str, text_color: str,
 
     tx = 265
 
+    # Falls back to the original hardcoded text if the caller passes an empty string (e.g. a
+    # guild_config value that's set but blank) rather than None - keeps this function safe to
+    # call regardless of exactly how the caller distinguishes "not configured" from "empty".
+    heading_text = (heading_text or "").strip() or "WELCOME"
+    subtitle_text = (subtitle_text or "").strip() or f"Mitglied #{member.guild.member_count}"
+
     tr, tg, tb = _hex_to_rgb(text_color)
-    draw.text((tx, 72), "WELCOME", font=font_welcome, fill=(tr, tg, tb, 255))
+    draw.text((tx, 72), heading_text, font=font_welcome, fill=(tr, tg, tb, 255))
 
     ur, ug, ub = _hex_to_rgb(username_color)
     name = member.display_name if len(member.display_name) <= 24 else member.display_name[:21] + "..."
     draw.text((tx, 146), name, font=font_name, fill=(ur, ug, ub, 255))
 
-    draw.text((tx, 202), f"Mitglied #{member.guild.member_count}", font=font_count, fill=(140, 140, 160, 255))
+    draw.text((tx, 202), subtitle_text, font=font_count, fill=(140, 140, 160, 255))
 
     buf = io.BytesIO()
     bg.convert("RGB").save(buf, format="PNG")
@@ -146,8 +193,15 @@ class Welcome(commands.Cog):
                 circle_color  = await get_guild_config(member.guild.id, "welcome_card_circle_color")  or "#5865F2"
                 text_color    = await get_guild_config(member.guild.id, "welcome_card_text_color")    or "#FFFFFF"
                 username_color= await get_guild_config(member.guild.id, "welcome_card_username_color")or "#FFDA85"
+                bg_image_b64  = await get_guild_config(member.guild.id, "welcome_card_bg_image")
+                heading_raw   = await get_guild_config(member.guild.id, "welcome_card_heading_text")
+                subtitle_raw  = await get_guild_config(member.guild.id, "welcome_card_subtitle_text")
+                heading_text  = fill(heading_raw, member) if heading_raw else None
+                subtitle_text = fill(subtitle_raw, member) if subtitle_raw else None
                 try:
-                    buf  = await _make_card(member, circle_color, text_color, username_color)
+                    buf  = await _make_card(member, circle_color, text_color, username_color,
+                                             bg_image_b64=bg_image_b64, heading_text=heading_text,
+                                             subtitle_text=subtitle_text)
                     file = discord.File(buf, filename="welcome.png")
                     if message:
                         embed = discord.Embed(description=fill(message, member), color=0x5865F2)

@@ -4810,6 +4810,7 @@ _TAB_TEXT_KEYS = {
     "config": [
         "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
         "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",
+        "welcome_card_heading_text", "welcome_card_subtitle_text",
     ],
     "leveling": [
         "level_channel", "leveling_voice_xp_per_min", "leveling_role_mode",
@@ -4920,6 +4921,19 @@ async def server_config_save(request: Request, guild_id: int):
                     f"/servers/{guild_id}?tab={tab}&error=Ungültiger+Wert+({label})", status_code=302
                 )
 
+    # The welcome card canvas is only 800px wide - an unbounded heading/subtitle would run
+    # visibly off the edge, so both get a hard length cap here (mirroring numeric_fields'
+    # pattern above, just for string length instead of numeric range).
+    text_length_fields = [
+        ("welcome_card_heading_text", 60, "Überschrift-Text"),
+        ("welcome_card_subtitle_text", 80, "Untertitel-Text"),
+    ]
+    for field, max_len, label in text_length_fields:
+        if len(str(form.get(field, ""))) > max_len:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab={tab}&error=Zu+langer+Wert+({label})", status_code=302
+            )
+
     if tab == "autokick" and form.get("auto_kick_enabled"):
         # Every OTHER required-together-with-"enabled" case in this route (channel_keys,
         # role_keys above) only rejects an INVALID value, not a genuinely EMPTY one - correct
@@ -4947,6 +4961,21 @@ async def server_config_save(request: Request, guild_id: int):
         await set_guild_config(guild_id, key, str(form.get(key, "")))
     for key in _TAB_CHECKBOX_KEYS[tab]:
         await set_guild_config(guild_id, key, "1" if form.get(key) else "0")
+    if tab == "config":
+        # File uploads can't go through the generic text-key loop above (form.get() would
+        # return the UploadFile object itself, not a string) - handled separately here, only
+        # reachable on the config tab's form which is the only one with enctype=multipart/
+        # form-data. Same "leave untouched unless a new file is uploaded, explicit checkbox to
+        # actually clear it" convention as the SMTP password field and the embed image feature.
+        if form.get("remove_welcome_card_bg"):
+            await set_guild_config(guild_id, "welcome_card_bg_image", "")
+        else:
+            try:
+                new_bg = await _read_welcome_bg_upload(form.get("welcome_card_bg_image"))
+            except ValueError as e:
+                return RedirectResponse(f"/servers/{guild_id}?tab={tab}&error={e}", status_code=302)
+            if new_bg is not None:
+                await set_guild_config(guild_id, "welcome_card_bg_image", new_bg)
     if tab == "leveling":
         # Multi-select, needs form.getlist() - can't go through the generic single-value loop above.
         leveling_channels = ",".join(c for c in form.getlist("leveling_channels") if c in valid_channel_ids)
@@ -5590,6 +5619,35 @@ def _embed_post_files(image_data_b64: str, image_filename: str) -> list:
     return [discord.File(io.BytesIO(raw), filename=image_filename)]
 
 
+async def _read_welcome_bg_upload(upload_file, max_dim: int = 1600) -> str | None:
+    """Validates and reads an uploaded welcome-card background image. Unlike
+    _read_embed_image_upload above, this ALWAYS re-encodes to PNG and downscales if needed -
+    the upload here is only ever used as compositing input for a freshly-generated 800x280 card
+    image on every future join, never forwarded to Discord in its original form, so there's no
+    reason to preserve animation/original resolution and every reason to keep the stored value
+    small (it lives in guild_configs as base64 TEXT, dumped wholesale into every backup export).
+    Returns a base64 PNG string, or None if no file was submitted (the "leave the existing value
+    untouched" case - same convention as the SMTP password field and the embed image feature).
+    Raises ValueError(message) on an invalid upload, same pattern as _read_embed_image_upload."""
+    if not upload_file or not getattr(upload_file, "filename", ""):
+        return None
+    data = await upload_file.read()
+    if not data:
+        return None
+    try:
+        img = Image.open(io.BytesIO(data))
+        img.load()
+        img = img.convert("RGB")
+    except Exception:
+        raise ValueError("Ungültiges+Bildformat")
+    if img.width > max_dim or img.height > max_dim:
+        scale = max_dim / max(img.width, img.height)
+        img = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
 def _embed_channel_is_valid(guild, channel_id: str) -> bool:
     """Whether channel_id is a real text channel OR forum channel of this guild - the two
     target types Embed-Nachrichten supports posting to."""
@@ -5936,6 +5994,24 @@ async def embed_post_image(request: Request, guild_id: int, post_id: int):
     ext = (post.get("image_filename") or "").rsplit(".", 1)[-1].lower()
     media_type = _EMBED_IMAGE_MEDIA_TYPES.get(ext, "application/octet-stream")
     return Response(content=raw, media_type=media_type)
+
+
+@web.get("/servers/{guild_id}/welcome-card/bg-image")
+async def welcome_card_bg_image(request: Request, guild_id: int):
+    """Serves the stored welcome-card background image for the dashboard's own preview <img> -
+    same admin-preview-only pattern as embed_post_image() above, never used as anything Discord
+    itself sees (the background is composited server-side into the generated card PNG)."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    bg_b64 = await get_guild_config(guild_id, "welcome_card_bg_image")
+    if not bg_b64:
+        raise HTTPException(status_code=404)
+    try:
+        raw = base64.b64decode(bg_b64)
+    except Exception:
+        raise HTTPException(status_code=404)
+    return Response(content=raw, media_type="image/png")
 
 
 # ── Role Rules ──────────────────────────────────────────────────────────────

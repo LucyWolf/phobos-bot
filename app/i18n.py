@@ -337,6 +337,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "config_card_text_label":     "Text-Farbe (WELCOME)",
         "config_card_username_label": "Username-Farbe",
         "config_card_preview_hint":   "Das Bild zeigt: Avatar des Mitglieds, WELCOME-Text, Username und Mitglieder-Nummer.",
+        "config_card_bg_label":       "Hintergrundbild (optional)",
+        "config_card_bg_remove_label": "🗑 Hintergrundbild entfernen",
+        "config_card_heading_label":  "Überschrift-Text",
+        "config_card_subtitle_label": "Untertitel-Text",
+        "config_card_text_placeholder_hint": "Leer lassen = Standardtext. Dieselben Platzhalter wie bei der Willkommensnachricht funktionieren auch hier: {user} {username} {server} {count}",
         # Geplante Nachrichten
         "scheduled_hint":             "Nachrichten werden automatisch zum gewählten Zeitpunkt in den Kanal gesendet.",
         "scheduled_col_time":         "Zeitpunkt",
@@ -1010,6 +1015,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "config_card_text_label":     "Text Color (WELCOME)",
         "config_card_username_label": "Username Color",
         "config_card_preview_hint":   "The image shows: the member's avatar, WELCOME text, username, and member number.",
+        "config_card_bg_label":       "Background Image (optional)",
+        "config_card_bg_remove_label": "🗑 Remove Background Image",
+        "config_card_heading_label":  "Heading Text",
+        "config_card_subtitle_label": "Subtitle Text",
+        "config_card_text_placeholder_hint": "Leave empty for the default text. The same placeholders as the welcome message work here too: {user} {username} {server} {count}",
         # Scheduled Messages
         "scheduled_hint":             "Messages are sent to the channel automatically at the chosen time.",
         "scheduled_col_time":         "Time",
