@@ -4989,6 +4989,7 @@ async def server_config_save(request: Request, guild_id: int):
                 await set_guild_config(guild_id, "welcome_card_bg_image", new_bg)
         if form.get("remove_welcome_card_overlay"):
             await set_guild_config(guild_id, "welcome_card_overlay_image", "")
+            await set_guild_config(guild_id, "welcome_card_overlay_preset", "")
         else:
             try:
                 new_overlay = await _read_welcome_overlay_upload(form.get("welcome_card_overlay_image"))
@@ -4996,6 +4997,10 @@ async def server_config_save(request: Request, guild_id: int):
                 return RedirectResponse(f"/servers/{guild_id}?tab={tab}&error={e}", status_code=302)
             if new_overlay is not None:
                 await set_guild_config(guild_id, "welcome_card_overlay_image", new_overlay)
+                # A manual upload replaces whatever gallery preset was active before, if any -
+                # clear the marker so a stale preset tile doesn't stay highlighted as "selected"
+                # once it's no longer what's actually configured.
+                await set_guild_config(guild_id, "welcome_card_overlay_preset", "")
     if tab == "leveling":
         # Multi-select, needs form.getlist() - can't go through the generic single-value loop above.
         leveling_channels = ",".join(c for c in form.getlist("leveling_channels") if c in valid_channel_ids)
@@ -6114,10 +6119,22 @@ async def welcome_card_overlay_preset_asset(request: Request, preset_id: str):
 async def welcome_card_overlay_use_preset(request: Request, guild_id: int, preset_id: str):
     """Applies a built-in overlay preset to this guild with one click - reads the bundled file
     (already stored pre-processed at <=1600px RGBA, see the asset's own generation), no need to
-    run it back through _read_welcome_overlay_upload()."""
+    run it back through _read_welcome_overlay_upload(). preset_id == "none" is a special,
+    always-available choice (not in _WELCOME_OVERLAY_PRESETS) that clears the overlay entirely -
+    lets the gallery offer "off" as just another tile alongside the real presets, rather than
+    needing a separate control for it.
+    welcome_card_overlay_preset tracks WHICH preset (if any) is currently active, purely so the
+    gallery can highlight the selected tile - it's not read anywhere in the actual card
+    rendering, only welcome_card_overlay_image is. Cleared to "" whenever the overlay comes from
+    a manual upload or the removal checkbox instead (see server_config_save()), so a stale
+    highlight never lingers on a preset tile that's no longer what's actually active."""
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
+    if preset_id == "none":
+        await set_guild_config(guild_id, "welcome_card_overlay_image", "")
+        await set_guild_config(guild_id, "welcome_card_overlay_preset", "")
+        return RedirectResponse(f"/servers/{guild_id}?tab=welcome&success=Gespeichert", status_code=303)
     preset = _WELCOME_OVERLAY_PRESETS.get(preset_id)
     if not preset:
         return RedirectResponse(f"/servers/{guild_id}?tab=welcome&error=Unbekannte+Vorlage", status_code=302)
@@ -6126,6 +6143,7 @@ async def welcome_card_overlay_use_preset(request: Request, guild_id: int, prese
     except OSError:
         return RedirectResponse(f"/servers/{guild_id}?tab=welcome&error=Vorlage+nicht+gefunden", status_code=302)
     await set_guild_config(guild_id, "welcome_card_overlay_image", base64.b64encode(raw).decode("ascii"))
+    await set_guild_config(guild_id, "welcome_card_overlay_preset", preset_id)
     return RedirectResponse(f"/servers/{guild_id}?tab=welcome&success=Gespeichert", status_code=303)
 
 

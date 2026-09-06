@@ -212,16 +212,27 @@
             {{ tr.config_card_overlay_resolution_hint }}
           </p>
           {% if welcome_overlay_presets %}
-          <p style="font-size:0.78rem;color:var(--muted);margin-top:0.6rem;margin-bottom:0.35rem;">{{ tr.config_card_overlay_presets_label }}</p>
-          <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
-            {% for pid, preset in welcome_overlay_presets.items() %}
-            <form method="post" action="/servers/{{ guild.id }}/welcome-card/overlay-image/use-preset/{{ pid }}" style="margin:0;">
-              <button type="submit" title="{{ preset.label }}" style="padding:0;border:1px solid var(--border);border-radius:6px;overflow:hidden;cursor:pointer;background:repeating-conic-gradient(#8884 0% 25%, transparent 0% 50%) 0 0/10px 10px;">
-                <img src="/assets/welcome-card-overlay-presets/{{ pid }}" alt="{{ preset.label }}" style="width:90px;height:31.5px;object-fit:cover;display:block;">
-              </button>
-            </form>
-            {% endfor %}
-          </div>
+          <details style="margin-top:0.6rem;">
+            <summary style="cursor:pointer;font-size:0.78rem;color:var(--muted);">{{ tr.config_card_overlay_presets_label }}</summary>
+            <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.6rem;">
+              <form method="post" action="/servers/{{ guild.id }}/welcome-card/overlay-image/use-preset/none" style="margin:0;">
+                <button type="submit" title="{{ tr.config_card_overlay_none_option }}"
+                  style="width:120px;height:42px;padding:0;border-radius:6px;cursor:pointer;background:var(--bg);color:var(--muted);font-size:0.7rem;display:flex;align-items:center;justify-content:center;
+                         border:2px solid {{ 'var(--accent)' if not cfg.get('welcome_card_overlay_image') else 'var(--border)' }};">
+                  {{ tr.config_card_overlay_none_option }}
+                </button>
+              </form>
+              {% for pid, preset in welcome_overlay_presets.items() %}
+              <form method="post" action="/servers/{{ guild.id }}/welcome-card/overlay-image/use-preset/{{ pid }}" style="margin:0;">
+                <button type="submit" title="{{ preset.label }}"
+                  style="padding:0;border-radius:6px;overflow:hidden;cursor:pointer;background:repeating-conic-gradient(#8884 0% 25%, transparent 0% 50%) 0 0/10px 10px;
+                         border:2px solid {{ 'var(--accent)' if cfg.get('welcome_card_overlay_preset') == pid else 'var(--border)' }};">
+                  <img src="/assets/welcome-card-overlay-presets/{{ pid }}" alt="{{ preset.label }}" style="width:120px;height:42px;object-fit:cover;display:block;">
+                </button>
+              </form>
+              {% endfor %}
+            </div>
+          </details>
           {% endif %}
         </div>
 
