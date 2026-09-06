@@ -971,6 +971,19 @@ function insertTicketRoleMention(selectEl, containerId) {
   target.focus();
   target.selectionStart = target.selectionEnd = start + mention.length;
 }
+function showEmbedTagPicker(channelId, suffix) {
+  // Every forum's tag-picker for this row is already rendered server-side (all but the
+  // current selection start disabled/hidden) - this just switches which one is active. Using
+  // "disabled" rather than clearing checked state means switching back and forth without
+  // submitting keeps whatever was picked, while a disabled checkbox is correctly left out of
+  // the form submission entirely - so leftover picks from a forum that's no longer selected
+  // can never sneak into tag_ids.
+  document.querySelectorAll('.embed-tag-picker[id^="tag-picker-' + suffix + '-"]').forEach(function(el) {
+    const isTarget = el.id === ('tag-picker-' + suffix + '-' + channelId);
+    el.style.display = isTarget ? 'block' : 'none';
+    el.querySelectorAll('input[type=checkbox]').forEach(function(cb) { cb.disabled = !isTarget; });
+  });
+}
 function toggleTicketsInfo() {
   const box = document.getElementById('tickets-info-box');
   box.style.display = box.style.display === 'none' ? '' : 'none';
@@ -2382,11 +2395,19 @@ function updateAmpCmdPreview(id, action, value) {
         </div>
         <div>
           <label>{{ tr.label_channel }}</label>
-          <select name="channel_id" required style="margin-bottom:0;">
+          <select name="channel_id" required style="margin-bottom:0;" onchange="showEmbedTagPicker(this.value, 'new')">
             <option value="">{{ tr.tickets_channel_placeholder }}</option>
             {% for ch in embed_channels %}<option value="{{ ch.id }}">{% if ch.is_forum %}🗂️ {{ ch.name }}{% else %}#{{ ch.name }}{% endif %}</option>{% endfor %}
           </select>
           <div style="font-size:0.72rem;color:var(--muted);margin-top:0.2rem;">{{ tr.embeds_forum_hint }}</div>
+          {% for ch in embed_channels %}{% if ch.is_forum and ch.tags %}
+          <div id="tag-picker-new-{{ ch.id }}" class="embed-tag-picker" style="display:none;margin-top:0.5rem;padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;">
+            <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.35rem;">{{ tr.embeds_tags_label }}{% if ch.require_tag %} ({{ tr.embeds_tags_required_hint }}){% endif %}</div>
+            {% for t in ch.tags %}<label style="display:inline-flex;align-items:center;gap:0.25rem;font-size:0.78rem;margin-right:0.75rem;margin-bottom:0.3rem;">
+              <input type="checkbox" name="tag_ids" value="{{ t.id }}" disabled> {% if t.emoji %}{{ t.emoji }} {% endif %}{{ t.name }}
+            </label>{% endfor %}
+          </div>
+          {% endif %}{% endfor %}
         </div>
       </div>
       <label>{{ tr.embeds_content_label }}</label>
@@ -2449,11 +2470,20 @@ function updateAmpCmdPreview(id, action, value) {
                 </div>
                 <div>
                   <label>{{ tr.label_channel }}</label>
-                  <select name="channel_id" required style="margin-bottom:0;">
+                  <select name="channel_id" required style="margin-bottom:0;" onchange="showEmbedTagPicker(this.value, '{{ ep.id }}')">
                     {% if not (embed_channels | selectattr('id', 'equalto', ep.channel_id) | list) %}<option value="" selected disabled>{{ tr.tickets_channel_placeholder }}</option>{% endif %}
                     {% for ch in embed_channels %}<option value="{{ ch.id }}" {% if ep.channel_id == ch.id|string %}selected{% endif %}>{% if ch.is_forum %}🗂️ {{ ch.name }}{% else %}#{{ ch.name }}{% endif %}</option>{% endfor %}
                   </select>
                   <div style="font-size:0.72rem;color:var(--muted);margin-top:0.2rem;">{{ tr.embeds_forum_hint }}</div>
+                  {% for ch in embed_channels %}{% if ch.is_forum and ch.tags %}
+                  {% set is_current = (ep.channel_id == ch.id) %}
+                  <div id="tag-picker-{{ ep.id }}-{{ ch.id }}" class="embed-tag-picker" style="display:{{ 'block' if is_current else 'none' }};margin-top:0.5rem;padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;">
+                    <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.35rem;">{{ tr.embeds_tags_label }}{% if ch.require_tag %} ({{ tr.embeds_tags_required_hint }}){% endif %}</div>
+                    {% for t in ch.tags %}<label style="display:inline-flex;align-items:center;gap:0.25rem;font-size:0.78rem;margin-right:0.75rem;margin-bottom:0.3rem;">
+                      <input type="checkbox" name="tag_ids" value="{{ t.id }}" {% if not is_current %}disabled{% endif %} {% if is_current and t.id in ep.applied_tags_list %}checked{% endif %}> {% if t.emoji %}{{ t.emoji }} {% endif %}{{ t.name }}
+                    </label>{% endfor %}
+                  </div>
+                  {% endif %}{% endfor %}
                 </div>
               </div>
               <label>{{ tr.embeds_content_label }}</label>

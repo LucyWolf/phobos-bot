@@ -4456,8 +4456,12 @@ async def server_config(
     # separate from the plain `channels` list used everywhere else on this page (tickets,
     # auto-delete, scheduled messages, ...), none of which can meaningfully target a forum.
     embed_channels = (
-        [{"id": str(c.id), "name": c.name, "is_forum": False} for c in guild.text_channels]
-        + [{"id": str(c.id), "name": c.name, "is_forum": True} for c in guild.forums]
+        [{"id": str(c.id), "name": c.name, "is_forum": False, "tags": [], "require_tag": False}
+         for c in guild.text_channels]
+        + [{"id": str(c.id), "name": c.name, "is_forum": True, "require_tag": c.flags.require_tag,
+            "tags": [{"id": str(t.id), "name": t.name, "emoji": str(t.emoji) if t.emoji else ""}
+                     for t in c.available_tags]}
+           for c in guild.forums]
     )
     roles = [{"id": str(ro.id), "name": ro.name} for ro in guild.roles if not ro.is_default()]
     categories = [{"id": str(c.id), "name": c.name} for c in guild.categories]
@@ -4556,6 +4560,7 @@ async def server_config(
             except (ValueError, TypeError):
                 ep["channel_name"] = None
         ep["content_blocks"] = _parse_ticket_blocks(ep.get("content")) or [""]
+        ep["applied_tags_list"] = [t for t in (ep.get("applied_tags") or "").split(",") if t]
         # image_data can be a sizeable base64 blob - the template only ever needs to know
         # WHETHER an uploaded image exists (via image_filename) and fetches the actual bytes
         # through its own dedicated /embeds/{id}/image route when previewing it, never
@@ -5522,16 +5527,32 @@ def _embed_channel_is_valid(guild, channel_id: str) -> bool:
     return channel_id in {str(c.id) for c in guild.text_channels} | {str(c.id) for c in guild.forums}
 
 
-async def _post_embed_content(channel, name: str, embeds: list, files: list):
+def _resolve_forum_tags(forum, tag_ids: list) -> list:
+    """Looks up the actual discord.ForumTag objects a forum post should carry, from the ids
+    submitted by the dashboard form - create_thread()/Thread.edit() both want real ForumTag
+    objects, not bare ids. Silently drops any id that no longer matches one of the forum's
+    currently available tags (e.g. an admin deleted that tag in Discord after this post was
+    last saved) rather than erroring - same "don't fail on stale references" spirit as the
+    rest of this feature."""
+    wanted = set(tag_ids)
+    return [t for t in forum.available_tags if str(t.id) in wanted]
+
+
+async def _post_embed_content(channel, name: str, embeds: list, files: list, applied_tags: list | None = None):
     """Sends embed content to a target that's either a normal text channel (plain
     channel.send) or a forum channel. A forum has no "send a message" concept - posting there
     always means creating a new thread ("post"), which requires a title (Discord's own forum
     thread name limit is 100 chars, matching the name field's existing max length here, so no
-    separate truncation surprises the admin). Returns (message_id, thread_id) as strings -
-    thread_id is '' for a text channel. Raises discord.HTTPException on failure exactly like
-    channel.send() would, so every existing caller's error handling keeps working unchanged."""
+    separate truncation surprises the admin) and, if the forum is configured to require one,
+    at least one tag (ForumChannel.flags.require_tag - callers validate this before calling
+    here, since it needs a dashboard-friendly error message rather than a raw Discord
+    rejection). Returns (message_id, thread_id) as strings - thread_id is '' for a text
+    channel. Raises discord.HTTPException on failure exactly like channel.send() would, so
+    every existing caller's error handling keeps working unchanged."""
     if isinstance(channel, discord.ForumChannel):
-        result = await channel.create_thread(name=name[:100], embeds=embeds, files=files)
+        result = await channel.create_thread(
+            name=name[:100], embeds=embeds, files=files, applied_tags=applied_tags or [],
+        )
         return str(result.message.id), str(result.thread.id)
     msg = await channel.send(embeds=embeds, files=files)
     return str(msg.id), ""
@@ -5610,18 +5631,26 @@ async def embed_post_create(request: Request, guild_id: int):
     channel = guild.get_channel(int(channel_id))
     if not channel:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Kanal+nicht+gefunden", status_code=302)
+    is_forum = isinstance(channel, discord.ForumChannel)
+    tag_ids = form.getlist("tag_ids") if is_forum else []
+    applied_tags = _resolve_forum_tags(channel, tag_ids) if is_forum else []
+    if is_forum and channel.flags.require_tag and not applied_tags:
+        # Caught here with a clear cause instead of letting create_thread() fail with a raw
+        # Discord rejection - found live ("der sagt das der tag fehlt ich kan keinen
+        # eintragen"): this forum requires at least one tag on every new post.
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Dieses+Forum+erfordert+mindestens+einen+Tag", status_code=302)
     content = _djson.dumps(blocks)
     embeds = _build_freeform_embeds(content, image_url, footer_text, image_filename or "")
     files = _embed_post_files(image_data_b64 or "", image_filename or "")
     try:
-        new_message_id, new_thread_id = await _post_embed_content(channel, name, embeds, files)
+        new_message_id, new_thread_id = await _post_embed_content(channel, name, embeds, files, applied_tags)
     except discord.HTTPException as e:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
     await db_exec(
-        "INSERT INTO embed_posts (guild_id, name, channel_id, content, message_id, image_url, footer_text, image_data, image_filename, thread_id) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO embed_posts (guild_id, name, channel_id, content, message_id, image_url, footer_text, image_data, image_filename, thread_id, applied_tags) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         (str(guild_id), name, channel_id, content, new_message_id, image_url, footer_text,
-         image_data_b64 or "", image_filename or "", new_thread_id),
+         image_data_b64 or "", image_filename or "", new_thread_id, ",".join(str(t.id) for t in applied_tags)),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&success=Gepostet", status_code=302)
 
@@ -5667,6 +5696,14 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Bild-URL+muss+mit+http(s)://+beginnen", status_code=302)
     if len(footer_text) > 2048:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Footer-Text+zu+lang+(max.+2048+Zeichen)", status_code=302)
+    target_channel = guild.get_channel(int(channel_id))
+    if not target_channel:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Kanal+nicht+gefunden", status_code=302)
+    is_forum = isinstance(target_channel, discord.ForumChannel)
+    tag_ids = form.getlist("tag_ids") if is_forum else []
+    applied_tags = _resolve_forum_tags(target_channel, tag_ids) if is_forum else []
+    if is_forum and target_channel.flags.require_tag and not applied_tags:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Dieses+Forum+erfordert+mindestens+einen+Tag", status_code=302)
     try:
         new_image_data_b64, new_image_filename = await _read_embed_image_upload(image_file)
     except ValueError as msg:
@@ -5707,34 +5744,36 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
                 await old_msg.delete()
         except Exception:
             pass
-        new_ch = guild.get_channel(int(channel_id))
-        if not new_ch:
-            return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Kanal+nicht+gefunden", status_code=302)
+        new_ch = target_channel
         try:
-            new_message_id, new_thread_id = await _post_embed_content(new_ch, name, embeds, files)
+            new_message_id, new_thread_id = await _post_embed_content(new_ch, name, embeds, files, applied_tags)
         except discord.HTTPException as e:
             return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
     else:
-        ch = guild.get_channel(int(channel_id)) if channel_id else None
-        if not ch:
-            return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Kanal+nicht+gefunden", status_code=302)
+        ch = target_channel
         if post.get("thread_id"):
             try:
                 thread = await _fetch_embed_thread(guild, int(post["thread_id"]))
                 starter = await _fetch_embed_starter_message(thread)
                 await starter.edit(embeds=embeds, attachments=files)
-                # The forum post's title is the thread's own name, separate from the message
-                # content - keeps it in sync with the "name" field an admin edits here (that
-                # field IS the visible post title for a forum, unlike for a plain text-channel
-                # post where it's admin-only). Requires "Manage Threads", same permission the
-                # bot already needs to have created the thread in the first place.
+                # The forum post's title is the thread's own name, and its applied tags are
+                # also thread-level metadata - both separate from the message content, kept in
+                # sync with what the admin just edited here. Requires "Manage Threads", same
+                # permission the bot already needs to have created the thread in the first
+                # place. Tags always passed explicitly (even as []) for the same reason
+                # attachments are - otherwise a removed tag would just silently stick around.
+                thread_updates = {}
                 if thread.name != name[:100]:
-                    await thread.edit(name=name[:100])
+                    thread_updates["name"] = name[:100]
+                if {t.id for t in thread.applied_tags} != {t.id for t in applied_tags}:
+                    thread_updates["applied_tags"] = applied_tags
+                if thread_updates:
+                    await thread.edit(**thread_updates)
             except discord.NotFound:
                 # The thread or its starter message was deleted directly in Discord - repost a
                 # fresh thread instead of silently leaving the saved content with nothing live.
                 try:
-                    new_message_id, new_thread_id = await _post_embed_content(ch, name, embeds, files)
+                    new_message_id, new_thread_id = await _post_embed_content(ch, name, embeds, files, applied_tags)
                 except discord.HTTPException as e:
                     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
             except Exception as e:
@@ -5751,7 +5790,7 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
                 # The live message was deleted directly in Discord - repost it fresh instead of
                 # silently leaving the saved content with no actual message behind it.
                 try:
-                    new_message_id, new_thread_id = await _post_embed_content(ch, name, embeds, files)
+                    new_message_id, new_thread_id = await _post_embed_content(ch, name, embeds, files, applied_tags)
                 except discord.HTTPException as e:
                     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
             except Exception as e:
@@ -5761,14 +5800,15 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
             # thread_id are never trusted across a restore, same as ticket_panels). Post it
             # fresh instead of silently saving the new content with nothing live behind it.
             try:
-                new_message_id, new_thread_id = await _post_embed_content(ch, name, embeds, files)
+                new_message_id, new_thread_id = await _post_embed_content(ch, name, embeds, files, applied_tags)
             except discord.HTTPException as e:
                 return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
     await db_exec(
-        "UPDATE embed_posts SET name=?, channel_id=?, content=?, message_id=?, image_url=?, footer_text=?, image_data=?, image_filename=?, thread_id=? "
+        "UPDATE embed_posts SET name=?, channel_id=?, content=?, message_id=?, image_url=?, footer_text=?, image_data=?, image_filename=?, thread_id=?, applied_tags=? "
         "WHERE id=? AND guild_id=?",
         (name, channel_id, content, new_message_id, final_image_url, footer_text,
-         final_image_data, final_image_filename, new_thread_id, post_id, guild_id),
+         final_image_data, final_image_filename, new_thread_id,
+         ",".join(str(t.id) for t in applied_tags), post_id, guild_id),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&success=Gespeichert", status_code=302)
 

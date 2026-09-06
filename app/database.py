@@ -644,6 +644,14 @@ async def init_db():
             # equal the thread id in Discord's own data model, but storing it explicitly avoids
             # relying on that implementation detail staying true forever).
             "ALTER TABLE embed_posts ADD COLUMN thread_id TEXT NOT NULL DEFAULT ''",
+            # Follow-up fix, found live: a forum can be configured to REQUIRE at least one tag
+            # on every new post (ForumChannel.flags.require_tag) - create_thread() without
+            # applied_tags then gets rejected outright by Discord's own API ("der sagt das der
+            # tag fehlt ich kan keinen eintragen" - no UI existed yet to pick one). Comma-
+            # separated ForumTag ids, applied via Thread.edit(applied_tags=...) - a thread's
+            # tags are metadata on the THREAD, not on its starter message like the embed
+            # content is, so this is edited through a different call than the message content.
+            "ALTER TABLE embed_posts ADD COLUMN applied_tags TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)
