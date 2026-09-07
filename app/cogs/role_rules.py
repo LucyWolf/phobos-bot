@@ -149,7 +149,16 @@ class RoleRules(commands.Cog):
                     # source rather than assumed.
                     updated_member = await member.edit(roles=new_roles, reason="CrossVerification")
                     changed = True
-                except discord.HTTPException as e:
+                except (discord.HTTPException, OSError) as e:
+                    # OSError alongside HTTPException: discord.py's own http.py re-raises a bare
+                    # OSError (not wrapped into HTTPException) for a genuine network-level
+                    # failure - its request() retry loop only retries a caught OSError on
+                    # macOS/Windows-specific errno codes (54/10054), re-raising unchanged
+                    # otherwise, which on Linux (this project's actual runtime) is every
+                    # realistic connection-reset/refused case. Left as discord.HTTPException-only
+                    # this would propagate out of _evaluate_member entirely on a mere network
+                    # hiccup, skipping the cross_by_guild loop below for OTHER, unrelated rules
+                    # in the very same evaluation pass - not just this one failed edit.
                     self._log(f"FEHLER: Anwenden auf {member.id} in Guild {guild.id} fehlgeschlagen: {e}")
         if cross_by_guild:
             self._log(f"{len(cross_by_guild)} Ziel-Server-Aktion(en) zu verarbeiten für Mitglied {member.id}: "
@@ -170,7 +179,12 @@ class RoleRules(commands.Cog):
                 except discord.NotFound:
                     self._log(f"Mitglied {member.id} ist nicht Teil von Guild {target_guild.id} ({target_guild.name})")
                     continue  # the user simply isn't a member of the target server
-                except discord.HTTPException as e:
+                except (discord.HTTPException, OSError) as e:
+                    # OSError alongside HTTPException for the same reason noted above at the
+                    # member.edit() call - a raw network failure here would otherwise propagate
+                    # out of the whole `for action_guild_id, bucket in cross_by_guild.items():`
+                    # loop, aborting processing for every OTHER, unrelated target guild still
+                    # waiting in that same loop - not just this one unresolvable member.
                     self._log(f"FEHLER: Mitglied {member.id} auf Guild {target_guild.id} nicht auflösbar: {e}")
                     continue
             t_current = {r.id for r in target_member.roles}
@@ -186,11 +200,22 @@ class RoleRules(commands.Cog):
                     # edit we just made) for the recursion below, not the pre-edit target_member.
                     target_member = await target_member.edit(roles=t_new_roles, reason="CrossVerification (cross-server)") or target_member
                     self._log(f"member.edit() auf Guild {target_guild.id} erfolgreich gesendet")
-                except discord.HTTPException as e:
+                    # Recurse into the target guild so ITS OWN rules see the new role state too,
+                    # bounded by hop_budget so two guilds whose rules reference each other can't
+                    # loop forever - only when the edit above actually went through. Previously
+                    # ran unconditionally (even when t_new_ids == t_current, i.e. the target
+                    # already had the right roles) - the same-guild branch above already skips
+                    # its own chained re-evaluation via `if changed:` for exactly this reason
+                    # (a no-op teaches the target's rules nothing new), but this cross-guild
+                    # branch didn't apply the same guard: every single trigger where the
+                    # condition was already satisfied burned a _get_rules() DB call AND a
+                    # hop_budget decrement on the target guild for zero effect - confirmed via
+                    # a standalone test (already-satisfied target still logged a full "N aktive
+                    # Regel(n) geladen" pass). In a long inert cross-guild chain that could even
+                    # exhaust MAX_HOP_BUDGET before reaching a hop that actually needs to fire.
+                    await self._evaluate_member(target_guild, target_member, hop_budget - 1)
+                except (discord.HTTPException, OSError) as e:
                     self._log(f"FEHLER: Cross-Server-Anwenden auf {target_guild.id} fehlgeschlagen: {e}")
-            # Recurse into the target guild so ITS OWN rules see the new role state too, bounded
-            # by hop_budget so two guilds whose rules reference each other can't loop forever.
-            await self._evaluate_member(target_guild, target_member, hop_budget - 1)
         if changed:
             # Same-guild chained rules (rule 1 grants role B, rule 2 reacts to role B) - use the
             # Member returned by our own edit() above (see the comment there for why a fresh

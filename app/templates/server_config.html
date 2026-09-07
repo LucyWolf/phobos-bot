@@ -2821,6 +2821,7 @@ function updateAmpCmdPreview(id, action, value) {
                 <div>
                   <label>{{ tr.rolerules_target_label }}</label>
                   <select name="action_guild_id" style="margin-bottom:0;" onchange="showRoleRuleActionPicker(this.value, '{{ rr.id }}')">
+                    {% if not (role_rule_target_guilds | selectattr('id', 'equalto', rr.action_guild_id) | list) %}<option value="{{ rr.action_guild_id }}" selected disabled>{{ rr.action_guild_name }} ({{ tr.rolerules_target_unavailable }})</option>{% endif %}
                     {% for target in role_rule_target_guilds %}<option value="{{ target.id }}" {% if target.id == rr.action_guild_id %}selected{% endif %}>{{ target.name }}</option>{% endfor %}
                   </select>
                 </div>
@@ -2956,7 +2957,7 @@ function testRoleRules() {
     })
     .sort(function(a, b) { return a.priority - b.priority; });
 
-  const toAdd = new Set(), toRemove = new Set(), crossActions = [], used = [];
+  const toAdd = new Set(), toRemove = new Set(), crossByGuild = {}, used = [];
   const currentGuildId = {{ guild.id | jsraw }};
   rules.forEach(function(rule) {
     let matched;
@@ -2975,7 +2976,21 @@ function testRoleRules() {
         else { toRemove.add(r); toAdd.delete(r); }
       });
     } else {
-      crossActions.push(rule);
+      // Merged per target guild with the same "later rule in priority order overrides" logic
+      // as the same-guild case just above (and as cogs/role_rules.py's own cross_by_guild dict)
+      // - `rules` is already priority-sorted, so folding into one bucket per target guild here
+      // instead of listing each matching rule independently is what keeps this sandbox from
+      // showing two matching rules that target the SAME external server as two separate,
+      // possibly-contradictory lines (e.g. "add X" AND, right below it, "remove X") when the
+      // real bot would merge them into a single edit and only ever apply the later one.
+      if (!crossByGuild[rule.actionGuild]) {
+        crossByGuild[rule.actionGuild] = { name: rule.actionGuildName, add: new Set(), remove: new Set() };
+      }
+      const bucket = crossByGuild[rule.actionGuild];
+      rule.actionRoles.forEach(function(r) {
+        if (rule.action === 'add') { bucket.add.add(r); bucket.remove.delete(r); }
+        else { bucket.remove.add(r); bucket.add.delete(r); }
+      });
     }
   });
 
@@ -2985,11 +3000,15 @@ function testRoleRules() {
   } else {
     if (toAdd.size) html += '<div><strong>' + {{ tr.rolerules_sandbox_added | jsraw }} + ':</strong> ' + Array.from(toAdd).map(nameOf).map(function(n){return '@'+n;}).join(', ') + '</div>';
     if (toRemove.size) html += '<div><strong>' + {{ tr.rolerules_sandbox_removed | jsraw }} + ':</strong> ' + Array.from(toRemove).map(nameOf).map(function(n){return '@'+n;}).join(', ') + '</div>';
-    if (crossActions.length) {
+    const crossGuildIds = Object.keys(crossByGuild);
+    if (crossGuildIds.length) {
       html += '<div style="margin-top:0.4rem;"><strong>' + {{ tr.rolerules_sandbox_cross | jsraw }} + ':</strong><ul style="margin:0.2rem 0 0 1.1rem;padding:0;">';
-      crossActions.forEach(function(rule) {
-        const actionLabel = rule.action === 'add' ? {{ tr.rolerules_action_add | jsraw }} : {{ tr.rolerules_action_remove | jsraw }};
-        html += '<li>' + rule.actionGuildName + ' — ' + actionLabel + ': ' + rule.actionRoles.map(nameOf).map(function(n){return '@'+n;}).join(', ') + '</li>';
+      crossGuildIds.forEach(function(gid) {
+        const bucket = crossByGuild[gid];
+        const parts = [];
+        if (bucket.add.size) parts.push({{ tr.rolerules_action_add | jsraw }} + ': ' + Array.from(bucket.add).map(nameOf).map(function(n){return '@'+n;}).join(', '));
+        if (bucket.remove.size) parts.push({{ tr.rolerules_action_remove | jsraw }} + ': ' + Array.from(bucket.remove).map(nameOf).map(function(n){return '@'+n;}).join(', '));
+        if (parts.length) html += '<li>' + bucket.name + ' — ' + parts.join('; ') + '</li>';
       });
       html += '</ul></div>';
     }
