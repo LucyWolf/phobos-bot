@@ -330,12 +330,19 @@ class FreeStuff(commands.Cog):
                         f"https://cdn.cloudflare.steamstatic.com/steam/apps/{steam_id}/header.jpg"
                         if steam_id else d.get("thumb", "")
                     )
+                    # CheapShark's API already returns dealID pre-percent-encoded (it's a
+                    # base64 string containing +/=, e.g. "%2BU%2FjO97b82HKI0Q28qIUi...") -
+                    # running it through quote() again double-encodes it (%2B -> %252B etc.),
+                    # which CheapShark's redirect endpoint can't resolve back to a real deal.
+                    # It falls back to a generic 404 "Redirecting to CheapShark..." page instead
+                    # of the actual game/store page - live-verified against the real API/redirect
+                    # endpoint, not just suspected from reading the code.
                     deal_id = d.get("dealID", "")
                     out.append({
                         "id": f"{platform}_{d.get('gameID', deal_id)}",
                         "title": title,
                         "description": "",
-                        "url": f"https://www.cheapshark.com/redirect?dealID={urllib.parse.quote(deal_id)}",
+                        "url": f"https://www.cheapshark.com/redirect?dealID={deal_id}",
                         "image": image,
                         "end_date": "",
                         "original_price": normal,
