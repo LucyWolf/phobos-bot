@@ -5606,7 +5606,13 @@ def _build_freeform_embeds(content_raw, image_url: str = "", footer_text: str = 
 # 10 MB up to 500 MB), surfaced to the admin via the existing discord.HTTPException handler in
 # embed_post_create/_update if a given upload turns out to be too big for that specific server.
 # The dashboard hint text next to the file field spells this out instead of guessing a number.
-_EMBED_IMAGE_EXTS = {"png", "jpg", "jpeg", "gif", "webp"}
+# Discord's embed `set_image()` only ever actually RENDERS these four formats - anything else
+# (bmp, tiff, ico, ...) Pillow can perfectly well open/verify() as a real, undamaged image, but
+# posting it would produce a broken, non-rendering embed image with no error anywhere to explain
+# why. Keyed by Pillow's own Image.format string (set by whichever plugin actually decoded the
+# file), NOT the filename extension the browser happened to send - a renamed/extension-less file
+# must not be trusted to describe its own real content.
+_PIL_FORMAT_TO_EXT = {"PNG": "png", "JPEG": "jpg", "GIF": "gif", "WEBP": "webp"}
 
 
 async def _read_embed_image_upload(image_file):
@@ -5615,8 +5621,9 @@ async def _read_embed_image_upload(image_file):
     to pasting a URL). Returns (base64_data, filename) if a real file was provided, or
     (None, None) if the field was empty/no file was chosen - callers treat that the same as
     "no upload happened". Raises ValueError(message) with a dashboard-ready error string on an
-    invalid upload (not a real image), same pattern as every other validation error in this
-    feature. No size check here - see the module-level comment above.
+    invalid upload (not a real image, or a real image format Discord's embeds don't render -
+    see _PIL_FORMAT_TO_EXT above), same pattern as every other validation error in this feature.
+    No size check here - see the module-level comment above.
     Deliberately does NOT re-encode the image through Pillow before storing it - only opens it
     to confirm it's a real, undamaged image. Re-encoding would strip an animated GIF down to
     its first frame and flatten PNG transparency, both real losses for something meant to be
@@ -5629,11 +5636,12 @@ async def _read_embed_image_upload(image_file):
     try:
         img = Image.open(io.BytesIO(data))
         img.verify()
+        real_format = img.format or ""
     except Exception:
         raise ValueError("Ungültiges+Bildformat")
-    ext = image_file.filename.rsplit(".", 1)[-1].lower() if "." in image_file.filename else ""
-    if ext not in _EMBED_IMAGE_EXTS:
-        ext = "png"
+    ext = _PIL_FORMAT_TO_EXT.get(real_format)
+    if not ext:
+        raise ValueError("Ungültiges+Bildformat")
     return base64.b64encode(data).decode("ascii"), f"image.{ext}"
 
 
