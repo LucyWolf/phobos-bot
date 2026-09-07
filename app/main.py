@@ -6081,6 +6081,8 @@ _ASSETS_DIR = Path(__file__).parent / "assets"
 _WELCOME_OVERLAY_PRESETS = {
     "shattered_glass": {"label": "Zersprungenes Glas", "file": "welcome_card_overlay_example.png"},
     "hearts": {"label": "Herzen", "file": "welcome_card_overlay_hearts.png"},
+    "pub": {"label": "Kneipe", "file": "welcome_card_overlay_pub.png"},
+    "tropical": {"label": "Sommer/Tropisch", "file": "welcome_card_overlay_tropical.png"},
 }
 
 
