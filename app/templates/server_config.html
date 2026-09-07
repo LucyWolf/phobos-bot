@@ -2106,6 +2106,12 @@ document.addEventListener('click', function(e) {
             </select>
           </div>
           <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
+          <div style="grid-column:1 / -1;">
+            <label style="font-size:0.78rem;display:flex;align-items:center;gap:0.4rem;font-weight:400;">
+              <input type="checkbox" name="include_bot_messages" value="1" style="margin:0;" {% if e.include_bot_messages %}checked{% endif %}>
+              {{ tr.autodelete_include_bot_label }}
+            </label>
+          </div>
         </form>
       </td>
     </tr>
@@ -2142,6 +2148,10 @@ document.addEventListener('click', function(e) {
         <button type="submit" class="btn btn-primary">{{ tr.btn_add }}</button>
       </div>
     </div>
+    <label style="font-size:0.78rem;display:flex;align-items:center;gap:0.4rem;font-weight:400;">
+      <input type="checkbox" name="include_bot_messages" value="1" style="margin:0;">
+      {{ tr.autodelete_include_bot_label }}
+    </label>
   </form>
 </div>
 </div>

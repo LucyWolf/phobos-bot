@@ -11,7 +11,7 @@ from database import db_rows, db_exec, db_insert
 class AutoDelete(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self._configs: dict = {}  # {guild_id: {channel_id: delay_seconds}}
+        self._configs: dict = {}  # {guild_id: {channel_id: (delay_seconds, include_bot_messages)}}
         self._tasks: dict = {}    # {pending_id: asyncio.Task}
         self._retry_stuck.start()
 
@@ -19,10 +19,14 @@ class AutoDelete(commands.Cog):
         self._retry_stuck.cancel()
 
     async def _load_configs(self):
-        rows = await db_rows("SELECT guild_id, channel_id, delay_seconds FROM auto_delete_channels")
+        rows = await db_rows(
+            "SELECT guild_id, channel_id, delay_seconds, include_bot_messages FROM auto_delete_channels"
+        )
         self._configs = {}
         for r in rows:
-            self._configs.setdefault(r["guild_id"], {})[r["channel_id"]] = r["delay_seconds"]
+            self._configs.setdefault(r["guild_id"], {})[r["channel_id"]] = (
+                r["delay_seconds"], bool(r["include_bot_messages"])
+            )
 
     async def reload(self):
         await self._load_configs()
@@ -74,7 +78,7 @@ class AutoDelete(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        if not message.guild or message.author.bot:
+        if not message.guild:
             return
         gid = str(message.guild.id)
         # A message inside a thread has message.channel == the thread, not the parent text
@@ -86,7 +90,16 @@ class AutoDelete(commands.Cog):
         else:
             config_cid = str(message.channel.id)
         actual_cid = str(message.channel.id)
-        delay = (self._configs.get(gid) or {}).get(config_cid)
+        cfg = (self._configs.get(gid) or {}).get(config_cid)
+        if not cfg:
+            return
+        delay, include_bot_messages = cfg
+        if message.author.bot:
+            # "include_bot_messages" is specifically about THIS bot's own messages, not every
+            # bot's - a moderation/logging bot posting in the same channel shouldn't have its
+            # messages swept up just because this flag is on for the channel.
+            if not (include_bot_messages and message.author.id == self.bot.user.id):
+                return
         if not delay:
             return
         delete_at = datetime.datetime.utcnow() + datetime.timedelta(seconds=delay)

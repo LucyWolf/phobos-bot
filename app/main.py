@@ -3171,7 +3171,10 @@ async def _reload_auto_delete():
             await cog.reload()
 
 @web.post("/servers/{guild_id}/auto-delete/save")
-async def auto_delete_save(request: Request, guild_id: str, channel_id: str = Form(""), delay_seconds: str = Form("")):
+async def auto_delete_save(
+    request: Request, guild_id: str, channel_id: str = Form(""), delay_seconds: str = Form(""),
+    include_bot_messages: str = Form(""),
+):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
     guild = bot.get_guild(int(guild_id))
@@ -3189,16 +3192,21 @@ async def auto_delete_save(request: Request, guild_id: str, channel_id: str = Fo
         return RedirectResponse(
             f"/servers/{guild_id}?tab=autodelete&error=Ungültige+Verzögerung", status_code=302
         )
+    include_bot_int = 1 if include_bot_messages else 0
     await db_exec(
-        "INSERT INTO auto_delete_channels (guild_id, channel_id, delay_seconds) VALUES (?,?,?) "
-        "ON CONFLICT(guild_id, channel_id) DO UPDATE SET delay_seconds=excluded.delay_seconds",
-        (guild_id, channel_id, delay_int),
+        "INSERT INTO auto_delete_channels (guild_id, channel_id, delay_seconds, include_bot_messages) VALUES (?,?,?,?) "
+        "ON CONFLICT(guild_id, channel_id) DO UPDATE SET delay_seconds=excluded.delay_seconds, "
+        "include_bot_messages=excluded.include_bot_messages",
+        (guild_id, channel_id, delay_int, include_bot_int),
     )
     await _reload_auto_delete()
     return RedirectResponse(f"/servers/{guild_id}?tab=autodelete&success=Gespeichert", status_code=302)
 
 @web.post("/servers/{guild_id}/auto-delete/edit/{entry_id}")
-async def auto_delete_edit(request: Request, guild_id: str, entry_id: int, channel_id: str = Form(""), delay_seconds: str = Form("")):
+async def auto_delete_edit(
+    request: Request, guild_id: str, entry_id: int, channel_id: str = Form(""), delay_seconds: str = Form(""),
+    include_bot_messages: str = Form(""),
+):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
     guild = bot.get_guild(int(guild_id))
@@ -3210,10 +3218,12 @@ async def auto_delete_edit(request: Request, guild_id: str, entry_id: int, chann
         delay_int = 0
     if delay_int <= 0:
         return RedirectResponse(f"/servers/{guild_id}?tab=autodelete&error=Ungültige+Verzögerung", status_code=302)
+    include_bot_int = 1 if include_bot_messages else 0
     try:
         await db_exec(
-            "UPDATE auto_delete_channels SET channel_id=?, delay_seconds=? WHERE id=? AND guild_id=?",
-            (channel_id, delay_int, entry_id, guild_id),
+            "UPDATE auto_delete_channels SET channel_id=?, delay_seconds=?, include_bot_messages=? "
+            "WHERE id=? AND guild_id=?",
+            (channel_id, delay_int, include_bot_int, entry_id, guild_id),
         )
     except Exception:
         return RedirectResponse(

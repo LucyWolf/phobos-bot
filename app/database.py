@@ -675,6 +675,12 @@ async def init_db():
                 priority INTEGER NOT NULL DEFAULT 100,
                 enabled INTEGER NOT NULL DEFAULT 1
             )""",
+            # Opt-in per-channel flag: when set, Auto-Delete also deletes messages posted BY
+            # THE BOT ITSELF in that channel (not other bots) - off by default, since the
+            # existing "message.author.bot" early-return in on_message has always exempted
+            # every bot's own messages, and the user asked for this to stay off unless
+            # explicitly enabled.
+            "ALTER TABLE auto_delete_channels ADD COLUMN include_bot_messages INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await db.execute(col)
