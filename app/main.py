@@ -5852,7 +5852,7 @@ async def embed_post_create(request: Request, guild_id: int):
     try:
         new_message_id, new_thread_id = await _post_embed_content(channel, name, embeds, files, applied_tags)
     except (discord.HTTPException, OSError) as e:
-        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{_discord_error_text(e)}", status_code=302)
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{urllib.parse.quote(_discord_error_text(e))}", status_code=302)
     await db_exec(
         "INSERT INTO embed_posts (guild_id, name, channel_id, content, message_id, image_url, footer_text, image_data, image_filename, thread_id, applied_tags) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
@@ -5965,7 +5965,7 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
         try:
             new_message_id, new_thread_id = await _post_embed_content(new_ch, name, embeds, files, applied_tags)
         except (discord.HTTPException, OSError) as e:
-            return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{_discord_error_text(e)}", status_code=302)
+            return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{urllib.parse.quote(_discord_error_text(e))}", status_code=302)
     else:
         ch = target_channel
         if post.get("thread_id"):
@@ -5992,9 +5992,9 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
                 try:
                     new_message_id, new_thread_id = await _post_embed_content(ch, name, embeds, files, applied_tags)
                 except (discord.HTTPException, OSError) as e:
-                    return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{_discord_error_text(e)}", status_code=302)
+                    return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{urllib.parse.quote(_discord_error_text(e))}", status_code=302)
             except Exception as e:
-                return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e}", status_code=302)
+                return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{urllib.parse.quote(str(e))}", status_code=302)
         elif post["message_id"]:
             try:
                 msg = await ch.fetch_message(int(post["message_id"]))
@@ -6009,9 +6009,9 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
                 try:
                     new_message_id, new_thread_id = await _post_embed_content(ch, name, embeds, files, applied_tags)
                 except (discord.HTTPException, OSError) as e:
-                    return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{_discord_error_text(e)}", status_code=302)
+                    return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{urllib.parse.quote(_discord_error_text(e))}", status_code=302)
             except Exception as e:
-                return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e}", status_code=302)
+                return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{urllib.parse.quote(str(e))}", status_code=302)
         else:
             # No live message/thread yet - e.g. a post restored from a backup (message_id/
             # thread_id are never trusted across a restore, same as ticket_panels). Post it
@@ -6019,7 +6019,7 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
             try:
                 new_message_id, new_thread_id = await _post_embed_content(ch, name, embeds, files, applied_tags)
             except (discord.HTTPException, OSError) as e:
-                return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{_discord_error_text(e)}", status_code=302)
+                return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{urllib.parse.quote(_discord_error_text(e))}", status_code=302)
     await db_exec(
         "UPDATE embed_posts SET name=?, channel_id=?, content=?, message_id=?, image_url=?, footer_text=?, image_data=?, image_filename=?, thread_id=?, applied_tags=? "
         "WHERE id=? AND guild_id=?",
