@@ -5891,6 +5891,16 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Alle+Embeds+zusammen+sind+zu+lang+(max.+5900+Zeichen+insgesamt)", status_code=302)
     if image_url and has_upload:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Bitte+nur+Bild-URL+ODER+Datei+hochladen,+nicht+beides", status_code=302)
+    # Unlike the file input, the URL field IS pre-filled with the post's current image_url - so
+    # a "remove_image" checkbox submitted alongside that SAME unchanged value just means the
+    # admin ticked the box without also touching the URL text (the far more common case, since
+    # there's no reason to manually clear a field you're already asking to remove) and
+    # remove_image should win exactly as before. Only a genuinely NEW/different URL typed in
+    # alongside it is an actual conflict worth rejecting - same "reject an ambiguous combo
+    # instead of silently picking one" spirit as the check just above, which would otherwise
+    # have that new image silently discarded by remove_image with no indication why.
+    if remove_image and (has_upload or (image_url and image_url != (post.get("image_url") or ""))):
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Entweder+Bild+entfernen+ODER+ein+neues+Bild+angeben,+nicht+beides", status_code=302)
     if image_url and not image_url.startswith(("http://", "https://")):
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Bild-URL+muss+mit+http(s)://+beginnen", status_code=302)
     if len(footer_text) > 2048:
