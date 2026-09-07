@@ -5606,6 +5606,9 @@ def _build_freeform_embeds(content_raw, image_url: str = "", footer_text: str = 
 # 10 MB up to 500 MB), surfaced to the admin via the existing discord.HTTPException handler in
 # embed_post_create/_update if a given upload turns out to be too big for that specific server.
 # The dashboard hint text next to the file field spells this out instead of guessing a number.
+# (Referenced below as "the module-level comment above" from _read_embed_image_upload's
+# docstring - kept distinct from the unrelated format-mapping comment right underneath.)
+
 # Discord's embed `set_image()` only ever actually RENDERS these four formats - anything else
 # (bmp, tiff, ico, ...) Pillow can perfectly well open/verify() as a real, undamaged image, but
 # posting it would produce a broken, non-rendering embed image with no error anywhere to explain
