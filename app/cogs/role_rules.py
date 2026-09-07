@@ -88,48 +88,67 @@ class RoleRules(commands.Cog):
         to_add, to_remove = set(), set()
         cross_by_guild: dict = {}  # action_guild_id -> {"add": set(), "remove": set()}
         for rule in rules:
-            # Rules are evaluated against the role set as it stood BEFORE this pass (not
-            # incrementally re-checked against to_add/to_remove as they accumulate) - a single,
-            # consistent snapshot per pass. A rule that depends on another rule's OWN result
-            # (e.g. rule 2 reacting to a role rule 1 just granted) is deliberately caught by the
-            # separate re-evaluation pass after applying changes (see below), not by chaining
-            # rules within one pass - keeps the ordering easy to reason about.
-            if not self._matches(rule, current):
-                continue
-            self._log(f"Regel #{rule['id']} ({rule['name'] or '—'}) trifft zu für Mitglied {member.id}: "
-                      f"match_type={rule['match_type']} match_roles={rule['match_role_ids']} "
-                      f"-> action={rule['action']} action_guild={rule['action_guild_id']} action_roles={rule['action_role_ids']}")
-            action_ids = {int(x) for x in (rule["action_role_ids"] or "").split(",") if x}
-            if not action_ids:
-                continue
-            # Rules are applied in priority order (lowest number first) - a LATER rule that
-            # targets the same role on the same guild overrides an earlier one's effect on it
-            # (e.g. rule 1 removes role X, rule 2 re-adds it - rule 2 wins since it's applied
-            # after). Deliberate "later rule can override" semantics, not "first match wins".
-            if str(rule["action_guild_id"]) == str(guild.id):
-                if rule["action"] == "remove":
-                    to_remove |= action_ids
-                    to_add -= action_ids
+            # Everything in this iteration is wrapped so a single malformed rule (e.g. a
+            # non-numeric id in match_role_ids/action_role_ids - unreachable through the
+            # dashboard's own save path, which only ever writes ids validated against the
+            # guild's real roles, but reachable via a hand-edited or corrupted backup-restore
+            # JSON file) can't take the WHOLE pass down with it. Confirmed via a standalone
+            # test before this fix: one bad rule's int() ValueError propagated out of this
+            # entire for-loop, silently skipping every OTHER rule for this member too -
+            # including unrelated, perfectly valid, lower-priority ones - with the only trace
+            # being a generic "Live-Auswertung fehlgeschlagen" line that doesn't even name which
+            # rule caused it. Isolating per-rule here matches this project's established
+            # per-item-isolation convention (FreeStuff's per-server loop, Notifications' per-API
+            # loop, this same cog's own per-guild/per-member periodic loop below).
+            try:
+                # Rules are evaluated against the role set as it stood BEFORE this pass (not
+                # incrementally re-checked against to_add/to_remove as they accumulate) - a
+                # single, consistent snapshot per pass. A rule that depends on another rule's OWN
+                # result (e.g. rule 2 reacting to a role rule 1 just granted) is deliberately
+                # caught by the separate re-evaluation pass after applying changes (see below),
+                # not by chaining rules within one pass - keeps the ordering easy to reason about.
+                if not self._matches(rule, current):
+                    continue
+                self._log(f"Regel #{rule['id']} ({rule['name'] or '—'}) trifft zu für Mitglied {member.id}: "
+                          f"match_type={rule['match_type']} match_roles={rule['match_role_ids']} "
+                          f"-> action={rule['action']} action_guild={rule['action_guild_id']} action_roles={rule['action_role_ids']}")
+                action_ids = {int(x) for x in (rule["action_role_ids"] or "").split(",") if x}
+                if not action_ids:
+                    continue
+                # Rules are applied in priority order (lowest number first) - a LATER rule that
+                # targets the same role on the same guild overrides an earlier one's effect on it
+                # (e.g. rule 1 removes role X, rule 2 re-adds it - rule 2 wins since it's applied
+                # after). Deliberate "later rule can override" semantics, not "first match wins".
+                if str(rule["action_guild_id"]) == str(guild.id):
+                    if rule["action"] == "remove":
+                        to_remove |= action_ids
+                        to_add -= action_ids
+                    else:
+                        to_add |= action_ids
+                        to_remove -= action_ids
                 else:
-                    to_add |= action_ids
-                    to_remove -= action_ids
-            else:
-                # Grouped by target guild (not a flat list of per-rule actions) and merged with
-                # the same "later rule in priority order overrides" semantics as the same-guild
-                # case above - fixes a real bug: two rules targeting the SAME other guild used
-                # to each run their own separate member.edit() call, computed from separately
-                # fetched role snapshots. Discord's own gateway MEMBER_UPDATE confirming the
-                # first edit isn't guaranteed to have reached this bot's cache before the second
-                # edit reads it, so the second edit could easily read a stale role set and wipe
-                # out the first edit's change. One merged edit per target guild avoids that
-                # entirely, exactly like the same-guild to_add/to_remove sets already did.
-                bucket = cross_by_guild.setdefault(str(rule["action_guild_id"]), {"add": set(), "remove": set()})
-                if rule["action"] == "remove":
-                    bucket["remove"] |= action_ids
-                    bucket["add"] -= action_ids
-                else:
-                    bucket["add"] |= action_ids
-                    bucket["remove"] -= action_ids
+                    # Grouped by target guild (not a flat list of per-rule actions) and merged
+                    # with the same "later rule in priority order overrides" semantics as the
+                    # same-guild case above - fixes a real bug: two rules targeting the SAME
+                    # other guild used to each run their own separate member.edit() call,
+                    # computed from separately fetched role snapshots. Discord's own gateway
+                    # MEMBER_UPDATE confirming the first edit isn't guaranteed to have reached
+                    # this bot's cache before the second edit reads it, so the second edit could
+                    # easily read a stale role set and wipe out the first edit's change. One
+                    # merged edit per target guild avoids that entirely, exactly like the
+                    # same-guild to_add/to_remove sets already did.
+                    bucket = cross_by_guild.setdefault(str(rule["action_guild_id"]), {"add": set(), "remove": set()})
+                    if rule["action"] == "remove":
+                        bucket["remove"] |= action_ids
+                        bucket["add"] -= action_ids
+                    else:
+                        bucket["add"] |= action_ids
+                        bucket["remove"] -= action_ids
+            except (ValueError, TypeError) as e:
+                self._log(f"FEHLER: Regel #{rule['id']} ({rule['name'] or '—'}) hat fehlerhafte Daten "
+                          f"(match_roles={rule['match_role_ids']!r}, action_roles={rule['action_role_ids']!r}) "
+                          f"und wird übersprungen: {e}")
+                continue
         changed = False
         updated_member = None
         if to_add or to_remove:
