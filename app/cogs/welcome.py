@@ -1,6 +1,15 @@
 """Welcome/leave messages (with an optional generated welcome-card image, see _make_card()) and
 autorole on join. Both the welcome message and the autorole assignment run independently of
 each other - a server with no welcome channel configured still gets autorole."""
+# `str | None` (PEP 604) below needs Python 3.10+ to evaluate at def-time; Chaquopy's bundled
+# Android runtime is Python 3.8 (confirmed via the built APK's libpython3.8.so), which would
+# raise "TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'" the instant this
+# module is imported - same failure class already fixed elsewhere for main.py/i18n.py/totp.py/
+# cogs/leveling.py/cogs/notifications.py/cogs/freestuff.py, just never applied here since the
+# background/overlay-image feature (and its `str | None` params) was added afterwards. Turns
+# every annotation into a plain string, deferring evaluation - safe here since, unlike main.py's
+# FastAPI routes, nothing in this file reads an annotation back at runtime.
+from __future__ import annotations
 import base64
 import io
 import math
@@ -48,6 +57,23 @@ def _cover_crop(img, target_w: int, target_h: int):
     left = (new_w - target_w) // 2
     top = (new_h - target_h) // 2
     return img.crop((left, top, left + target_w, top + target_h))
+
+
+def _fit_text(draw, text: str, font, max_width: int) -> str:
+    """Truncates text with a trailing ellipsis until it fits within max_width px. Needed for
+    heading_text/subtitle_text specifically - unlike `name` (bounded by Discord's own 32-char
+    display-name limit plus this file's own 21+"..." cut), these can expand well past their
+    raw-template character cap once {server}/{user}/{count} are substituted in: a guild name
+    alone can be up to 100 characters, and main.py's save-time length check only bounds the RAW
+    template (60/80 chars), not the substituted result actually drawn here. Measured empirically:
+    a plain 46-character subtitle template using {server} with a 100-char guild name already
+    renders ~48% wider than the available card width, heading worse still - not a crafted-input
+    edge case, just an admin writing an ordinary sentence with a placeholder."""
+    if draw.textlength(text, font=font) <= max_width:
+        return text
+    while text and draw.textlength(text + "...", font=font) > max_width:
+        text = text[:-1]
+    return (text + "...") if text else "..."
 
 
 def _shape_mask(shape: str, w: int, h: int):
@@ -159,10 +185,12 @@ async def _make_card(member: discord.Member, circle_color: str, text_color: str,
         draw.rectangle([(W - 240, 35), (W - 238, H - 35)], fill=(60, 65, 90, 200))
         font_welcome, font_name, font_count = _load_font(52), _load_font(34), _load_font(22, bold=False)
         text_right_edge = W - 265
+        heading_fit = _fit_text(draw, heading_text, font_welcome, text_right_edge)
+        subtitle_fit = _fit_text(draw, subtitle_text, font_count, text_right_edge)
         for text, y, font, color in (
-            (heading_text, 72, font_welcome, (tr, tg, tb, 255)),
+            (heading_fit, 72, font_welcome, (tr, tg, tb, 255)),
             (name, 146, font_name, (ur, ug, ub, 255)),
-            (subtitle_text, 202, font_count, (140, 140, 160, 255)),
+            (subtitle_fit, 202, font_count, (140, 140, 160, 255)),
         ):
             draw.text((text_right_edge - draw.textlength(text, font=font), y), text, font=font, fill=color)
     elif avatar_position == "center":
@@ -172,10 +200,12 @@ async def _make_card(member: discord.Member, circle_color: str, text_color: str,
         bw = 130
         bx, by = (W - bw) // 2, 16
         font_welcome, font_name, font_count = _load_font(40), _load_font(30), _load_font(20, bold=False)
+        heading_fit = _fit_text(draw, heading_text, font_welcome, W - 40)
+        subtitle_fit = _fit_text(draw, subtitle_text, font_count, W - 40)
         for text, y, font, color in (
-            (heading_text, 158, font_welcome, (tr, tg, tb, 255)),
+            (heading_fit, 158, font_welcome, (tr, tg, tb, 255)),
             (name, 206, font_name, (ur, ug, ub, 255)),
-            (subtitle_text, 244, font_count, (140, 140, 160, 255)),
+            (subtitle_fit, 244, font_count, (140, 140, 160, 255)),
         ):
             draw.text(((W - draw.textlength(text, font=font)) / 2, y), text, font=font, fill=color)
     else:
@@ -187,9 +217,11 @@ async def _make_card(member: discord.Member, circle_color: str, text_color: str,
         draw.rectangle([(238, 35), (240, H - 35)], fill=(60, 65, 90, 200))
         font_welcome, font_name, font_count = _load_font(52), _load_font(34), _load_font(22, bold=False)
         tx = 265
-        draw.text((tx, 72), heading_text, font=font_welcome, fill=(tr, tg, tb, 255))
+        heading_fit = _fit_text(draw, heading_text, font_welcome, W - tx)
+        subtitle_fit = _fit_text(draw, subtitle_text, font_count, W - tx)
+        draw.text((tx, 72), heading_fit, font=font_welcome, fill=(tr, tg, tb, 255))
         draw.text((tx, 146), name, font=font_name, fill=(ur, ug, ub, 255))
-        draw.text((tx, 202), subtitle_text, font=font_count, fill=(140, 140, 160, 255))
+        draw.text((tx, 202), subtitle_fit, font=font_count, fill=(140, 140, 160, 255))
 
     # --- Avatar (shape from avatar_shape, box from whichever position branch ran above) ---
     avatar_size = bw - 18
@@ -301,16 +333,27 @@ class Welcome(commands.Cog):
                         await channel.send(file=file, embed=embed)
                     else:
                         await channel.send(file=file)
-                except Exception:
-                    # Fallback: plain embed
+                except Exception as e:
+                    # Fallback: plain embed. Previously a bare `except Exception: pass`-style
+                    # fallback with no logging at all - a card-generation failure (bad avatar
+                    # download, a corrupted overlay, an actual bug) or a plain permission error
+                    # on the send itself would vanish without a trace anywhere, unlike every
+                    # other failure path in this cog (see the autorole handler below).
+                    print(f"[Welcome] card generation/send failed for {member} in guild {member.guild.id}: {e}")
                     if message:
-                        embed = discord.Embed(description=fill(message, member), color=0x22c55e)
-                        embed.set_author(name=str(member), icon_url=member.display_avatar.url)
-                        await channel.send(embed=embed)
+                        try:
+                            embed = discord.Embed(description=fill(message, member), color=0x22c55e)
+                            embed.set_author(name=str(member), icon_url=member.display_avatar.url)
+                            await channel.send(embed=embed)
+                        except discord.HTTPException as e2:
+                            print(f"[Welcome] fallback plain embed also failed for {member} in guild {member.guild.id}: {e2}")
             elif message:
-                embed = discord.Embed(description=fill(message, member), color=0x22c55e)
-                embed.set_author(name=str(member), icon_url=member.display_avatar.url)
-                await channel.send(embed=embed)
+                try:
+                    embed = discord.Embed(description=fill(message, member), color=0x22c55e)
+                    embed.set_author(name=str(member), icon_url=member.display_avatar.url)
+                    await channel.send(embed=embed)
+                except discord.HTTPException as e:
+                    print(f"[Welcome] welcome message failed for {member} in guild {member.guild.id}: {e}")
 
         role_id = await get_guild_config(member.guild.id, "autorole")
         if role_id:
@@ -340,9 +383,12 @@ class Welcome(commands.Cog):
         except (ValueError, TypeError):
             channel = None
         if channel:
-            embed = discord.Embed(description=fill(message, member), color=0xef4444)
-            embed.set_author(name=str(member), icon_url=member.display_avatar.url)
-            await channel.send(embed=embed)
+            try:
+                embed = discord.Embed(description=fill(message, member), color=0xef4444)
+                embed.set_author(name=str(member), icon_url=member.display_avatar.url)
+                await channel.send(embed=embed)
+            except discord.HTTPException as e:
+                print(f"[Welcome] leave message failed for {member} in guild {member.guild.id}: {e}")
 
 
 async def setup(bot):

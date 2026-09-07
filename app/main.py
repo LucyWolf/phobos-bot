@@ -4934,7 +4934,12 @@ async def server_config_save(request: Request, guild_id: int):
 
     # The welcome card canvas is only 800px wide - an unbounded heading/subtitle would run
     # visibly off the edge, so both get a hard length cap here (mirroring numeric_fields'
-    # pattern above, just for string length instead of numeric range).
+    # pattern above, just for string length instead of numeric range). This only bounds the RAW
+    # template, though - {server}/{user}/{count} can still expand a compliant 60/80-char template
+    # well past the canvas width once substituted (a guild name alone can be up to 100 chars), so
+    # cogs/welcome.py's _make_card() additionally fits the SUBSTITUTED text to the actual pixel
+    # budget at render time (_fit_text()) as the real backstop - this cap is just an early,
+    # cheap rejection of an obviously-too-long template, not the only thing preventing overflow.
     text_length_fields = [
         ("welcome_card_heading_text", 60, "Überschrift-Text"),
         ("welcome_card_subtitle_text", 80, "Untertitel-Text"),

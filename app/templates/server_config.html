@@ -102,14 +102,16 @@
       <div>
         <label>{{ tr.config_welcome_channel_label }}</label>
         <select name="welcome_channel">
-          <option value="">{{ tr.config_channel_disabled_option }}</option>
+          <option value="" {% if not cfg.get('welcome_channel') %}selected{% endif %}>{{ tr.config_channel_disabled_option }}</option>
+          {% if cfg.get('welcome_channel') and not (channels | selectattr('id', 'equalto', cfg.get('welcome_channel')) | list) %}<option value="{{ cfg.get('welcome_channel') }}" selected disabled>{{ tr.tickets_channel_placeholder }}</option>{% endif %}
           {% for ch in channels %}<option value="{{ ch.id }}" {% if cfg.get('welcome_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
         </select>
       </div>
       <div>
         <label>{{ tr.config_leave_channel_label }}</label>
         <select name="leave_channel">
-          <option value="">{{ tr.config_channel_disabled_option }}</option>
+          <option value="" {% if not cfg.get('leave_channel') %}selected{% endif %}>{{ tr.config_channel_disabled_option }}</option>
+          {% if cfg.get('leave_channel') and not (channels | selectattr('id', 'equalto', cfg.get('leave_channel')) | list) %}<option value="{{ cfg.get('leave_channel') }}" selected disabled>{{ tr.tickets_channel_placeholder }}</option>{% endif %}
           {% for ch in channels %}<option value="{{ ch.id }}" {% if cfg.get('leave_channel') == ch.id %}selected{% endif %}>#{{ ch.name }}</option>{% endfor %}
         </select>
       </div>
@@ -120,7 +122,8 @@
     <input type="text" name="leave_message" value="{{ cfg.get('leave_message', '{username} hat den Server verlassen.') }}">
     <label>{{ tr.config_autorole_label }}</label>
     <select name="autorole">
-      <option value="">{{ tr.config_autorole_none_option }}</option>
+      <option value="" {% if not cfg.get('autorole') %}selected{% endif %}>{{ tr.config_autorole_none_option }}</option>
+      {% if cfg.get('autorole') and not (roles | selectattr('id', 'equalto', cfg.get('autorole')) | list) %}<option value="{{ cfg.get('autorole') }}" selected disabled>{{ tr.rr_role_placeholder }}</option>{% endif %}
       {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('autorole') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
     </select>
 
@@ -3075,7 +3078,12 @@ document.querySelectorAll('input[type=color]').forEach(picker => {
     clearTimeout(wcPreviewTimer);
     wcPreviewTimer = setTimeout(refreshWcPreview, 400);
   });
-  refreshWcPreview();
+  // All tab-panes render into the DOM on every load (see the file's own header comment) and
+  // showTab() above has already applied the 'active' class by the time this IIFE runs - without
+  // this check, opening ANY other tab (Tickets, Leveling, ...) would still fire a full avatar
+  // download + card render for an <img> that's sitting inside a display:none ancestor the whole
+  // time, on every single page load.
+  if (wcPaneEl.classList.contains('active')) refreshWcPreview();
 })();
 </script>
 {% endblock %}
