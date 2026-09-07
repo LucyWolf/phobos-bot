@@ -5638,10 +5638,10 @@ async def _read_embed_image_upload(image_file):
         img.verify()
         real_format = img.format or ""
     except Exception:
-        raise ValueError("Ungültiges+Bildformat")
+        raise ValueError("Ungültiges Bildformat")
     ext = _PIL_FORMAT_TO_EXT.get(real_format)
     if not ext:
-        raise ValueError("Ungültiges+Bildformat")
+        raise ValueError("Ungültiges Bildformat")
     return base64.b64encode(data).decode("ascii"), f"image.{ext}"
 
 
@@ -5834,7 +5834,7 @@ async def embed_post_create(request: Request, guild_id: int):
     try:
         image_data_b64, image_filename = await _read_embed_image_upload(image_file)
     except ValueError as msg:
-        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error={msg}", status_code=302)
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error={urllib.parse.quote(str(msg))}", status_code=302)
     channel = guild.get_channel(int(channel_id))
     if not channel:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Kanal+nicht+gefunden", status_code=302)
@@ -5924,7 +5924,7 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
     try:
         new_image_data_b64, new_image_filename = await _read_embed_image_upload(image_file)
     except ValueError as msg:
-        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error={msg}", status_code=302)
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error={urllib.parse.quote(str(msg))}", status_code=302)
     # A file input can never be pre-filled with "the image already on this post" (browsers
     # don't allow that, for security reasons) - so an empty file field on a normal re-submit
     # must NOT be read as "remove the image", or every text-only edit would silently wipe out
