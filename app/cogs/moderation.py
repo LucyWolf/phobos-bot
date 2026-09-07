@@ -16,7 +16,7 @@ class Moderation(commands.Cog):
     async def kick(self, interaction: discord.Interaction, member: discord.Member, reason: str = "Kein Grund angegeben"):
         try:
             await member.kick(reason=reason)
-        except discord.HTTPException as e:
+        except (discord.HTTPException, OSError) as e:
             await interaction.response.send_message(f"Kick fehlgeschlagen: {e}", ephemeral=True)
             return
         await log_mod_action("kick", member, interaction.user, interaction.guild_id, reason)
@@ -27,7 +27,7 @@ class Moderation(commands.Cog):
     async def ban(self, interaction: discord.Interaction, member: discord.Member, reason: str = "Kein Grund angegeben"):
         try:
             await member.ban(reason=reason)
-        except discord.HTTPException as e:
+        except (discord.HTTPException, OSError) as e:
             await interaction.response.send_message(f"Bann fehlgeschlagen: {e}", ephemeral=True)
             return
         await log_mod_action("ban", member, interaction.user, interaction.guild_id, reason)
@@ -39,7 +39,7 @@ class Moderation(commands.Cog):
         try:
             user = await self.bot.fetch_user(int(user_id))
             await interaction.guild.unban(user, reason=reason)
-        except (discord.HTTPException, ValueError) as e:
+        except (discord.HTTPException, ValueError, OSError) as e:
             await interaction.response.send_message(f"Entbannen fehlgeschlagen: {e}", ephemeral=True)
             return
         await log_mod_action("unban", user, interaction.user, interaction.guild_id, reason)
@@ -51,7 +51,7 @@ class Moderation(commands.Cog):
         until = discord.utils.utcnow() + datetime.timedelta(minutes=minutes)
         try:
             await member.timeout(until, reason=reason)
-        except discord.HTTPException as e:
+        except (discord.HTTPException, OSError) as e:
             await interaction.response.send_message(f"Timeout fehlgeschlagen: {e}", ephemeral=True)
             return
         await log_mod_action("timeout", member, interaction.user, interaction.guild_id, reason)
@@ -107,13 +107,17 @@ class Moderation(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         try:
             deleted = await interaction.channel.purge(limit=amount)
-        except discord.HTTPException as e:
+        except (discord.HTTPException, OSError) as e:
             # Unlike every other command in this cog, this call had no try/except at all -
             # missing "Manage Messages"/"Read Message History", or messages older than
             # Discord's 14-day bulk-delete window, would raise here. Since defer() already
             # ran, an unhandled exception would leave the interaction stuck "thinking..."
             # forever instead of ever getting a followup - same failure mode already fixed
             # elsewhere in the project for a bare API call after a defer() (e.g. giveaways).
+            # OSError included alongside HTTPException for the same reason it's now caught
+            # throughout this project: discord.py 2.3.2's http.py retry loop only retries a
+            # caught OSError on macOS/Windows-specific errno codes, re-raising it unwrapped on
+            # Linux (this project's actual runtime) for every other connection failure.
             await interaction.followup.send(f"Löschen fehlgeschlagen: {e}", ephemeral=True)
             return
         await interaction.followup.send(f"{len(deleted)} Nachrichten gelöscht.", ephemeral=True)

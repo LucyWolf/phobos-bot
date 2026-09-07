@@ -128,12 +128,25 @@ class AutoKick(commands.Cog):
                 # unmarked members never get swept up by turning the feature on.
                 continue
             elapsed = now - joined_at
-            if elapsed >= kick_delta:
-                await self._kick(guild, member)
-                continue
-            for reminder in cfg["reminders"]:
-                if elapsed >= datetime.timedelta(hours=reminder["hours"]):
-                    await self._remind_if_needed(guild, member, reminder, cfg["kick_hours"])
+            try:
+                if elapsed >= kick_delta:
+                    await self._kick(guild, member)
+                    continue
+                for reminder in cfg["reminders"]:
+                    if elapsed >= datetime.timedelta(hours=reminder["hours"]):
+                        await self._remind_if_needed(guild, member, reminder, cfg["kick_hours"])
+            except Exception as e:
+                # One member's failure (most realistically a genuine network-level OSError from
+                # member.send()/guild.kick() - discord.py 2.3.2's http.py retry loop only
+                # retries a caught OSError on macOS/Windows-specific errno codes, re-raising it
+                # unwrapped on Linux, this project's actual runtime, for every other connection
+                # failure) mustn't stop every other member in this SAME guild from being checked
+                # in this tick - same per-item isolation used throughout this project. Left
+                # un-recorded here (no auto_kick_sent row written) so this member's reminder/
+                # kick is retried next tick instead of being silently skipped forever, unlike a
+                # genuine discord.HTTPException from Discord itself (still handled inside
+                # _kick()/_remind_if_needed() as a definite, non-retried rejection).
+                print(f"[AutoKick] Prüfung für Mitglied {member.id} in Guild {guild.id} fehlgeschlagen: {e}")
 
     async def _remind_if_needed(self, guild: discord.Guild, member: discord.Member, reminder: dict, kick_hours: int):
         joined_iso = member.joined_at.isoformat()
@@ -172,7 +185,7 @@ class AutoKick(commands.Cog):
         except discord.Forbidden:
             # Missing "Mitglieder kicken" permission - nothing to clean up, just retry next tick.
             return
-        except discord.HTTPException as e:
+        except (discord.HTTPException, OSError) as e:
             print(f"[AutoKick] Kick von {member.id} in Guild {guild.id} fehlgeschlagen: {e}")
             return
         await db_exec(

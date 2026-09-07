@@ -2120,7 +2120,7 @@ async def bot_design_save(
             await target.user.edit(**kwargs)
         else:
             return RedirectResponse(f"{redirect_base}&error=Keine+Änderungen", status_code=302)
-    except discord.HTTPException as e:
+    except (discord.HTTPException, OSError) as e:
         return RedirectResponse(f"{redirect_base}&error={urllib.parse.quote(str(e)[:80])}", status_code=302)
     return RedirectResponse(f"{redirect_base}&success=Gespeichert", status_code=302)
 
@@ -3448,8 +3448,15 @@ async def events_create(request: Request, guild_id: int):
 
     try:
         event = await guild.create_scheduled_event(**kwargs)
-    except discord.HTTPException as e:
-        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Discord-Fehler:+{e.text}", status_code=302)
+    except (discord.HTTPException, OSError) as e:
+        # Same three-part fix already established for Embed-Nachrichten's identical pattern:
+        # OSError caught alongside HTTPException (discord.py 2.3.2's http.py re-raises a real
+        # network failure unwrapped on Linux, this project's actual runtime), _discord_error_text()
+        # used instead of a bare e.text (OSError has no .text attribute, which would otherwise
+        # itself raise AttributeError for that case), and urllib.parse.quote() so a &/%/+ in the
+        # message (e.g. Discord quoting back a rejected URL with a query string) can't get cut
+        # off or garbled by the redirect query string parser.
+        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Discord-Fehler:+{urllib.parse.quote(_discord_error_text(e))}", status_code=302)
 
     if announce_channel_id:
         berlin_tz = ZoneInfo("Europe/Berlin")
@@ -3561,8 +3568,15 @@ async def events_edit(request: Request, guild_id: int, event_id: int):
 
     try:
         await event.edit(**kwargs)
-    except discord.HTTPException as e:
-        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Discord-Fehler:+{e.text}", status_code=302)
+    except (discord.HTTPException, OSError) as e:
+        # Same three-part fix already established for Embed-Nachrichten's identical pattern:
+        # OSError caught alongside HTTPException (discord.py 2.3.2's http.py re-raises a real
+        # network failure unwrapped on Linux, this project's actual runtime), _discord_error_text()
+        # used instead of a bare e.text (OSError has no .text attribute, which would otherwise
+        # itself raise AttributeError for that case), and urllib.parse.quote() so a &/%/+ in the
+        # message (e.g. Discord quoting back a rejected URL with a query string) can't get cut
+        # off or garbled by the redirect query string parser.
+        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Discord-Fehler:+{urllib.parse.quote(_discord_error_text(e))}", status_code=302)
 
     berlin_tz = ZoneInfo("Europe/Berlin")
     pending = await db_rows(
@@ -3602,8 +3616,15 @@ async def events_delete(request: Request, guild_id: int, event_id: int):
         await event.delete()
     except discord.NotFound:
         pass
-    except discord.HTTPException as e:
-        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Discord-Fehler:+{e.text}", status_code=302)
+    except (discord.HTTPException, OSError) as e:
+        # Same three-part fix already established for Embed-Nachrichten's identical pattern:
+        # OSError caught alongside HTTPException (discord.py 2.3.2's http.py re-raises a real
+        # network failure unwrapped on Linux, this project's actual runtime), _discord_error_text()
+        # used instead of a bare e.text (OSError has no .text attribute, which would otherwise
+        # itself raise AttributeError for that case), and urllib.parse.quote() so a &/%/+ in the
+        # message (e.g. Discord quoting back a rejected URL with a query string) can't get cut
+        # off or garbled by the redirect query string parser.
+        return RedirectResponse(f"/servers/{guild_id}?tab=events&error=Discord-Fehler:+{urllib.parse.quote(_discord_error_text(e))}", status_code=302)
     await db_exec("DELETE FROM scheduled_messages WHERE event_id=? AND sent=0", (str(event_id),))
     return RedirectResponse(f"/servers/{guild_id}?tab=events&success=Event+gelöscht", status_code=302)
 

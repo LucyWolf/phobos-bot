@@ -154,8 +154,17 @@ class Giveaways(commands.Cog):
         )
         embed.set_footer(text=f"Endet am {ends_at.strftime('%d.%m.%Y %H:%M')} UTC")
         await interaction.response.defer(ephemeral=True)
-        msg = await interaction.channel.send(embed=embed)
-        await msg.add_reaction(GIVEAWAY_EMOJI)
+        try:
+            msg = await interaction.channel.send(embed=embed)
+            await msg.add_reaction(GIVEAWAY_EMOJI)
+        except (discord.HTTPException, OSError) as e:
+            # defer() already ran above - an unhandled exception here (missing "Send Messages"/
+            # "Add Reactions", or a genuine network-level OSError; discord.py 2.3.2's http.py
+            # re-raises a real connection failure unwrapped on Linux, this project's actual
+            # runtime) would otherwise leave the interaction stuck "thinking..." forever instead
+            # of ever getting a followup, with no giveaway ever actually created.
+            await interaction.followup.send(f"Giveaway konnte nicht gestartet werden: {e}", ephemeral=True)
+            return
 
         gid = await db_insert(
             "INSERT INTO giveaways (guild_id,channel_id,message_id,prize,winners,ends_at,created_by) VALUES (?,?,?,?,?,?,?)",

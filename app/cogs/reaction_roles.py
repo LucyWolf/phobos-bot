@@ -151,10 +151,16 @@ class ReactionRoles(commands.Cog):
                 await member.add_roles(role, reason="Reaction Role")
             else:
                 await member.remove_roles(role, reason="Reaction Role")
-        except discord.HTTPException as e:
+        except (discord.HTTPException, OSError) as e:
             # This is the actual core of the feature failing (missing "Manage Roles", the
             # role sitting above the bot's own top role, ...) with zero other way for an admin
             # to ever find out - there's no interaction to reply to here, only the console log.
+            # OSError included alongside HTTPException for the same reason it's now caught
+            # throughout this project: discord.py 2.3.2's http.py retry loop only retries a
+            # caught OSError on macOS/Windows-specific errno codes, re-raising it unwrapped on
+            # Linux (this project's actual runtime) for every other connection failure - without
+            # this, a network hiccup here would propagate out of the raw-reaction event handler
+            # entirely, silently skipping even this console log line.
             print(f"[ReactionRoles] {'add' if add else 'remove'}_roles failed for role {role.id} in guild {payload.guild_id}: {e}")
 
 

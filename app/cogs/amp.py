@@ -638,13 +638,13 @@ class AMP(commands.Cog):
             if match["state"] == "online":
                 try:
                     await interaction.followup.send(f"🟢 **{name}**{game} ist jetzt online!", ephemeral=True)
-                except discord.HTTPException:
+                except (discord.HTTPException, OSError):
                     pass
                 return
             if match["state"] == "error":
                 try:
                     await interaction.followup.send(f"🔴 **{name}**{game} meldet einen Fehler beim Starten.", ephemeral=True)
-                except discord.HTTPException:
+                except (discord.HTTPException, OSError):
                     pass
                 return
 
