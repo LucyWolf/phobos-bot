@@ -6243,7 +6243,13 @@ async def _role_rule_form_data(request: Request, guild: discord.Guild, form) -> 
     if not _role_rule_match_type_valid(match_type):
         return None, "Ungültige+Bedingung"
     valid_role_ids = {str(ro.id) for ro in guild.roles if not ro.is_default()}
-    match_role_ids = [r for r in form.getlist("match_role_ids") if r in valid_role_ids]
+    # dict.fromkeys(...) dedupes while keeping first-seen order - a normal checkbox list can
+    # never submit the same value twice on its own, but a hand-crafted/replayed request could,
+    # and without this a duplicate id lands in the stored comma-list verbatim: harmless for
+    # _matches()'s own set-based evaluation (which dedupes implicitly), but the dashboard's
+    # read-only summary row builds its role-name list from a plain list comprehension over the
+    # same string, so a stored "500,500" visibly renders as "@Member, @Member" twice.
+    match_role_ids = list(dict.fromkeys(r for r in form.getlist("match_role_ids") if r in valid_role_ids))
     if not match_role_ids:
         return None, "Mindestens+eine+Bedingungs-Rolle+erforderlich"
     action = form.get("action", "add")
@@ -6257,7 +6263,7 @@ async def _role_rule_form_data(request: Request, guild: discord.Guild, form) -> 
     if not target_guild:
         return None, "Zielserver+nicht+gefunden"
     valid_action_role_ids = {str(ro.id) for ro in target_guild.roles if not ro.is_default()}
-    action_role_ids = [r for r in form.getlist("action_role_ids") if r in valid_action_role_ids]
+    action_role_ids = list(dict.fromkeys(r for r in form.getlist("action_role_ids") if r in valid_action_role_ids))
     if not action_role_ids:
         return None, "Mindestens+eine+Aktions-Rolle+erforderlich"
     try:
