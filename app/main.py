@@ -5765,6 +5765,18 @@ async def _fetch_embed_starter_message(thread):
     return thread.starter_message or await thread.fetch_message(thread.id)
 
 
+def _discord_error_text(e: Exception) -> str:
+    """Human-readable text for an exception raised by a Discord send/edit call - discord.py's
+    HTTPException carries the actual API error message on .text, but a genuine network-level
+    failure (DNS/connection-reset/refused) surfaces as a bare OSError instead: confirmed by
+    reading discord.py 2.3.2's own http.py, whose request() retry loop only retries a caught
+    OSError on macOS/Windows-specific errno codes (54/10054) and re-raises it unwrapped
+    otherwise - on Linux (this project's actual runtime) that's every realistic connection
+    failure. OSError has no .text attribute, so building the message via e.text unconditionally
+    would itself raise AttributeError for that case - str(e) covers it instead."""
+    return getattr(e, "text", None) or str(e)
+
+
 @web.post("/servers/{guild_id}/embeds/create")
 async def embed_post_create(request: Request, guild_id: int):
     if r := auth_redirect(request): return r
@@ -5831,8 +5843,8 @@ async def embed_post_create(request: Request, guild_id: int):
     files = _embed_post_files(image_data_b64 or "", image_filename or "")
     try:
         new_message_id, new_thread_id = await _post_embed_content(channel, name, embeds, files, applied_tags)
-    except discord.HTTPException as e:
-        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
+    except (discord.HTTPException, OSError) as e:
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{_discord_error_text(e)}", status_code=302)
     await db_exec(
         "INSERT INTO embed_posts (guild_id, name, channel_id, content, message_id, image_url, footer_text, image_data, image_filename, thread_id, applied_tags) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
@@ -5934,8 +5946,8 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
         new_ch = target_channel
         try:
             new_message_id, new_thread_id = await _post_embed_content(new_ch, name, embeds, files, applied_tags)
-        except discord.HTTPException as e:
-            return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
+        except (discord.HTTPException, OSError) as e:
+            return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{_discord_error_text(e)}", status_code=302)
     else:
         ch = target_channel
         if post.get("thread_id"):
@@ -5961,8 +5973,8 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
                 # fresh thread instead of silently leaving the saved content with nothing live.
                 try:
                     new_message_id, new_thread_id = await _post_embed_content(ch, name, embeds, files, applied_tags)
-                except discord.HTTPException as e:
-                    return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
+                except (discord.HTTPException, OSError) as e:
+                    return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{_discord_error_text(e)}", status_code=302)
             except Exception as e:
                 return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e}", status_code=302)
         elif post["message_id"]:
@@ -5978,8 +5990,8 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
                 # silently leaving the saved content with no actual message behind it.
                 try:
                     new_message_id, new_thread_id = await _post_embed_content(ch, name, embeds, files, applied_tags)
-                except discord.HTTPException as e:
-                    return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
+                except (discord.HTTPException, OSError) as e:
+                    return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{_discord_error_text(e)}", status_code=302)
             except Exception as e:
                 return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e}", status_code=302)
         else:
@@ -5988,8 +6000,8 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
             # fresh instead of silently saving the new content with nothing live behind it.
             try:
                 new_message_id, new_thread_id = await _post_embed_content(ch, name, embeds, files, applied_tags)
-            except discord.HTTPException as e:
-                return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{e.text}", status_code=302)
+            except (discord.HTTPException, OSError) as e:
+                return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Discord-Fehler:+{_discord_error_text(e)}", status_code=302)
     await db_exec(
         "UPDATE embed_posts SET name=?, channel_id=?, content=?, message_id=?, image_url=?, footer_text=?, image_data=?, image_filename=?, thread_id=?, applied_tags=? "
         "WHERE id=? AND guild_id=?",
