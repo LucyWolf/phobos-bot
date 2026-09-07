@@ -5859,6 +5859,14 @@ async def embed_post_create(request: Request, guild_id: int):
         # Discord rejection - found live ("der sagt das der tag fehlt ich kan keinen
         # eintragen"): this forum requires at least one tag on every new post.
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Dieses+Forum+erfordert+mindestens+einen+Tag", status_code=302)
+    if is_forum and len(applied_tags) > 5:
+        # Same "catch it here with a clear cause" spirit as the require_tag check just above,
+        # for the OTHER end of the same limit - discord.py's own Thread.edit() docstring states
+        # it outright ("There can only be up to 5 tags applied to a thread") but never actually
+        # enforces it client-side, so selecting more than 5 from a forum that happens to offer
+        # more than 5 tags would otherwise only surface as a raw, confusing Discord API
+        # rejection at create_thread() time instead of a clear dashboard message.
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Maximal+5+Tags+pro+Forum-Beitrag+erlaubt", status_code=302)
     content = _djson.dumps(blocks)
     embeds = _build_freeform_embeds(content, image_url, footer_text, image_filename or "")
     files = _embed_post_files(image_data_b64 or "", image_filename or "")
@@ -5934,6 +5942,9 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
     applied_tags = _resolve_forum_tags(target_channel, tag_ids) if is_forum else []
     if is_forum and target_channel.flags.require_tag and not applied_tags:
         return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Dieses+Forum+erfordert+mindestens+einen+Tag", status_code=302)
+    if is_forum and len(applied_tags) > 5:
+        # Same as the identical check in embed_post_create - see the comment there.
+        return RedirectResponse(f"/servers/{guild_id}?tab=embeds&error=Maximal+5+Tags+pro+Forum-Beitrag+erlaubt", status_code=302)
     try:
         new_image_data_b64, new_image_filename = await _read_embed_image_upload(image_file)
     except ValueError as msg:
