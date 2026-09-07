@@ -345,14 +345,14 @@ class Welcome(commands.Cog):
                             embed = discord.Embed(description=fill(message, member), color=0x22c55e)
                             embed.set_author(name=str(member), icon_url=member.display_avatar.url)
                             await channel.send(embed=embed)
-                        except discord.HTTPException as e2:
+                        except (discord.HTTPException, OSError) as e2:
                             print(f"[Welcome] fallback plain embed also failed for {member} in guild {member.guild.id}: {e2}")
             elif message:
                 try:
                     embed = discord.Embed(description=fill(message, member), color=0x22c55e)
                     embed.set_author(name=str(member), icon_url=member.display_avatar.url)
                     await channel.send(embed=embed)
-                except discord.HTTPException as e:
+                except (discord.HTTPException, OSError) as e:
                     print(f"[Welcome] welcome message failed for {member} in guild {member.guild.id}: {e}")
 
         role_id = await get_guild_config(member.guild.id, "autorole")
@@ -364,12 +364,17 @@ class Welcome(commands.Cog):
             if role:
                 try:
                     await member.add_roles(role, reason="Autorole")
-                except discord.HTTPException as e:
+                except (discord.HTTPException, OSError) as e:
                     # Missing "Manage Roles", the role sitting above the bot's own top role,
                     # ... - previously unhandled, which would otherwise propagate out of this
                     # listener silently (discord.py's default per-event error handling logs it,
                     # but there's no other way for an admin to ever find out autorole stopped
-                    # working for every new member).
+                    # working for every new member). OSError alongside HTTPException: discord.py's
+                    # own http.py re-raises a bare OSError (not wrapped into HTTPException) for a
+                    # genuine network-level failure - confirmed by reading its request() retry
+                    # loop, which only retries a caught OSError on macOS/Windows-specific errno
+                    # codes (54/10054) and re-raises unchanged otherwise, which on Linux (this
+                    # project's actual runtime) is every realistic connection-reset/refused case.
                     print(f"[Welcome] autorole failed for {member} in guild {member.guild.id}: {e}")
 
     @commands.Cog.listener()
@@ -387,7 +392,7 @@ class Welcome(commands.Cog):
                 embed = discord.Embed(description=fill(message, member), color=0xef4444)
                 embed.set_author(name=str(member), icon_url=member.display_avatar.url)
                 await channel.send(embed=embed)
-            except discord.HTTPException as e:
+            except (discord.HTTPException, OSError) as e:
                 print(f"[Welcome] leave message failed for {member} in guild {member.guild.id}: {e}")
 
 
