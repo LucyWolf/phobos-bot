@@ -2502,7 +2502,7 @@ function updateAmpCmdPreview(id, action, value) {
           <div id="tag-picker-new-{{ ch.id }}" class="embed-tag-picker" style="display:none;margin-top:0.5rem;padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;">
             <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.35rem;">{{ tr.embeds_tags_label }}{% if ch.require_tag %} ({{ tr.embeds_tags_required_hint }}){% endif %}</div>
             {% for t in ch.tags %}<label style="display:inline-flex;align-items:center;gap:0.25rem;font-size:0.78rem;margin-right:0.75rem;margin-bottom:0.3rem;">
-              <input type="checkbox" name="tag_ids" value="{{ t.id }}" disabled> {% if t.emoji %}{{ t.emoji }} {% endif %}{{ t.name }}
+              <input type="checkbox" name="tag_ids" value="{{ t.id }}" disabled> {% if t.emoji_url %}<img src="{{ t.emoji_url }}" alt="" style="width:14px;height:14px;vertical-align:-2px;"> {% elif t.emoji %}{{ t.emoji }} {% endif %}{{ t.name }}
             </label>{% endfor %}
           </div>
           {% endif %}{% endfor %}
@@ -2578,7 +2578,7 @@ function updateAmpCmdPreview(id, action, value) {
                   <div id="tag-picker-{{ ep.id }}-{{ ch.id }}" class="embed-tag-picker" style="display:{{ 'block' if is_current else 'none' }};margin-top:0.5rem;padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;">
                     <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.35rem;">{{ tr.embeds_tags_label }}{% if ch.require_tag %} ({{ tr.embeds_tags_required_hint }}){% endif %}</div>
                     {% for t in ch.tags %}<label style="display:inline-flex;align-items:center;gap:0.25rem;font-size:0.78rem;margin-right:0.75rem;margin-bottom:0.3rem;">
-                      <input type="checkbox" name="tag_ids" value="{{ t.id }}" {% if not is_current %}disabled{% endif %} {% if is_current and t.id in ep.applied_tags_list %}checked{% endif %}> {% if t.emoji %}{{ t.emoji }} {% endif %}{{ t.name }}
+                      <input type="checkbox" name="tag_ids" value="{{ t.id }}" {% if not is_current %}disabled{% endif %} {% if is_current and t.id in ep.applied_tags_list %}checked{% endif %}> {% if t.emoji_url %}<img src="{{ t.emoji_url }}" alt="" style="width:14px;height:14px;vertical-align:-2px;"> {% elif t.emoji %}{{ t.emoji }} {% endif %}{{ t.name }}
                     </label>{% endfor %}
                   </div>
                   {% endif %}{% endfor %}

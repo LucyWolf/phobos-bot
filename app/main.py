@@ -4471,7 +4471,17 @@ async def server_config(
         [{"id": str(c.id), "name": c.name, "is_forum": False, "tags": [], "require_tag": False}
          for c in guild.text_channels]
         + [{"id": str(c.id), "name": c.name, "is_forum": True, "require_tag": c.flags.require_tag,
-            "tags": [{"id": str(t.id), "name": t.name, "emoji": str(t.emoji) if t.emoji else ""}
+            # A custom (server-uploaded) tag emoji str()s to raw Discord markup like
+            # "<:pog:123...>" - rendering that literally in the tag picker would show that
+            # exact ugly text next to the tag name instead of an actual emoji, since HTML has
+            # no idea what that syntax means. emoji_url (PartialEmoji.url, Discord's own CDN
+            # link for custom emoji, empty for a plain unicode one) lets the template show a
+            # real <img> for a custom emoji instead - a unicode emoji has no url and keeps
+            # rendering directly via the plain "emoji" text field, unicode already displays
+            # correctly on its own.
+            "tags": [{"id": str(t.id), "name": t.name,
+                      "emoji": str(t.emoji) if t.emoji and not t.emoji.is_custom_emoji() else "",
+                      "emoji_url": t.emoji.url if t.emoji and t.emoji.is_custom_emoji() else ""}
                      for t in c.available_tags]}
            for c in guild.forums]
     )
