@@ -5858,6 +5858,107 @@ async def _resolve_poll_option_image(
     return "", "", ""
 
 
+def _clamp_poll_image_width(raw_width: str) -> int:
+    """Sanitizes the submitted custom-width field to a safe pixel range (50-2000) - defends
+    against a manipulated raw POST as much as it validates real input; a value outside this
+    range is silently clamped rather than rejecting the whole save, since it's a minor cosmetic
+    knob, not something worth failing the entire poll save over."""
+    try:
+        w = int(raw_width)
+    except (TypeError, ValueError):
+        return 0
+    if w <= 0:
+        return 0
+    return max(50, min(2000, w))
+
+
+_POLL_IMAGE_FETCH_TIMEOUT = aiohttp.ClientTimeout(total=8)
+_POLL_IMAGE_FETCH_MAX_BYTES = 8_000_000
+
+
+async def _fetch_image_bytes(url: str) -> bytes:
+    """Downloads a poll option's image so it can be resized (see _resize_image_bytes) instead
+    of just referencing the external URL directly - only needed for the 'custom' width size
+    mode, where the whole point is that Discord must receive an already-correctly-sized
+    attachment rather than the original, whatever-size image. Never raises: any failure
+    (timeout, non-200, non-image response, oversized body) yields b"", and the caller falls
+    back to leaving the image as a plain URL at its original size rather than losing it."""
+    try:
+        async with aiohttp.ClientSession(timeout=_POLL_IMAGE_FETCH_TIMEOUT) as session:
+            headers = {"User-Agent": "Mozilla/5.0 (compatible; PhobosBot/1.0; +poll-image)"}
+            async with session.get(url, headers=headers) as resp:
+                if resp.status != 200:
+                    return b""
+                chunks, total = [], 0
+                async for chunk in resp.content.iter_chunked(8192):
+                    chunks.append(chunk)
+                    total += len(chunk)
+                    if total > _POLL_IMAGE_FETCH_MAX_BYTES:
+                        return b""
+                return b"".join(chunks)
+    except Exception:
+        return b""
+
+
+def _resize_image_bytes(data: bytes, target_width: int) -> tuple:
+    """Resizes raw image bytes to exactly target_width pixels wide (aspect ratio preserved,
+    LANCZOS resampling) and re-encodes as PNG - the actual mechanism behind the 'custom' poll
+    option image size: Discord renders an attached image at its real pixel dimensions (not
+    stretched to fill the embed), so shrinking the file itself is the only way to get a size
+    between the fixed ~80px thumbnail and the full-width large image. Keeps RGBA if the source
+    has transparency, RGB otherwise. Returns (resized_bytes, "") on success, ("", error) on
+    failure (not a real image, corrupt data) - caller decides the fallback, same "return instead
+    of raise" convention as the rest of this file's image helpers.
+    Deliberately does NOT try to preserve GIF animation - a resized frame is always a static
+    PNG, an acceptable trade-off for a feature whose whole point is an exact pixel size."""
+    try:
+        img = Image.open(io.BytesIO(data))
+        img.load()
+        img = img.convert("RGBA" if img.mode in ("RGBA", "LA", "P") else "RGB")
+    except Exception:
+        return "", "Ungültiges Bildformat"
+    if img.width <= 0:
+        return "", "Ungültiges Bildformat"
+    target_height = max(1, round(img.height * (target_width / img.width)))
+    img = img.resize((target_width, target_height), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue(), ""
+
+
+async def _apply_poll_option_custom_width(image_url: str, image_data_b64: str, image_filename: str,
+                                            size: str, target_width: int, index: int) -> tuple:
+    """Second pass after _resolve_poll_option_image(): if size=='custom' and a target width was
+    given, turns whatever image the option ended up with (an uploaded/kept attachment, or a
+    plain URL - typed, auto-fetched, or picked from the link preview gallery) into a resized
+    attachment at exactly that width, since Discord can only render an image at a size other
+    than the two built-in variants (see image_size's schema comment) via a real attachment's
+    actual pixel dimensions, never via a URL alone. Leaves the option's image completely
+    unchanged for size in ('large', 'small') or when no width was set - this only ever narrows
+    what 'custom' already resolved to, it never runs for the other two modes.
+    A download/resize failure falls back to the image exactly as _resolve_poll_option_image left
+    it (still a working URL or attachment, just not resized) rather than losing the image
+    entirely - same "never let an image feature break the rest of saving" principle as
+    _fetch_og_image returning "" on failure instead of raising."""
+    if size != "custom" or target_width <= 0:
+        return image_url, image_data_b64, image_filename
+    if image_data_b64:
+        try:
+            raw = base64.b64decode(image_data_b64)
+        except Exception:
+            return image_url, image_data_b64, image_filename
+    elif image_url:
+        raw = await _fetch_image_bytes(image_url)
+        if not raw:
+            return image_url, image_data_b64, image_filename
+    else:
+        return image_url, image_data_b64, image_filename
+    resized, err = _resize_image_bytes(raw, target_width)
+    if err:
+        return image_url, image_data_b64, image_filename
+    return "", base64.b64encode(resized).decode("ascii"), f"opt{index}_custom.png"
+
+
 async def _read_welcome_bg_upload(upload_file, max_dim: int = 1600) -> str | None:
     """Validates and reads an uploaded welcome-card background image. Unlike
     _read_embed_image_upload above, this ALWAYS re-encodes to PNG and downscales if needed -
@@ -6866,13 +6967,16 @@ async def poll_create_web(request: Request, guild_id: int):
     raw_image_files = form.getlist("option_image_file")
     raw_links = form.getlist("option_link")
     raw_sizes = form.getlist("option_image_size")
+    raw_widths = form.getlist("option_image_width")
     raw_images += [""] * (len(raw_labels) - len(raw_images))
     raw_image_files += [None] * (len(raw_labels) - len(raw_image_files))
     raw_links += [""] * (len(raw_labels) - len(raw_links))
     raw_sizes += ["large"] * (len(raw_labels) - len(raw_sizes))
+    raw_widths += [""] * (len(raw_labels) - len(raw_widths))
     options = [
-        (lbl.strip(), img.strip(), img_file, link.strip(), size if size == "small" else "large")
-        for lbl, img, img_file, link, size in zip(raw_labels, raw_images, raw_image_files, raw_links, raw_sizes)
+        (lbl.strip(), img.strip(), img_file, link.strip(),
+         size if size in ("small", "custom") else "large", _clamp_poll_image_width(width))
+        for lbl, img, img_file, link, size, width in zip(raw_labels, raw_images, raw_image_files, raw_links, raw_sizes, raw_widths)
         if lbl.strip()
     ]
     multiple = bool(form.get("multiple_choice", ""))
@@ -6889,7 +6993,7 @@ async def poll_create_web(request: Request, guild_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Frage+zu+lang+(max.+200+Zeichen)", status_code=302)
     if duration_minutes < 0 or duration_minutes > 10080:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Ungültige+Dauer", status_code=302)
-    for lbl, img, img_file, link, size in options:
+    for lbl, img, img_file, link, size, width in options:
         opt_has_upload = bool(img_file and getattr(img_file, "filename", ""))
         if opt_has_upload and img:
             return RedirectResponse(
@@ -6920,7 +7024,7 @@ async def poll_create_web(request: Request, guild_id: int):
         # returns a generic "image.<ext>") since Discord requires distinct filenames once more
         # than one file rides on the same message - prefixed by option index.
         option_uploads = []
-        for i, (lbl, img, img_file, link, size) in enumerate(options):
+        for i, (lbl, img, img_file, link, size, width) in enumerate(options):
             opt_data_b64, opt_filename = await _read_embed_image_upload(img_file)
             if opt_filename:
                 opt_filename = f"opt{i}_{opt_filename}"
@@ -6943,7 +7047,15 @@ async def poll_create_web(request: Request, guild_id: int):
     # _resolve_poll_option_image's docstring for the full precedence shared with editing.
     resolved_options = await asyncio.gather(*[
         _resolve_poll_option_image(img, bool(opt_filename), opt_data_b64, opt_filename, link, False, None)
-        for (lbl, img, img_file, link, size), (opt_data_b64, opt_filename) in zip(options, option_uploads)
+        for (lbl, img, img_file, link, size, width), (opt_data_b64, opt_filename) in zip(options, option_uploads)
+    ])
+    # Second pass: 'custom'-sized options get their resolved image downloaded/resized to the
+    # requested pixel width (see _apply_poll_option_custom_width) - kept as its own gather()
+    # rather than folded into the one above so a resize failure can never affect the already-
+    # correct precedence result for the other size modes.
+    resolved_options = await asyncio.gather(*[
+        _apply_poll_option_custom_width(url, data, filename, size, width, i)
+        for i, ((lbl, img, img_file, link, size, width), (url, data, filename)) in enumerate(zip(options, resolved_options))
     ])
 
     created_at = datetime.datetime.utcnow().isoformat()
@@ -6958,12 +7070,12 @@ async def poll_create_web(request: Request, guild_id: int):
          final_image_url, final_image_data, final_image_filename),
     )
     files = _embed_post_files(final_image_data, final_image_filename)
-    for i, (label, opt_image, opt_image_file, opt_link, opt_size) in enumerate(options):
+    for i, (label, opt_image, opt_image_file, opt_link, opt_size, opt_width) in enumerate(options):
         opt_final_url, opt_final_data, opt_final_filename = resolved_options[i]
         await db_exec(
-            "INSERT INTO poll_options (poll_id,option_index,label,image_url,link_url,image_data,image_filename,image_size) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            (pid, i, label[:80], opt_final_url[:500], opt_link[:500], opt_final_data, opt_final_filename, opt_size),
+            "INSERT INTO poll_options (poll_id,option_index,label,image_url,link_url,image_data,image_filename,image_size,image_width) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (pid, i, label[:80], opt_final_url[:500], opt_link[:500], opt_final_data, opt_final_filename, opt_size, opt_width),
         )
         files += _embed_post_files(opt_final_data, opt_final_filename)
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
@@ -7085,15 +7197,18 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     raw_image_files = form.getlist("option_image_file")
     raw_links = form.getlist("option_link")
     raw_sizes = form.getlist("option_image_size")
+    raw_widths = form.getlist("option_image_width")
     removed_image_ids = set(form.getlist("option_remove_image"))
     raw_ids += [""] * (len(raw_labels) - len(raw_ids))
     raw_images += [""] * (len(raw_labels) - len(raw_images))
     raw_image_files += [None] * (len(raw_labels) - len(raw_image_files))
     raw_links += [""] * (len(raw_labels) - len(raw_links))
     raw_sizes += ["large"] * (len(raw_labels) - len(raw_sizes))
+    raw_widths += [""] * (len(raw_labels) - len(raw_widths))
     options = [
-        (_safe_int(oid), lbl.strip(), img.strip(), img_file, link.strip(), size if size == "small" else "large")
-        for oid, lbl, img, img_file, link, size in zip(raw_ids, raw_labels, raw_images, raw_image_files, raw_links, raw_sizes)
+        (_safe_int(oid), lbl.strip(), img.strip(), img_file, link.strip(),
+         size if size in ("small", "custom") else "large", _clamp_poll_image_width(width))
+        for oid, lbl, img, img_file, link, size, width in zip(raw_ids, raw_labels, raw_images, raw_image_files, raw_links, raw_sizes, raw_widths)
         if lbl.strip()
     ]
     multiple = bool(form.get("multiple_choice", ""))
@@ -7104,7 +7219,7 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Maximal+25+Optionen+erlaubt", status_code=302)
     if len(question) > 200:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Frage+zu+lang+(max.+200+Zeichen)", status_code=302)
-    for oid, lbl, img, img_file, link, size in options:
+    for oid, lbl, img, img_file, link, size, width in options:
         opt_has_upload = bool(img_file and getattr(img_file, "filename", ""))
         if opt_has_upload and img:
             return RedirectResponse(
@@ -7124,7 +7239,7 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
 
     try:
         option_uploads = []
-        for i, (oid, lbl, img, img_file, link, size) in enumerate(options):
+        for i, (oid, lbl, img, img_file, link, size, width) in enumerate(options):
             opt_data_b64, opt_filename = await _read_embed_image_upload(img_file)
             if opt_filename:
                 opt_filename = f"opt{i}_{opt_filename}"
@@ -7145,7 +7260,13 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
             str(oid) in removed_image_ids if oid is not None else False,
             existing_by_id.get(oid) if oid is not None else None,
         )
-        for (oid, lbl, img, img_file, link, size), (opt_data_b64, opt_filename) in zip(options, option_uploads)
+        for (oid, lbl, img, img_file, link, size, width), (opt_data_b64, opt_filename) in zip(options, option_uploads)
+    ])
+    # Same second pass as poll_create_web: only actually resizes anything for options whose
+    # size mode is 'custom' with a width set, everything else passes through unchanged.
+    resolved_options = await asyncio.gather(*[
+        _apply_poll_option_custom_width(url, data, filename, size, width, i)
+        for i, ((oid, lbl, img, img_file, link, size, width), (url, data, filename)) in enumerate(zip(options, resolved_options))
     ])
 
     submitted_ids = {oid for oid, *_ in options if oid is not None}
@@ -7157,18 +7278,18 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
         await db_exec("DELETE FROM poll_options WHERE id=?", (removed_id,))
         await db_exec("DELETE FROM poll_votes WHERE poll_id=? AND option_id=?", (poll_id, removed_id))
 
-    for i, (oid, label, opt_image, opt_image_file, opt_link, opt_size) in enumerate(options):
+    for i, (oid, label, opt_image, opt_image_file, opt_link, opt_size, opt_width) in enumerate(options):
         opt_final_url, opt_final_data, opt_final_filename = resolved_options[i]
         if oid is not None and oid in existing_by_id:
             await db_exec(
-                "UPDATE poll_options SET option_index=?, label=?, image_url=?, link_url=?, image_data=?, image_filename=?, image_size=? WHERE id=?",
-                (i, label[:80], opt_final_url[:500], opt_link[:500], opt_final_data, opt_final_filename, opt_size, oid),
+                "UPDATE poll_options SET option_index=?, label=?, image_url=?, link_url=?, image_data=?, image_filename=?, image_size=?, image_width=? WHERE id=?",
+                (i, label[:80], opt_final_url[:500], opt_link[:500], opt_final_data, opt_final_filename, opt_size, opt_width, oid),
             )
         else:
             await db_exec(
-                "INSERT INTO poll_options (poll_id,option_index,label,image_url,link_url,image_data,image_filename,image_size) "
-                "VALUES (?,?,?,?,?,?,?,?)",
-                (poll_id, i, label[:80], opt_final_url[:500], opt_link[:500], opt_final_data, opt_final_filename, opt_size),
+                "INSERT INTO poll_options (poll_id,option_index,label,image_url,link_url,image_data,image_filename,image_size,image_width) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (poll_id, i, label[:80], opt_final_url[:500], opt_link[:500], opt_final_data, opt_final_filename, opt_size, opt_width),
             )
 
     # Deliberately not cleaned up: if multiple_choice is switched off while a user already has

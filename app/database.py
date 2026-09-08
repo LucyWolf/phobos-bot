@@ -740,6 +740,15 @@ async def init_db():
             # (Embed.set_thumbnail, a small square in the embed's top-right corner). Default
             # 'large' preserves the exact existing look for every option created before this.
             "ALTER TABLE poll_options ADD COLUMN image_size TEXT NOT NULL DEFAULT 'large'",
+            # Follow-up: 'large'/'small' only expose Discord's two native embed-image variants,
+            # with no size in between - user asked for a real adjustable in-between size after
+            # finding 'small' (the fixed ~80x80px thumbnail) too small for what they wanted.
+            # image_size gains a third value 'custom': when set, the image is actually resized
+            # server-side (via Pillow, see _resize_image_bytes in main.py) to image_width pixels
+            # wide before being attached, so Discord renders it at that real pixel size via
+            # set_image() instead of being locked to the thumbnail's fixed square. 0 (default)
+            # means "no custom width set" - only meaningful when image_size == 'custom'.
+            "ALTER TABLE poll_options ADD COLUMN image_width INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await db.execute(col)
