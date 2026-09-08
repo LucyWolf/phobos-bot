@@ -1263,23 +1263,11 @@ document.addEventListener('click', function(e) {
                     <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" value="{{ opt.link_url }}" style="margin:0;flex:1;font-size:0.78rem;">
                     <button type="button" class="btn btn-secondary" onclick="previewPollOptionLink(this)" title="{{ tr.polls_btn_preview }}" style="padding:0.25rem 0.5rem;font-size:0.72rem;">🔍</button>
                   </div>
-                  <img class="poll-option-preview-img" hidden style="max-width:80px;max-height:80px;border-radius:0.3rem;">
+                  <div class="poll-option-preview-gallery" style="display:flex;gap:0.3rem;flex-wrap:wrap;"></div>
                 </div>
                 {% endfor %}
               </div>
               <button type="button" class="btn btn-secondary" onclick="addPollOption('poll-options-edit-{{ p.id }}')" style="font-size:0.75rem;padding:0.3rem 0.7rem;margin-bottom:0.75rem;">{{ tr.polls_add_option }}</button>
-              <label>{{ tr.polls_image_label }}</label>
-              <input type="url" name="image_url" placeholder="{{ tr.polls_image_placeholder }}" value="{{ p.image_url }}" style="margin-bottom:0;">
-              <input type="file" name="image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin-top:0.4rem;margin-bottom:0.2rem;font-size:0.78rem;">
-              {% if p.image_url or p.image_filename %}
-              <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
-                <img src="{{ ('/servers/' ~ guild.id ~ '/polls/' ~ p.id ~ '/image') if p.image_filename else p.image_url }}" style="max-width:70px;max-height:70px;border-radius:0.3rem;">
-                <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.72rem;font-weight:400;margin:0;">
-                  <input type="checkbox" name="remove_image" value="1" style="width:auto;margin:0;"> {{ tr.embeds_remove_image_label }}
-                </label>
-              </div>
-              {% endif %}
-              <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.75rem;">{{ tr.polls_image_either_hint }}</div>
               <label><input type="checkbox" name="multiple_choice" value="1" style="width:auto;display:inline;margin-right:0.4rem;" {% if p.multiple_choice %}checked{% endif %}> {{ tr.polls_multiple_label }}</label>
               <button type="submit" class="btn btn-primary" style="margin-top:0.75rem;">{{ tr.btn_save }}</button>
             </form>
@@ -1315,7 +1303,7 @@ document.addEventListener('click', function(e) {
           <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
           <button type="button" class="btn btn-secondary" onclick="previewPollOptionLink(this)" title="{{ tr.polls_btn_preview }}" style="padding:0.25rem 0.5rem;font-size:0.72rem;">🔍</button>
         </div>
-        <img class="poll-option-preview-img" hidden style="max-width:80px;max-height:80px;border-radius:0.3rem;">
+        <div class="poll-option-preview-gallery" style="display:flex;gap:0.3rem;flex-wrap:wrap;"></div>
       </div>
       <div class="poll-option-row" style="display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.6rem;padding:0.5rem;border:1px solid var(--border);border-radius:0.5rem;">
         <input type="text" name="option" maxlength="80" required placeholder="{{ tr.polls_option_placeholder }} 2" style="margin:0;">
@@ -1327,14 +1315,10 @@ document.addEventListener('click', function(e) {
           <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
           <button type="button" class="btn btn-secondary" onclick="previewPollOptionLink(this)" title="{{ tr.polls_btn_preview }}" style="padding:0.25rem 0.5rem;font-size:0.72rem;">🔍</button>
         </div>
-        <img class="poll-option-preview-img" hidden style="max-width:80px;max-height:80px;border-radius:0.3rem;">
+        <div class="poll-option-preview-gallery" style="display:flex;gap:0.3rem;flex-wrap:wrap;"></div>
       </div>
     </div>
     <button type="button" class="btn btn-secondary" onclick="addPollOption('poll-options-new')" style="font-size:0.75rem;padding:0.3rem 0.7rem;margin-bottom:0.75rem;">{{ tr.polls_add_option }}</button>
-    <label>{{ tr.polls_image_label }}</label>
-    <input type="url" name="image_url" placeholder="{{ tr.polls_image_placeholder }}" style="margin-bottom:0;">
-    <input type="file" name="image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin-top:0.4rem;margin-bottom:0.2rem;font-size:0.78rem;">
-    <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.75rem;">{{ tr.polls_image_either_hint }}</div>
     <div class="grid-2">
       <div>
         <label><input type="checkbox" name="multiple_choice" value="1" style="width:auto;display:inline;margin-right:0.4rem;"> {{ tr.polls_multiple_label }}</label>
@@ -1403,29 +1387,41 @@ function addPollOption(containerId) {
   previewBtn.textContent = '🔍';
   previewBtn.onclick = function() { previewPollOptionLink(previewBtn); };
   linkRow.appendChild(linkInput); linkRow.appendChild(previewBtn);
-  const previewImg = document.createElement('img');
-  previewImg.className = 'poll-option-preview-img';
-  previewImg.hidden = true;
-  previewImg.style.cssText = 'max-width:80px;max-height:80px;border-radius:0.3rem;';
-  row.appendChild(topRow); row.appendChild(extrasRow); row.appendChild(linkRow); row.appendChild(previewImg);
+  const gallery = document.createElement('div');
+  gallery.className = 'poll-option-preview-gallery';
+  gallery.style.cssText = 'display:flex;gap:0.3rem;flex-wrap:wrap;';
+  row.appendChild(topRow); row.appendChild(extrasRow); row.appendChild(linkRow); row.appendChild(gallery);
   container.appendChild(row);
   input.focus();
 }
 function previewPollOptionLink(button) {
   const row = button.closest('.poll-option-row');
   const linkInput = row.querySelector('input[name="option_link"]');
-  const img = row.querySelector('.poll-option-preview-img');
+  const imageInput = row.querySelector('input[name="option_image"]');
+  const gallery = row.querySelector('.poll-option-preview-gallery');
   const url = linkInput ? linkInput.value.trim() : '';
-  if (!url) { img.hidden = true; return; }
+  gallery.innerHTML = '';
+  if (!url) return;
   button.disabled = true;
   fetch('/servers/' + POLLS_GUILD_ID + '/polls/preview-link-image', {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
     body: 'url=' + encodeURIComponent(url),
   }).then(function(r) { return r.json(); }).then(function(data) {
-    if (data.image_url) { img.src = data.image_url; img.hidden = false; }
-    else { img.hidden = true; }
-  }).catch(function() { img.hidden = true; }).finally(function() { button.disabled = false; });
+    (data.image_urls || []).forEach(function(u) {
+      const thumb = document.createElement('img');
+      thumb.src = u;
+      thumb.className = 'poll-option-preview-thumb';
+      thumb.title = '{{ tr.polls_preview_pick_hint }}';
+      thumb.style.cssText = 'width:60px;height:60px;object-fit:cover;border-radius:0.3rem;cursor:pointer;border:2px solid transparent;';
+      thumb.onclick = function() {
+        imageInput.value = u;
+        gallery.querySelectorAll('.poll-option-preview-thumb').forEach(function(t) { t.style.borderColor = 'transparent'; });
+        thumb.style.borderColor = 'var(--accent)';
+      };
+      gallery.appendChild(thumb);
+    });
+  }).catch(function() {}).finally(function() { button.disabled = false; });
 }
 </script>
 

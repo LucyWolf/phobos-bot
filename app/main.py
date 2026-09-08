@@ -5759,10 +5759,36 @@ def _extract_og_image(html: str, base_url: str) -> str:
     return best_og or best_twitter
 
 
-async def _fetch_og_image(url: str) -> str:
-    """Best-effort Open Graph/Twitter Card image lookup for a poll option's link - never raises,
-    returns "" on ANY failure (timeout, connection error, non-HTML response, no matching meta
-    tag) so a flaky/slow site never breaks saving the poll itself, only skips its auto-image."""
+def _extract_image_candidates(html: str, base_url: str) -> list:
+    """Every distinct Open Graph/Twitter Card image URL declared in the page (not just the
+    single best guess _extract_og_image makes) - a page can legitimately declare more than one
+    (og:image plus a separately-cropped twitter:image, or even multiple og:image tags for a
+    gallery), and the automatic best-guess used at save time isn't always the one an admin
+    actually wants ("mach mal andere Varianten rein so das mann sich das selber ausuchen kann").
+    Kept in document order, deduplicated, capped at a small number - this is a manual picker
+    for a human to glance at, not an exhaustive image scrape of the whole page."""
+    seen, candidates = [], []
+    for tag in _META_TAG_RE.findall(html):
+        prop_m = _OG_PROP_RE.search(tag)
+        if not prop_m:
+            continue
+        content_m = _CONTENT_RE.search(tag)
+        if not content_m or not content_m.group(1).strip():
+            continue
+        url = urllib.parse.urljoin(base_url, content_m.group(1).strip())[:500]
+        if url.startswith(("http://", "https://")) and url not in seen:
+            seen.append(url)
+            candidates.append(url)
+        if len(candidates) >= 6:
+            break
+    return candidates
+
+
+async def _fetch_html_for_og(url: str) -> str:
+    """Shared HTTP fetch behind both the single-best-guess auto-save lookup and the live
+    preview button's multi-candidate list - one network call either way, never raises, returns
+    "" on ANY failure (timeout, connection error, non-HTML response) so a flaky/slow site never
+    breaks saving the poll or the preview button, only leaves that option's image empty."""
     try:
         async with aiohttp.ClientSession(timeout=_OG_FETCH_TIMEOUT) as session:
             headers = {"User-Agent": "Mozilla/5.0 (compatible; PhobosBot/1.0; +poll-preview)"}
@@ -5777,13 +5803,30 @@ async def _fetch_og_image(url: str) -> str:
                     total += len(chunk)
                     if total >= _OG_FETCH_MAX_BYTES:
                         break
-                html = b"".join(chunks).decode("utf-8", errors="ignore")
+                return b"".join(chunks).decode("utf-8", errors="ignore")
     except Exception:
+        return ""
+
+
+async def _fetch_og_image(url: str) -> str:
+    """Best-effort single-best-guess image for a poll option's link, used automatically on
+    save when the option has a link but no image of its own."""
+    html = await _fetch_html_for_og(url)
+    if not html:
         return ""
     image_url = _extract_og_image(html, url)
     if image_url and image_url.startswith(("http://", "https://")):
         return image_url[:500]
     return ""
+
+
+async def _fetch_og_image_candidates(url: str) -> list:
+    """Every candidate image for the live "🔍" preview button's picker - see
+    _extract_image_candidates for why this can return more than one."""
+    html = await _fetch_html_for_og(url)
+    if not html:
+        return []
+    return _extract_image_candidates(html, url)
 
 
 async def _resolve_poll_option_image(
@@ -6835,9 +6878,6 @@ async def poll_create_web(request: Request, guild_id: int):
         duration_minutes = int(form.get("duration_minutes") or 0)
     except (ValueError, TypeError):
         duration_minutes = 0
-    image_url = form.get("image_url", "").strip()
-    image_file = form.get("image_file")
-    has_upload = bool(image_file and getattr(image_file, "filename", ""))
 
     if len(options) < 2:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Mindestens+2+Optionen+nötig", status_code=302)
@@ -6847,12 +6887,6 @@ async def poll_create_web(request: Request, guild_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Frage+zu+lang+(max.+200+Zeichen)", status_code=302)
     if duration_minutes < 0 or duration_minutes > 10080:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Ungültige+Dauer", status_code=302)
-    if has_upload and image_url:
-        return RedirectResponse(
-            f"/servers/{guild_id}?tab=polls&error=Entweder+Bild-URL+ODER+Datei,+nicht+beides", status_code=302
-        )
-    if image_url and not image_url.startswith(("http://", "https://")):
-        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Bild-URL+muss+mit+http(s)://+beginnen", status_code=302)
     for lbl, img, img_file, link in options:
         opt_has_upload = bool(img_file and getattr(img_file, "filename", ""))
         if opt_has_upload and img:
@@ -6877,15 +6911,12 @@ async def poll_create_web(request: Request, guild_id: int):
     if not channel or channel.guild.id != guild_id:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Kanal+nicht+gefunden", status_code=302)
     try:
-        image_data_b64, image_filename = await _read_embed_image_upload(image_file)
         # Read all per-option uploads up front (before anything gets written to the DB) so a
         # single bad option image rejects the whole request cleanly, same as every other
         # validation above - not a partially-created poll with only some images accepted.
         # Each attachment filename must be made unique (_read_embed_image_upload always
-        # returns a generic "image.<ext>", fine for a lone attachment but Discord requires
-        # distinct filenames once more than one file rides on the same message) - prefixed by
-        # option index, matching the option's own position rather than reusing anything that
-        # could collide with the per-poll image's filename too.
+        # returns a generic "image.<ext>") since Discord requires distinct filenames once more
+        # than one file rides on the same message - prefixed by option index.
         option_uploads = []
         for i, (lbl, img, img_file, link) in enumerate(options):
             opt_data_b64, opt_filename = await _read_embed_image_upload(img_file)
@@ -6894,9 +6925,13 @@ async def poll_create_web(request: Request, guild_id: int):
             option_uploads.append((opt_data_b64 or "", opt_filename or ""))
     except ValueError as msg:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error={urllib.parse.quote(str(msg))}", status_code=302)
-    final_image_url = "" if has_upload else image_url
-    final_image_data = image_data_b64 or ""
-    final_image_filename = image_filename or ""
+    # No poll-wide image anymore ("bild zwei brauchen wir glaube ich nicht mehr" - removed once
+    # every option got its own auto-fetched image, making one shared banner image redundant).
+    # polls.image_url/image_data/image_filename stay in the schema (never dropped, same
+    # convention as every other retired column in this project) purely so an ALREADY-existing
+    # poll from before this change keeps rendering whatever image it already had - there's just
+    # no more way to set/change one through either form now.
+    final_image_url, final_image_data, final_image_filename = "", "", ""
     # An option with a link but no image/upload of its own gets an automatic Open Graph
     # preview-image lookup (user explicitly picked "automatic on save" over a manual fetch
     # button) - resolved for every option CONCURRENTLY via gather() rather than one at a time,
@@ -6969,49 +7004,27 @@ async def poll_end_web(request: Request, guild_id: int, poll_id: int):
 @web.post("/servers/{guild_id}/polls/preview-link-image")
 async def poll_preview_link_image(request: Request, guild_id: int):
     """Live, save-nothing Open Graph image lookup for the create/edit forms' "🔍" preview
-    button - lets an admin see what image a link would produce before actually saving, on top
-    of (not instead of) the automatic fetch that already runs on save regardless of whether
-    this was ever clicked (see _resolve_poll_option_image). Same access level as creating or
-    ending a poll - no poll_id binding needed since this also runs on the create form, before
-    any poll exists yet."""
+    button - returns EVERY candidate image found (see _extract_image_candidates) so an admin
+    can pick the one they actually want, rather than the single best-guess the automatic fetch
+    on save uses (_resolve_poll_option_image/_fetch_og_image) when this was never clicked. Same
+    access level as creating or ending a poll - no poll_id binding needed since this also runs
+    on the create form, before any poll exists yet."""
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
-        return JSONResponse({"image_url": None}, status_code=403)
+        return JSONResponse({"image_urls": []}, status_code=403)
     form = await request.form()
     url = form.get("url", "").strip()
     if not url.startswith(("http://", "https://")):
-        return JSONResponse({"image_url": None})
-    image_url = await _fetch_og_image(url)
-    return JSONResponse({"image_url": image_url or None})
-
-
-@web.get("/servers/{guild_id}/polls/{poll_id}/image")
-async def poll_image_web(request: Request, guild_id: int, poll_id: int):
-    """Serves a poll's uploaded image for the dashboard's OWN edit-form preview only - same
-    admin-preview-only pattern as embed_post_image(), never used as the actual Discord embed
-    URL (that goes via a real message attachment, see _embed_post_files())."""
-    if r := auth_redirect(request): return r
-    if not await _guild_access(request, guild_id):
-        return RedirectResponse("/servers", status_code=302)
-    poll = await db_one(
-        "SELECT image_data, image_filename FROM polls WHERE id=? AND guild_id=?",
-        (poll_id, str(guild_id)),
-    )
-    if not poll or not poll.get("image_data"):
-        raise HTTPException(status_code=404)
-    try:
-        raw = base64.b64decode(poll["image_data"])
-    except Exception:
-        raise HTTPException(status_code=404)
-    ext = (poll.get("image_filename") or "").rsplit(".", 1)[-1].lower()
-    media_type = _EMBED_IMAGE_MEDIA_TYPES.get(ext, "application/octet-stream")
-    return Response(content=raw, media_type=media_type)
+        return JSONResponse({"image_urls": []})
+    image_urls = await _fetch_og_image_candidates(url)
+    return JSONResponse({"image_urls": image_urls})
 
 
 @web.get("/servers/{guild_id}/polls/{poll_id}/option/{option_id}/image")
 async def poll_option_image_web(request: Request, guild_id: int, poll_id: int, option_id: int):
-    """Same dashboard-preview-only purpose as poll_image_web above, for a single option's
-    uploaded image - poll_id is checked in the WHERE clause too, not just option_id, so an
+    """Serves a single option's uploaded image for the dashboard's OWN edit-form preview only -
+    never the actual Discord embed URL (that goes via a real message attachment, see
+    _embed_post_files()). poll_id is checked in the WHERE clause too, not just option_id, so an
     option belonging to a DIFFERENT poll (even one in the same guild) can never be served here."""
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
@@ -7042,10 +7055,11 @@ def _safe_int(value):
 @web.post("/servers/{guild_id}/polls/{poll_id}/edit")
 async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     """Full edit (question, multiple-choice, every option's label/image/link, add/remove
-    options, the poll-wide image) - user explicitly chose the unrestricted "edit everything,
-    regardless of vote count" option over a votes==0-only or images/links-only alternative.
-    Channel and the auto-end duration are deliberately NOT editable here - out of scope of the
-    request that led to this route ("Frage, Optionen, Bilder/Links")."""
+    options) - user explicitly chose the unrestricted "edit everything, regardless of vote
+    count" option over a votes==0-only or images/links-only alternative. Channel, the auto-end
+    duration, and the poll-wide image are deliberately NOT editable here - the poll-wide image
+    field was removed from both forms entirely (see poll_create_web's comment), the other two
+    were never in scope of the request that led to this route ("Frage, Optionen, Bilder/Links")."""
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
@@ -7079,10 +7093,6 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
         if lbl.strip()
     ]
     multiple = bool(form.get("multiple_choice", ""))
-    image_url = form.get("image_url", "").strip()
-    image_file = form.get("image_file")
-    has_upload = bool(image_file and getattr(image_file, "filename", ""))
-    remove_image = form.get("remove_image") == "1"
 
     if len(options) < 2:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Mindestens+2+Optionen+nötig", status_code=302)
@@ -7090,16 +7100,6 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Maximal+25+Optionen+erlaubt", status_code=302)
     if len(question) > 200:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Frage+zu+lang+(max.+200+Zeichen)", status_code=302)
-    # Same ambiguous-combo rejection as embed_post_update: the URL field IS pre-filled with the
-    # poll's current image_url, so a remove_image checkbox alongside that SAME unchanged value
-    # just means the admin ticked the box without also clearing the field - only a genuinely
-    # NEW/different URL alongside it is an actual conflict worth rejecting.
-    if remove_image and (has_upload or (image_url and image_url != (poll.get("image_url") or ""))):
-        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Entweder+Bild+entfernen+ODER+ein+neues+Bild+angeben,+nicht+beides", status_code=302)
-    if has_upload and image_url:
-        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Entweder+Bild-URL+ODER+Datei,+nicht+beides", status_code=302)
-    if image_url and not image_url.startswith(("http://", "https://")):
-        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Bild-URL+muss+mit+http(s)://+beginnen", status_code=302)
     for oid, lbl, img, img_file, link in options:
         opt_has_upload = bool(img_file and getattr(img_file, "filename", ""))
         if opt_has_upload and img:
@@ -7119,7 +7119,6 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
             )
 
     try:
-        new_image_data_b64, new_image_filename = await _read_embed_image_upload(image_file)
         option_uploads = []
         for i, (oid, lbl, img, img_file, link) in enumerate(options):
             opt_data_b64, opt_filename = await _read_embed_image_upload(img_file)
@@ -7129,16 +7128,12 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     except ValueError as msg:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error={urllib.parse.quote(str(msg))}", status_code=302)
 
-    if remove_image:
-        final_image_url, final_image_data, final_image_filename = "", "", ""
-    elif has_upload:
-        final_image_url, final_image_data, final_image_filename = "", new_image_data_b64 or "", new_image_filename or ""
-    elif image_url:
-        final_image_url, final_image_data, final_image_filename = image_url, "", ""
-    else:
-        final_image_url = poll.get("image_url") or ""
-        final_image_data = poll.get("image_data") or ""
-        final_image_filename = poll.get("image_filename") or ""
+    # No poll-wide image field in either form anymore (see poll_create_web's identical
+    # comment) - editing just leaves whatever an already-existing poll happened to have
+    # untouched, there's no more input to change it from.
+    final_image_url = poll.get("image_url") or ""
+    final_image_data = poll.get("image_data") or ""
+    final_image_filename = poll.get("image_filename") or ""
 
     resolved_options = await asyncio.gather(*[
         _resolve_poll_option_image(
