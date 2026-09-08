@@ -6798,6 +6798,7 @@ async def poll_create_web(request: Request, guild_id: int):
     final_image_data = image_data_b64 or ""
     final_image_filename = image_filename or ""
 
+    created_at = datetime.datetime.utcnow().isoformat()
     ends_at = ""
     if duration_minutes > 0:
         ends_at = (datetime.datetime.utcnow() + datetime.timedelta(minutes=duration_minutes)).isoformat()
@@ -6820,7 +6821,8 @@ async def poll_create_web(request: Request, guild_id: int):
         files += _embed_post_files(opt_data_b64, opt_filename)
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
     embeds = _build_poll_embed(
-        question, multiple, opt_rows, {}, image_url=final_image_url, image_filename=final_image_filename
+        question, multiple, opt_rows, {}, image_url=final_image_url, image_filename=final_image_filename,
+        ends_at=ends_at, created_at=created_at,
     )
     view = _PollView(pid, opt_rows)
     try:

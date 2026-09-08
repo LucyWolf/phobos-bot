@@ -30,7 +30,7 @@ def _bar_line(label: str, n: int, total: int) -> str:
 
 def build_poll_embed(
     question: str, multiple_choice: bool, options: list, counts: dict, ended: bool = False,
-    image_url: str = "", image_filename: str = "",
+    image_url: str = "", image_filename: str = "", ends_at: str = "", created_at: str = "",
 ) -> list:
     """Shared by creation, every vote, and _end_poll - one place for the bar/percentage layout
     so it can never drift between the three call sites. Returns a LIST of embeds, not a single
@@ -57,7 +57,15 @@ def build_poll_embed(
     same image_filename-takes-precedence-over-image_url rule and the exact same "attached once
     at creation, never re-touched" logic - each uploaded option image just needs its own unique
     attachment filename (handled by the caller, see main.py's poll_create_web) since Discord
-    requires distinct filenames when a message carries more than one attachment."""
+    requires distinct filenames when a message carries more than one attachment.
+
+    created_at/ends_at each become a Discord-native `<t:...:R>` relative timestamp at the top of
+    the header's description ("Gestartet: vor 5 Minuten" / "Endet: in 2 Stunden") - Discord's
+    OWN client renders and live-updates these (a countdown ticking down in real time for
+    ends_at) with zero further edits from the bot, exactly like cogs/giveaways.py's own
+    `discord.utils.format_dt(ends_at, 'R')` usage. created_at is shown whenever known (a poll
+    always has one); ends_at only for a poll with an auto-end configured (nothing to show for a
+    manual-only poll)."""
     total = sum(counts.values())
     header = discord.Embed(
         title=("🔒 " if ended else "🗳️ ") + question,
@@ -73,10 +81,27 @@ def build_poll_embed(
         footer += " · Beendet"
     header.set_footer(text=footer)
 
+    header_lines = []
+    if created_at:
+        try:
+            started_dt = datetime.datetime.fromisoformat(created_at)
+            header_lines.append(f"**Gestartet:** {discord.utils.format_dt(started_dt, 'R')}")
+        except Exception:
+            pass
+    if ends_at:
+        try:
+            ends_dt = datetime.datetime.fromisoformat(ends_at)
+            label = "Beendet" if ended else "Endet"
+            header_lines.append(f"**{label}:** {discord.utils.format_dt(ends_dt, 'R')}")
+        except Exception:
+            pass
+
     has_rich = any(opt.get("image_url") or opt.get("image_filename") or opt.get("link_url") for opt in options)
     if not has_rich:
-        lines = [_bar_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in options]
-        header.description = "\n\n".join(lines)
+        bar_lines = [_bar_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in options]
+        combined = header_lines + bar_lines
+        if combined:
+            header.description = "\n\n".join(combined)
         return [header]
 
     rich_options, overflow_options = options[:MAX_RICH_OPTION_EMBEDS], options[MAX_RICH_OPTION_EMBEDS:]
@@ -94,9 +119,11 @@ def build_poll_embed(
         option_embed.set_footer(text=f"{bar} {pct:.0f}% ({n})")
         embeds.append(option_embed)
     if overflow_options:
-        header.description = "\n\n".join(
+        header_lines += [
             _bar_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in overflow_options
-        )
+        ]
+    if header_lines:
+        header.description = "\n\n".join(header_lines)
     return embeds
 
 
@@ -156,6 +183,7 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
     embeds = build_poll_embed(
         poll["question"], bool(poll["multiple_choice"]), options, counts,
         image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
+        ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
     )
     # No view= (and no attachments=/file=) here on purpose - discord.py's edit_message() default
     # for view is MISSING (not None), so omitting it leaves the existing buttons untouched
@@ -225,6 +253,7 @@ class Polls(commands.Cog):
         embeds = build_poll_embed(
             poll["question"], bool(poll["multiple_choice"]), options, counts, ended=True,
             image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
+            ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
         )
         try:
             await msg.edit(embeds=embeds, view=None)
@@ -258,6 +287,7 @@ class Polls(commands.Cog):
             )
             return
         await interaction.response.defer(ephemeral=True)
+        created_at = datetime.datetime.utcnow().isoformat()
         ends_at = ""
         if duration_minutes > 0:
             ends_at = (datetime.datetime.utcnow() + datetime.timedelta(minutes=duration_minutes)).isoformat()
@@ -271,7 +301,7 @@ class Polls(commands.Cog):
                 (pid, i, label[:80]),
             )
         opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
-        embeds = build_poll_embed(question, multiple, opt_rows, {})
+        embeds = build_poll_embed(question, multiple, opt_rows, {}, ends_at=ends_at, created_at=created_at)
         view = PollView(pid, opt_rows)
         try:
             msg = await interaction.channel.send(embeds=embeds, view=view)
