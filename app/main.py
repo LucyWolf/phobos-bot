@@ -107,7 +107,10 @@ except ImportError:
 from cogs.tickets import OpenTicketView as _TicketView, close_ticket_channel as _close_ticket_channel
 from cogs.leveling import xp_for_level as _xp_for_level, cumulative_xp_for_level as _cumulative_xp_for_level
 from cogs.welcome import _make_card as _welcome_make_card, fill as _welcome_fill
-from cogs.polls import build_poll_embed as _build_poll_embed, PollView as _PollView
+from cogs.polls import (
+    build_poll_embed as _build_poll_embed, PollView as _PollView,
+    BAR_STYLES as _POLL_BAR_STYLES, DEFAULT_BAR_STYLE as _DEFAULT_BAR_STYLE,
+)
 from i18n import get_tr
 import uvicorn
 from discord.ext import commands
@@ -6980,6 +6983,9 @@ async def poll_create_web(request: Request, guild_id: int):
         if lbl.strip()
     ]
     multiple = bool(form.get("multiple_choice", ""))
+    bar_style = form.get("bar_style", "") or _DEFAULT_BAR_STYLE
+    if bar_style not in _POLL_BAR_STYLES:
+        bar_style = _DEFAULT_BAR_STYLE
     try:
         duration_minutes = int(form.get("duration_minutes") or 0)
     except (ValueError, TypeError):
@@ -7065,9 +7071,9 @@ async def poll_create_web(request: Request, guild_id: int):
 
     pid = await db_insert(
         "INSERT INTO polls (guild_id,channel_id,question,multiple_choice,ends_at,created_by,"
-        "image_url,image_data,image_filename) VALUES (?,?,?,?,?,?,?,?,?)",
+        "image_url,image_data,image_filename,bar_style) VALUES (?,?,?,?,?,?,?,?,?,?)",
         (str(guild_id), str(channel.id), question, int(multiple), ends_at, request.session.get("user_id") or 0,
-         final_image_url, final_image_data, final_image_filename),
+         final_image_url, final_image_data, final_image_filename, bar_style),
     )
     files = _embed_post_files(final_image_data, final_image_filename)
     for i, (label, opt_image, opt_image_file, opt_link, opt_size, opt_width) in enumerate(options):
@@ -7081,7 +7087,7 @@ async def poll_create_web(request: Request, guild_id: int):
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
     embeds = _build_poll_embed(
         question, multiple, opt_rows, {}, image_url=final_image_url, image_filename=final_image_filename,
-        ends_at=ends_at, created_at=created_at,
+        ends_at=ends_at, created_at=created_at, bar_style=bar_style,
     )
     view = _PollView(pid, opt_rows)
     try:
@@ -7212,6 +7218,9 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
         if lbl.strip()
     ]
     multiple = bool(form.get("multiple_choice", ""))
+    bar_style = form.get("bar_style", "") or _DEFAULT_BAR_STYLE
+    if bar_style not in _POLL_BAR_STYLES:
+        bar_style = _DEFAULT_BAR_STYLE
 
     if len(options) < 2:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Mindestens+2+Optionen+nötig", status_code=302)
@@ -7296,8 +7305,8 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     # more than one vote recorded from when it was on, those extra votes just stay - only
     # nudges the displayed total vote count slightly, never a crash or a wrong option tally.
     await db_exec(
-        "UPDATE polls SET question=?, multiple_choice=?, image_url=?, image_data=?, image_filename=? WHERE id=?",
-        (question, int(multiple), final_image_url, final_image_data, final_image_filename, poll_id),
+        "UPDATE polls SET question=?, multiple_choice=?, image_url=?, image_data=?, image_filename=?, bar_style=? WHERE id=?",
+        (question, int(multiple), final_image_url, final_image_data, final_image_filename, bar_style, poll_id),
     )
 
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
@@ -7306,7 +7315,7 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     embeds = _build_poll_embed(
         question, multiple, opt_rows, counts, ended=bool(poll["ended"]),
         image_url=final_image_url, image_filename=final_image_filename,
-        ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
+        ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "", bar_style=bar_style,
     )
     files = _embed_post_files(final_image_data, final_image_filename)
     for row in opt_rows:

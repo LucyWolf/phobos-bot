@@ -749,6 +749,13 @@ async def init_db():
             # set_image() instead of being locked to the thumbnail's fixed square. 0 (default)
             # means "no custom width set" - only meaningful when image_size == 'custom'.
             "ALTER TABLE poll_options ADD COLUMN image_width INTEGER NOT NULL DEFAULT 0",
+            # User liked the emoji vote bar (v1.15.26) and asked for several selectable variants
+            # instead of the one fixed purple-square look - one style PER POLL (set at creation,
+            # changeable when editing), not a single server-wide default. 'purple_square' as the
+            # default is deliberately the exact style that already shipped, so an existing poll's
+            # bar keeps looking exactly the same after this migration - see BAR_STYLES in
+            # cogs/polls.py for the full list of selectable emoji pairs.
+            "ALTER TABLE polls ADD COLUMN bar_style TEXT NOT NULL DEFAULT 'purple_square'",
         ]:
             try:
                 await db.execute(col)

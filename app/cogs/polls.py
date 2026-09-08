@@ -21,23 +21,39 @@ MAX_RICH_OPTION_EMBEDS = 9  # Discord caps a message at 10 embeds total - one of
 # options simply can't show all of them richly in one Discord message, this is the real ceiling.
 
 
-def _bar_line(label: str, n: int, total: int) -> str:
-    # Colored square emoji, not the previous "█"/"░" block-drawing characters - those render
-    # inconsistently across Discord clients/fonts (reported live: a hatched/striped look at low
-    # fill, an oddly "different" solid look at 100% fill - the same two characters, rendered
-    # unpredictably depending on how many of each are next to each other). A real Discord embed
-    # can only ever be plain text, no CSS - actual pictograph emoji are the one kind of
-    # "character" Discord itself renders identically everywhere (a real small image per
-    # platform, not a font glyph), so they're immune to this specific problem.
+# Every selectable vote-bar look, per poll (see database.py's polls.bar_style column comment).
+# All ten built from Unicode's own official "colored square"/"colored circle" emoji sets - the
+# same reasoning as the original single purple-square style (v1.15.26): these render as a real
+# small image on every Discord client/platform, never as an inconsistent font glyph, unlike the
+# "█"/"░" block-drawing characters they replaced. 'purple_square' is deliberately the exact
+# pair that already shipped, so it stays the DB default and no existing poll's look changes.
+BAR_STYLES = {
+    "purple_square": ("🟪", "⬛"),
+    "green_square": ("🟩", "⬛"),
+    "blue_square": ("🟦", "⬛"),
+    "red_square": ("🟥", "⬛"),
+    "yellow_square": ("🟨", "⬛"),
+    "orange_square": ("🟧", "⬛"),
+    "purple_circle": ("🟣", "⚫"),
+    "green_circle": ("🟢", "⚫"),
+    "blue_circle": ("🔵", "⚫"),
+    "red_circle": ("🔴", "⚫"),
+}
+DEFAULT_BAR_STYLE = "purple_square"
+
+
+def _bar_line(label: str, n: int, total: int, bar_style: str = DEFAULT_BAR_STYLE) -> str:
     pct = (n / total * 100) if total else 0
     filled = round(pct / 10)
-    bar = "🟪" * filled + "⬛" * (10 - filled)
+    filled_char, empty_char = BAR_STYLES.get(bar_style, BAR_STYLES[DEFAULT_BAR_STYLE])
+    bar = filled_char * filled + empty_char * (10 - filled)
     return f"**{label}**\n{bar} {pct:.0f}% ({n})", bar, pct
 
 
 def build_poll_embed(
     question: str, multiple_choice: bool, options: list, counts: dict, ended: bool = False,
     image_url: str = "", image_filename: str = "", ends_at: str = "", created_at: str = "",
+    bar_style: str = DEFAULT_BAR_STYLE,
 ) -> list:
     """Shared by creation, every vote, and _end_poll - one place for the bar/percentage layout
     so it can never drift between the three call sites. Returns a LIST of embeds, not a single
@@ -105,7 +121,7 @@ def build_poll_embed(
 
     has_rich = any(opt.get("image_url") or opt.get("image_filename") or opt.get("link_url") for opt in options)
     if not has_rich:
-        bar_lines = [_bar_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in options]
+        bar_lines = [_bar_line(opt["label"], counts.get(opt["id"], 0), total, bar_style)[0] for opt in options]
         combined = header_lines + bar_lines
         if combined:
             header.description = "\n\n".join(combined)
@@ -115,7 +131,7 @@ def build_poll_embed(
     embeds = [header]
     for opt in rich_options:
         n = counts.get(opt["id"], 0)
-        _, bar, pct = _bar_line(opt["label"], n, total)
+        _, bar, pct = _bar_line(opt["label"], n, total, bar_style)
         option_embed = discord.Embed(title=opt["label"], color=0x64748b if ended else 0x7c3aed)
         if opt.get("link_url"):
             option_embed.url = opt["link_url"]
@@ -139,7 +155,7 @@ def build_poll_embed(
         embeds.append(option_embed)
     if overflow_options:
         header_lines += [
-            _bar_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in overflow_options
+            _bar_line(opt["label"], counts.get(opt["id"], 0), total, bar_style)[0] for opt in overflow_options
         ]
     if header_lines:
         header.description = "\n\n".join(header_lines)
@@ -203,6 +219,7 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
         poll["question"], bool(poll["multiple_choice"]), options, counts,
         image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
         ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
+        bar_style=poll.get("bar_style") or DEFAULT_BAR_STYLE,
     )
     # No view= (and no attachments=/file=) here on purpose - discord.py's edit_message() default
     # for view is MISSING (not None), so omitting it leaves the existing buttons untouched
@@ -273,6 +290,7 @@ class Polls(commands.Cog):
             poll["question"], bool(poll["multiple_choice"]), options, counts, ended=True,
             image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
             ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
+            bar_style=poll.get("bar_style") or DEFAULT_BAR_STYLE,
         )
         try:
             await msg.edit(embeds=embeds, view=None)
