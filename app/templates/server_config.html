@@ -1194,18 +1194,31 @@ document.addEventListener('click', function(e) {
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-polls">
 <style>
-  /* Mimics a real Discord embed+buttons, not the dashboard's own theme - deliberately uses
-     Discord's actual dark-theme colors so what's shown here matches what will really post,
-     independent of whatever light/dark theme the dashboard itself is in. */
-  .poll-preview-embed { background:#2b2d31; border-left:4px solid #7c3aed; border-radius:4px; padding:0.7rem 0.9rem; max-width:480px; }
-  .poll-preview-title { font-weight:700; color:#f2f3f5; margin-bottom:0.5rem; }
-  .poll-preview-option { margin-bottom:0.55rem; font-size:0.85rem; }
+  /* Mimics a real Discord message (bot header + embed + buttons), not the dashboard's own
+     theme - deliberately uses Discord's actual dark-theme colors so what's shown here matches
+     what will really post, independent of whatever light/dark theme the dashboard itself is
+     in. The unicode block-character bar (█/░) that cogs/polls.py actually posts to Discord
+     looks like a hatched/striped mess in some fonts/screenshots ("das sieht doof aus" -
+     confirmed by the user against a real render) - this dashboard-only mockup isn't bound to
+     matching that literal text (it was never a pixel-exact replica to begin with), so it uses
+     a normal smooth CSS progress bar here instead, which reads far cleaner on screen.
+  */
+  .poll-preview-message { max-width:480px; }
+  .poll-preview-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.35rem; }
+  .poll-preview-avatar { width:28px; height:28px; border-radius:50%; background:#5865f2; color:#fff; display:flex; align-items:center; justify-content:center; font-size:0.85rem; flex-shrink:0; }
+  .poll-preview-botname { font-weight:600; color:#f2f3f5; font-size:0.88rem; }
+  .poll-preview-appbadge { background:#5865f2; color:#fff; font-size:0.52rem; font-weight:700; padding:0.06rem 0.32rem; border-radius:3px; letter-spacing:0.03em; }
+  .poll-preview-embed { background:#2b2d31; border-left:4px solid #7c3aed; border-radius:4px; padding:0.7rem 0.9rem; margin-left:36px; }
+  .poll-preview-title { font-weight:700; color:#f2f3f5; margin-bottom:0.6rem; }
+  .poll-preview-option { margin-bottom:0.6rem; font-size:0.85rem; }
   .poll-preview-option:last-child { margin-bottom:0; }
-  .poll-preview-option b { color:#f2f3f5; }
-  .poll-preview-bar { display:block; font-family:monospace; color:#b5bac1; margin-top:0.1rem; }
+  .poll-preview-option b { color:#f2f3f5; display:block; margin-bottom:0.25rem; }
+  .poll-preview-progress-track { display:inline-block; width:130px; height:8px; border-radius:4px; background:#4e5058; vertical-align:middle; overflow:hidden; margin-right:0.5rem; }
+  .poll-preview-progress-fill { display:block; height:100%; background:#7c3aed; border-radius:4px; }
+  .poll-preview-pct { font-size:0.78rem; color:#b5bac1; vertical-align:middle; }
   .poll-preview-footer { font-size:0.72rem; color:#949ba4; margin-top:0.6rem; }
-  .poll-preview-empty { color:#949ba4; font-size:0.8rem; font-style:italic; }
-  .poll-preview-buttons { display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.5rem; max-width:480px; }
+  .poll-preview-empty { color:var(--muted); font-size:0.8rem; font-style:italic; }
+  .poll-preview-buttons { display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.5rem; margin-left:36px; }
   .poll-preview-btn { background:#4e5058; color:#fff; border:none; border-radius:4px; padding:0.35rem 0.75rem; font-size:0.85rem; cursor:default; }
 </style>
 
@@ -1252,6 +1265,8 @@ document.addEventListener('click', function(e) {
               <div class="feat-header" style="margin-bottom:0.75rem;">{{ tr.polls_edit_heading }}</div>
               <label>{{ tr.polls_question_label }}</label>
               <input type="text" name="question" maxlength="200" required value="{{ p.question }}">
+              <div style="font-size:0.78rem;font-weight:600;margin:0.75rem 0 0.3rem;color:var(--muted);">{{ tr.polls_preview_label }}</div>
+              <div class="poll-preview-box" style="margin-bottom:1rem;"></div>
               <label>{{ tr.polls_options_label }}</label>
               <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.4rem;">{{ tr.polls_option_extras_hint }}</div>
               <div id="poll-options-edit-{{ p.id }}">
@@ -1284,8 +1299,6 @@ document.addEventListener('click', function(e) {
               </div>
               <button type="button" class="btn btn-secondary" onclick="addPollOption('poll-options-edit-{{ p.id }}')" style="font-size:0.75rem;padding:0.3rem 0.7rem;margin-bottom:0.75rem;">{{ tr.polls_add_option }}</button>
               <label><input type="checkbox" name="multiple_choice" value="1" style="width:auto;display:inline;margin-right:0.4rem;" {% if p.multiple_choice %}checked{% endif %}> {{ tr.polls_multiple_label }}</label>
-              <div style="font-size:0.78rem;font-weight:600;margin:0.75rem 0 0.3rem;color:var(--muted);">{{ tr.polls_preview_label }}</div>
-              <div class="poll-preview-box"></div>
               <button type="submit" class="btn btn-primary" style="margin-top:0.75rem;">{{ tr.btn_save }}</button>
             </form>
           </td>
@@ -1307,6 +1320,8 @@ document.addEventListener('click', function(e) {
     </select>
     <label>{{ tr.polls_question_label }}</label>
     <input type="text" name="question" maxlength="200" required>
+    <div style="font-size:0.78rem;font-weight:600;margin:0.75rem 0 0.3rem;color:var(--muted);">{{ tr.polls_preview_label }}</div>
+    <div class="poll-preview-box" style="margin-bottom:1rem;"></div>
     <label>{{ tr.polls_options_label }}</label>
     <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.4rem;">{{ tr.polls_option_extras_hint }}</div>
     <div id="poll-options-new">
@@ -1345,8 +1360,6 @@ document.addEventListener('click', function(e) {
         <input type="number" name="duration_minutes" value="0" min="0" max="10080" placeholder="{{ tr.polls_duration_placeholder }}">
       </div>
     </div>
-    <div style="font-size:0.78rem;font-weight:600;margin:0.75rem 0 0.3rem;color:var(--muted);">{{ tr.polls_preview_label }}</div>
-    <div class="poll-preview-box"></div>
     <button type="submit" class="btn btn-primary" style="margin-top:0.75rem;">{{ tr.polls_btn_create }}</button>
   </form>
 </div>
@@ -1478,11 +1491,18 @@ function renderPollPreview(form) {
     box.innerHTML = '<div class="poll-preview-empty">{{ tr.polls_preview_empty }}</div>';
     return;
   }
-  let html = '<div class="poll-preview-embed">';
+  let html = '<div class="poll-preview-message">';
+  html += '<div class="poll-preview-header">'
+    + '<div class="poll-preview-avatar">🤖</div>'
+    + '<span class="poll-preview-botname">Phobos</span>'
+    + '<span class="poll-preview-appbadge">APP</span>'
+    + '</div>';
+  html += '<div class="poll-preview-embed">';
   html += '<div class="poll-preview-title">🗳️ ' + pollPreviewEscapeHtml(question || '{{ tr.polls_preview_placeholder_question }}') + '</div>';
   labels.forEach(function(label) {
     html += '<div class="poll-preview-option"><b>' + pollPreviewEscapeHtml(label) + '</b>'
-      + '<span class="poll-preview-bar">░░░░░░░░░░ 0% (0)</span></div>';
+      + '<span class="poll-preview-progress-track"><span class="poll-preview-progress-fill" style="width:0%"></span></span>'
+      + '<span class="poll-preview-pct">0% (0)</span></div>';
   });
   html += '<div class="poll-preview-footer">' + (multiple ? 'Mehrfachauswahl' : 'Einzelauswahl') + ' · 0 Stimme(n)</div>';
   html += '</div>';
@@ -1493,6 +1513,7 @@ function renderPollPreview(form) {
     });
     html += '</div>';
   }
+  html += '</div>';
   box.innerHTML = html;
 }
 document.querySelectorAll('.poll-form').forEach(function(form) {
