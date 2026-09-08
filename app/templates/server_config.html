@@ -1212,7 +1212,9 @@ document.addEventListener('click', function(e) {
   .poll-preview-title { font-weight:700; color:#f2f3f5; margin-bottom:0.6rem; }
   .poll-preview-option { margin-bottom:0.6rem; font-size:0.85rem; }
   .poll-preview-option:last-child { margin-bottom:0; }
-  .poll-preview-option b { color:#f2f3f5; display:block; margin-bottom:0.25rem; }
+  .poll-preview-option-row { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.25rem; }
+  .poll-preview-option-thumb { width:32px; height:32px; object-fit:cover; border-radius:4px; flex-shrink:0; }
+  .poll-preview-option b { color:#f2f3f5; }
   .poll-preview-progress-track { display:inline-block; width:130px; height:8px; border-radius:4px; background:#4e5058; vertical-align:middle; overflow:hidden; margin-right:0.5rem; }
   .poll-preview-progress-fill { display:block; height:100%; background:#7c3aed; border-radius:4px; }
   .poll-preview-pct { font-size:0.78rem; color:#b5bac1; vertical-align:middle; }
@@ -1467,6 +1469,17 @@ function pollPreviewEscapeHtml(s) {
   div.textContent = s;
   return div.innerHTML;
 }
+// Caches one object URL per File instance (a WeakMap key, so it's automatically forgotten once
+// the file input moves on to a different File) rather than calling URL.createObjectURL() fresh
+// on every single keystroke-triggered re-render - that would mint a new, never-revoked blob URL
+// each time even though the actual selected file hasn't changed at all.
+const _pollPreviewFileUrls = new WeakMap();
+function pollPreviewFileUrl(file) {
+  if (!_pollPreviewFileUrls.has(file)) {
+    _pollPreviewFileUrls.set(file, URL.createObjectURL(file));
+  }
+  return _pollPreviewFileUrls.get(file);
+}
 // Mimics cogs/polls.py's build_poll_embed()/_bar_line() closely enough for a live "what will
 // this actually look like" preview - deliberately in literal German ("Einzelauswahl"/
 // "Mehrfachauswahl"/"Stimme(n)"), not tr.*, since the REAL poll message posted to Discord is
@@ -1482,12 +1495,28 @@ function renderPollPreview(form) {
   const question = questionInput ? questionInput.value.trim() : '';
   const multipleInput = form.querySelector('input[name="multiple_choice"]');
   const multiple = multipleInput ? multipleInput.checked : false;
-  const labels = [];
-  form.querySelectorAll('.poll-option-row input[name="option"]').forEach(function(input) {
-    const val = input.value.trim();
-    if (val) labels.push(val);
+  // Gathers each option's label AND its currently-known image (if any) - "known" meaning
+  // whatever's already visible to the browser without a network round-trip: a typed/pre-filled
+  // URL, a chosen file (read via a cached object URL, see pollPreviewFileUrl), or a link-picker
+  // thumbnail the admin already clicked (which itself just writes into the same option_image
+  // field). A link with no image/upload yet and never previewed via "🔍" shows no image here -
+  // this preview never fetches on its own, it only reflects what's already on screen.
+  const options = [];
+  form.querySelectorAll('.poll-option-row').forEach(function(row) {
+    const labelInput = row.querySelector('input[name="option"]');
+    const label = labelInput ? labelInput.value.trim() : '';
+    if (!label) return;
+    let image = '';
+    const fileInput = row.querySelector('input[name="option_image_file"]');
+    const urlInput = row.querySelector('input[name="option_image"]');
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+      image = pollPreviewFileUrl(fileInput.files[0]);
+    } else if (urlInput && urlInput.value.trim()) {
+      image = urlInput.value.trim();
+    }
+    options.push({label: label, image: image});
   });
-  if (!question && labels.length === 0) {
+  if (!question && options.length === 0) {
     box.innerHTML = '<div class="poll-preview-empty">{{ tr.polls_preview_empty }}</div>';
     return;
   }
@@ -1499,17 +1528,23 @@ function renderPollPreview(form) {
     + '</div>';
   html += '<div class="poll-preview-embed">';
   html += '<div class="poll-preview-title">🗳️ ' + pollPreviewEscapeHtml(question || '{{ tr.polls_preview_placeholder_question }}') + '</div>';
-  labels.forEach(function(label) {
-    html += '<div class="poll-preview-option"><b>' + pollPreviewEscapeHtml(label) + '</b>'
-      + '<span class="poll-preview-progress-track"><span class="poll-preview-progress-fill" style="width:0%"></span></span>'
+  options.forEach(function(opt) {
+    html += '<div class="poll-preview-option">';
+    html += '<div class="poll-preview-option-row">';
+    if (opt.image) {
+      html += '<img class="poll-preview-option-thumb" src="' + opt.image + '" onerror="this.remove()">';
+    }
+    html += '<b>' + pollPreviewEscapeHtml(opt.label) + '</b>';
+    html += '</div>';
+    html += '<span class="poll-preview-progress-track"><span class="poll-preview-progress-fill" style="width:0%"></span></span>'
       + '<span class="poll-preview-pct">0% (0)</span></div>';
   });
   html += '<div class="poll-preview-footer">' + (multiple ? 'Mehrfachauswahl' : 'Einzelauswahl') + ' · 0 Stimme(n)</div>';
   html += '</div>';
-  if (labels.length) {
+  if (options.length) {
     html += '<div class="poll-preview-buttons">';
-    labels.forEach(function(label) {
-      html += '<button type="button" class="poll-preview-btn" disabled>' + pollPreviewEscapeHtml(label.slice(0, 80)) + '</button>';
+    options.forEach(function(opt) {
+      html += '<button type="button" class="poll-preview-btn" disabled>' + pollPreviewEscapeHtml(opt.label.slice(0, 80)) + '</button>';
     });
     html += '</div>';
   }
