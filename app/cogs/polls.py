@@ -113,9 +113,21 @@ def build_poll_embed(
         if opt.get("link_url"):
             option_embed.url = opt["link_url"]
         if opt.get("image_filename"):
-            option_embed.set_image(url=f"attachment://{opt['image_filename']}")
+            img_src = f"attachment://{opt['image_filename']}"
         elif opt.get("image_url"):
-            option_embed.set_image(url=opt["image_url"])
+            img_src = opt["image_url"]
+        else:
+            img_src = None
+        if img_src:
+            # Discord's embeds only offer two real image sizes, no continuous scale: a large
+            # one (set_image, full embed width, below the text) or a small one (set_thumbnail,
+            # a small square in the top-right corner) - user-requested per-option choice
+            # between the two, 'large' (the only size that existed before this) stays the
+            # default for any option that never set this explicitly.
+            if opt.get("image_size") == "small":
+                option_embed.set_thumbnail(url=img_src)
+            else:
+                option_embed.set_image(url=img_src)
         option_embed.set_footer(text=f"{bar} {pct:.0f}% ({n})")
         embeds.append(option_embed)
     if overflow_options:

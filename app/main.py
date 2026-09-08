@@ -6865,12 +6865,14 @@ async def poll_create_web(request: Request, guild_id: int):
     raw_images = form.getlist("option_image")
     raw_image_files = form.getlist("option_image_file")
     raw_links = form.getlist("option_link")
+    raw_sizes = form.getlist("option_image_size")
     raw_images += [""] * (len(raw_labels) - len(raw_images))
     raw_image_files += [None] * (len(raw_labels) - len(raw_image_files))
     raw_links += [""] * (len(raw_labels) - len(raw_links))
+    raw_sizes += ["large"] * (len(raw_labels) - len(raw_sizes))
     options = [
-        (lbl.strip(), img.strip(), img_file, link.strip())
-        for lbl, img, img_file, link in zip(raw_labels, raw_images, raw_image_files, raw_links)
+        (lbl.strip(), img.strip(), img_file, link.strip(), size if size == "small" else "large")
+        for lbl, img, img_file, link, size in zip(raw_labels, raw_images, raw_image_files, raw_links, raw_sizes)
         if lbl.strip()
     ]
     multiple = bool(form.get("multiple_choice", ""))
@@ -6887,7 +6889,7 @@ async def poll_create_web(request: Request, guild_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Frage+zu+lang+(max.+200+Zeichen)", status_code=302)
     if duration_minutes < 0 or duration_minutes > 10080:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Ungültige+Dauer", status_code=302)
-    for lbl, img, img_file, link in options:
+    for lbl, img, img_file, link, size in options:
         opt_has_upload = bool(img_file and getattr(img_file, "filename", ""))
         if opt_has_upload and img:
             return RedirectResponse(
@@ -6918,7 +6920,7 @@ async def poll_create_web(request: Request, guild_id: int):
         # returns a generic "image.<ext>") since Discord requires distinct filenames once more
         # than one file rides on the same message - prefixed by option index.
         option_uploads = []
-        for i, (lbl, img, img_file, link) in enumerate(options):
+        for i, (lbl, img, img_file, link, size) in enumerate(options):
             opt_data_b64, opt_filename = await _read_embed_image_upload(img_file)
             if opt_filename:
                 opt_filename = f"opt{i}_{opt_filename}"
@@ -6941,7 +6943,7 @@ async def poll_create_web(request: Request, guild_id: int):
     # _resolve_poll_option_image's docstring for the full precedence shared with editing.
     resolved_options = await asyncio.gather(*[
         _resolve_poll_option_image(img, bool(opt_filename), opt_data_b64, opt_filename, link, False, None)
-        for (lbl, img, img_file, link), (opt_data_b64, opt_filename) in zip(options, option_uploads)
+        for (lbl, img, img_file, link, size), (opt_data_b64, opt_filename) in zip(options, option_uploads)
     ])
 
     created_at = datetime.datetime.utcnow().isoformat()
@@ -6956,12 +6958,12 @@ async def poll_create_web(request: Request, guild_id: int):
          final_image_url, final_image_data, final_image_filename),
     )
     files = _embed_post_files(final_image_data, final_image_filename)
-    for i, (label, opt_image, opt_image_file, opt_link) in enumerate(options):
+    for i, (label, opt_image, opt_image_file, opt_link, opt_size) in enumerate(options):
         opt_final_url, opt_final_data, opt_final_filename = resolved_options[i]
         await db_exec(
-            "INSERT INTO poll_options (poll_id,option_index,label,image_url,link_url,image_data,image_filename) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (pid, i, label[:80], opt_final_url[:500], opt_link[:500], opt_final_data, opt_final_filename),
+            "INSERT INTO poll_options (poll_id,option_index,label,image_url,link_url,image_data,image_filename,image_size) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (pid, i, label[:80], opt_final_url[:500], opt_link[:500], opt_final_data, opt_final_filename, opt_size),
         )
         files += _embed_post_files(opt_final_data, opt_final_filename)
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
@@ -7082,14 +7084,16 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     raw_images = form.getlist("option_image")
     raw_image_files = form.getlist("option_image_file")
     raw_links = form.getlist("option_link")
+    raw_sizes = form.getlist("option_image_size")
     removed_image_ids = set(form.getlist("option_remove_image"))
     raw_ids += [""] * (len(raw_labels) - len(raw_ids))
     raw_images += [""] * (len(raw_labels) - len(raw_images))
     raw_image_files += [None] * (len(raw_labels) - len(raw_image_files))
     raw_links += [""] * (len(raw_labels) - len(raw_links))
+    raw_sizes += ["large"] * (len(raw_labels) - len(raw_sizes))
     options = [
-        (_safe_int(oid), lbl.strip(), img.strip(), img_file, link.strip())
-        for oid, lbl, img, img_file, link in zip(raw_ids, raw_labels, raw_images, raw_image_files, raw_links)
+        (_safe_int(oid), lbl.strip(), img.strip(), img_file, link.strip(), size if size == "small" else "large")
+        for oid, lbl, img, img_file, link, size in zip(raw_ids, raw_labels, raw_images, raw_image_files, raw_links, raw_sizes)
         if lbl.strip()
     ]
     multiple = bool(form.get("multiple_choice", ""))
@@ -7100,7 +7104,7 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Maximal+25+Optionen+erlaubt", status_code=302)
     if len(question) > 200:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Frage+zu+lang+(max.+200+Zeichen)", status_code=302)
-    for oid, lbl, img, img_file, link in options:
+    for oid, lbl, img, img_file, link, size in options:
         opt_has_upload = bool(img_file and getattr(img_file, "filename", ""))
         if opt_has_upload and img:
             return RedirectResponse(
@@ -7120,7 +7124,7 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
 
     try:
         option_uploads = []
-        for i, (oid, lbl, img, img_file, link) in enumerate(options):
+        for i, (oid, lbl, img, img_file, link, size) in enumerate(options):
             opt_data_b64, opt_filename = await _read_embed_image_upload(img_file)
             if opt_filename:
                 opt_filename = f"opt{i}_{opt_filename}"
@@ -7141,7 +7145,7 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
             str(oid) in removed_image_ids if oid is not None else False,
             existing_by_id.get(oid) if oid is not None else None,
         )
-        for (oid, lbl, img, img_file, link), (opt_data_b64, opt_filename) in zip(options, option_uploads)
+        for (oid, lbl, img, img_file, link, size), (opt_data_b64, opt_filename) in zip(options, option_uploads)
     ])
 
     submitted_ids = {oid for oid, *_ in options if oid is not None}
@@ -7153,18 +7157,18 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
         await db_exec("DELETE FROM poll_options WHERE id=?", (removed_id,))
         await db_exec("DELETE FROM poll_votes WHERE poll_id=? AND option_id=?", (poll_id, removed_id))
 
-    for i, (oid, label, opt_image, opt_image_file, opt_link) in enumerate(options):
+    for i, (oid, label, opt_image, opt_image_file, opt_link, opt_size) in enumerate(options):
         opt_final_url, opt_final_data, opt_final_filename = resolved_options[i]
         if oid is not None and oid in existing_by_id:
             await db_exec(
-                "UPDATE poll_options SET option_index=?, label=?, image_url=?, link_url=?, image_data=?, image_filename=? WHERE id=?",
-                (i, label[:80], opt_final_url[:500], opt_link[:500], opt_final_data, opt_final_filename, oid),
+                "UPDATE poll_options SET option_index=?, label=?, image_url=?, link_url=?, image_data=?, image_filename=?, image_size=? WHERE id=?",
+                (i, label[:80], opt_final_url[:500], opt_link[:500], opt_final_data, opt_final_filename, opt_size, oid),
             )
         else:
             await db_exec(
-                "INSERT INTO poll_options (poll_id,option_index,label,image_url,link_url,image_data,image_filename) "
-                "VALUES (?,?,?,?,?,?,?)",
-                (poll_id, i, label[:80], opt_final_url[:500], opt_link[:500], opt_final_data, opt_final_filename),
+                "INSERT INTO poll_options (poll_id,option_index,label,image_url,link_url,image_data,image_filename,image_size) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (poll_id, i, label[:80], opt_final_url[:500], opt_link[:500], opt_final_data, opt_final_filename, opt_size),
             )
 
     # Deliberately not cleaned up: if multiple_choice is switched off while a user already has

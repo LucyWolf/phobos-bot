@@ -734,6 +734,12 @@ async def init_db():
             # shape as the per-poll image, reusing the identical upload/attachment helpers.
             "ALTER TABLE poll_options ADD COLUMN image_data TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE poll_options ADD COLUMN image_filename TEXT NOT NULL DEFAULT ''",
+            # User-requested per-option image size toggle - Discord's embeds only offer two
+            # actual size variants for an image (there's no continuous scale): a large one
+            # (Embed.set_image, full embed width, rendered below the text) or a small one
+            # (Embed.set_thumbnail, a small square in the embed's top-right corner). Default
+            # 'large' preserves the exact existing look for every option created before this.
+            "ALTER TABLE poll_options ADD COLUMN image_size TEXT NOT NULL DEFAULT 'large'",
         ]:
             try:
                 await db.execute(col)
