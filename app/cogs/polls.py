@@ -222,8 +222,21 @@ def build_poll_embed(
         except Exception:
             pass
 
-    has_rich = any(opt.get("image_url") or opt.get("image_filename") or opt.get("link_url") for opt in options)
-    if not has_rich:
+    # Split options into two groups instead of one all-or-nothing "has_rich" switch (the pre-
+    # v1.15.32 behavior): the moment ANY option had its own image/link, EVERY option - including
+    # ones with nothing of their own - fell back to the old discrete-square text bar, because
+    # the code only knew "rich poll" vs "plain poll", not "this specific option is rich". Live-
+    # confirmed as the actual cause of a "the bar chart image never shows up" report: adding a
+    # link to just ONE option (which auto-fetches a real picture, e.g. a game's cover art) was
+    # enough to silently downgrade ALL other options' bars too, not just that one's - surprising
+    # for a poll where several options have nothing to do with images/links at all.
+    image_options, plain_options = [], []
+    for opt in options:
+        (image_options if (opt.get("image_url") or opt.get("image_filename") or opt.get("link_url")) else plain_options).append(opt)
+
+    if not image_options:
+        # No option anywhere has its own image/link - fully unchanged from before this split,
+        # byte-for-byte the same behavior as when this was still a single "not has_rich" branch.
         if not has_legacy_image and options:
             rows = [
                 {"label": opt["label"], "n": counts.get(opt["id"], 0),
@@ -245,7 +258,35 @@ def build_poll_embed(
             header.description = "\n\n".join(combined)
         return [header], None
 
-    rich_options, overflow_options = options[:MAX_RICH_OPTION_EMBEDS], options[MAX_RICH_OPTION_EMBEDS:]
+    # At least one option has its own image/link. Those still get their own individual embed
+    # (own image, own text/emoji footer bar - Discord allows only one image per embed, so a
+    # generated bar-chart PNG genuinely has no room there). But any OTHER option in the SAME
+    # poll that has nothing of its own is no longer forced into the same text-bar fallback just
+    # because a sibling option happens to have a picture - it joins a shared bar-chart image
+    # instead, using the header embed's own (otherwise unused, see has_legacy_image above) image
+    # slot. Doesn't cost an extra embed slot (still header + up to MAX_RICH_OPTION_EMBEDS image
+    # options, exactly Discord's 10-embeds-per-message ceiling as before this split) since it's
+    # the header's EXISTING image, not a new embed.
+    chart_file = None
+    if plain_options:
+        if not has_legacy_image:
+            rows = [
+                {"label": opt["label"], "n": counts.get(opt["id"], 0),
+                 "pct": (counts.get(opt["id"], 0) / total * 100) if total else 0}
+                for opt in plain_options
+            ]
+            chart_bytes = _render_bar_chart_image(rows, bar_color)
+            chart_file = discord.File(io.BytesIO(chart_bytes), filename="poll_bars.png")
+            header.set_image(url="attachment://poll_bars.png")
+        else:
+            # Rare edge case: an old poll's legacy banner already occupies the header's one
+            # image slot, so the plain options fall back to the old text bars too, same as the
+            # no-image-options branch above already does for its own legacy-image case.
+            header_lines += [
+                _bar_line(opt["label"], counts.get(opt["id"], 0), total, bar_color)[0] for opt in plain_options
+            ]
+
+    rich_options, overflow_options = image_options[:MAX_RICH_OPTION_EMBEDS], image_options[MAX_RICH_OPTION_EMBEDS:]
     embeds = [header]
     for opt in rich_options:
         n = counts.get(opt["id"], 0)
@@ -277,7 +318,7 @@ def build_poll_embed(
         ]
     if header_lines:
         header.description = "\n\n".join(header_lines)
-    return embeds, None
+    return embeds, chart_file
 
 
 class PollButton(discord.ui.Button):
