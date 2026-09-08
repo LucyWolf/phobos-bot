@@ -1495,12 +1495,13 @@ function renderPollPreview(form) {
   const question = questionInput ? questionInput.value.trim() : '';
   const multipleInput = form.querySelector('input[name="multiple_choice"]');
   const multiple = multipleInput ? multipleInput.checked : false;
-  // Gathers each option's label AND its currently-known image (if any) - "known" meaning
-  // whatever's already visible to the browser without a network round-trip: a typed/pre-filled
-  // URL, a chosen file (read via a cached object URL, see pollPreviewFileUrl), or a link-picker
+  // Gathers each option's label AND its currently-known image (if any) - a typed/pre-filled
+  // URL, a chosen file (read via a cached object URL, see pollPreviewFileUrl), a link-picker
   // thumbnail the admin already clicked (which itself just writes into the same option_image
-  // field). A link with no image/upload yet and never previewed via "🔍" shows no image here -
-  // this preview never fetches on its own, it only reflects what's already on screen.
+  // field), OR a link that schedulePollPreviewAutoFetch() already resolved in the background
+  // for THIS exact link value (see _pollPreviewAutoFetched below) - a link whose background
+  // fetch hasn't come back yet (or was never scheduled) simply shows no image until it does,
+  // this function itself never blocks on or triggers a network call.
   const options = [];
   form.querySelectorAll('.poll-option-row').forEach(function(row) {
     const labelInput = row.querySelector('input[name="option"]');
@@ -1509,10 +1510,17 @@ function renderPollPreview(form) {
     let image = '';
     const fileInput = row.querySelector('input[name="option_image_file"]');
     const urlInput = row.querySelector('input[name="option_image"]');
+    const linkInput = row.querySelector('input[name="option_link"]');
     if (fileInput && fileInput.files && fileInput.files[0]) {
       image = pollPreviewFileUrl(fileInput.files[0]);
     } else if (urlInput && urlInput.value.trim()) {
       image = urlInput.value.trim();
+    } else {
+      const link = linkInput ? linkInput.value.trim() : '';
+      const fetched = link ? _pollPreviewAutoFetched.get(row) : null;
+      if (fetched && fetched.link === link && fetched.image) {
+        image = fetched.image;
+      }
     }
     options.push({label: label, image: image});
   });
@@ -1551,10 +1559,51 @@ function renderPollPreview(form) {
   html += '</div>';
   box.innerHTML = html;
 }
+// Background counterpart to renderPollPreview()'s otherwise-synchronous, never-fetching read of
+// each option row - lets the preview show an option's link image automatically, without making
+// the admin click "🔍" first, matching what _resolve_poll_option_image() will do anyway once
+// the poll is actually saved (same single-best-guess endpoint, just triggered by typing instead
+// of a button). Keyed by the row ELEMENT (not the link string) so two different option rows
+// with in-flight fetches never clobber each other's debounce timer or cached result.
+const _pollPreviewAutoFetched = new WeakMap(); // row -> {link, image}
+const _pollPreviewFetchTimers = new WeakMap(); // row -> setTimeout id
+function schedulePollPreviewAutoFetch(row) {
+  const existing = _pollPreviewFetchTimers.get(row);
+  if (existing) clearTimeout(existing);
+  _pollPreviewFetchTimers.set(row, setTimeout(function() { pollPreviewAutoFetch(row); }, 600));
+}
+function pollPreviewAutoFetch(row) {
+  const linkInput = row.querySelector('input[name="option_link"]');
+  const urlInput = row.querySelector('input[name="option_image"]');
+  const fileInput = row.querySelector('input[name="option_image_file"]');
+  const link = linkInput ? linkInput.value.trim() : '';
+  const hasOwnImage = (urlInput && urlInput.value.trim()) || (fileInput && fileInput.files && fileInput.files[0]);
+  if (!link || !link.startsWith('http') || hasOwnImage) return;
+  const cached = _pollPreviewAutoFetched.get(row);
+  if (cached && cached.link === link) return; // already tried this exact link, don't re-fetch on every keystroke elsewhere in the form
+  fetch('/servers/' + POLLS_GUILD_ID + '/polls/preview-link-image', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'url=' + encodeURIComponent(link),
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    _pollPreviewAutoFetched.set(row, {link: link, image: (data.image_urls || [])[0] || ''});
+    const form = row.closest('form');
+    if (form) renderPollPreview(form);
+  }).catch(function() {
+    _pollPreviewAutoFetched.set(row, {link: link, image: ''});
+  });
+}
 document.querySelectorAll('.poll-form').forEach(function(form) {
-  form.addEventListener('input', function() { renderPollPreview(form); });
+  form.addEventListener('input', function(e) {
+    renderPollPreview(form);
+    if (e.target && e.target.name === 'option_link') {
+      const row = e.target.closest('.poll-option-row');
+      if (row) schedulePollPreviewAutoFetch(row);
+    }
+  });
   form.addEventListener('change', function() { renderPollPreview(form); });
   renderPollPreview(form);
+  form.querySelectorAll('.poll-option-row').forEach(function(row) { schedulePollPreviewAutoFetch(row); });
 });
 </script>
 
