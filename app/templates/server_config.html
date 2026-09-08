@@ -1219,8 +1219,12 @@ document.addEventListener('click', function(e) {
   .poll-preview-option-thumb { width:32px; height:32px; object-fit:cover; border-radius:4px; flex-shrink:0; }
   .poll-preview-option-large-img { display:block; width:100%; max-height:160px; object-fit:cover; border-radius:4px; margin:0.3rem 0 0.4rem; }
   .poll-preview-option b { color:#f2f3f5; }
-  .poll-preview-progress-track { display:inline-block; width:130px; height:8px; border-radius:4px; background:#4e5058; vertical-align:middle; overflow:hidden; margin-right:0.5rem; }
-  .poll-preview-progress-fill { display:block; height:100%; background:#7c3aed; border-radius:4px; }
+  /* 10 discrete squares, not a smooth gradient bar - mirrors what cogs/polls.py's _bar_line()
+     actually posts to Discord (🟪/⬛ emoji, one per 10% - see its own comment for why plain
+     block-drawing characters were replaced with real emoji), so the preview's bar has the same
+     "row of squares" shape as the real thing instead of a shape Discord can't actually render. */
+  .poll-preview-progress-track { display:inline-flex; gap:2px; vertical-align:middle; margin-right:0.5rem; }
+  .poll-preview-progress-cell { width:11px; height:11px; border-radius:2px; background:#4e5058; }
   .poll-preview-pct { font-size:0.78rem; color:#b5bac1; vertical-align:middle; }
   .poll-preview-footer { font-size:0.72rem; color:#949ba4; margin-top:0.6rem; }
   .poll-preview-empty { color:var(--muted); font-size:0.8rem; font-style:italic; }
@@ -1513,6 +1517,10 @@ function pollPreviewFileUrl(file) {
 // image/link get the same plain bar line here as any other option - the richer per-option-
 // embed layout build_poll_embed() switches to once any option has an image isn't reproduced,
 // this is a preview of the text/bar/buttons, not a pixel-exact mockup of every embed variant.
+// Matches cogs/polls.py's _bar_line() exactly (10 dark squares, "🟪"-colored ones would fill in
+// for real votes) - a brand-new, not-yet-posted poll always has 0 votes, so every option's bar
+// here is always fully empty, built once as a constant instead of a loop with no live cells.
+const POLL_PREVIEW_EMPTY_CELLS = '<span class="poll-preview-progress-cell"></span>'.repeat(10);
 function renderPollPreview(form) {
   const box = form.querySelector('.poll-preview-box');
   if (!box) return;
@@ -1577,7 +1585,7 @@ function renderPollPreview(form) {
     if (opt.image && opt.large) {
       html += '<img class="poll-preview-option-large-img" src="' + opt.image + '" onerror="this.remove()">';
     }
-    html += '<span class="poll-preview-progress-track"><span class="poll-preview-progress-fill" style="width:0%"></span></span>'
+    html += '<span class="poll-preview-progress-track">' + POLL_PREVIEW_EMPTY_CELLS + '</span>'
       + '<span class="poll-preview-pct">0% (0)</span></div>';
   });
   html += '<div class="poll-preview-footer">' + (multiple ? 'Mehrfachauswahl' : 'Einzelauswahl') + ' · 0 Stimme(n)</div>';

@@ -22,9 +22,16 @@ MAX_RICH_OPTION_EMBEDS = 9  # Discord caps a message at 10 embeds total - one of
 
 
 def _bar_line(label: str, n: int, total: int) -> str:
+    # Colored square emoji, not the previous "█"/"░" block-drawing characters - those render
+    # inconsistently across Discord clients/fonts (reported live: a hatched/striped look at low
+    # fill, an oddly "different" solid look at 100% fill - the same two characters, rendered
+    # unpredictably depending on how many of each are next to each other). A real Discord embed
+    # can only ever be plain text, no CSS - actual pictograph emoji are the one kind of
+    # "character" Discord itself renders identically everywhere (a real small image per
+    # platform, not a font glyph), so they're immune to this specific problem.
     pct = (n / total * 100) if total else 0
     filled = round(pct / 10)
-    bar = "█" * filled + "░" * (10 - filled)
+    bar = "🟪" * filled + "⬛" * (10 - filled)
     return f"**{label}**\n{bar} {pct:.0f}% ({n})", bar, pct
 
 
