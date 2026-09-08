@@ -6712,20 +6712,22 @@ async def poll_create_web(request: Request, guild_id: int):
     form = await request.form()
     channel_id = form.get("channel_id", "")
     question = form.get("question", "").strip()
-    # Per-option label/image/link fields are submitted as three PARALLEL lists (one "option"/
-    # "option_image"/"option_link" triplet per dashboard row, always all three present even
-    # when empty since they're plain text/url inputs) - zipped together BEFORE filtering so a
-    # row's image/link never end up misaligned with a different row's label. A row only
-    # survives if it has a non-empty LABEL (a picture with no button text makes no sense); its
-    # image/link may be empty.
+    # Per-option label/image-url/image-file/link fields are submitted as four PARALLEL lists
+    # (one dashboard row per option, always all four slots present even when empty since
+    # they're plain text/url/file inputs) - zipped together BEFORE filtering so a row's image/
+    # link never end up misaligned with a different row's label. A row only survives if it has
+    # a non-empty LABEL (a picture with no button text makes no sense); its image/link may be
+    # empty or absent.
     raw_labels = form.getlist("option")
     raw_images = form.getlist("option_image")
+    raw_image_files = form.getlist("option_image_file")
     raw_links = form.getlist("option_link")
     raw_images += [""] * (len(raw_labels) - len(raw_images))
+    raw_image_files += [None] * (len(raw_labels) - len(raw_image_files))
     raw_links += [""] * (len(raw_labels) - len(raw_links))
     options = [
-        (lbl.strip(), img.strip(), link.strip())
-        for lbl, img, link in zip(raw_labels, raw_images, raw_links)
+        (lbl.strip(), img.strip(), img_file, link.strip())
+        for lbl, img, img_file, link in zip(raw_labels, raw_images, raw_image_files, raw_links)
         if lbl.strip()
     ]
     multiple = bool(form.get("multiple_choice", ""))
@@ -6751,7 +6753,13 @@ async def poll_create_web(request: Request, guild_id: int):
         )
     if image_url and not image_url.startswith(("http://", "https://")):
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Bild-URL+muss+mit+http(s)://+beginnen", status_code=302)
-    for lbl, img, link in options:
+    for lbl, img, img_file, link in options:
+        opt_has_upload = bool(img_file and getattr(img_file, "filename", ""))
+        if opt_has_upload and img:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=polls&error=Option+({urllib.parse.quote(lbl)}):+Entweder+Bild-URL+ODER+Datei,+nicht+beides",
+                status_code=302,
+            )
         if img and not img.startswith(("http://", "https://")):
             return RedirectResponse(
                 f"/servers/{guild_id}?tab=polls&error=Options-Bild-URL+({urllib.parse.quote(lbl)})+muss+mit+http(s)://+beginnen",
@@ -6770,6 +6778,20 @@ async def poll_create_web(request: Request, guild_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Kanal+nicht+gefunden", status_code=302)
     try:
         image_data_b64, image_filename = await _read_embed_image_upload(image_file)
+        # Read all per-option uploads up front (before anything gets written to the DB) so a
+        # single bad option image rejects the whole request cleanly, same as every other
+        # validation above - not a partially-created poll with only some images accepted.
+        # Each attachment filename must be made unique (_read_embed_image_upload always
+        # returns a generic "image.<ext>", fine for a lone attachment but Discord requires
+        # distinct filenames once more than one file rides on the same message) - prefixed by
+        # option index, matching the option's own position rather than reusing anything that
+        # could collide with the per-poll image's filename too.
+        option_uploads = []
+        for i, (lbl, img, img_file, link) in enumerate(options):
+            opt_data_b64, opt_filename = await _read_embed_image_upload(img_file)
+            if opt_filename:
+                opt_filename = f"opt{i}_{opt_filename}"
+            option_uploads.append((opt_data_b64 or "", opt_filename or ""))
     except ValueError as msg:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error={urllib.parse.quote(str(msg))}", status_code=302)
     final_image_url = "" if has_upload else image_url
@@ -6786,17 +6808,21 @@ async def poll_create_web(request: Request, guild_id: int):
         (str(guild_id), str(channel.id), question, int(multiple), ends_at, request.session.get("user_id") or 0,
          final_image_url, final_image_data, final_image_filename),
     )
-    for i, (label, opt_image, opt_link) in enumerate(options):
+    files = _embed_post_files(final_image_data, final_image_filename)
+    for i, (label, opt_image, opt_image_file, opt_link) in enumerate(options):
+        opt_data_b64, opt_filename = option_uploads[i]
+        opt_final_image_url = "" if opt_filename else opt_image
         await db_exec(
-            "INSERT INTO poll_options (poll_id,option_index,label,image_url,link_url) VALUES (?,?,?,?,?)",
-            (pid, i, label[:80], opt_image[:500], opt_link[:500]),
+            "INSERT INTO poll_options (poll_id,option_index,label,image_url,link_url,image_data,image_filename) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (pid, i, label[:80], opt_final_image_url[:500], opt_link[:500], opt_data_b64, opt_filename),
         )
+        files += _embed_post_files(opt_data_b64, opt_filename)
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
     embeds = _build_poll_embed(
         question, multiple, opt_rows, {}, image_url=final_image_url, image_filename=final_image_filename
     )
     view = _PollView(pid, opt_rows)
-    files = _embed_post_files(final_image_data, final_image_filename)
     try:
         msg = await channel.send(embeds=embeds, view=view, files=files)
     except (discord.HTTPException, OSError):

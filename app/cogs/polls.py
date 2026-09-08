@@ -53,8 +53,11 @@ def build_poll_embed(
     existing attachments alone when `attachments=`/`file=` is simply omitted (verified directly
     against discord.py 2.3.2's handle_message_parameters: attachments stays MISSING -> the
     'attachments' key is left out of the request payload entirely -> Discord's own PATCH
-    semantics keep whatever is already on the message). Per-OPTION images are plain URLs only
-    (no upload), so they need no such attachment handling at all."""
+    semantics keep whatever is already on the message). A per-OPTION image follows the exact
+    same image_filename-takes-precedence-over-image_url rule and the exact same "attached once
+    at creation, never re-touched" logic - each uploaded option image just needs its own unique
+    attachment filename (handled by the caller, see main.py's poll_create_web) since Discord
+    requires distinct filenames when a message carries more than one attachment."""
     total = sum(counts.values())
     header = discord.Embed(
         title=("🔒 " if ended else "🗳️ ") + question,
@@ -70,7 +73,7 @@ def build_poll_embed(
         footer += " · Beendet"
     header.set_footer(text=footer)
 
-    has_rich = any(opt.get("image_url") or opt.get("link_url") for opt in options)
+    has_rich = any(opt.get("image_url") or opt.get("image_filename") or opt.get("link_url") for opt in options)
     if not has_rich:
         lines = [_bar_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in options]
         header.description = "\n\n".join(lines)
@@ -84,7 +87,9 @@ def build_poll_embed(
         option_embed = discord.Embed(title=opt["label"], color=0x64748b if ended else 0x7c3aed)
         if opt.get("link_url"):
             option_embed.url = opt["link_url"]
-        if opt.get("image_url"):
+        if opt.get("image_filename"):
+            option_embed.set_image(url=f"attachment://{opt['image_filename']}")
+        elif opt.get("image_url"):
             option_embed.set_image(url=opt["image_url"])
         option_embed.set_footer(text=f"{bar} {pct:.0f}% ({n})")
         embeds.append(option_embed)

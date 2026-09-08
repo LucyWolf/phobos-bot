@@ -1252,15 +1252,17 @@ document.addEventListener('click', function(e) {
         <input type="text" name="option" maxlength="80" required placeholder="{{ tr.polls_option_placeholder }} 1" style="margin:0;">
         <div style="display:flex;gap:0.4rem;">
           <input type="url" name="option_image" placeholder="{{ tr.polls_option_image_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
-          <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
+          <input type="file" name="option_image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin:0;flex:1;font-size:0.72rem;">
         </div>
+        <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;font-size:0.78rem;">
       </div>
       <div style="display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.6rem;padding:0.5rem;border:1px solid var(--border);border-radius:0.5rem;">
         <input type="text" name="option" maxlength="80" required placeholder="{{ tr.polls_option_placeholder }} 2" style="margin:0;">
         <div style="display:flex;gap:0.4rem;">
           <input type="url" name="option_image" placeholder="{{ tr.polls_option_image_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
-          <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
+          <input type="file" name="option_image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin:0;flex:1;font-size:0.72rem;">
         </div>
+        <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;font-size:0.78rem;">
       </div>
     </div>
     <button type="button" class="btn btn-secondary" onclick="addPollOption('poll-options-new')" style="font-size:0.75rem;padding:0.3rem 0.7rem;margin-bottom:0.75rem;">{{ tr.polls_add_option }}</button>
@@ -1316,12 +1318,16 @@ function addPollOption(containerId) {
   imageInput.type = 'url'; imageInput.name = 'option_image';
   imageInput.placeholder = '{{ tr.polls_option_image_placeholder }}';
   imageInput.style.cssText = 'margin:0;flex:1;font-size:0.78rem;';
+  const imageFileInput = document.createElement('input');
+  imageFileInput.type = 'file'; imageFileInput.name = 'option_image_file';
+  imageFileInput.accept = 'image/png,image/jpeg,image/gif,image/webp';
+  imageFileInput.style.cssText = 'margin:0;flex:1;font-size:0.72rem;';
+  extrasRow.appendChild(imageInput); extrasRow.appendChild(imageFileInput);
   const linkInput = document.createElement('input');
   linkInput.type = 'url'; linkInput.name = 'option_link';
   linkInput.placeholder = '{{ tr.polls_option_link_placeholder }}';
-  linkInput.style.cssText = 'margin:0;flex:1;font-size:0.78rem;';
-  extrasRow.appendChild(imageInput); extrasRow.appendChild(linkInput);
-  row.appendChild(topRow); row.appendChild(extrasRow);
+  linkInput.style.cssText = 'margin:0;font-size:0.78rem;';
+  row.appendChild(topRow); row.appendChild(extrasRow); row.appendChild(linkInput);
   container.appendChild(row);
   input.focus();
 }
