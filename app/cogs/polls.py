@@ -31,10 +31,6 @@ MAX_RICH_OPTION_EMBEDS = 9  # Discord caps a message at 10 embeds total - one of
 # purple accent (0x7c3aed) so a poll that never touches this setting looks unchanged.
 DEFAULT_BAR_COLOR = "#7c3aed"
 
-# TEMPORARY - see build_poll_embed()'s _DEBUG_BAR_CHART usage below. Flip back to False (or
-# remove entirely) once the "still shows the old discrete-square bar" report is resolved.
-_DEBUG_BAR_CHART = True
-
 _FONT_PATHS = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
@@ -227,22 +223,6 @@ def build_poll_embed(
             pass
 
     has_rich = any(opt.get("image_url") or opt.get("image_filename") or opt.get("link_url") for opt in options)
-    if _DEBUG_BAR_CHART:
-        # TEMPORARY diagnostic for a live report ("es sind noch die Vierecke") that a real
-        # generated bar-chart image never renders even on a freshly created, no-image/no-link
-        # poll on an up-to-date deployment - all reasoning from reading the code alone matched
-        # expected behavior, so this puts the actual runtime has_rich/has_legacy_image values
-        # directly into the visible Discord message instead of guessing further. Remove once
-        # the report is resolved.
-        opt_dbg = " ".join(
-            f"[{(o.get('label') or '?')[:8]}:i={bool(o.get('image_url'))}/f={bool(o.get('image_filename'))}/l={bool(o.get('link_url'))}]"
-            for o in options
-        )
-        header.add_field(
-            name="🔧 DEBUG (temporär)",
-            value=f"has_rich={has_rich} has_legacy_image={has_legacy_image}\n{opt_dbg}"[:1000] or "-",
-            inline=False,
-        )
     if not has_rich:
         if not has_legacy_image and options:
             rows = [

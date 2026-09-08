@@ -1197,11 +1197,10 @@ document.addEventListener('click', function(e) {
   /* Mimics a real Discord message (bot header + embed + buttons), not the dashboard's own
      theme - deliberately uses Discord's actual dark-theme colors so what's shown here matches
      what will really post, independent of whatever light/dark theme the dashboard itself is
-     in. The unicode block-character bar (█/░) that cogs/polls.py actually posts to Discord
-     looks like a hatched/striped mess in some fonts/screenshots ("das sieht doof aus" -
-     confirmed by the user against a real render) - this dashboard-only mockup isn't bound to
-     matching that literal text (it was never a pixel-exact replica to begin with), so it uses
-     a normal smooth CSS progress bar here instead, which reads far cleaner on screen.
+     in. The actual posted poll (cogs/polls.py's build_poll_embed()) now renders its bar as a
+     real generated PNG (_render_bar_chart_image, a smooth fill in the admin's chosen RGB
+     color) for the common case - this preview approximates that with an equally smooth CSS
+     fill using the same color, rather than trying to reproduce a generated image client-side.
   */
   .poll-preview-message { max-width:480px; }
   .poll-preview-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.35rem; }
@@ -1219,10 +1218,6 @@ document.addEventListener('click', function(e) {
   .poll-preview-option-thumb { width:32px; height:32px; object-fit:cover; border-radius:4px; flex-shrink:0; }
   .poll-preview-option-large-img { display:block; width:100%; max-height:160px; object-fit:cover; border-radius:4px; margin:0.3rem 0 0.4rem; }
   .poll-preview-option b { color:#f2f3f5; }
-  /* 10 discrete squares, not a smooth gradient bar - mirrors what cogs/polls.py's _bar_line()
-     actually posts to Discord (🟪/⬛ emoji, one per 10% - see its own comment for why plain
-     block-drawing characters were replaced with real emoji), so the preview's bar has the same
-     "row of squares" shape as the real thing instead of a shape Discord can't actually render. */
   .poll-preview-progress-track { display:inline-block; width:140px; height:8px; background:#40444b; border-radius:4px; vertical-align:middle; margin-right:0.5rem; overflow:hidden; }
   .poll-preview-progress-fill { display:block; height:100%; border-radius:4px; }
   .poll-preview-pct { font-size:0.78rem; color:#b5bac1; vertical-align:middle; }
