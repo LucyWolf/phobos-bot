@@ -723,6 +723,14 @@ async def init_db():
             "ALTER TABLE polls ADD COLUMN image_url TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE polls ADD COLUMN image_data TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE polls ADD COLUMN image_filename TEXT NOT NULL DEFAULT ''",
+            # Per-OPTION image + link (e.g. a VRChat world's cover image + its world page URL,
+            # one per map/option in the same poll) - user-requested follow-up, distinct from the
+            # per-POLL image above which is one shared banner for the whole poll. URL-only, no
+            # per-option upload (explicit user choice: an upload field on every one of up to 25
+            # option rows would make the dashboard form unwieldy - a URL is what's normally on
+            # hand for this kind of cover image anyway).
+            "ALTER TABLE poll_options ADD COLUMN image_url TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE poll_options ADD COLUMN link_url TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

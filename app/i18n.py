@@ -475,6 +475,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "polls_image_label": "Bild (optional)",
         "polls_image_placeholder": "https://…",
         "polls_image_either_hint": "Entweder Bild-URL ODER Datei hochladen, nicht beides. Nur beim Dashboard-Erstellen verfügbar, nicht per /poll-create.",
+        "polls_option_extras_hint": "Optional: Bild + Link pro Option (z.B. ein Cover-Bild + der Link dazu, bei mehr als 9 Optionen mit Bild wird der Rest als Textliste angezeigt - Discords Grenze von 10 Embeds pro Nachricht).",
+        "polls_option_image_placeholder": "Bild-URL (optional)",
+        "polls_option_link_placeholder": "Link (optional)",
         "polls_btn_create": "🗳️ Umfrage starten",
         # Age Verification
         "autokick_enabled_label": "Auto-Kick aktivieren",
@@ -1202,6 +1205,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "polls_image_label": "Image (optional)",
         "polls_image_placeholder": "https://…",
         "polls_image_either_hint": "Either an image URL OR a file upload, not both. Dashboard-only, not available via /poll-create.",
+        "polls_option_extras_hint": "Optional: image + link per option (e.g. a cover image + its link, with more than 9 options that have an image the rest show as a plain text list - Discord's 10-embeds-per-message limit).",
+        "polls_option_image_placeholder": "Image URL (optional)",
+        "polls_option_link_placeholder": "Link (optional)",
         "polls_btn_create": "🗳️ Start Poll",
         # Age Verification
         "autokick_enabled_label": "Enable auto-kick",

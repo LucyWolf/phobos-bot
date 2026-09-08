@@ -14,44 +14,85 @@ MAX_OPTIONS = 25  # Discord's own hard ceiling for buttons on one message (5 row
 MAX_DURATION_MINUTES = 10080  # 7 days - same kind of sane upper bound as other duration fields
 
 
+MAX_RICH_OPTION_EMBEDS = 9  # Discord caps a message at 10 embeds total - one of those is the
+# header embed (question/overall image/tally footer), leaving at most 9 for individual
+# per-option image/link embeds. Any option beyond that still gets a bar-chart line in the
+# header's description instead of its own rich embed - a poll with more than 9 image/link
+# options simply can't show all of them richly in one Discord message, this is the real ceiling.
+
+
+def _bar_line(label: str, n: int, total: int) -> str:
+    pct = (n / total * 100) if total else 0
+    filled = round(pct / 10)
+    bar = "█" * filled + "░" * (10 - filled)
+    return f"**{label}**\n{bar} {pct:.0f}% ({n})", bar, pct
+
+
 def build_poll_embed(
     question: str, multiple_choice: bool, options: list, counts: dict, ended: bool = False,
     image_url: str = "", image_filename: str = "",
-) -> discord.Embed:
+) -> list:
     """Shared by creation, every vote, and _end_poll - one place for the bar/percentage layout
-    so it can never drift between the three call sites. image_filename (set only when the
-    image came from a dashboard upload, not a pasted URL) takes precedence and points at
-    "attachment://<filename>" - the caller is responsible for actually attaching a matching
-    discord.File with that same filename ONCE, at creation (see main.py's _embed_post_files,
-    reused as-is for polls too). Deliberately NOT re-attached on every vote/end edit - a poll's
-    image never changes after creation (no edit feature, same as giveaways), and discord.py's
-    edit calls leave existing attachments alone when `attachments=`/`file=` is simply omitted
-    (verified directly against discord.py 2.3.2's handle_message_parameters: attachments stays
-    MISSING -> the 'attachments' key is left out of the request payload entirely -> Discord's
-    own PATCH semantics keep whatever is already on the message)."""
+    so it can never drift between the three call sites. Returns a LIST of embeds, not a single
+    one: if any option has its own image_url/link_url set (e.g. a VRChat world's cover image +
+    world page link, one per map/option in the same poll), each such option gets its OWN embed
+    (title = option label, clickable via embed.url when link_url is set, image = the option's
+    own image) instead of being squeezed into one shared text description - up to
+    MAX_RICH_OPTION_EMBEDS of them, Discord's 10-embeds-per-message limit otherwise. Options
+    without their own image/link (or the overflow beyond that cap) still get a normal
+    bar-chart line in the header embed's description, so no option's tally is ever dropped.
+    If NO option has an image/link at all, this is unchanged from the original single-embed
+    bar-chart layout (byte-for-byte the same as before per-option images existed).
+
+    image_filename (set only when the per-POLL banner image came from a dashboard upload, not
+    a pasted URL) takes precedence over image_url and points at "attachment://<filename>" - the
+    caller is responsible for actually attaching a matching discord.File with that same
+    filename ONCE, at creation (see main.py's _embed_post_files, reused as-is for polls too).
+    Deliberately NOT re-attached on every vote/end edit - a poll's per-poll image never changes
+    after creation (no edit feature, same as giveaways), and discord.py's edit calls leave
+    existing attachments alone when `attachments=`/`file=` is simply omitted (verified directly
+    against discord.py 2.3.2's handle_message_parameters: attachments stays MISSING -> the
+    'attachments' key is left out of the request payload entirely -> Discord's own PATCH
+    semantics keep whatever is already on the message). Per-OPTION images are plain URLs only
+    (no upload), so they need no such attachment handling at all."""
     total = sum(counts.values())
-    lines = []
-    for opt in options:
-        n = counts.get(opt["id"], 0)
-        pct = (n / total * 100) if total else 0
-        filled = round(pct / 10)
-        bar = "█" * filled + "░" * (10 - filled)
-        lines.append(f"**{opt['label']}**\n{bar} {pct:.0f}% ({n})")
-    embed = discord.Embed(
+    header = discord.Embed(
         title=("🔒 " if ended else "🗳️ ") + question,
-        description="\n\n".join(lines),
         color=0x64748b if ended else 0x7c3aed,
     )
     if image_filename:
-        embed.set_image(url=f"attachment://{image_filename}")
+        header.set_image(url=f"attachment://{image_filename}")
     elif image_url:
-        embed.set_image(url=image_url)
+        header.set_image(url=image_url)
     kind = "Mehrfachauswahl" if multiple_choice else "Einzelauswahl"
     footer = f"{kind} · {total} Stimme(n)"
     if ended:
         footer += " · Beendet"
-    embed.set_footer(text=footer)
-    return embed
+    header.set_footer(text=footer)
+
+    has_rich = any(opt.get("image_url") or opt.get("link_url") for opt in options)
+    if not has_rich:
+        lines = [_bar_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in options]
+        header.description = "\n\n".join(lines)
+        return [header]
+
+    rich_options, overflow_options = options[:MAX_RICH_OPTION_EMBEDS], options[MAX_RICH_OPTION_EMBEDS:]
+    embeds = [header]
+    for opt in rich_options:
+        n = counts.get(opt["id"], 0)
+        _, bar, pct = _bar_line(opt["label"], n, total)
+        option_embed = discord.Embed(title=opt["label"], color=0x64748b if ended else 0x7c3aed)
+        if opt.get("link_url"):
+            option_embed.url = opt["link_url"]
+        if opt.get("image_url"):
+            option_embed.set_image(url=opt["image_url"])
+        option_embed.set_footer(text=f"{bar} {pct:.0f}% ({n})")
+        embeds.append(option_embed)
+    if overflow_options:
+        header.description = "\n\n".join(
+            _bar_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in overflow_options
+        )
+    return embeds
 
 
 class PollButton(discord.ui.Button):
@@ -107,16 +148,17 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
     options = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
     rows = await db_rows("SELECT option_id, COUNT(*) c FROM poll_votes WHERE poll_id=? GROUP BY option_id", (poll_id,))
     counts = {r["option_id"]: r["c"] for r in rows}
-    embed = build_poll_embed(
+    embeds = build_poll_embed(
         poll["question"], bool(poll["multiple_choice"]), options, counts,
         image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
     )
-    # No view= (and no attachments=/file=) here on purpose - discord.py's edit_message() default for view is MISSING (not
-    # None), so omitting it leaves the existing buttons untouched instead of needing to
-    # rebuild+reattach an identical PollView on every single vote (verified directly against
-    # discord.py 2.3.2's own source: InteractionResponse.edit_message only calls
-    # state.prevent_view_updates_for()/replaces components when view is explicitly passed).
-    await interaction.response.edit_message(embed=embed)
+    # No view= (and no attachments=/file=) here on purpose - discord.py's edit_message() default
+    # for view is MISSING (not None), so omitting it leaves the existing buttons untouched
+    # instead of needing to rebuild+reattach an identical PollView on every single vote
+    # (verified directly against discord.py 2.3.2's own source: InteractionResponse.edit_message
+    # only calls state.prevent_view_updates_for()/replaces components when view is explicitly
+    # passed).
+    await interaction.response.edit_message(embeds=embeds)
 
 
 class Polls(commands.Cog):
@@ -175,12 +217,12 @@ class Polls(commands.Cog):
         options = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
         rows = await db_rows("SELECT option_id, COUNT(*) c FROM poll_votes WHERE poll_id=? GROUP BY option_id", (poll_id,))
         counts = {r["option_id"]: r["c"] for r in rows}
-        embed = build_poll_embed(
+        embeds = build_poll_embed(
             poll["question"], bool(poll["multiple_choice"]), options, counts, ended=True,
             image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
         )
         try:
-            await msg.edit(embed=embed, view=None)
+            await msg.edit(embeds=embeds, view=None)
         except Exception as e:
             print(f"[Polls] failed to finalize poll {poll_id}: {e}")
 
@@ -224,10 +266,10 @@ class Polls(commands.Cog):
                 (pid, i, label[:80]),
             )
         opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
-        embed = build_poll_embed(question, multiple, opt_rows, {})
+        embeds = build_poll_embed(question, multiple, opt_rows, {})
         view = PollView(pid, opt_rows)
         try:
-            msg = await interaction.channel.send(embed=embed, view=view)
+            msg = await interaction.channel.send(embeds=embeds, view=view)
         except (discord.HTTPException, OSError) as e:
             # defer() already ran above - an unhandled exception here (missing "Send
             # Messages", or a genuine network-level OSError; discord.py 2.3.2's http.py

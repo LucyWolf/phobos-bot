@@ -6712,7 +6712,22 @@ async def poll_create_web(request: Request, guild_id: int):
     form = await request.form()
     channel_id = form.get("channel_id", "")
     question = form.get("question", "").strip()
-    options = [o.strip() for o in form.getlist("option") if o.strip()]
+    # Per-option label/image/link fields are submitted as three PARALLEL lists (one "option"/
+    # "option_image"/"option_link" triplet per dashboard row, always all three present even
+    # when empty since they're plain text/url inputs) - zipped together BEFORE filtering so a
+    # row's image/link never end up misaligned with a different row's label. A row only
+    # survives if it has a non-empty LABEL (a picture with no button text makes no sense); its
+    # image/link may be empty.
+    raw_labels = form.getlist("option")
+    raw_images = form.getlist("option_image")
+    raw_links = form.getlist("option_link")
+    raw_images += [""] * (len(raw_labels) - len(raw_images))
+    raw_links += [""] * (len(raw_labels) - len(raw_links))
+    options = [
+        (lbl.strip(), img.strip(), link.strip())
+        for lbl, img, link in zip(raw_labels, raw_images, raw_links)
+        if lbl.strip()
+    ]
     multiple = bool(form.get("multiple_choice", ""))
     try:
         duration_minutes = int(form.get("duration_minutes") or 0)
@@ -6734,6 +6749,19 @@ async def poll_create_web(request: Request, guild_id: int):
         return RedirectResponse(
             f"/servers/{guild_id}?tab=polls&error=Entweder+Bild-URL+ODER+Datei,+nicht+beides", status_code=302
         )
+    if image_url and not image_url.startswith(("http://", "https://")):
+        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Bild-URL+muss+mit+http(s)://+beginnen", status_code=302)
+    for lbl, img, link in options:
+        if img and not img.startswith(("http://", "https://")):
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=polls&error=Options-Bild-URL+({urllib.parse.quote(lbl)})+muss+mit+http(s)://+beginnen",
+                status_code=302,
+            )
+        if link and not link.startswith(("http://", "https://")):
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=polls&error=Options-Link+({urllib.parse.quote(lbl)})+muss+mit+http(s)://+beginnen",
+                status_code=302,
+            )
     try:
         channel = bot.get_channel(int(channel_id))
     except (ValueError, TypeError):
@@ -6758,16 +6786,19 @@ async def poll_create_web(request: Request, guild_id: int):
         (str(guild_id), str(channel.id), question, int(multiple), ends_at, request.session.get("user_id") or 0,
          final_image_url, final_image_data, final_image_filename),
     )
-    for i, label in enumerate(options):
-        await db_exec("INSERT INTO poll_options (poll_id,option_index,label) VALUES (?,?,?)", (pid, i, label[:80]))
+    for i, (label, opt_image, opt_link) in enumerate(options):
+        await db_exec(
+            "INSERT INTO poll_options (poll_id,option_index,label,image_url,link_url) VALUES (?,?,?,?,?)",
+            (pid, i, label[:80], opt_image[:500], opt_link[:500]),
+        )
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
-    embed = _build_poll_embed(
+    embeds = _build_poll_embed(
         question, multiple, opt_rows, {}, image_url=final_image_url, image_filename=final_image_filename
     )
     view = _PollView(pid, opt_rows)
     files = _embed_post_files(final_image_data, final_image_filename)
     try:
-        msg = await channel.send(embed=embed, view=view, files=files)
+        msg = await channel.send(embeds=embeds, view=view, files=files)
     except (discord.HTTPException, OSError):
         await db_exec("DELETE FROM polls WHERE id=?", (pid,))
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Umfrage+konnte+nicht+gepostet+werden", status_code=302)

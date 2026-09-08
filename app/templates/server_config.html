@@ -1246,12 +1246,21 @@ document.addEventListener('click', function(e) {
     <label>{{ tr.polls_question_label }}</label>
     <input type="text" name="question" maxlength="200" required>
     <label>{{ tr.polls_options_label }}</label>
+    <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.4rem;">{{ tr.polls_option_extras_hint }}</div>
     <div id="poll-options-new">
-      <div style="display:flex;gap:0.4rem;margin-bottom:0.4rem;">
-        <input type="text" name="option" maxlength="80" required placeholder="{{ tr.polls_option_placeholder }} 1" style="margin:0;flex:1;">
+      <div style="display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.6rem;padding:0.5rem;border:1px solid var(--border);border-radius:0.5rem;">
+        <input type="text" name="option" maxlength="80" required placeholder="{{ tr.polls_option_placeholder }} 1" style="margin:0;">
+        <div style="display:flex;gap:0.4rem;">
+          <input type="url" name="option_image" placeholder="{{ tr.polls_option_image_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
+          <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
+        </div>
       </div>
-      <div style="display:flex;gap:0.4rem;margin-bottom:0.4rem;">
-        <input type="text" name="option" maxlength="80" required placeholder="{{ tr.polls_option_placeholder }} 2" style="margin:0;flex:1;">
+      <div style="display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.6rem;padding:0.5rem;border:1px solid var(--border);border-radius:0.5rem;">
+        <input type="text" name="option" maxlength="80" required placeholder="{{ tr.polls_option_placeholder }} 2" style="margin:0;">
+        <div style="display:flex;gap:0.4rem;">
+          <input type="url" name="option_image" placeholder="{{ tr.polls_option_image_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
+          <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
+        </div>
       </div>
     </div>
     <button type="button" class="btn btn-secondary" onclick="addPollOption('poll-options-new')" style="font-size:0.75rem;padding:0.3rem 0.7rem;margin-bottom:0.75rem;">{{ tr.polls_add_option }}</button>
@@ -1288,9 +1297,11 @@ function addPollOption(containerId) {
   if (container.children.length >= 25) return;
   const count = container.children.length;
   const row = document.createElement('div');
-  row.style.cssText = 'display:flex;gap:0.4rem;margin-bottom:0.4rem;';
+  row.style.cssText = 'display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.6rem;padding:0.5rem;border:1px solid var(--border);border-radius:0.5rem;';
+  const topRow = document.createElement('div');
+  topRow.style.cssText = 'display:flex;gap:0.4rem;';
   const input = document.createElement('input');
-  input.type = 'text'; input.name = 'option'; input.maxLength = 80;
+  input.type = 'text'; input.name = 'option'; input.maxLength = 80; input.required = true;
   input.placeholder = '{{ tr.polls_option_placeholder }} ' + (count + 1);
   input.style.cssText = 'margin:0;flex:1;';
   const btn = document.createElement('button');
@@ -1298,7 +1309,19 @@ function addPollOption(containerId) {
   btn.style.cssText = 'padding:0.3rem 0.6rem;font-size:0.75rem;';
   btn.textContent = '✕';
   btn.onclick = function() { row.remove(); };
-  row.appendChild(input); row.appendChild(btn);
+  topRow.appendChild(input); topRow.appendChild(btn);
+  const extrasRow = document.createElement('div');
+  extrasRow.style.cssText = 'display:flex;gap:0.4rem;';
+  const imageInput = document.createElement('input');
+  imageInput.type = 'url'; imageInput.name = 'option_image';
+  imageInput.placeholder = '{{ tr.polls_option_image_placeholder }}';
+  imageInput.style.cssText = 'margin:0;flex:1;font-size:0.78rem;';
+  const linkInput = document.createElement('input');
+  linkInput.type = 'url'; linkInput.name = 'option_link';
+  linkInput.placeholder = '{{ tr.polls_option_link_placeholder }}';
+  linkInput.style.cssText = 'margin:0;flex:1;font-size:0.78rem;';
+  extrasRow.appendChild(imageInput); extrasRow.appendChild(linkInput);
+  row.appendChild(topRow); row.appendChild(extrasRow);
   container.appendChild(row);
   input.focus();
 }
