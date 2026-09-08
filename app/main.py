@@ -106,6 +106,7 @@ except ImportError:
 from cogs.tickets import OpenTicketView as _TicketView, close_ticket_channel as _close_ticket_channel
 from cogs.leveling import xp_for_level as _xp_for_level, cumulative_xp_for_level as _cumulative_xp_for_level
 from cogs.welcome import _make_card as _welcome_make_card, fill as _welcome_fill
+from cogs.polls import build_poll_embed as _build_poll_embed, PollView as _PollView
 from i18n import get_tr
 import uvicorn
 from discord.ext import commands
@@ -216,6 +217,7 @@ COGS = [
     "cogs.amp",
     "cogs.auto_kick",
     "cogs.role_rules",
+    "cogs.polls",
 ]
 
 
@@ -4432,7 +4434,7 @@ _SERVER_CONFIG_TAB_LABELS = {
     "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant", "events": "🗓️ Events",
     "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
     "amp": "🎮 Gameserver", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
-    "rolerules": "🔗 CrossVerification",
+    "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen",
 }
 
 # Features an admin can hide from THIS server's own sidebar to cut down on clutter for
@@ -4450,7 +4452,7 @@ _TOGGLEABLE_FEATURES = {
     "events": "🗓️ Events", "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
     "amp": "🎮 Gameserver", "notifications": "🟣 Streaming", "freestuff": "🎁 Free Stuff",
     "log": "📋 Log", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
-    "rolerules": "🔗 CrossVerification",
+    "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen",
 }
 
 
@@ -4694,6 +4696,15 @@ async def server_config(
         ch = guild.get_channel(g["channel_id"])
         g["channel_name"] = f"#{ch.name}" if ch else "?"
 
+    # Active polls
+    poll_list = await db_rows(
+        "SELECT p.*, (SELECT COUNT(*) FROM poll_votes v WHERE v.poll_id=p.id) AS vote_count "
+        "FROM polls p WHERE p.guild_id=? AND p.ended=0 ORDER BY p.created_at DESC", (str(guild_id),)
+    )
+    for p in poll_list:
+        ch = guild.get_channel(int(p["channel_id"])) if p["channel_id"] else None
+        p["channel_name"] = f"#{ch.name}" if ch else "?"
+
     # Notifications
     subs = await db_rows(
         "SELECT * FROM notifications WHERE guild_id=? ORDER BY platform, target_name", (str(guild_id),)
@@ -4817,6 +4828,7 @@ async def server_config(
         "rr_list": rr_list, "cmd_list": cmd_list,
         "leaderboard": lb, "warn_groups": warn_groups,
         "ticket_panels": ticket_panels, "ticket_list": ticket_list, "ga_list": ga_list,
+        "poll_list": poll_list,
         "embed_posts": embed_posts,
         "subs": subs, "twitch_configured": twitch_configured,
         "all_users": all_users, "server_perms": server_perms,
@@ -6685,6 +6697,78 @@ async def giveaway_reroll_web(request: Request, guild_id: int, gid: int):
     await db_exec("UPDATE giveaways SET ended=0 WHERE id=? AND guild_id=?", (gid, guild_id))
     await cog._end_giveaway(gid)
     return RedirectResponse(f"/servers/{guild_id}?tab=giveaways", status_code=302)
+
+
+# ── Polls ─────────────────────────────────────────────────────────────────────
+
+@web.post("/servers/{guild_id}/polls/create")
+async def poll_create_web(
+    request: Request, guild_id: int,
+    channel_id: str = Form(...), question: str = Form(...),
+    multiple_choice: str = Form(""), duration_minutes: int = Form(0),
+):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    options = [o.strip() for o in (await request.form()).getlist("option") if o.strip()]
+    if len(options) < 2:
+        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Mindestens+2+Optionen+nötig", status_code=302)
+    if len(options) > 10:
+        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Maximal+10+Optionen+erlaubt", status_code=302)
+    if len(question.strip()) > 200:
+        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Frage+zu+lang+(max.+200+Zeichen)", status_code=302)
+    if duration_minutes < 0 or duration_minutes > 10080:
+        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Ungültige+Dauer", status_code=302)
+    try:
+        channel = bot.get_channel(int(channel_id))
+    except (ValueError, TypeError):
+        channel = None
+    if not channel or channel.guild.id != guild_id:
+        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Kanal+nicht+gefunden", status_code=302)
+
+    multiple = bool(multiple_choice)
+    ends_at = ""
+    if duration_minutes > 0:
+        ends_at = (datetime.datetime.utcnow() + datetime.timedelta(minutes=duration_minutes)).isoformat()
+
+    pid = await db_insert(
+        "INSERT INTO polls (guild_id,channel_id,question,multiple_choice,ends_at,created_by) VALUES (?,?,?,?,?,?)",
+        (str(guild_id), str(channel.id), question.strip(), int(multiple), ends_at, request.session.get("user_id") or 0),
+    )
+    for i, label in enumerate(options):
+        await db_exec("INSERT INTO poll_options (poll_id,option_index,label) VALUES (?,?,?)", (pid, i, label[:80]))
+    opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
+    embed = _build_poll_embed(question.strip(), multiple, opt_rows, {})
+    view = _PollView(pid, opt_rows)
+    try:
+        msg = await channel.send(embed=embed, view=view)
+    except (discord.HTTPException, OSError):
+        await db_exec("DELETE FROM polls WHERE id=?", (pid,))
+        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Umfrage+konnte+nicht+gepostet+werden", status_code=302)
+    await db_exec("UPDATE polls SET message_id=? WHERE id=?", (str(msg.id), pid))
+    if ends_at:
+        b = bot._bot_for_guild(guild_id)
+        cog = b.cogs.get("Polls") if b else None
+        if cog:
+            poll_row = await db_one("SELECT * FROM polls WHERE id=?", (pid,))
+            cog._schedule(poll_row)
+    return RedirectResponse(f"/servers/{guild_id}?tab=polls&success=Umfrage+gestartet", status_code=302)
+
+
+@web.post("/servers/{guild_id}/polls/{poll_id}/end")
+async def poll_end_web(request: Request, guild_id: int, poll_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    poll = await db_one("SELECT id FROM polls WHERE id=? AND guild_id=?", (poll_id, str(guild_id)))
+    if not poll:
+        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Umfrage+nicht+gefunden", status_code=302)
+    b = bot._bot_for_guild(guild_id)
+    cog = b.cogs.get("Polls") if b else None
+    if not cog:
+        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Bot+nicht+online", status_code=302)
+    await cog._end_poll(poll_id)
+    return RedirectResponse(f"/servers/{guild_id}?tab=polls", status_code=302)
 
 
 # ── Warnings ──────────────────────────────────────────────────────────────────

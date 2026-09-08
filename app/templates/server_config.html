@@ -1190,6 +1190,118 @@ document.addEventListener('click', function(e) {
 
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Umfragen                                                       -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-polls">
+
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="togglePollsInfo()" title="{{ tr.polls_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="polls-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:300px;max-width:400px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.polls_info_title }}</div>
+    <ul style="margin:0 0 0 1.1rem;padding:0;color:var(--muted);line-height:1.6;">
+      <li>{{ tr.polls_info_item_create }}</li>
+      <li>{{ tr.polls_info_item_vote }}</li>
+      <li>{{ tr.polls_info_item_end }}</li>
+    </ul>
+  </div>
+</div>
+
+{% if poll_list %}
+<div class="section-label" style="margin-bottom:0.6rem;">{{ tr.polls_active_title }}</div>
+<div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem;">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>{{ tr.polls_col_question }}</th><th>{{ tr.label_channel }}</th><th>{{ tr.polls_col_votes }}</th><th>{{ tr.polls_col_type }}</th><th>{{ tr.polls_col_actions }}</th></tr></thead>
+      <tbody>
+        {% for p in poll_list %}
+        <tr>
+          <td style="font-weight:600">🗳️ {{ p.question }}</td>
+          <td style="color:var(--muted)">{{ p.channel_name }}</td>
+          <td>{{ p.vote_count }}</td>
+          <td>{{ tr.polls_type_multi if p.multiple_choice else tr.polls_type_single }}</td>
+          <td>
+            <form method="post" action="/servers/{{ guild.id }}/polls/{{ p.id }}/end" style="display:inline">
+              <button class="btn btn-danger" onclick="return confirm({{ tr.polls_confirm_end | js }})">{{ tr.polls_btn_end }}</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="feat-header">{{ tr.polls_create_heading }}</div>
+  <form method="post" action="/servers/{{ guild.id }}/polls/create">
+    <label>{{ tr.label_channel }}</label>
+    <select name="channel_id" required>
+      <option value="">{{ tr.polls_channel_placeholder }}</option>
+      {% for ch in channels %}<option value="{{ ch.id }}">#{{ ch.name }}</option>{% endfor %}
+    </select>
+    <label>{{ tr.polls_question_label }}</label>
+    <input type="text" name="question" maxlength="200" required>
+    <label>{{ tr.polls_options_label }}</label>
+    <div id="poll-options-new">
+      <div style="display:flex;gap:0.4rem;margin-bottom:0.4rem;">
+        <input type="text" name="option" maxlength="80" required placeholder="{{ tr.polls_option_placeholder }} 1" style="margin:0;flex:1;">
+      </div>
+      <div style="display:flex;gap:0.4rem;margin-bottom:0.4rem;">
+        <input type="text" name="option" maxlength="80" required placeholder="{{ tr.polls_option_placeholder }} 2" style="margin:0;flex:1;">
+      </div>
+    </div>
+    <button type="button" class="btn btn-secondary" onclick="addPollOption('poll-options-new')" style="font-size:0.75rem;padding:0.3rem 0.7rem;margin-bottom:0.75rem;">{{ tr.polls_add_option }}</button>
+    <div class="grid-2">
+      <div>
+        <label><input type="checkbox" name="multiple_choice" value="1" style="width:auto;display:inline;margin-right:0.4rem;"> {{ tr.polls_multiple_label }}</label>
+      </div>
+      <div>
+        <label>{{ tr.polls_duration_label }}</label>
+        <input type="number" name="duration_minutes" value="0" min="0" max="10080" placeholder="{{ tr.polls_duration_placeholder }}">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">{{ tr.polls_btn_create }}</button>
+  </form>
+</div>
+</div>
+<script>
+function togglePollsInfo() {
+  const box = document.getElementById('polls-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('polls-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="togglePollsInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+function addPollOption(containerId) {
+  const container = document.getElementById(containerId);
+  if (container.children.length >= 10) return;
+  const count = container.children.length;
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:0.4rem;margin-bottom:0.4rem;';
+  const input = document.createElement('input');
+  input.type = 'text'; input.name = 'option'; input.maxLength = 80;
+  input.placeholder = '{{ tr.polls_option_placeholder }} ' + (count + 1);
+  input.style.cssText = 'margin:0;flex:1;';
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'btn btn-danger';
+  btn.style.cssText = 'padding:0.3rem 0.6rem;font-size:0.75rem;';
+  btn.textContent = '✕';
+  btn.onclick = function() { row.remove(); };
+  row.appendChild(input); row.appendChild(btn);
+  container.appendChild(row);
+  input.focus();
+}
+</script>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <!-- TAB: Warnungen                                                      -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-warnings">
@@ -3042,7 +3154,7 @@ document.addEventListener('click', function(e) {
 </script>
 
 <script>
-const TABS = ['config','welcome','automod','leveling','rr','commands','tickets','giveaways','warnings','users','tempvoice','scheduled','events','birthday','autodelete','amp','autokick','embeds','rolerules'];
+const TABS = ['config','welcome','automod','leveling','rr','commands','tickets','giveaways','polls','warnings','users','tempvoice','scheduled','events','birthday','autodelete','amp','autokick','embeds','rolerules'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {

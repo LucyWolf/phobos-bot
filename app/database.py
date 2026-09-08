@@ -681,6 +681,39 @@ async def init_db():
             # every bot's own messages, and the user asked for this to stay off unless
             # explicitly enabled.
             "ALTER TABLE auto_delete_channels ADD COLUMN include_bot_messages INTEGER NOT NULL DEFAULT 0",
+            # Polls (cogs/polls.py) - user-requested "Abstimmungen verwalten" feature. One
+            # button per option (poll_options), one row per (poll, user, option) vote so a
+            # multiple-choice poll's per-user toggle and a single-choice poll's "replace the
+            # whole vote" both just become simple DELETE/INSERT pairs against poll_votes,
+            # no separate "current choice" column to keep in sync. Deliberately NOT added to
+            # _BACKUP_FEATURE_TABLES in main.py - same reasoning as giveaways (also absent
+            # there): a poll is a time-bound live event, not reusable admin configuration like
+            # a ticket panel.
+            """CREATE TABLE IF NOT EXISTS polls (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                message_id TEXT NOT NULL DEFAULT '',
+                question TEXT NOT NULL,
+                multiple_choice INTEGER NOT NULL DEFAULT 0,
+                ends_at TEXT NOT NULL DEFAULT '',
+                ended INTEGER NOT NULL DEFAULT 0,
+                created_by INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS poll_options (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                poll_id INTEGER NOT NULL,
+                option_index INTEGER NOT NULL,
+                label TEXT NOT NULL
+            )""",
+            """CREATE TABLE IF NOT EXISTS poll_votes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                poll_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                option_id INTEGER NOT NULL,
+                UNIQUE(poll_id, user_id, option_id)
+            )""",
         ]:
             try:
                 await db.execute(col)
