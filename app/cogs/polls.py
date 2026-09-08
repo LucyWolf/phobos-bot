@@ -9,13 +9,26 @@ from discord import app_commands
 from discord.ext import commands
 from database import db_exec, db_exec_rowcount, db_insert, db_one, db_rows
 
-MAX_OPTIONS = 10
+MAX_OPTIONS = 25  # Discord's own hard ceiling for buttons on one message (5 rows x 5) - there
+# is no way to have "unlimited" options with a button-per-option design, this is the real max.
 MAX_DURATION_MINUTES = 10080  # 7 days - same kind of sane upper bound as other duration fields
 
 
-def build_poll_embed(question: str, multiple_choice: bool, options: list, counts: dict, ended: bool = False) -> discord.Embed:
+def build_poll_embed(
+    question: str, multiple_choice: bool, options: list, counts: dict, ended: bool = False,
+    image_url: str = "", image_filename: str = "",
+) -> discord.Embed:
     """Shared by creation, every vote, and _end_poll - one place for the bar/percentage layout
-    so it can never drift between the three call sites."""
+    so it can never drift between the three call sites. image_filename (set only when the
+    image came from a dashboard upload, not a pasted URL) takes precedence and points at
+    "attachment://<filename>" - the caller is responsible for actually attaching a matching
+    discord.File with that same filename ONCE, at creation (see main.py's _embed_post_files,
+    reused as-is for polls too). Deliberately NOT re-attached on every vote/end edit - a poll's
+    image never changes after creation (no edit feature, same as giveaways), and discord.py's
+    edit calls leave existing attachments alone when `attachments=`/`file=` is simply omitted
+    (verified directly against discord.py 2.3.2's handle_message_parameters: attachments stays
+    MISSING -> the 'attachments' key is left out of the request payload entirely -> Discord's
+    own PATCH semantics keep whatever is already on the message)."""
     total = sum(counts.values())
     lines = []
     for opt in options:
@@ -29,6 +42,10 @@ def build_poll_embed(question: str, multiple_choice: bool, options: list, counts
         description="\n\n".join(lines),
         color=0x64748b if ended else 0x7c3aed,
     )
+    if image_filename:
+        embed.set_image(url=f"attachment://{image_filename}")
+    elif image_url:
+        embed.set_image(url=image_url)
     kind = "Mehrfachauswahl" if multiple_choice else "Einzelauswahl"
     footer = f"{kind} · {total} Stimme(n)"
     if ended:
@@ -90,8 +107,11 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
     options = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
     rows = await db_rows("SELECT option_id, COUNT(*) c FROM poll_votes WHERE poll_id=? GROUP BY option_id", (poll_id,))
     counts = {r["option_id"]: r["c"] for r in rows}
-    embed = build_poll_embed(poll["question"], bool(poll["multiple_choice"]), options, counts)
-    # No view= here on purpose - discord.py's edit_message() default for view is MISSING (not
+    embed = build_poll_embed(
+        poll["question"], bool(poll["multiple_choice"]), options, counts,
+        image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
+    )
+    # No view= (and no attachments=/file=) here on purpose - discord.py's edit_message() default for view is MISSING (not
     # None), so omitting it leaves the existing buttons untouched instead of needing to
     # rebuild+reattach an identical PollView on every single vote (verified directly against
     # discord.py 2.3.2's own source: InteractionResponse.edit_message only calls
@@ -155,7 +175,10 @@ class Polls(commands.Cog):
         options = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
         rows = await db_rows("SELECT option_id, COUNT(*) c FROM poll_votes WHERE poll_id=? GROUP BY option_id", (poll_id,))
         counts = {r["option_id"]: r["c"] for r in rows}
-        embed = build_poll_embed(poll["question"], bool(poll["multiple_choice"]), options, counts, ended=True)
+        embed = build_poll_embed(
+            poll["question"], bool(poll["multiple_choice"]), options, counts, ended=True,
+            image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
+        )
         try:
             await msg.edit(embed=embed, view=None)
         except Exception as e:
@@ -167,9 +190,18 @@ class Polls(commands.Cog):
         self, interaction: discord.Interaction, question: str,
         option1: str, option2: str,
         option3: str = None, option4: str = None, option5: str = None,
+        option6: str = None, option7: str = None, option8: str = None,
+        option9: str = None, option10: str = None,
         multiple: bool = False, duration_minutes: int = 0,
     ):
-        options = [o for o in [option1, option2, option3, option4, option5] if o]
+        # Capped at 10 explicit params (not the full 25-button ceiling _dashboard_ polls allow)
+        # - a slash command renders one fillable field per parameter in Discord's own command
+        # UI, so this is already a fairly long form; anything needing more options belongs on
+        # the dashboard instead, per explicit user choice when this was raised.
+        options = [o for o in [
+            option1, option2, option3, option4, option5,
+            option6, option7, option8, option9, option10,
+        ] if o]
         if len(question) > 200:
             await interaction.response.send_message("Frage darf max. 200 Zeichen lang sein.", ephemeral=True)
             return

@@ -1237,7 +1237,7 @@ document.addEventListener('click', function(e) {
 
 <div class="card">
   <div class="feat-header">{{ tr.polls_create_heading }}</div>
-  <form method="post" action="/servers/{{ guild.id }}/polls/create">
+  <form method="post" action="/servers/{{ guild.id }}/polls/create" enctype="multipart/form-data">
     <label>{{ tr.label_channel }}</label>
     <select name="channel_id" required>
       <option value="">{{ tr.polls_channel_placeholder }}</option>
@@ -1255,6 +1255,10 @@ document.addEventListener('click', function(e) {
       </div>
     </div>
     <button type="button" class="btn btn-secondary" onclick="addPollOption('poll-options-new')" style="font-size:0.75rem;padding:0.3rem 0.7rem;margin-bottom:0.75rem;">{{ tr.polls_add_option }}</button>
+    <label>{{ tr.polls_image_label }}</label>
+    <input type="url" name="image_url" placeholder="{{ tr.polls_image_placeholder }}" style="margin-bottom:0;">
+    <input type="file" name="image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin-top:0.4rem;margin-bottom:0.2rem;font-size:0.78rem;">
+    <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.75rem;">{{ tr.polls_image_either_hint }}</div>
     <div class="grid-2">
       <div>
         <label><input type="checkbox" name="multiple_choice" value="1" style="width:auto;display:inline;margin-right:0.4rem;"> {{ tr.polls_multiple_label }}</label>
@@ -1281,7 +1285,7 @@ document.addEventListener('click', function(e) {
 });
 function addPollOption(containerId) {
   const container = document.getElementById(containerId);
-  if (container.children.length >= 10) return;
+  if (container.children.length >= 25) return;
   const count = container.children.length;
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;gap:0.4rem;margin-bottom:0.4rem;';

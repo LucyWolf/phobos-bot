@@ -6702,46 +6702,72 @@ async def giveaway_reroll_web(request: Request, guild_id: int, gid: int):
 # ── Polls ─────────────────────────────────────────────────────────────────────
 
 @web.post("/servers/{guild_id}/polls/create")
-async def poll_create_web(
-    request: Request, guild_id: int,
-    channel_id: str = Form(...), question: str = Form(...),
-    multiple_choice: str = Form(""), duration_minutes: int = Form(0),
-):
+async def poll_create_web(request: Request, guild_id: int):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
-    options = [o.strip() for o in (await request.form()).getlist("option") if o.strip()]
+    # Manual form parsing (not typed Form(...) params) since this route also needs a file
+    # upload + form.getlist() for the variable option count - same style as embed_post_create,
+    # which has the identical "image URL or upload" field.
+    form = await request.form()
+    channel_id = form.get("channel_id", "")
+    question = form.get("question", "").strip()
+    options = [o.strip() for o in form.getlist("option") if o.strip()]
+    multiple = bool(form.get("multiple_choice", ""))
+    try:
+        duration_minutes = int(form.get("duration_minutes") or 0)
+    except (ValueError, TypeError):
+        duration_minutes = 0
+    image_url = form.get("image_url", "").strip()
+    image_file = form.get("image_file")
+    has_upload = bool(image_file and getattr(image_file, "filename", ""))
+
     if len(options) < 2:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Mindestens+2+Optionen+nötig", status_code=302)
-    if len(options) > 10:
-        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Maximal+10+Optionen+erlaubt", status_code=302)
-    if len(question.strip()) > 200:
+    if len(options) > 25:
+        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Maximal+25+Optionen+erlaubt", status_code=302)
+    if len(question) > 200:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Frage+zu+lang+(max.+200+Zeichen)", status_code=302)
     if duration_minutes < 0 or duration_minutes > 10080:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Ungültige+Dauer", status_code=302)
+    if has_upload and image_url:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=polls&error=Entweder+Bild-URL+ODER+Datei,+nicht+beides", status_code=302
+        )
     try:
         channel = bot.get_channel(int(channel_id))
     except (ValueError, TypeError):
         channel = None
     if not channel or channel.guild.id != guild_id:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Kanal+nicht+gefunden", status_code=302)
+    try:
+        image_data_b64, image_filename = await _read_embed_image_upload(image_file)
+    except ValueError as msg:
+        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error={urllib.parse.quote(str(msg))}", status_code=302)
+    final_image_url = "" if has_upload else image_url
+    final_image_data = image_data_b64 or ""
+    final_image_filename = image_filename or ""
 
-    multiple = bool(multiple_choice)
     ends_at = ""
     if duration_minutes > 0:
         ends_at = (datetime.datetime.utcnow() + datetime.timedelta(minutes=duration_minutes)).isoformat()
 
     pid = await db_insert(
-        "INSERT INTO polls (guild_id,channel_id,question,multiple_choice,ends_at,created_by) VALUES (?,?,?,?,?,?)",
-        (str(guild_id), str(channel.id), question.strip(), int(multiple), ends_at, request.session.get("user_id") or 0),
+        "INSERT INTO polls (guild_id,channel_id,question,multiple_choice,ends_at,created_by,"
+        "image_url,image_data,image_filename) VALUES (?,?,?,?,?,?,?,?,?)",
+        (str(guild_id), str(channel.id), question, int(multiple), ends_at, request.session.get("user_id") or 0,
+         final_image_url, final_image_data, final_image_filename),
     )
     for i, label in enumerate(options):
         await db_exec("INSERT INTO poll_options (poll_id,option_index,label) VALUES (?,?,?)", (pid, i, label[:80]))
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
-    embed = _build_poll_embed(question.strip(), multiple, opt_rows, {})
+    embed = _build_poll_embed(
+        question, multiple, opt_rows, {}, image_url=final_image_url, image_filename=final_image_filename
+    )
     view = _PollView(pid, opt_rows)
+    files = _embed_post_files(final_image_data, final_image_filename)
     try:
-        msg = await channel.send(embed=embed, view=view)
+        msg = await channel.send(embed=embed, view=view, files=files)
     except (discord.HTTPException, OSError):
         await db_exec("DELETE FROM polls WHERE id=?", (pid,))
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Umfrage+konnte+nicht+gepostet+werden", status_code=302)

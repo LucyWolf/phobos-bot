@@ -714,6 +714,15 @@ async def init_db():
                 option_id INTEGER NOT NULL,
                 UNIQUE(poll_id, user_id, option_id)
             )""",
+            # Optional per-poll image, dashboard-only (not settable via /poll-create - a file
+            # upload doesn't fit a slash command, and one more text param felt like scope creep
+            # for a chat-quick-poll command). Same three-column shape as embed_posts
+            # (image_url XOR image_data+image_filename) so the already-existing
+            # _read_embed_image_upload()/_embed_post_files() helpers in main.py can be reused
+            # as-is instead of duplicating that validation/encoding logic.
+            "ALTER TABLE polls ADD COLUMN image_url TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE polls ADD COLUMN image_data TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE polls ADD COLUMN image_filename TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

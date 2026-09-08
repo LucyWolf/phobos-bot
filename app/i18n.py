@@ -451,7 +451,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # Polls
         "polls_info_tooltip": "Wie funktionieren Umfragen?",
         "polls_info_title": "🗳️ Wie funktionieren Umfragen?",
-        "polls_info_item_create": "Frage + 2-10 Optionen festlegen, per Slash-Befehl /poll-create oder hier im Dashboard.",
+        "polls_info_item_create": "Frage + 2-25 Optionen festlegen (per /poll-create bis zu 10, hier im Dashboard bis zu 25 - Discords eigenes Hartlimit für Buttons).",
         "polls_info_item_vote": "Mitglieder stimmen per Button ab - Einzel- oder Mehrfachauswahl, pro Umfrage festgelegt.",
         "polls_info_item_end": "Läuft automatisch nach der eingestellten Dauer ab (0 = kein Auto-Ende), oder manuell per Beenden-Button.",
         "polls_active_title": "Aktive Umfragen",
@@ -472,6 +472,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "polls_multiple_label": "Mehrfachauswahl erlauben",
         "polls_duration_label": "Dauer (Minuten)",
         "polls_duration_placeholder": "0 = kein Auto-Ende",
+        "polls_image_label": "Bild (optional)",
+        "polls_image_placeholder": "https://…",
+        "polls_image_either_hint": "Entweder Bild-URL ODER Datei hochladen, nicht beides. Nur beim Dashboard-Erstellen verfügbar, nicht per /poll-create.",
         "polls_btn_create": "🗳️ Umfrage starten",
         # Age Verification
         "autokick_enabled_label": "Auto-Kick aktivieren",
@@ -1175,7 +1178,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # Polls
         "polls_info_tooltip": "How do polls work?",
         "polls_info_title": "🗳️ How do polls work?",
-        "polls_info_item_create": "Set a question + 2-10 options, via /poll-create in chat or here in the dashboard.",
+        "polls_info_item_create": "Set a question + 2-25 options (up to 10 via /poll-create, up to 25 here in the dashboard - Discord's own hard limit for buttons).",
         "polls_info_item_vote": "Members vote via button - single or multiple choice, set per poll.",
         "polls_info_item_end": "Ends automatically after the configured duration (0 = no auto-end), or manually via the End button.",
         "polls_active_title": "Active Polls",
@@ -1196,6 +1199,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "polls_multiple_label": "Allow multiple choice",
         "polls_duration_label": "Duration (minutes)",
         "polls_duration_placeholder": "0 = no auto-end",
+        "polls_image_label": "Image (optional)",
+        "polls_image_placeholder": "https://…",
+        "polls_image_either_hint": "Either an image URL OR a file upload, not both. Dashboard-only, not available via /poll-create.",
         "polls_btn_create": "🗳️ Start Poll",
         # Age Verification
         "autokick_enabled_label": "Enable auto-kick",
