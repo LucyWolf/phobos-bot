@@ -480,6 +480,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "polls_btn_create": "🗳️ Umfrage starten",
         "polls_btn_preview": "🔍 Vorschau holen",
         "polls_preview_pick_hint": "Als Bild für diese Option übernehmen",
+        "polls_preview_label": "Vorschau",
+        "polls_preview_empty": "Die Vorschau erscheint hier, sobald du eine Frage oder eine Option einträgst.",
+        "polls_preview_placeholder_question": "Deine Frage",
         "polls_edit_heading": "Umfrage bearbeiten",
         # Age Verification
         "autokick_enabled_label": "Auto-Kick aktivieren",
@@ -1212,6 +1215,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "polls_btn_create": "🗳️ Start Poll",
         "polls_btn_preview": "🔍 Fetch preview",
         "polls_preview_pick_hint": "Use as this option's image",
+        "polls_preview_label": "Preview",
+        "polls_preview_empty": "The preview appears here once you enter a question or an option.",
+        "polls_preview_placeholder_question": "Your question",
         "polls_edit_heading": "Edit Poll",
         # Age Verification
         "autokick_enabled_label": "Enable auto-kick",
