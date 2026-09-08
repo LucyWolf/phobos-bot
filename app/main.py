@@ -109,7 +109,7 @@ from cogs.leveling import xp_for_level as _xp_for_level, cumulative_xp_for_level
 from cogs.welcome import _make_card as _welcome_make_card, fill as _welcome_fill
 from cogs.polls import (
     build_poll_embed as _build_poll_embed, PollView as _PollView,
-    BAR_STYLES as _POLL_BAR_STYLES, DEFAULT_BAR_STYLE as _DEFAULT_BAR_STYLE,
+    DEFAULT_BAR_COLOR as _DEFAULT_BAR_COLOR,
 )
 from i18n import get_tr
 import uvicorn
@@ -5875,6 +5875,18 @@ def _clamp_poll_image_width(raw_width: str) -> int:
     return max(50, min(2000, w))
 
 
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _clamp_poll_bar_color(raw_color: str) -> str:
+    """Sanitizes the poll bar-color picker's submitted value - a real <input type="color"> always
+    submits a strict lowercase #rrggbb per the HTML5 spec, so this is mainly defense against a
+    manipulated raw POST rather than something a normal browser submission would ever trip."""
+    if raw_color and _HEX_COLOR_RE.match(raw_color):
+        return raw_color
+    return _DEFAULT_BAR_COLOR
+
+
 _POLL_IMAGE_FETCH_TIMEOUT = aiohttp.ClientTimeout(total=8)
 _POLL_IMAGE_FETCH_MAX_BYTES = 8_000_000
 
@@ -6983,9 +6995,7 @@ async def poll_create_web(request: Request, guild_id: int):
         if lbl.strip()
     ]
     multiple = bool(form.get("multiple_choice", ""))
-    bar_style = form.get("bar_style", "") or _DEFAULT_BAR_STYLE
-    if bar_style not in _POLL_BAR_STYLES:
-        bar_style = _DEFAULT_BAR_STYLE
+    bar_color = _clamp_poll_bar_color(form.get("bar_color", ""))
     try:
         duration_minutes = int(form.get("duration_minutes") or 0)
     except (ValueError, TypeError):
@@ -7071,9 +7081,9 @@ async def poll_create_web(request: Request, guild_id: int):
 
     pid = await db_insert(
         "INSERT INTO polls (guild_id,channel_id,question,multiple_choice,ends_at,created_by,"
-        "image_url,image_data,image_filename,bar_style) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "image_url,image_data,image_filename,bar_color) VALUES (?,?,?,?,?,?,?,?,?,?)",
         (str(guild_id), str(channel.id), question, int(multiple), ends_at, request.session.get("user_id") or 0,
-         final_image_url, final_image_data, final_image_filename, bar_style),
+         final_image_url, final_image_data, final_image_filename, bar_color),
     )
     files = _embed_post_files(final_image_data, final_image_filename)
     for i, (label, opt_image, opt_image_file, opt_link, opt_size, opt_width) in enumerate(options):
@@ -7085,10 +7095,12 @@ async def poll_create_web(request: Request, guild_id: int):
         )
         files += _embed_post_files(opt_final_data, opt_final_filename)
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
-    embeds = _build_poll_embed(
+    embeds, chart_file = _build_poll_embed(
         question, multiple, opt_rows, {}, image_url=final_image_url, image_filename=final_image_filename,
-        ends_at=ends_at, created_at=created_at, bar_style=bar_style,
+        ends_at=ends_at, created_at=created_at, bar_color=bar_color,
     )
+    if chart_file:
+        files.append(chart_file)
     view = _PollView(pid, opt_rows)
     try:
         msg = await channel.send(embeds=embeds, view=view, files=files)
@@ -7218,9 +7230,7 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
         if lbl.strip()
     ]
     multiple = bool(form.get("multiple_choice", ""))
-    bar_style = form.get("bar_style", "") or _DEFAULT_BAR_STYLE
-    if bar_style not in _POLL_BAR_STYLES:
-        bar_style = _DEFAULT_BAR_STYLE
+    bar_color = _clamp_poll_bar_color(form.get("bar_color", ""))
 
     if len(options) < 2:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Mindestens+2+Optionen+nötig", status_code=302)
@@ -7305,21 +7315,23 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     # more than one vote recorded from when it was on, those extra votes just stay - only
     # nudges the displayed total vote count slightly, never a crash or a wrong option tally.
     await db_exec(
-        "UPDATE polls SET question=?, multiple_choice=?, image_url=?, image_data=?, image_filename=?, bar_style=? WHERE id=?",
-        (question, int(multiple), final_image_url, final_image_data, final_image_filename, bar_style, poll_id),
+        "UPDATE polls SET question=?, multiple_choice=?, image_url=?, image_data=?, image_filename=?, bar_color=? WHERE id=?",
+        (question, int(multiple), final_image_url, final_image_data, final_image_filename, bar_color, poll_id),
     )
 
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
     vote_rows = await db_rows("SELECT option_id, COUNT(*) c FROM poll_votes WHERE poll_id=? GROUP BY option_id", (poll_id,))
     counts = {r["option_id"]: r["c"] for r in vote_rows}
-    embeds = _build_poll_embed(
+    embeds, chart_file = _build_poll_embed(
         question, multiple, opt_rows, counts, ended=bool(poll["ended"]),
         image_url=final_image_url, image_filename=final_image_filename,
-        ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "", bar_style=bar_style,
+        ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "", bar_color=bar_color,
     )
     files = _embed_post_files(final_image_data, final_image_filename)
     for row in opt_rows:
         files += _embed_post_files(row.get("image_data") or "", row.get("image_filename") or "")
+    if chart_file:
+        files.append(chart_file)
     channel = bot.get_channel(int(poll["channel_id"])) if poll["channel_id"] else None
     if channel and poll["message_id"]:
         try:

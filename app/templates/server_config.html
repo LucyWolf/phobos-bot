@@ -1223,9 +1223,8 @@ document.addEventListener('click', function(e) {
      actually posts to Discord (🟪/⬛ emoji, one per 10% - see its own comment for why plain
      block-drawing characters were replaced with real emoji), so the preview's bar has the same
      "row of squares" shape as the real thing instead of a shape Discord can't actually render. */
-  .poll-preview-progress-track { display:inline-flex; gap:2px; vertical-align:middle; margin-right:0.5rem; }
-  .poll-preview-progress-cell { width:11px; height:11px; border-radius:2px; background:#4e5058; }
-  .poll-preview-progress-cell.round { border-radius:50%; }
+  .poll-preview-progress-track { display:inline-block; width:140px; height:8px; background:#40444b; border-radius:4px; vertical-align:middle; margin-right:0.5rem; overflow:hidden; }
+  .poll-preview-progress-fill { display:block; height:100%; border-radius:4px; }
   .poll-preview-pct { font-size:0.78rem; color:#b5bac1; vertical-align:middle; }
   .poll-preview-footer { font-size:0.72rem; color:#949ba4; margin-top:0.6rem; }
   .poll-preview-empty { color:var(--muted); font-size:0.8rem; font-style:italic; }
@@ -1316,19 +1315,8 @@ document.addEventListener('click', function(e) {
               </div>
               <button type="button" class="btn btn-secondary" onclick="addPollOption('poll-options-edit-{{ p.id }}')" style="font-size:0.75rem;padding:0.3rem 0.7rem;margin-bottom:0.75rem;">{{ tr.polls_add_option }}</button>
               <label><input type="checkbox" name="multiple_choice" value="1" style="width:auto;display:inline;margin-right:0.4rem;" {% if p.multiple_choice %}checked{% endif %}> {{ tr.polls_multiple_label }}</label>
-              <label>{{ tr.polls_bar_style_label }}</label>
-              <select name="bar_style" style="max-width:260px;">
-                <option value="purple_square" {% if not p.bar_style or p.bar_style == 'purple_square' %}selected{% endif %}>{{ tr.polls_bar_style_purple_square }}</option>
-                <option value="green_square" {% if p.bar_style == 'green_square' %}selected{% endif %}>{{ tr.polls_bar_style_green_square }}</option>
-                <option value="blue_square" {% if p.bar_style == 'blue_square' %}selected{% endif %}>{{ tr.polls_bar_style_blue_square }}</option>
-                <option value="red_square" {% if p.bar_style == 'red_square' %}selected{% endif %}>{{ tr.polls_bar_style_red_square }}</option>
-                <option value="yellow_square" {% if p.bar_style == 'yellow_square' %}selected{% endif %}>{{ tr.polls_bar_style_yellow_square }}</option>
-                <option value="orange_square" {% if p.bar_style == 'orange_square' %}selected{% endif %}>{{ tr.polls_bar_style_orange_square }}</option>
-                <option value="purple_circle" {% if p.bar_style == 'purple_circle' %}selected{% endif %}>{{ tr.polls_bar_style_purple_circle }}</option>
-                <option value="green_circle" {% if p.bar_style == 'green_circle' %}selected{% endif %}>{{ tr.polls_bar_style_green_circle }}</option>
-                <option value="blue_circle" {% if p.bar_style == 'blue_circle' %}selected{% endif %}>{{ tr.polls_bar_style_blue_circle }}</option>
-                <option value="red_circle" {% if p.bar_style == 'red_circle' %}selected{% endif %}>{{ tr.polls_bar_style_red_circle }}</option>
-              </select>
+              <label>{{ tr.polls_bar_color_label }}</label>
+              <input type="color" name="bar_color" value="{{ p.bar_color or '#7c3aed' }}" style="width:70px;height:2.2rem;padding:0.15rem;margin-bottom:0.75rem;">
               <button type="submit" class="btn btn-primary" style="margin-top:0.75rem;">{{ tr.btn_save }}</button>
             </form>
           </td>
@@ -1402,19 +1390,8 @@ document.addEventListener('click', function(e) {
         <input type="number" name="duration_minutes" value="0" min="0" max="10080" placeholder="{{ tr.polls_duration_placeholder }}">
       </div>
       <div>
-        <label>{{ tr.polls_bar_style_label }}</label>
-        <select name="bar_style">
-          <option value="purple_square">{{ tr.polls_bar_style_purple_square }}</option>
-          <option value="green_square">{{ tr.polls_bar_style_green_square }}</option>
-          <option value="blue_square">{{ tr.polls_bar_style_blue_square }}</option>
-          <option value="red_square">{{ tr.polls_bar_style_red_square }}</option>
-          <option value="yellow_square">{{ tr.polls_bar_style_yellow_square }}</option>
-          <option value="orange_square">{{ tr.polls_bar_style_orange_square }}</option>
-          <option value="purple_circle">{{ tr.polls_bar_style_purple_circle }}</option>
-          <option value="green_circle">{{ tr.polls_bar_style_green_circle }}</option>
-          <option value="blue_circle">{{ tr.polls_bar_style_blue_circle }}</option>
-          <option value="red_circle">{{ tr.polls_bar_style_red_circle }}</option>
-        </select>
+        <label>{{ tr.polls_bar_color_label }}</label>
+        <input type="color" name="bar_color" value="#7c3aed" style="width:70px;height:2.2rem;padding:0.15rem;">
       </div>
     </div>
     <button type="submit" class="btn btn-primary" style="margin-top:0.75rem;">{{ tr.polls_btn_create }}</button>
@@ -1552,23 +1529,20 @@ function pollPreviewFileUrl(file) {
   }
   return _pollPreviewFileUrls.get(file);
 }
-// Mimics cogs/polls.py's build_poll_embed()/_bar_line() closely enough for a live "what will
-// this actually look like" preview - deliberately in literal German ("Einzelauswahl"/
-// "Mehrfachauswahl"/"Stimme(n)"), not tr.*, since the REAL poll message posted to Discord is
-// always German regardless of the dashboard's own language (see cogs/polls.py) - a translated
-// preview would show something Discord itself never actually displays. Options with their own
-// image/link get the same plain bar line here as any other option - the richer per-option-
-// embed layout build_poll_embed() switches to once any option has an image isn't reproduced,
-// this is a preview of the text/bar/buttons, not a pixel-exact mockup of every embed variant.
-// Matches cogs/polls.py's _bar_line() exactly (10 dark squares, "🟪"-colored ones would fill in
-// for real votes) - a brand-new, not-yet-posted poll always has 0 votes, so every option's bar
-// here is always fully empty, built once as a constant instead of a loop with no live cells.
-const POLL_PREVIEW_EMPTY_CELLS = '<span class="poll-preview-progress-cell"></span>'.repeat(10);
-// Second variant for the '_circle' bar styles - a brand-new poll always has 0 votes, so the
-// FILLED emoji's color never actually shows in this preview (every cell is the neutral empty
-// one) - the one thing that still differs visually between styles at 0 votes is the square vs.
-// round shape, so that's the only distinction this preview bothers approximating.
-const POLL_PREVIEW_EMPTY_CELLS_ROUND = '<span class="poll-preview-progress-cell round"></span>'.repeat(10);
+// Mimics cogs/polls.py's build_poll_embed() closely enough for a live "what will this actually
+// look like" preview - deliberately in literal German ("Einzelauswahl"/"Mehrfachauswahl"/
+// "Stimme(n)"), not tr.*, since the REAL poll message posted to Discord is always German
+// regardless of the dashboard's own language (see cogs/polls.py) - a translated preview would
+// show something Discord itself never actually displays. Options with their own image/link get
+// the same plain bar line here as any other option - the richer per-option-embed layout
+// build_poll_embed() switches to once any option has an image isn't reproduced, this is a
+// preview of the text/bar/buttons, not a pixel-exact mockup of every embed variant.
+// The bar itself is a real, smooth CSS fill in the exact color from the <input type="color">
+// picker below - a genuine, if approximate, stand-in for _render_bar_chart_image()'s generated
+// PNG (both are a smooth bar in an arbitrary RGB color, unlike the discrete-square-emoji
+// fallback _bar_line() only still uses for the one case that can't show an image at all). A
+// brand-new, not-yet-posted poll always has 0 votes, so the fill is always 0% wide here - the
+// color itself is the only thing worth previewing before anyone has actually voted.
 function renderPollPreview(form) {
   const box = form.querySelector('.poll-preview-box');
   if (!box) return;
@@ -1622,9 +1596,8 @@ function renderPollPreview(form) {
     + '</div>';
   html += '<div class="poll-preview-embed">';
   html += '<div class="poll-preview-title">🗳️ ' + pollPreviewEscapeHtml(question || '{{ tr.polls_preview_placeholder_question }}') + '</div>';
-  const barStyleSelect = form.querySelector('select[name="bar_style"]');
-  const emptyCells = (barStyleSelect && barStyleSelect.value.endsWith('_circle'))
-    ? POLL_PREVIEW_EMPTY_CELLS_ROUND : POLL_PREVIEW_EMPTY_CELLS;
+  const barColorInput = form.querySelector('input[name="bar_color"]');
+  const barColor = barColorInput ? barColorInput.value : '#7c3aed';
   options.forEach(function(opt) {
     html += '<div class="poll-preview-option">';
     html += '<div class="poll-preview-option-row">';
@@ -1645,7 +1618,7 @@ function renderPollPreview(form) {
       var widthStyle = opt.customWidth ? ' style="width:' + opt.customWidth + 'px;max-width:100%;"' : '';
       html += '<img class="poll-preview-option-large-img" src="' + opt.image + '"' + widthStyle + ' onerror="this.remove()">';
     }
-    html += '<span class="poll-preview-progress-track">' + emptyCells + '</span>'
+    html += '<span class="poll-preview-progress-track"><span class="poll-preview-progress-fill" style="width:0%;background:' + barColor + ';"></span></span>'
       + '<span class="poll-preview-pct">0% (0)</span></div>';
   });
   html += '<div class="poll-preview-footer">' + (multiple ? 'Mehrfachauswahl' : 'Einzelauswahl') + ' · 0 Stimme(n)</div>';

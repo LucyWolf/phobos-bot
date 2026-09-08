@@ -4,6 +4,7 @@ get re-registered in cog_load(), and any poll with an auto-end time gets resched
 remaining delay, mirroring cogs/giveaways.py's _schedule()/_end_giveaway()."""
 import asyncio
 import datetime
+import io
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -21,66 +22,167 @@ MAX_RICH_OPTION_EMBEDS = 9  # Discord caps a message at 10 embeds total - one of
 # options simply can't show all of them richly in one Discord message, this is the real ceiling.
 
 
-# Every selectable vote-bar look, per poll (see database.py's polls.bar_style column comment).
-# All ten built from Unicode's own official "colored square"/"colored circle" emoji sets - the
-# same reasoning as the original single purple-square style (v1.15.26): these render as a real
-# small image on every Discord client/platform, never as an inconsistent font glyph, unlike the
-# "█"/"░" block-drawing characters they replaced. 'purple_square' is deliberately the exact
-# pair that already shipped, so it stays the DB default and no existing poll's look changes.
-BAR_STYLES = {
-    "purple_square": ("🟪", "⬛"),
-    "green_square": ("🟩", "⬛"),
-    "blue_square": ("🟦", "⬛"),
-    "red_square": ("🟥", "⬛"),
-    "yellow_square": ("🟨", "⬛"),
-    "orange_square": ("🟧", "⬛"),
-    "purple_circle": ("🟣", "⚫"),
-    "green_circle": ("🟢", "⚫"),
-    "blue_circle": ("🔵", "⚫"),
-    "red_circle": ("🔴", "⚫"),
+# v1.15.28 shipped a dropdown of 10 fixed emoji-color styles - rejected on sight ("so meinte ich
+# das nicht ... ich meinte ein Slider ... optisch ähnlich wie das Original") in favor of a real
+# color picker (any RGB value) with the bar rendered to LOOK like it (a genuinely smooth,
+# continuously-filled bar, not a row of discrete emoji squares). Discord embeds are still plain
+# text with no CSS, so an arbitrary custom color can only become a real generated image, not a
+# character - see _render_bar_chart_image(). DEFAULT_BAR_COLOR matches the embed's own existing
+# purple accent (0x7c3aed) so a poll that never touches this setting looks unchanged.
+DEFAULT_BAR_COLOR = "#7c3aed"
+
+_FONT_PATHS = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+]
+_FONT_PATHS_REG = [p.replace("Bold", "").replace("-Bold", "") for p in _FONT_PATHS]
+
+
+def _load_font(size: int, bold: bool = True):
+    from PIL import ImageFont
+    for p in (_FONT_PATHS if bold else _FONT_PATHS_REG):
+        try:
+            return ImageFont.truetype(p, size)
+        except Exception:
+            pass
+    return ImageFont.load_default()
+
+
+def _hex_to_rgb(hex_color: str) -> tuple:
+    h = (hex_color or "").lstrip("#")
+    if len(h) != 6:
+        return (124, 58, 237)  # DEFAULT_BAR_COLOR's own RGB, as a safe fallback
+    try:
+        return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return (124, 58, 237)
+
+
+# Approximate RGB of Unicode's own official "colored square" emoji - used ONLY as an internal
+# nearest-match lookup now (never a user-facing choice, see _bar_line's docstring below) for the
+# one spot a real bar-chart image genuinely can't go: a per-option RICH embed's footer (an
+# option with its own picture/link already occupies that embed's one image slot), where Discord
+# only allows a small footer icon, never a full image - picking the closest-looking emoji to
+# whatever custom color the admin actually chose keeps at least some visual link to it.
+_EMOJI_BAR_PALETTE = {
+    "🟥": (221, 46, 68),
+    "🟧": (240, 148, 51),
+    "🟨": (253, 203, 88),
+    "🟩": (120, 177, 89),
+    "🟦": (85, 172, 238),
+    "🟪": (170, 142, 214),
 }
-DEFAULT_BAR_STYLE = "purple_square"
 
 
-def _bar_line(label: str, n: int, total: int, bar_style: str = DEFAULT_BAR_STYLE) -> str:
+def _nearest_emoji_bar_char(hex_color: str) -> str:
+    rgb = _hex_to_rgb(hex_color)
+    return min(_EMOJI_BAR_PALETTE, key=lambda ch: sum((a - b) ** 2 for a, b in zip(_EMOJI_BAR_PALETTE[ch], rgb)))
+
+
+def _bar_line(label: str, n: int, total: int, bar_color: str = DEFAULT_BAR_COLOR) -> tuple:
+    """Text/emoji fallback bar - only ever used for a per-option RICH embed's footer now (see
+    _EMOJI_BAR_PALETTE's comment) or a poll that still carries a pre-v1.15.20 per-poll banner
+    image occupying the header's image slot. Every other poll gets the real generated bar-chart
+    image from _render_bar_chart_image() instead, which is what "the bar" now actually means for
+    most polls - this one stays for the cases that literally can't use an image."""
     pct = (n / total * 100) if total else 0
     filled = round(pct / 10)
-    filled_char, empty_char = BAR_STYLES.get(bar_style, BAR_STYLES[DEFAULT_BAR_STYLE])
-    bar = filled_char * filled + empty_char * (10 - filled)
+    filled_char = _nearest_emoji_bar_char(bar_color)
+    bar = filled_char * filled + "⬛" * (10 - filled)
     return f"**{label}**\n{bar} {pct:.0f}% ({n})", bar, pct
+
+
+def _fit_text(draw, text: str, font, max_width: float) -> str:
+    if draw.textlength(text, font=font) <= max_width:
+        return text
+    while text and draw.textlength(text + "…", font=font) > max_width:
+        text = text[:-1]
+    return (text + "…") if text else "…"
+
+
+def _render_bar_chart_image(rows: list, bar_color: str) -> bytes:
+    """Renders one composite PNG with every option's label/percentage/vote-count and an actual
+    smooth, continuously-filled progress bar in the admin's chosen RGB color - the reason this
+    function exists at all: a Discord embed can only ever be plain text, no CSS, so a genuinely
+    smooth bar in an arbitrary color has to be a real generated image (same "Pillow, like the
+    welcome card" approach used elsewhere in this project), not a character. Becomes the header
+    embed's own set_image() - safe to reuse that slot because the per-poll banner-image feature
+    that used to live there was removed entirely in v1.15.20; build_poll_embed() only calls this
+    when that now-legacy field is empty (an old poll that still has one keeps showing IT, see
+    build_poll_embed's docstring, and falls back to the text bar instead)."""
+    from PIL import Image, ImageDraw
+    width = 440
+    pad = 18
+    bar_h = 14
+    row_content_h = 24 + bar_h  # label baseline to the bottom of its bar
+    gap = 16
+    n_rows = max(1, len(rows))
+    height = pad * 2 + n_rows * row_content_h + (n_rows - 1) * gap
+    img = Image.new("RGB", (width, height), (0x2b, 0x2d, 0x31))  # matches the dashboard preview's
+    draw = ImageDraw.Draw(img)                                    # own .poll-preview-embed bg
+    label_font = _load_font(16, bold=True)
+    meta_font = _load_font(13, bold=False)
+    fill_rgb = _hex_to_rgb(bar_color)
+    track_rgb = (0x40, 0x44, 0x4b)
+    for i, row in enumerate(rows):
+        y = pad + i * (row_content_h + gap)
+        meta = f"{row['pct']:.0f}% ({row['n']})"
+        meta_w = draw.textlength(meta, font=meta_font)
+        label = _fit_text(draw, row["label"], label_font, width - pad * 2 - meta_w - 10)
+        draw.text((pad, y), label, font=label_font, fill=(255, 255, 255))
+        draw.text((width - pad - meta_w, y + 2), meta, font=meta_font, fill=(0xb5, 0xb8, 0xbe))
+        bar_y = y + 24
+        draw.rounded_rectangle([pad, bar_y, width - pad, bar_y + bar_h], radius=bar_h // 2, fill=track_rgb)
+        fill_w = max(0, min(width - pad * 2, round((width - pad * 2) * (row["pct"] / 100))))
+        if fill_w > 0:
+            fill_w = max(fill_w, bar_h)  # keeps a visible rounded blob even for a tiny share
+            draw.rounded_rectangle([pad, bar_y, pad + fill_w, bar_y + bar_h], radius=bar_h // 2, fill=fill_rgb)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def build_poll_embed(
     question: str, multiple_choice: bool, options: list, counts: dict, ended: bool = False,
     image_url: str = "", image_filename: str = "", ends_at: str = "", created_at: str = "",
-    bar_style: str = DEFAULT_BAR_STYLE,
-) -> list:
+    bar_color: str = DEFAULT_BAR_COLOR,
+) -> tuple:
     """Shared by creation, every vote, and _end_poll - one place for the bar/percentage layout
-    so it can never drift between the three call sites. Returns a LIST of embeds, not a single
-    one: if any option has its own image_url/link_url set (e.g. a VRChat world's cover image +
-    world page link, one per map/option in the same poll), each such option gets its OWN embed
-    (title = option label, clickable via embed.url when link_url is set, image = the option's
-    own image) instead of being squeezed into one shared text description - up to
-    MAX_RICH_OPTION_EMBEDS of them, Discord's 10-embeds-per-message limit otherwise. Options
-    without their own image/link (or the overflow beyond that cap) still get a normal
-    bar-chart line in the header embed's description, so no option's tally is ever dropped.
-    If NO option has an image/link at all, this is unchanged from the original single-embed
-    bar-chart layout (byte-for-byte the same as before per-option images existed).
+    so it can never drift between the three call sites. Returns (embeds, chart_file): embeds is
+    a LIST, not a single one - if any option has its own image_url/link_url set (e.g. a VRChat
+    world's cover image + world page link, one per map/option in the same poll), each such
+    option gets its OWN embed (title = option label, clickable via embed.url when link_url is
+    set, image = the option's own image) instead of being squeezed into one shared text
+    description - up to MAX_RICH_OPTION_EMBEDS of them, Discord's 10-embeds-per-message limit
+    otherwise. Options without their own image/link (or the overflow beyond that cap) still get
+    a bar line in the header embed's description, so no option's tally is ever dropped.
+
+    chart_file is a freshly generated discord.File (see _render_bar_chart_image) whenever NO
+    option has its own image/link AND the poll has no legacy per-poll banner image occupying the
+    header's image slot (the common case, and what most polls look like) - None otherwise (an
+    option has its own image, or an old pre-v1.15.20 poll still has its original banner). Unlike
+    a per-poll/per-option image (attached ONCE at creation, never re-touched - see below), this
+    one has to be regenerated and RE-ATTACHED on every single vote/end, since its whole content
+    (the bar fill %) changes every time - every caller MUST pass chart_file back in via
+    `attachments=[chart_file]` whenever it isn't None, `omitted entirely` (not `attachments=[]`
+    or `None`) whenever it IS, exactly mirroring the existing per-poll-image omission rule below.
 
     image_filename (set only when the per-POLL banner image came from a dashboard upload, not
-    a pasted URL) takes precedence over image_url and points at "attachment://<filename>" - the
-    caller is responsible for actually attaching a matching discord.File with that same
-    filename ONCE, at creation (see main.py's _embed_post_files, reused as-is for polls too).
-    Deliberately NOT re-attached on every vote/end edit - a poll's per-poll image never changes
-    after creation (no edit feature, same as giveaways), and discord.py's edit calls leave
-    existing attachments alone when `attachments=`/`file=` is simply omitted (verified directly
-    against discord.py 2.3.2's handle_message_parameters: attachments stays MISSING -> the
-    'attachments' key is left out of the request payload entirely -> Discord's own PATCH
-    semantics keep whatever is already on the message). A per-OPTION image follows the exact
-    same image_filename-takes-precedence-over-image_url rule and the exact same "attached once
-    at creation, never re-touched" logic - each uploaded option image just needs its own unique
-    attachment filename (handled by the caller, see main.py's poll_create_web) since Discord
-    requires distinct filenames when a message carries more than one attachment.
+    a pasted URL - a now-legacy field, see above) takes precedence over image_url and points at
+    "attachment://<filename>" - the caller is responsible for actually attaching a matching
+    discord.File with that same filename ONCE, at creation (see main.py's _embed_post_files,
+    reused as-is for polls too). Deliberately NOT re-attached on every vote/end edit - a poll's
+    per-poll image never changes after creation (no edit feature, same as giveaways), and
+    discord.py's edit calls leave existing attachments alone when `attachments=`/`file=` is
+    simply omitted (verified directly against discord.py 2.3.2's handle_message_parameters:
+    attachments stays MISSING -> the 'attachments' key is left out of the request payload
+    entirely -> Discord's own PATCH semantics keep whatever is already on the message). A
+    per-OPTION image follows the exact same image_filename-takes-precedence-over-image_url rule
+    and the exact same "attached once at creation, never re-touched" logic - each uploaded
+    option image just needs its own unique attachment filename (handled by the caller, see
+    main.py's poll_create_web) since Discord requires distinct filenames when a message carries
+    more than one attachment.
 
     created_at/ends_at each become a Discord-native `<t:...:R>` relative timestamp at the top of
     the header's description ("Gestartet: vor 5 Minuten" / "Endet: in 2 Stunden") - Discord's
@@ -94,6 +196,7 @@ def build_poll_embed(
         title=("🔒 " if ended else "🗳️ ") + question,
         color=0x64748b if ended else 0x7c3aed,
     )
+    has_legacy_image = bool(image_filename or image_url)
     if image_filename:
         header.set_image(url=f"attachment://{image_filename}")
     elif image_url:
@@ -121,17 +224,32 @@ def build_poll_embed(
 
     has_rich = any(opt.get("image_url") or opt.get("image_filename") or opt.get("link_url") for opt in options)
     if not has_rich:
-        bar_lines = [_bar_line(opt["label"], counts.get(opt["id"], 0), total, bar_style)[0] for opt in options]
+        if not has_legacy_image and options:
+            rows = [
+                {"label": opt["label"], "n": counts.get(opt["id"], 0),
+                 "pct": (counts.get(opt["id"], 0) / total * 100) if total else 0}
+                for opt in options
+            ]
+            chart_bytes = _render_bar_chart_image(rows, bar_color)
+            chart_file = discord.File(io.BytesIO(chart_bytes), filename="poll_bars.png")
+            header.set_image(url="attachment://poll_bars.png")
+            if header_lines:
+                header.description = "\n\n".join(header_lines)
+            return [header], chart_file
+        # Legacy per-poll banner image already occupies the header's image slot (a poll created
+        # before v1.15.20) - keep showing IT rather than silently swapping in the new bar-chart
+        # image, and fall back to the old text-based bar lines since there's no image slot left.
+        bar_lines = [_bar_line(opt["label"], counts.get(opt["id"], 0), total, bar_color)[0] for opt in options]
         combined = header_lines + bar_lines
         if combined:
             header.description = "\n\n".join(combined)
-        return [header]
+        return [header], None
 
     rich_options, overflow_options = options[:MAX_RICH_OPTION_EMBEDS], options[MAX_RICH_OPTION_EMBEDS:]
     embeds = [header]
     for opt in rich_options:
         n = counts.get(opt["id"], 0)
-        _, bar, pct = _bar_line(opt["label"], n, total, bar_style)
+        _, bar, pct = _bar_line(opt["label"], n, total, bar_color)
         option_embed = discord.Embed(title=opt["label"], color=0x64748b if ended else 0x7c3aed)
         if opt.get("link_url"):
             option_embed.url = opt["link_url"]
@@ -155,11 +273,11 @@ def build_poll_embed(
         embeds.append(option_embed)
     if overflow_options:
         header_lines += [
-            _bar_line(opt["label"], counts.get(opt["id"], 0), total, bar_style)[0] for opt in overflow_options
+            _bar_line(opt["label"], counts.get(opt["id"], 0), total, bar_color)[0] for opt in overflow_options
         ]
     if header_lines:
         header.description = "\n\n".join(header_lines)
-    return embeds
+    return embeds, None
 
 
 class PollButton(discord.ui.Button):
@@ -215,19 +333,26 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
     options = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
     rows = await db_rows("SELECT option_id, COUNT(*) c FROM poll_votes WHERE poll_id=? GROUP BY option_id", (poll_id,))
     counts = {r["option_id"]: r["c"] for r in rows}
-    embeds = build_poll_embed(
+    embeds, chart_file = build_poll_embed(
         poll["question"], bool(poll["multiple_choice"]), options, counts,
         image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
         ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
-        bar_style=poll.get("bar_style") or DEFAULT_BAR_STYLE,
+        bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR,
     )
-    # No view= (and no attachments=/file=) here on purpose - discord.py's edit_message() default
-    # for view is MISSING (not None), so omitting it leaves the existing buttons untouched
-    # instead of needing to rebuild+reattach an identical PollView on every single vote
-    # (verified directly against discord.py 2.3.2's own source: InteractionResponse.edit_message
-    # only calls state.prevent_view_updates_for()/replaces components when view is explicitly
-    # passed).
-    await interaction.response.edit_message(embeds=embeds)
+    # No view= here on purpose - discord.py's edit_message() default for view is MISSING (not
+    # None), so omitting it leaves the existing buttons untouched instead of needing to rebuild+
+    # reattach an identical PollView on every single vote (verified directly against discord.py
+    # 2.3.2's own source: InteractionResponse.edit_message only calls state.
+    # prevent_view_updates_for()/replaces components when view is explicitly passed).
+    # attachments=, unlike view=, MUST be passed whenever chart_file exists - unlike a per-poll/
+    # per-option image (attached once, never touched again), the bar-chart image's whole content
+    # (the fill %) changes with every vote, so a fresh one has to ride along on every edit; the
+    # omit-to-preserve trick only applies to the OTHER, unrelated attachments (a poll with its
+    # own per-option pictures never reaches this branch at all, see build_poll_embed).
+    if chart_file:
+        await interaction.response.edit_message(embeds=embeds, attachments=[chart_file])
+    else:
+        await interaction.response.edit_message(embeds=embeds)
 
 
 class Polls(commands.Cog):
@@ -286,14 +411,17 @@ class Polls(commands.Cog):
         options = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
         rows = await db_rows("SELECT option_id, COUNT(*) c FROM poll_votes WHERE poll_id=? GROUP BY option_id", (poll_id,))
         counts = {r["option_id"]: r["c"] for r in rows}
-        embeds = build_poll_embed(
+        embeds, chart_file = build_poll_embed(
             poll["question"], bool(poll["multiple_choice"]), options, counts, ended=True,
             image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
             ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
-            bar_style=poll.get("bar_style") or DEFAULT_BAR_STYLE,
+            bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR,
         )
         try:
-            await msg.edit(embeds=embeds, view=None)
+            if chart_file:
+                await msg.edit(embeds=embeds, view=None, attachments=[chart_file])
+            else:
+                await msg.edit(embeds=embeds, view=None)
         except Exception as e:
             print(f"[Polls] failed to finalize poll {poll_id}: {e}")
 
@@ -338,10 +466,10 @@ class Polls(commands.Cog):
                 (pid, i, label[:80]),
             )
         opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
-        embeds = build_poll_embed(question, multiple, opt_rows, {}, ends_at=ends_at, created_at=created_at)
+        embeds, chart_file = build_poll_embed(question, multiple, opt_rows, {}, ends_at=ends_at, created_at=created_at)
         view = PollView(pid, opt_rows)
         try:
-            msg = await interaction.channel.send(embeds=embeds, view=view)
+            msg = await interaction.channel.send(embeds=embeds, view=view, files=[chart_file] if chart_file else [])
         except (discord.HTTPException, OSError) as e:
             # defer() already ran above - an unhandled exception here (missing "Send
             # Messages", or a genuine network-level OSError; discord.py 2.3.2's http.py
