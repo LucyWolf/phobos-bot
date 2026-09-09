@@ -262,13 +262,27 @@ def build_poll_embed(
     header_lines = []
     if created_at:
         try:
-            started_dt = datetime.datetime.fromisoformat(created_at)
+            # created_at/ends_at are always naive isoformat strings that REPRESENT UTC (built
+            # from datetime.utcnow() throughout this module - see _start_poll/poll_create's own
+            # comments on this exact convention), but carry no tzinfo of their own.
+            # discord.utils.format_dt() calls dt.timestamp() internally, and Python's own
+            # .timestamp() on a naive datetime assumes it's already expressed in the PROCESS'S
+            # LOCAL system timezone, not UTC - this project's docker-compose.yml sets
+            # TZ=Europe/Berlin, so without attaching UTC explicitly here every single "Gestartet"/
+            # "Endet" timestamp would render 1-2 hours (the Berlin UTC offset) in the wrong
+            # direction in the live Discord message, even though the underlying stored value was
+            # always correct - a real, live-reported bug ("ich habe dauer 10 min eingestelt warum
+            # sind dort 2 h", CEST's +2h offset matching exactly what was shown). Never caught by
+            # this project's own test harness because that happens to run on a host already
+            # sitting at UTC, where the (still wrong) naive-local assumption is a no-op by
+            # coincidence.
+            started_dt = datetime.datetime.fromisoformat(created_at).replace(tzinfo=datetime.timezone.utc)
             header_lines.append(f"**Gestartet:** {discord.utils.format_dt(started_dt, 'R')}")
         except Exception:
             pass
     if ends_at:
         try:
-            ends_dt = datetime.datetime.fromisoformat(ends_at)
+            ends_dt = datetime.datetime.fromisoformat(ends_at).replace(tzinfo=datetime.timezone.utc)
             label = "Beendet" if ended else "Endet"
             header_lines.append(f"**{label}:** {discord.utils.format_dt(ends_dt, 'R')}")
         except Exception:

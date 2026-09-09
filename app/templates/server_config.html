@@ -1251,7 +1251,7 @@ document.addEventListener('click', function(e) {
       <tbody>
         {% for p in poll_list %}
         <tr>
-          <td style="font-weight:600">🗳️ {{ p.question }}{% if p.starts_at and not p.message_id %}<br><span style="font-weight:400;font-size:0.72rem;color:var(--muted);">{{ tr.polls_scheduled_for }} {{ p.starts_at | dt }}</span>{% endif %}</td>
+          <td style="font-weight:600">🗳️ {{ p.question }}{% if p.starts_at and not p.message_id %}<br><span style="font-weight:400;font-size:0.72rem;color:var(--muted);">{{ tr.polls_scheduled_for }} {{ p.starts_at | dt }}</span>{% elif p.ends_at %}<br><span style="font-weight:400;font-size:0.72rem;color:var(--muted);">⏳ {{ tr.polls_ends_in_prefix }} <span class="poll-countdown" data-ends-at="{{ p.ends_at.split('.')[0] }}Z">…</span></span>{% endif %}</td>
           <td style="color:var(--muted)">{{ p.channel_name }}</td>
           <td>{{ p.vote_count }}</td>
           <td>{{ tr.polls_type_multi if p.multiple_choice else tr.polls_type_single }}</td>
@@ -1413,6 +1413,41 @@ document.addEventListener('click', function(e) {
     box.style.display = 'none';
   }
 });
+// Live-ticking "endet in ..." display for every active poll that has an end time set - purely
+// client-side (re-derived from each element's own data-ends-at, a real UTC ISO string with an
+// explicit "Z" so `new Date()` parses it as UTC regardless of the VIEWER's own local timezone,
+// same correctness concern this exact request just surfaced for the Discord-side timestamp).
+// One shared interval updates every visible countdown at once rather than one timer per poll.
+function updatePollCountdowns() {
+  var now = Date.now();
+  document.querySelectorAll('.poll-countdown').forEach(function(el) {
+    var endsAt = Date.parse(el.dataset.endsAt);
+    if (isNaN(endsAt)) { el.textContent = '?'; return; }
+    var diffSec = Math.floor((endsAt - now) / 1000);
+    if (diffSec <= 0) {
+      // Already past its end but not yet marked ended server-side (auto-end timer hasn't fired
+      // this exact second yet) - avoid ever showing a negative/nonsensical duration.
+      el.textContent = '0m';
+      return;
+    }
+    var days = Math.floor(diffSec / 86400);
+    var hours = Math.floor((diffSec % 86400) / 3600);
+    var minutes = Math.floor((diffSec % 3600) / 60);
+    var seconds = diffSec % 60;
+    var parts = [];
+    if (days > 0) parts.push(days + 'd');
+    if (days > 0 || hours > 0) parts.push(hours + 'h');
+    if (days === 0) {
+      parts.push(minutes + 'm');
+      if (hours === 0) parts.push(seconds + 's');
+    }
+    el.textContent = parts.join(' ');
+  });
+}
+if (document.querySelector('.poll-countdown')) {
+  updatePollCountdowns();
+  setInterval(updatePollCountdowns, 1000);
+}
 function addPollOption(containerId) {
   const container = document.getElementById(containerId);
   if (container.children.length >= 25) return;
