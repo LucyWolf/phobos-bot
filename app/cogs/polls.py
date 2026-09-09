@@ -325,37 +325,60 @@ def build_poll_embed(
             ]
 
     rich_options, overflow_options = image_options[:MAX_RICH_OPTION_EMBEDS], image_options[MAX_RICH_OPTION_EMBEDS:]
-    embeds = [header]
+
+    # v1.15.34's first attempt moved EVERY option's own picture to the small thumbnail slot,
+    # regardless of its admin-chosen size ("groß"/"klein"/benutzerdefinierte px) - rejected on
+    # sight ("jetzt wieder zur bild größe ... das px 300 war perfekt lass es nur in px
+    # skalieren"): a deliberately large/custom-width picture shrunk down to a ~80px thumbnail
+    # defeats the whole point of that size choice. The size setting is respected again below -
+    # 'large'/'custom' keep the picture in the big slot at its own configured size (no room left
+    # there for a bar, same trade-off v1.15.29-33 settled on, just scoped to this one size now
+    # instead of every option); only 'small' (which already shrinks the picture on purpose) frees
+    # the big slot for a real bar. An option with a link but no picture of its own never competes
+    # for either slot, so it gets the bar too.
+    rich_info = []
     for opt in rich_options:
-        n = counts.get(opt["id"], 0)
-        pct = (n / total * 100) if total else 0
-        option_embed = discord.Embed(title=opt["label"], color=0x64748b if ended else 0x7c3aed)
-        if opt.get("link_url"):
-            option_embed.url = opt["link_url"]
         if opt.get("image_filename"):
             img_src = f"attachment://{opt['image_filename']}"
         elif opt.get("image_url"):
             img_src = opt["image_url"]
         else:
             img_src = None
-        # v1.15.29-1.15.33 all treated this as an either/or: the option's own picture took the
-        # embed's one large image slot, leaving no room for a real bar there (a plain percentage
-        # line was the least-bad fallback each time). Discord embeds actually have a SECOND,
-        # separate image slot though - set_thumbnail(), a small square next to the text - so the
-        # own picture moves there now regardless of its previously admin-chosen size (that
-        # large/small choice only ever mattered when this was the only image the embed could
-        # show at all), freeing the large slot for an actual generated bar image below. An
-        # option with only a link_url and no picture of its own never had this conflict in the
-        # first place - the large slot goes straight to the bar for it too.
-        if img_src:
-            option_embed.set_thumbnail(url=img_src)
-            upload_file = _option_upload_file(opt)
-            if upload_file:
-                chart_files.append(upload_file)
-        bar_filename = f"poll_opt_bar_{opt['id']}.png"
-        bar_bytes = _render_option_bar_image(n, pct, bar_color)
-        chart_files.append(discord.File(io.BytesIO(bar_bytes), filename=bar_filename))
-        option_embed.set_image(url=f"attachment://{bar_filename}")
+        needs_bar = (img_src is None) or (opt.get("image_size") == "small")
+        rich_info.append((opt, img_src, needs_bar))
+
+    # Whenever ANY attachment here needs a fresh (re-)upload this time - this option's own bar,
+    # or the shared header bar built above for plain_options - every caller ends up passing
+    # attachments= explicitly, which REPLACES the whole attachment set rather than adding to it.
+    # So every rich option's own UPLOADED picture (a plain image_url needs no file at all) has to
+    # ride along too, even one that itself shows no bar ('large'/'custom'), or it would vanish on
+    # the very next vote/edit even though nothing about THAT option changed. When nothing
+    # anywhere needs a bar (e.g. every option is 'large'/'custom' with no plain_options),
+    # chart_files stays empty and every caller correctly omits attachments= entirely instead -
+    # the original "attach once, never touch again" behavior, still intact for that case.
+    if chart_files or any(needs_bar for _, _, needs_bar in rich_info):
+        for opt, img_src, _ in rich_info:
+            if opt.get("image_filename"):
+                upload_file = _option_upload_file(opt)
+                if upload_file:
+                    chart_files.append(upload_file)
+
+    embeds = [header]
+    for opt, img_src, needs_bar in rich_info:
+        n = counts.get(opt["id"], 0)
+        pct = (n / total * 100) if total else 0
+        option_embed = discord.Embed(title=opt["label"], color=0x64748b if ended else 0x7c3aed)
+        if opt.get("link_url"):
+            option_embed.url = opt["link_url"]
+        if needs_bar:
+            if img_src:
+                option_embed.set_thumbnail(url=img_src)
+            bar_filename = f"poll_opt_bar_{opt['id']}.png"
+            bar_bytes = _render_option_bar_image(n, pct, bar_color)
+            chart_files.append(discord.File(io.BytesIO(bar_bytes), filename=bar_filename))
+            option_embed.set_image(url=f"attachment://{bar_filename}")
+        elif img_src:
+            option_embed.set_image(url=img_src)
         option_embed.set_footer(text=f"{pct:.0f}% ({n} Stimme(n))")
         embeds.append(option_embed)
     if overflow_options:
