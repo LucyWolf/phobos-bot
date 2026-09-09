@@ -6999,6 +6999,11 @@ async def poll_create_web(request: Request, guild_id: int):
         duration_minutes = int(form.get("duration_minutes") or 0)
     except (ValueError, TypeError):
         duration_minutes = 0
+    starts_at_raw = form.get("starts_at", "").strip()
+    end_mode = form.get("end_mode", "duration")
+    if end_mode not in ("duration", "fixed"):
+        end_mode = "duration"
+    ends_at_fixed_raw = form.get("ends_at_fixed", "").strip()
 
     if len(options) < 2:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Mindestens+2+Optionen+nötig", status_code=302)
@@ -7008,6 +7013,47 @@ async def poll_create_web(request: Request, guild_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Frage+zu+lang+(max.+200+Zeichen)", status_code=302)
     if duration_minutes < 0 or duration_minutes > 10080:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Ungültige+Dauer", status_code=302)
+
+    # Optional scheduled start ("ich will angeben können wann die anfängt") + a toggle between
+    # a relative duration or a fixed absolute end datetime ("entweder dauer oder mit datum unt
+    # uhrzeit"). Both raw datetime-local values are interpreted in the viewer's own dashboard
+    # timezone (same _aware()/_request_tz pattern events_create uses) and then converted to a
+    # NAIVE UTC isoformat string for storage - matching cogs/polls.py's own existing convention
+    # for ends_at (built from datetime.utcnow(), compared against datetime.utcnow() again in
+    # _schedule/_start_poll), not the separate Europe/Berlin-normalized convention scheduled
+    # messages/events use elsewhere in this file.
+    tz = _request_tz.get()
+    now_utc = datetime.datetime.utcnow()
+    starts_at_store = ""
+    starts_dt_utc = None
+    if starts_at_raw:
+        try:
+            starts_dt = _aware(datetime.datetime.fromisoformat(starts_at_raw), tz)
+        except ValueError:
+            return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Ungültiger+Startzeitpunkt", status_code=302)
+        starts_dt_utc = starts_dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        if starts_dt_utc <= now_utc:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=polls&error=Startzeitpunkt+muss+in+der+Zukunft+liegen", status_code=302
+            )
+        starts_at_store = starts_dt_utc.isoformat()
+
+    ends_at_fixed_store = ""
+    if end_mode == "fixed":
+        if not ends_at_fixed_raw:
+            return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Enddatum+erforderlich", status_code=302)
+        try:
+            ends_dt = _aware(datetime.datetime.fromisoformat(ends_at_fixed_raw), tz)
+        except ValueError:
+            return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Ungültiges+Enddatum", status_code=302)
+        ends_dt_utc = ends_dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        reference_utc = starts_dt_utc if starts_dt_utc is not None else now_utc
+        if ends_dt_utc <= reference_utc:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=polls&error=Enddatum+muss+nach+dem+Start+liegen", status_code=302
+            )
+        ends_at_fixed_store = ends_dt_utc.isoformat()
+
     for lbl, img, img_file, link, width in options:
         opt_has_upload = bool(img_file and getattr(img_file, "filename", ""))
         if opt_has_upload and img:
@@ -7074,17 +7120,30 @@ async def poll_create_web(request: Request, guild_id: int):
     ])
 
     created_at = datetime.datetime.utcnow().isoformat()
-    ends_at = ""
-    if duration_minutes > 0:
-        ends_at = (datetime.datetime.utcnow() + datetime.timedelta(minutes=duration_minutes)).isoformat()
+    duration_minutes_store = duration_minutes if end_mode == "duration" else 0
+    if end_mode == "fixed":
+        # A fixed absolute end datetime doesn't depend on when the poll actually starts, so it
+        # can be resolved right away regardless of whether starts_at_store is set.
+        ends_at = ends_at_fixed_store
+    elif not starts_at_store:
+        # Immediate start + duration mode: resolve relative to "now" same as before this
+        # feature existed.
+        ends_at = (
+            (datetime.datetime.utcnow() + datetime.timedelta(minutes=duration_minutes)).isoformat()
+            if duration_minutes > 0 else ""
+        )
+    else:
+        # Scheduled start + duration mode: the real start moment is still in the future, so the
+        # duration can't be resolved into an absolute ends_at yet - _start_poll does that once
+        # the poll actually goes live, using duration_minutes_store.
+        ends_at = ""
 
     pid = await db_insert(
         "INSERT INTO polls (guild_id,channel_id,question,multiple_choice,ends_at,created_by,"
-        "image_url,image_data,image_filename,bar_color) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "image_url,image_data,image_filename,bar_color,starts_at,duration_minutes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         (str(guild_id), str(channel.id), question, int(multiple), ends_at, request.session.get("user_id") or 0,
-         final_image_url, final_image_data, final_image_filename, bar_color),
+         final_image_url, final_image_data, final_image_filename, bar_color, starts_at_store, duration_minutes_store),
     )
-    files = _embed_post_files(final_image_data, final_image_filename)
     for i, (label, opt_image, opt_image_file, opt_link, opt_width) in enumerate(options):
         opt_final_url, opt_final_data, opt_final_filename = resolved_options[i]
         await db_exec(
@@ -7095,12 +7154,25 @@ async def poll_create_web(request: Request, guild_id: int):
             # kept only so an already-restored backup row still has SOMETHING recognizable there.
             (pid, i, label[:80], opt_final_url[:500], opt_link[:500], opt_final_data, opt_final_filename, "custom", opt_width),
         )
+
+    if starts_at_store:
+        # Scheduled poll - don't post anything now, cogs.polls.Polls._start_poll() does the
+        # actual channel.send()/embed-build/duration-resolution when the moment arrives (or on
+        # the next bot restart, if it was already due - see cog_load()'s pending-start resume).
+        b = bot._bot_for_guild(guild_id)
+        cog = b.cogs.get("Polls") if b else None
+        if cog:
+            poll_row = await db_one("SELECT * FROM polls WHERE id=?", (pid,))
+            cog._schedule_start(poll_row)
+        return RedirectResponse(f"/servers/{guild_id}?tab=polls&success=Umfrage+geplant", status_code=302)
+
     # An option's own uploaded picture is NOT separately attached here - _build_poll_embed's
     # chart_files is now the complete, authoritative attachment list for every option (composited
     # into a combo PNG with its bar, re-attached as-is for its two-card fallback, or not needed
     # at all for a plain URL) - attaching it again here as well would create a stray, UNREFERENCED
     # duplicate attachment for a composited option (Discord shows an attachment nobody's embed
     # points to as its own extra inline image at the bottom of the message).
+    files = _embed_post_files(final_image_data, final_image_filename)
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
     embeds, chart_files = _build_poll_embed(
         question, multiple, opt_rows, {}, image_url=final_image_url, image_filename=final_image_filename,

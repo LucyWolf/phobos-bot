@@ -1350,8 +1350,24 @@ document.addEventListener('click', function(e) {
         <label><input type="checkbox" name="multiple_choice" value="1" style="width:auto;display:inline;margin-right:0.4rem;"> {{ tr.polls_multiple_label }}</label>
       </div>
       <div>
+        <label>{{ tr.polls_starts_at_label }}</label>
+        <input type="datetime-local" name="starts_at" style="margin:0;">
+        <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.15rem;">{{ tr.polls_starts_at_hint }}</div>
+      </div>
+      <div>
+        <label>{{ tr.polls_end_mode_label }}</label>
+        <select name="end_mode" onchange="updatePollEndModeVisibility(this)">
+          <option value="duration">{{ tr.polls_end_mode_duration }}</option>
+          <option value="fixed">{{ tr.polls_end_mode_fixed }}</option>
+        </select>
+      </div>
+      <div id="poll-end-duration-field">
         <label>{{ tr.polls_duration_label }}</label>
         <input type="number" name="duration_minutes" value="0" min="0" max="10080" placeholder="{{ tr.polls_duration_placeholder }}">
+      </div>
+      <div id="poll-end-fixed-field" style="display:none;">
+        <label>{{ tr.polls_ends_at_fixed_label }}</label>
+        <input type="datetime-local" name="ends_at_fixed" style="margin:0;">
       </div>
       <div>
         <label>{{ tr.polls_bar_color_label }}</label>
@@ -1364,6 +1380,20 @@ document.addEventListener('click', function(e) {
 </div>
 <script>
 const POLLS_GUILD_ID = {{ guild.id | jsraw }};
+function updatePollEndModeVisibility(select) {
+  const durationField = document.getElementById('poll-end-duration-field');
+  const fixedField = document.getElementById('poll-end-fixed-field');
+  const fixedInput = fixedField.querySelector('input[name="ends_at_fixed"]');
+  if (select.value === 'fixed') {
+    durationField.style.display = 'none';
+    fixedField.style.display = '';
+    fixedInput.required = true;
+  } else {
+    durationField.style.display = '';
+    fixedField.style.display = 'none';
+    fixedInput.required = false;
+  }
+}
 function togglePollsInfo() {
   const box = document.getElementById('polls-info-box');
   box.style.display = box.style.display === 'none' ? '' : 'none';

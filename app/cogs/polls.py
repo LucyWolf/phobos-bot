@@ -561,11 +561,19 @@ class Polls(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self._tasks: dict = {}
+        self._start_tasks: dict = {}
 
     async def cog_load(self):
         await asyncio.sleep(2)
         active = await db_rows("SELECT * FROM polls WHERE ended=0")
         for p in active:
+            # A poll with a still-pending starts_at and no message_id yet was never actually
+            # posted - it has no buttons to re-register and no end-timer to resume, only a
+            # future start to reschedule. Guard this BEFORE the add_view() below, since that
+            # call assumes options exist for an already-live message.
+            if p.get("starts_at") and not p.get("message_id"):
+                self._schedule_start(p)
+                continue
             options = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (p["id"],))
             if options:
                 # add_view() without a message_id registers the view under discord.py's global
@@ -591,6 +599,65 @@ class Polls(commands.Cog):
             self._tasks[pid] = self.bot.loop.call_later(
                 delay, lambda: self.bot.loop.create_task(self._end_poll(pid))
             )
+
+    def _schedule_start(self, p: dict):
+        pid = p["id"]
+        if pid in self._start_tasks:
+            return
+        try:
+            starts_at = datetime.datetime.fromisoformat(p["starts_at"])
+        except Exception:
+            return
+        delay = (starts_at - datetime.datetime.utcnow()).total_seconds()
+        if delay <= 0:
+            self.bot.loop.create_task(self._start_poll(pid))
+        else:
+            self._start_tasks[pid] = self.bot.loop.call_later(
+                delay, lambda: self.bot.loop.create_task(self._start_poll(pid))
+            )
+
+    async def _start_poll(self, poll_id: int):
+        self._start_tasks.pop(poll_id, None)
+        # Same atomic guard idea as _end_poll - a poll that was already posted (e.g. deleted
+        # its scheduled starts_at and got posted some other way) or already ended should never
+        # be posted a second time.
+        poll = await db_one("SELECT * FROM polls WHERE id=? AND ended=0", (poll_id,))
+        if not poll or poll.get("message_id"):
+            return
+        channel = self.bot.get_channel(int(poll["channel_id"])) if poll["channel_id"] else None
+        if not channel:
+            print(f"[Polls] failed to start poll {poll_id}: channel {poll['channel_id']} not found")
+            return
+        options = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
+        if not options:
+            return
+        # A "duration" end mode couldn't precompute ends_at at creation time (the poll wasn't
+        # running yet) - resolve it now, relative to the moment the poll actually starts, not
+        # to when it was originally scheduled.
+        ends_at = poll.get("ends_at") or ""
+        duration_minutes = poll.get("duration_minutes") or 0
+        created_at = datetime.datetime.utcnow().isoformat()
+        if not ends_at and duration_minutes > 0:
+            ends_at = (datetime.datetime.utcnow() + datetime.timedelta(minutes=duration_minutes)).isoformat()
+        embeds, chart_files = build_poll_embed(
+            poll["question"], bool(poll["multiple_choice"]), options, {},
+            image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
+            ends_at=ends_at, created_at=created_at,
+            bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR,
+        )
+        view = PollView(poll_id, options)
+        try:
+            msg = await channel.send(embeds=embeds, view=view, files=chart_files)
+        except (discord.HTTPException, OSError) as e:
+            print(f"[Polls] failed to start poll {poll_id}: {e}")
+            return
+        await db_exec(
+            "UPDATE polls SET message_id=?, ends_at=?, created_at=? WHERE id=?",
+            (str(msg.id), ends_at, created_at, poll_id),
+        )
+        if ends_at:
+            poll_row = await db_one("SELECT * FROM polls WHERE id=?", (poll_id,))
+            self._schedule(poll_row)
 
     async def _end_poll(self, poll_id: int):
         self._tasks.pop(poll_id, None)

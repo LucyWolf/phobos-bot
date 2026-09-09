@@ -762,6 +762,20 @@ async def init_db():
             # per this project's "never drop a column" convention, but now unused/superseded by
             # bar_color below; every current codepath ignores it.
             "ALTER TABLE polls ADD COLUMN bar_color TEXT NOT NULL DEFAULT '#7c3aed'",
+            # User-requested: schedule a poll to start in the future instead of always posting
+            # immediately on creation ("ich will angeben können wann die anfängt und wann die
+            # aufhärt"). '' means "start immediately" (the only behavior that existed before
+            # this column) - a set value is a Europe/Berlin-normalized ISO datetime string,
+            # same storage convention as scheduled_messages.send_at/event_series.next_start_at.
+            "ALTER TABLE polls ADD COLUMN starts_at TEXT NOT NULL DEFAULT ''",
+            # Paired with starts_at: when the end mode is "duration" rather than a fixed
+            # ends_at datetime, the actual duration (in minutes) is persisted here so it can be
+            # resolved into a real ends_at at the moment the poll actually starts (which, for a
+            # scheduled poll, is later than poll-creation time - ends_at itself can't be
+            # precomputed at creation for that mode). 0 = no duration set (poll never
+            # auto-ends). For an immediately-started poll this is resolved into ends_at right
+            # away, same as before this column existed.
+            "ALTER TABLE polls ADD COLUMN duration_minutes INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await db.execute(col)
