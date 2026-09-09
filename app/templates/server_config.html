@@ -1285,7 +1285,8 @@ document.addEventListener('click', function(e) {
               <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.4rem;">{{ tr.polls_option_extras_hint }}</div>
               <div id="poll-options-edit-{{ p.id }}">
                 {% for opt in p.options %}
-                <div class="poll-option-row" style="display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.6rem;padding:0.5rem;border:1px solid var(--border);border-radius:0.5rem;">
+                <div class="poll-option-row" style="display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.6rem;padding:0.5rem;border:1px solid var(--border);border-radius:0.5rem;"
+                     {% if opt.image_filename %}data-existing-image="/servers/{{ guild.id }}/polls/{{ p.id }}/option/{{ opt.id }}/image"{% elif opt.image_url %}data-existing-image="{{ opt.image_url }}"{% endif %}>
                   <input type="hidden" name="option_id" value="{{ opt.id }}">
                   <div style="display:flex;gap:0.4rem;">
                     <input type="text" name="option" maxlength="80" required value="{{ opt.label }}" style="margin:0;flex:1;">
@@ -1561,10 +1562,29 @@ function renderPollPreview(form) {
     const urlInput = row.querySelector('input[name="option_image"]');
     const linkInput = row.querySelector('input[name="option_link"]');
     const widthInput = row.querySelector('input[name="option_image_width"]');
+    const removeInput = row.querySelector('input[name="option_remove_image"]');
     if (fileInput && fileInput.files && fileInput.files[0]) {
       image = pollPreviewFileUrl(fileInput.files[0]);
     } else if (urlInput && urlInput.value.trim()) {
       image = urlInput.value.trim();
+    } else if (removeInput && removeInput.checked) {
+      // Explicitly marked for removal - never fall back to the existing image below, even
+      // though nothing has actually been saved yet (mirrors _resolve_poll_option_image's own
+      // remove_checked-wins-over-everything precedence on the backend).
+      image = '';
+    } else if (row.dataset.existingImage) {
+      // An option that already has an UPLOADED image (not a typed URL) can never show that in
+      // the fileInput/urlInput fields above - a file input can't be pre-filled by the browser,
+      // and this option's own image_url is empty precisely because it came from an upload
+      // instead (see _resolve_poll_option_image's mutual exclusivity). Without this fallback the
+      // preview falsely showed "no picture" for every existing upload-based option (or, once a
+      // link was also present, silently swapped in a same-page auto-fetched image the poll would
+      // never actually use) - reported live as the preview simply lying about an existing poll's
+      // real, already-saved state. Only ever present on a server-rendered EXISTING option row
+      // (see the data-existing-image attribute above), never on a brand-new one added via
+      // addPollOption(), so this can't accidentally show anything for an option that has no
+      // saved image to keep in the first place.
+      image = row.dataset.existingImage;
     } else {
       const link = linkInput ? linkInput.value.trim() : '';
       const fetched = link ? _pollPreviewAutoFetched.get(row) : null;
