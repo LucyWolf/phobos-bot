@@ -6994,6 +6994,7 @@ async def poll_create_web(request: Request, guild_id: int):
         if lbl.strip()
     ]
     multiple = bool(form.get("multiple_choice", ""))
+    show_started = bool(form.get("show_started", ""))
     bar_color = _clamp_poll_bar_color(form.get("bar_color", ""))
     try:
         duration_minutes = int(form.get("duration_minutes") or 0)
@@ -7140,9 +7141,11 @@ async def poll_create_web(request: Request, guild_id: int):
 
     pid = await db_insert(
         "INSERT INTO polls (guild_id,channel_id,question,multiple_choice,ends_at,created_by,"
-        "image_url,image_data,image_filename,bar_color,starts_at,duration_minutes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        "image_url,image_data,image_filename,bar_color,starts_at,duration_minutes,show_started) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (str(guild_id), str(channel.id), question, int(multiple), ends_at, request.session.get("user_id") or 0,
-         final_image_url, final_image_data, final_image_filename, bar_color, starts_at_store, duration_minutes_store),
+         final_image_url, final_image_data, final_image_filename, bar_color, starts_at_store,
+         duration_minutes_store, int(show_started)),
     )
     for i, (label, opt_image, opt_image_file, opt_link, opt_width) in enumerate(options):
         opt_final_url, opt_final_data, opt_final_filename = resolved_options[i]
@@ -7176,7 +7179,7 @@ async def poll_create_web(request: Request, guild_id: int):
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
     embeds, chart_files = _build_poll_embed(
         question, multiple, opt_rows, {}, image_url=final_image_url, image_filename=final_image_filename,
-        ends_at=ends_at, created_at=created_at, bar_color=bar_color,
+        ends_at=ends_at, created_at=created_at, bar_color=bar_color, show_started=show_started,
     )
     files.extend(chart_files)
     view = _PollView(pid, opt_rows)
@@ -7347,6 +7350,7 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
         if lbl.strip()
     ]
     multiple = bool(form.get("multiple_choice", ""))
+    show_started = bool(form.get("show_started", ""))
     bar_color = _clamp_poll_bar_color(form.get("bar_color", ""))
 
     if len(options) < 2:
@@ -7434,8 +7438,8 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     # more than one vote recorded from when it was on, those extra votes just stay - only
     # nudges the displayed total vote count slightly, never a crash or a wrong option tally.
     await db_exec(
-        "UPDATE polls SET question=?, multiple_choice=?, image_url=?, image_data=?, image_filename=?, bar_color=? WHERE id=?",
-        (question, int(multiple), final_image_url, final_image_data, final_image_filename, bar_color, poll_id),
+        "UPDATE polls SET question=?, multiple_choice=?, image_url=?, image_data=?, image_filename=?, bar_color=?, show_started=? WHERE id=?",
+        (question, int(multiple), final_image_url, final_image_data, final_image_filename, bar_color, int(show_started), poll_id),
     )
 
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
@@ -7445,6 +7449,7 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
         question, multiple, opt_rows, counts, ended=bool(poll["ended"]),
         image_url=final_image_url, image_filename=final_image_filename,
         ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "", bar_color=bar_color,
+        show_started=show_started,
     )
     # An option's own uploaded picture is NOT separately attached here - chart_files is now the
     # complete, authoritative attachment list (the one combined image holding every option's

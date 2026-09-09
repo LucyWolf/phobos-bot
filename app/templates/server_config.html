@@ -1306,6 +1306,7 @@ document.addEventListener('click', function(e) {
               </div>
               <button type="button" class="btn btn-secondary" onclick="addPollOption('poll-options-edit-{{ p.id }}')" style="font-size:0.75rem;padding:0.3rem 0.7rem;margin-bottom:0.75rem;">{{ tr.polls_add_option }}</button>
               <label><input type="checkbox" name="multiple_choice" value="1" style="width:auto;display:inline;margin-right:0.4rem;" {% if p.multiple_choice %}checked{% endif %}> {{ tr.polls_multiple_label }}</label>
+              <label><input type="checkbox" name="show_started" value="1" style="width:auto;display:inline;margin-right:0.4rem;" {% if p.show_started %}checked{% endif %}> {{ tr.polls_show_started_label }}</label>
               <label>{{ tr.polls_bar_color_label }}</label>
               <input type="color" name="bar_color" value="{{ p.bar_color or '#7c3aed' }}" style="width:70px;height:2.2rem;padding:0.15rem;margin-bottom:0.75rem;">
               <button type="submit" class="btn btn-primary" style="margin-top:0.75rem;">{{ tr.btn_save }}</button>
@@ -1357,6 +1358,7 @@ document.addEventListener('click', function(e) {
     <div class="grid-2">
       <div>
         <label><input type="checkbox" name="multiple_choice" value="1" style="width:auto;display:inline;margin-right:0.4rem;"> {{ tr.polls_multiple_label }}</label>
+        <label><input type="checkbox" name="show_started" value="1" style="width:auto;display:inline;margin-right:0.4rem;"> {{ tr.polls_show_started_label }}</label>
       </div>
       <div>
         <label>{{ tr.polls_starts_at_label }}</label>

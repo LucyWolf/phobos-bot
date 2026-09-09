@@ -776,6 +776,11 @@ async def init_db():
             # auto-ends). For an immediately-started poll this is resolved into ends_at right
             # away, same as before this column existed.
             "ALTER TABLE polls ADD COLUMN duration_minutes INTEGER NOT NULL DEFAULT 0",
+            # User-requested: the "Gestartet: vor X" line is now OFF by default ("das gestartet
+            # brauche wir nicht") - only shown when this is explicitly turned on per poll ("mach
+            # die möglichkeit rein das mann das aktivieren kann"), hence defaulting to 0/off for
+            # both brand-new polls and every already-existing one.
+            "ALTER TABLE polls ADD COLUMN show_started INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await db.execute(col)

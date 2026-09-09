@@ -190,7 +190,7 @@ def _render_combined_poll_image(rows: list, bar_color: str) -> bytes:
 def build_poll_embed(
     question: str, multiple_choice: bool, options: list, counts: dict, ended: bool = False,
     image_url: str = "", image_filename: str = "", ends_at: str = "", created_at: str = "",
-    bar_color: str = DEFAULT_BAR_COLOR,
+    bar_color: str = DEFAULT_BAR_COLOR, show_started: bool = False,
 ) -> tuple:
     """Shared by creation, every vote, and _end_poll - one place for the bar/percentage layout
     so it can never drift between the three call sites. Returns (embeds, chart_files) - embeds
@@ -236,13 +236,16 @@ def build_poll_embed(
     attachments stays MISSING -> the 'attachments' key is left out of the request payload
     entirely -> Discord's own PATCH semantics keep whatever is already on the message).
 
-    created_at/ends_at each become a Discord-native `<t:...:R>` relative timestamp at the top of
-    the header's description ("Gestartet: vor 5 Minuten" / "Endet: in 2 Stunden") - Discord's
-    OWN client renders and live-updates these (a countdown ticking down in real time for
-    ends_at) with zero further edits from the bot, exactly like cogs/giveaways.py's own
-    `discord.utils.format_dt(ends_at, 'R')` usage. created_at is shown whenever known (a poll
-    always has one); ends_at only for a poll with an auto-end configured (nothing to show for a
-    manual-only poll)."""
+    ends_at becomes a Discord-native `<t:...:R>` relative timestamp at the top of the header's
+    description ("Endet: in 2 Stunden") while the poll is still running - Discord's OWN client
+    renders and live-updates this (a countdown ticking down in real time) with zero further
+    edits from the bot, exactly like cogs/giveaways.py's own `discord.utils.format_dt(ends_at,
+    'R')` usage. Once `ended`, that line becomes a plain, timeless "**Beendet**" instead - user-
+    requested explicitly ("bendet seit brauchen wir nicht es reicht wenn dort benddet steht"),
+    since a relative "ended X ago" keeps counting up forever and isn't actually useful once it's
+    already over. created_at's own "Gestartet: vor 5 Minuten" line is OFF by default
+    (`show_started=False`, same reasoning: not something every poll needs) - only shown when a
+    poll's own `show_started` column is turned on."""
     total = sum(counts.values())
     header = discord.Embed(
         title=("🔒 " if ended else "🗳️ ") + question,
@@ -260,7 +263,7 @@ def build_poll_embed(
     header.set_footer(text=footer)
 
     header_lines = []
-    if created_at:
+    if show_started and created_at:
         try:
             # created_at/ends_at are always naive isoformat strings that REPRESENT UTC (built
             # from datetime.utcnow() throughout this module - see _start_poll/poll_create's own
@@ -280,11 +283,15 @@ def build_poll_embed(
             header_lines.append(f"**Gestartet:** {discord.utils.format_dt(started_dt, 'R')}")
         except Exception:
             pass
-    if ends_at:
+    if ended:
+        # A relative "beendet vor X" would just keep counting up forever once a poll is over -
+        # not useful, and confusing next to a "live countdown" feature that's about time still
+        # REMAINING. A plain, timeless label is all that's needed once it's already done.
+        header_lines.append("**Beendet**")
+    elif ends_at:
         try:
             ends_dt = datetime.datetime.fromisoformat(ends_at).replace(tzinfo=datetime.timezone.utc)
-            label = "Beendet" if ended else "Endet"
-            header_lines.append(f"**{label}:** {discord.utils.format_dt(ends_dt, 'R')}")
+            header_lines.append(f"**Endet:** {discord.utils.format_dt(ends_dt, 'R')}")
         except Exception:
             pass
 
@@ -395,7 +402,7 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
         poll["question"], bool(poll["multiple_choice"]), options, counts,
         image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
         ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
-        bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR,
+        bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR, show_started=bool(poll.get("show_started")),
     )
     # No view= here on purpose - discord.py's edit_message() default for view is MISSING (not
     # None), so omitting it leaves the existing buttons untouched instead of needing to rebuild+
@@ -524,7 +531,7 @@ class Polls(commands.Cog):
             poll["question"], bool(poll["multiple_choice"]), options, {},
             image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
             ends_at=ends_at, created_at=created_at,
-            bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR,
+            bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR, show_started=bool(poll.get("show_started")),
         )
         view = PollView(poll_id, options)
         try:
@@ -565,7 +572,7 @@ class Polls(commands.Cog):
             poll["question"], bool(poll["multiple_choice"]), options, counts, ended=True,
             image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
             ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
-            bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR,
+            bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR, show_started=bool(poll.get("show_started")),
         )
         try:
             if chart_files:
