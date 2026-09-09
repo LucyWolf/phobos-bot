@@ -7213,10 +7213,14 @@ async def poll_end_web(request: Request, guild_id: int, poll_id: int):
 
 @web.post("/servers/{guild_id}/polls/preview-link-image")
 async def poll_preview_link_image(request: Request, guild_id: int):
-    """Live, save-nothing Open Graph image lookup for the create/edit forms' "🔍" preview
-    button - returns EVERY candidate image found (see _extract_image_candidates) so an admin
-    can pick the one they actually want, rather than the single best-guess the automatic fetch
-    on save uses (_resolve_poll_option_image/_fetch_og_image) when this was never clicked. Same
+    """Live, save-nothing Open Graph image lookup for the create/edit forms' automatic
+    background preview (schedulePollPreviewAutoFetch/pollPreviewAutoFetch, fires ~600ms after
+    a link field stops changing) - the manual "🔍" button that used to trigger this on demand
+    was removed in v1.15.41 once the automatic fetch made it redundant, this route stayed as
+    its sole remaining caller. Returns EVERY candidate image found (see
+    _extract_image_candidates), the frontend just uses the first one for the live preview - the
+    single best-guess the automatic fetch ON SAVE uses (_resolve_poll_option_image/
+    _fetch_og_image) is a separate, independent code path that never calls this route. Same
     access level as creating or ending a poll - no poll_id binding needed since this also runs
     on the create form, before any poll exists yet."""
     if r := auth_redirect(request): return r

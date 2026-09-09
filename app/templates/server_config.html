@@ -1234,6 +1234,7 @@ document.addEventListener('click', function(e) {
       <li>{{ tr.polls_info_item_create }}</li>
       <li>{{ tr.polls_info_item_vote }}</li>
       <li>{{ tr.polls_info_item_end }}</li>
+      <li>{{ tr.polls_info_item_schedule }}</li>
       <li>{{ tr.polls_info_item_autofetch }}</li>
       <li>{{ tr.polls_info_item_edit }}</li>
     </ul>
@@ -1249,14 +1250,18 @@ document.addEventListener('click', function(e) {
       <tbody>
         {% for p in poll_list %}
         <tr>
-          <td style="font-weight:600">🗳️ {{ p.question }}</td>
+          <td style="font-weight:600">🗳️ {{ p.question }}{% if p.starts_at and not p.message_id %}<br><span style="font-weight:400;font-size:0.72rem;color:var(--muted);">{{ tr.polls_scheduled_for }} {{ p.starts_at | dt }}</span>{% endif %}</td>
           <td style="color:var(--muted)">{{ p.channel_name }}</td>
           <td>{{ p.vote_count }}</td>
           <td>{{ tr.polls_type_multi if p.multiple_choice else tr.polls_type_single }}</td>
           <td style="white-space:nowrap;">
             <button type="button" class="btn btn-secondary" onclick="togglePanelEdit('poll-{{ p.id }}')" title="{{ tr.btn_settings }}" style="padding:0.22rem 0.55rem;font-size:0.75rem;">⚙</button>
             <form method="post" action="/servers/{{ guild.id }}/polls/{{ p.id }}/end" style="display:inline">
+              {% if p.starts_at and not p.message_id %}
+              <button class="btn btn-danger" onclick="return confirm({{ tr.polls_confirm_cancel_scheduled | js }})">{{ tr.polls_btn_cancel_scheduled }}</button>
+              {% else %}
               <button class="btn btn-danger" onclick="return confirm({{ tr.polls_confirm_end | js }})">{{ tr.polls_btn_end }}</button>
+              {% endif %}
             </form>
           </td>
         </tr>
