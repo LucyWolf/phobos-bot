@@ -59,38 +59,19 @@ def _hex_to_rgb(hex_color: str) -> tuple:
         return (124, 58, 237)
 
 
-# Approximate RGB of Unicode's own official "colored square" emoji - used ONLY as an internal
-# nearest-match lookup now (never a user-facing choice, see _bar_line's docstring below) for the
-# one spot a real bar-chart image genuinely can't go: a per-option RICH embed's footer (an
-# option with its own picture/link already occupies that embed's one image slot), where Discord
-# only allows a small footer icon, never a full image - picking the closest-looking emoji to
-# whatever custom color the admin actually chose keeps at least some visual link to it.
-_EMOJI_BAR_PALETTE = {
-    "🟥": (221, 46, 68),
-    "🟧": (240, 148, 51),
-    "🟨": (253, 203, 88),
-    "🟩": (120, 177, 89),
-    "🟦": (85, 172, 238),
-    "🟪": (170, 142, 214),
-}
-
-
-def _nearest_emoji_bar_char(hex_color: str) -> str:
-    rgb = _hex_to_rgb(hex_color)
-    return min(_EMOJI_BAR_PALETTE, key=lambda ch: sum((a - b) ** 2 for a, b in zip(_EMOJI_BAR_PALETTE[ch], rgb)))
-
-
-def _bar_line(label: str, n: int, total: int, bar_color: str = DEFAULT_BAR_COLOR) -> tuple:
-    """Text/emoji fallback bar - only ever used for a per-option RICH embed's footer now (see
-    _EMOJI_BAR_PALETTE's comment) or a poll that still carries a pre-v1.15.20 per-poll banner
-    image occupying the header's image slot. Every other poll gets the real generated bar-chart
-    image from _render_bar_chart_image() instead, which is what "the bar" now actually means for
-    most polls - this one stays for the cases that literally can't use an image."""
+# v1.15.32's "an option with its own picture keeps a text bar in its footer" turned out to
+# still look wrong to the user ("entferne alles ... was diese 4 ecke erzeugt") - even a single
+# option with its own image made that one option's footer still show the old discrete-square
+# look, and simply picking the nearest-matching emoji color didn't read as "fixed" to them.
+# Removed entirely rather than reworked again: nothing in this file builds a square/emoji bar
+# character anymore, anywhere. The one spot that still can't show the real generated bar-chart
+# image (a per-option RICH embed - Discord allows only one image per embed, already used by the
+# option's own picture there) now shows a plain percentage/vote-count line instead - still
+# readable, just no bar visual at all, rather than a bar that looks inconsistent with the real
+# generated one everywhere else.
+def _pct_line(label: str, n: int, total: int) -> tuple:
     pct = (n / total * 100) if total else 0
-    filled = round(pct / 10)
-    filled_char = _nearest_emoji_bar_char(bar_color)
-    bar = filled_char * filled + "⬛" * (10 - filled)
-    return f"**{label}**\n{bar} {pct:.0f}% ({n})", bar, pct
+    return f"**{label}**\n{pct:.0f}% ({n} Stimme(n))", pct
 
 
 def _fit_text(draw, text: str, font, max_width: float) -> str:
@@ -251,9 +232,9 @@ def build_poll_embed(
             return [header], chart_file
         # Legacy per-poll banner image already occupies the header's image slot (a poll created
         # before v1.15.20) - keep showing IT rather than silently swapping in the new bar-chart
-        # image, and fall back to the old text-based bar lines since there's no image slot left.
-        bar_lines = [_bar_line(opt["label"], counts.get(opt["id"], 0), total, bar_color)[0] for opt in options]
-        combined = header_lines + bar_lines
+        # image, and fall back to a plain percentage line since there's no image slot left.
+        pct_lines = [_pct_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in options]
+        combined = header_lines + pct_lines
         if combined:
             header.description = "\n\n".join(combined)
         return [header], None
@@ -283,14 +264,14 @@ def build_poll_embed(
             # image slot, so the plain options fall back to the old text bars too, same as the
             # no-image-options branch above already does for its own legacy-image case.
             header_lines += [
-                _bar_line(opt["label"], counts.get(opt["id"], 0), total, bar_color)[0] for opt in plain_options
+                _pct_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in plain_options
             ]
 
     rich_options, overflow_options = image_options[:MAX_RICH_OPTION_EMBEDS], image_options[MAX_RICH_OPTION_EMBEDS:]
     embeds = [header]
     for opt in rich_options:
         n = counts.get(opt["id"], 0)
-        _, bar, pct = _bar_line(opt["label"], n, total, bar_color)
+        pct = (n / total * 100) if total else 0
         option_embed = discord.Embed(title=opt["label"], color=0x64748b if ended else 0x7c3aed)
         if opt.get("link_url"):
             option_embed.url = opt["link_url"]
@@ -310,11 +291,11 @@ def build_poll_embed(
                 option_embed.set_thumbnail(url=img_src)
             else:
                 option_embed.set_image(url=img_src)
-        option_embed.set_footer(text=f"{bar} {pct:.0f}% ({n})")
+        option_embed.set_footer(text=f"{pct:.0f}% ({n} Stimme(n))")
         embeds.append(option_embed)
     if overflow_options:
         header_lines += [
-            _bar_line(opt["label"], counts.get(opt["id"], 0), total, bar_color)[0] for opt in overflow_options
+            _pct_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in overflow_options
         ]
     if header_lines:
         header.description = "\n\n".join(header_lines)
