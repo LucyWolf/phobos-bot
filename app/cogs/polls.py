@@ -632,6 +632,14 @@ class Polls(commands.Cog):
                 f"Dauer muss zwischen 0 (kein Auto-Ende) und {MAX_DURATION_MINUTES} Minuten liegen.", ephemeral=True
             )
             return
+        if len({o.casefold() for o in options}) != len(options):
+            # Same case-insensitive dedup as the dashboard's poll_create_web/poll_edit_web (see
+            # their own comments) - a "dwad"/"Dwad" pair of buttons is just as indistinguishable
+            # to a voter as two literal "dwad"s.
+            await interaction.response.send_message(
+                "Optionen müssen unterschiedliche Namen haben.", ephemeral=True
+            )
+            return
         await interaction.response.defer(ephemeral=True)
         created_at = datetime.datetime.utcnow().isoformat()
         ends_at = ""

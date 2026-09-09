@@ -7011,6 +7011,14 @@ async def poll_create_web(request: Request, guild_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Mindestens+2+Optionen+nötig", status_code=302)
     if len(options) > 25:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Maximal+25+Optionen+erlaubt", status_code=302)
+    if len({o[0].casefold() for o in options}) != len(options):
+        # Case-insensitive on purpose - "dwad" and "Dwad" as two separate buttons would look just
+        # as duplicated/confusing to a voter as two literal "dwad"s (the reported bug: three
+        # buttons all reading "dwad", no way to tell which is which - screenshot showed a real
+        # poll in exactly this state).
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=polls&error=Optionen+müssen+unterschiedliche+Namen+haben", status_code=302
+        )
     if len(question) > 200:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Frage+zu+lang+(max.+200+Zeichen)", status_code=302)
     if duration_minutes < 0 or duration_minutes > 10080:
@@ -7360,6 +7368,11 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Mindestens+2+Optionen+nötig", status_code=302)
     if len(options) > 25:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Maximal+25+Optionen+erlaubt", status_code=302)
+    if len({o[1].casefold() for o in options}) != len(options):
+        # Same case-insensitive dedup as poll_create_web - see its own comment for why.
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=polls&error=Optionen+müssen+unterschiedliche+Namen+haben", status_code=302
+        )
     if len(question) > 200:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Frage+zu+lang+(max.+200+Zeichen)", status_code=302)
     for oid, lbl, img, img_file, link, width in options:
