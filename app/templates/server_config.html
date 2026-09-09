@@ -27,7 +27,7 @@
 </style>
 
 {% from '_server_subnav.html' import server_subnav %}
-{{ server_subnav(guild.id, request.query_params.get('tab', 'config'), enabled_features) }}
+{{ server_subnav(guild.id, request.query_params.get('tab', 'config'), enabled_features, user_allowed_tabs) }}
 
 {% if saved %}<div class="alert alert-success">✅ Einstellungen gespeichert.</div>{% endif %}
 {% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
@@ -1915,6 +1915,7 @@ document.addEventListener('click', function(e) {
     {% if u.role == 'admin' %}
     <span style="color:var(--muted);font-size:0.8rem;">{{ tr.server_users_global_access }}</span>
     {% elif u.id in server_perms %}
+    <button type="button" onclick="toggleUserTabsEdit({{ u.id }})" class="btn btn-secondary" title="{{ tr.btn_settings }}" style="font-size:0.78rem;padding:0.25rem 0.6rem;">⚙</button>
     <form method="post" action="/servers/{{ guild.id }}/users/{{ u.id }}/revoke" style="margin:0;">
       <button type="submit" class="btn" style="background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.25);font-size:0.78rem;padding:0.25rem 0.7rem;">{{ tr.server_users_revoke }}</button>
     </form>
@@ -1924,6 +1925,23 @@ document.addEventListener('click', function(e) {
     </form>
     {% endif %}
   </div>
+  {% if u.role != 'admin' and u.id in server_perms %}
+  {% set allowed = server_user_allowed_tabs.get(u.id) %}
+  <div id="user-tabs-edit-{{ u.id }}" style="display:none;padding:0.75rem 0 1rem;border-bottom:1px solid var(--border);">
+    <form method="post" action="/servers/{{ guild.id }}/users/{{ u.id }}/tabs">
+      <p class="hint" style="margin-bottom:0.6rem;">{{ tr.server_users_tabs_hint }}</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:0.4rem 1rem;margin-bottom:0.85rem;">
+        {% for key, label in toggleable_features.items() %}
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;font-weight:400;">
+          <input type="checkbox" name="tabs" value="{{ key }}" style="width:auto;margin:0;" {% if not allowed or key in allowed %}checked{% endif %}>
+          {{ label }}
+        </label>
+        {% endfor %}
+      </div>
+      <button type="submit" class="btn btn-primary" style="font-size:0.78rem;padding:0.3rem 0.9rem;">{{ tr.btn_save }}</button>
+    </form>
+  </div>
+  {% endif %}
   {% endfor %}
 </div>
 {% else %}
@@ -1931,6 +1949,10 @@ document.addEventListener('click', function(e) {
 {% endif %}
 </div>
 <script>
+function toggleUserTabsEdit(id) {
+  const el = document.getElementById('user-tabs-edit-' + id);
+  if (el) el.style.display = (el.style.display === 'none') ? 'block' : 'none';
+}
 function toggleUsersInfo() {
   const box = document.getElementById('users-info-box');
   box.style.display = box.style.display === 'none' ? '' : 'none';

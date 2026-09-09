@@ -2097,6 +2097,7 @@ async def bot_design_page(request: Request, guild_id: str = "", success: str = "
         "current_name": current_name, "current_avatar": current_avatar,
         "bot_online": bot_online, "guild_id": guild_id,
         "enabled_features": await _get_enabled_features(guild_id) if guild_id else None,
+        "user_allowed_tabs": await _viewer_allowed_tabs(request, guild_id) if guild_id else None,
     })
 
 
@@ -3045,6 +3046,9 @@ async def freestuff_page(request: Request, guild_id: str, success: str = "", err
         return RedirectResponse("/servers", status_code=302)
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
+    user_allowed_tabs = await _viewer_allowed_tabs(request, guild_id)
+    if user_allowed_tabs is not None and "freestuff" not in user_allowed_tabs:
+        return RedirectResponse(f"/servers/{guild_id}?tab=config&error=Kein+Zugriff+auf+diesen+Bereich", status_code=302)
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
     cfg = await db_one("SELECT * FROM freestuff_channels WHERE guild_id=?", (guild_id,))
     return templates.TemplateResponse("freestuff.html", {
@@ -3055,6 +3059,7 @@ async def freestuff_page(request: Request, guild_id: str, success: str = "", err
         "channels": channels, "cfg": cfg,
         "success": success, "error": error,
         "enabled_features": await _get_enabled_features(guild_id),
+        "user_allowed_tabs": user_allowed_tabs,
     })
 
 
@@ -3741,6 +3746,9 @@ async def notifications_page(request: Request, guild_id: str, success: str = "",
         return RedirectResponse("/servers", status_code=302)
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
+    user_allowed_tabs = await _viewer_allowed_tabs(request, guild_id)
+    if user_allowed_tabs is not None and "notifications" not in user_allowed_tabs:
+        return RedirectResponse(f"/servers/{guild_id}?tab=config&error=Kein+Zugriff+auf+diesen+Bereich", status_code=302)
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
     subs = await db_rows("SELECT * FROM notifications WHERE guild_id=? ORDER BY platform, target_name", (guild_id,))
     uid = request.session.get("user_id")
@@ -3785,6 +3793,7 @@ async def notifications_page(request: Request, guild_id: str, success: str = "",
         "twitch_configured": bool(twitch_apis),
         "success": success, "error": error,
         "enabled_features": await _get_enabled_features(guild_id),
+        "user_allowed_tabs": user_allowed_tabs,
     })
 
 
@@ -4290,6 +4299,9 @@ async def server_log_page(request: Request, guild_id: str, success: str = "", er
         return RedirectResponse("/servers", status_code=302)
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
+    user_allowed_tabs = await _viewer_allowed_tabs(request, guild_id)
+    if user_allowed_tabs is not None and "log" not in user_allowed_tabs:
+        return RedirectResponse(f"/servers/{guild_id}?tab=config&error=Kein+Zugriff+auf+diesen+Bereich", status_code=302)
     uid = request.session.get("user_id")
     if limit is not None and limit in LOG_LIMIT_OPTIONS:
         if uid:
@@ -4317,6 +4329,7 @@ async def server_log_page(request: Request, guild_id: str, success: str = "", er
         "logs": logs, "success": success, "error": error,
         "log_limit": limit, "log_limit_options": LOG_LIMIT_OPTIONS,
         "enabled_features": await _get_enabled_features(guild_id),
+        "user_allowed_tabs": user_allowed_tabs,
     })
 
 
@@ -4490,6 +4503,35 @@ async def _get_enabled_features(guild_id) -> set:
     return set()
 
 
+# User-requested ("es wäre schön wenn mann den moderatoren nur zu bestimmte rechte geben kann
+# mansche brauchen nur umfragen oder tikets") - a per-moderator, per-server restriction on top
+# of the existing user_guild_permissions grant (that one is all-or-nothing: has access to this
+# server's whole dashboard, or none at all). Deliberately the OPPOSITE default of
+# `enabled_features` above: an empty/unset `allowed_tabs` here means UNRESTRICTED (every tab the
+# server itself has enabled) rather than "nothing" - so a moderator already granted access today
+# keeps working exactly as before until an admin explicitly narrows them down on the "👥 Nutzer"
+# tab. Admins are never subject to this (checked by the caller, not in here) - this only ever
+# narrows what an already-granted MODERATOR can reach, never grants anything beyond what
+# user_guild_permissions/_guild_access already allow.
+async def _user_guild_allowed_tabs(user_id, guild_id) -> Optional[set]:
+    row = await db_one(
+        "SELECT allowed_tabs FROM user_guild_permissions WHERE user_id=? AND guild_id=?",
+        (user_id, str(guild_id)),
+    )
+    if not row or not row.get("allowed_tabs"):
+        return None  # no row (e.g. token-based access) or never restricted = unrestricted
+    return {t for t in row["allowed_tabs"].split(",") if t}
+
+
+async def _viewer_allowed_tabs(request: Request, guild_id) -> Optional[set]:
+    """None = unrestricted (admin, or a moderator never narrowed down) - the same "no
+    restriction" meaning used throughout this feature and by _server_subnav.html's own
+    `enabled_features is none` check it's meant to sit alongside."""
+    if request.session.get("role") == "admin":
+        return None
+    return await _user_guild_allowed_tabs(request.session.get("user_id"), guild_id)
+
+
 @web.get("/servers/{guild_id}", response_class=HTMLResponse)
 async def server_config(
     request: Request, guild_id: int,
@@ -4501,6 +4543,16 @@ async def server_config(
     guild = bot.get_guild(guild_id)
     if not guild:
         return RedirectResponse("/", status_code=302)
+
+    # A restricted moderator ("nur umfragen oder tikets") gets bounced off any tab outside their
+    # own allowed set - "config"/"users"/"botdesign" stay reachable regardless (same structural-
+    # vs-feature line _TOGGLEABLE_FEATURES already draws for enabled_features), an admin is never
+    # subject to this at all.
+    user_allowed_tabs = await _viewer_allowed_tabs(request, guild_id)
+    if user_allowed_tabs is not None and tab in _TOGGLEABLE_FEATURES and tab not in user_allowed_tabs:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=config&error=Kein+Zugriff+auf+diesen+Bereich", status_code=302
+        )
 
     token_set = await _token_configured()
     cfg = await get_all_guild_config(guild_id)
@@ -4741,9 +4793,15 @@ async def server_config(
     # Dashboard users & server access
     all_users = await db_rows("SELECT id, username, role FROM users ORDER BY role DESC, username")
     perm_rows = await db_rows(
-        "SELECT user_id FROM user_guild_permissions WHERE guild_id=?", (str(guild_id),)
+        "SELECT user_id, allowed_tabs FROM user_guild_permissions WHERE guild_id=?", (str(guild_id),)
     )
     server_perms = {p["user_id"] for p in perm_rows}
+    # Per-granted-moderator tab restriction, for the "👥 Nutzer" tab's own checklist - a user_id
+    # NOT in this dict (or an empty set) means unrestricted, matching _viewer_allowed_tabs' own
+    # "none/empty = no restriction" convention used for enforcement above.
+    server_user_allowed_tabs = {
+        p["user_id"]: {t for t in (p["allowed_tabs"] or "").split(",") if t} for p in perm_rows
+    }
 
     # Seeded once per guild, tracked separately from "table is empty" - otherwise a user who
     # deliberately deletes every preset would see the defaults silently reappear on next load.
@@ -4861,6 +4919,7 @@ async def server_config(
         "embed_posts": embed_posts,
         "subs": subs, "twitch_configured": twitch_configured,
         "all_users": all_users, "server_perms": server_perms,
+        "server_user_allowed_tabs": server_user_allowed_tabs,
         "automod_presets": automod_presets,
         "leveling_channels": leveling_channels,
         "level_roles": level_roles,
@@ -4879,6 +4938,7 @@ async def server_config(
         "welcome_overlay_presets": _WELCOME_OVERLAY_PRESETS,
         "toggleable_features": _TOGGLEABLE_FEATURES,
         "enabled_features": await _get_enabled_features(guild_id),
+        "user_allowed_tabs": user_allowed_tabs,
         "scheduled_messages": _scheduled_messages,
         "birthdays": _birthdays,
         "events_list": sorted(guild.scheduled_events, key=lambda e: e.start_time),
@@ -6767,6 +6827,31 @@ async def server_revoke_user(request: Request, guild_id: int, user_id: int):
         (user_id, str(guild_id)),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=users&success=Zugriff+entzogen", status_code=302)
+
+
+@web.post("/servers/{guild_id}/users/{user_id}/tabs")
+async def server_user_tabs_save(request: Request, guild_id: int, user_id: int):
+    """User-requested ("manche brauchen nur umfragen oder tikets") - narrows an ALREADY-granted
+    moderator down to only some of this server's tabs, without touching whether they have
+    access to the server at all (that stays user_guild_permissions' own grant/revoke above)."""
+    if r := admin_redirect(request): return r
+    row = await db_one(
+        "SELECT 1 FROM user_guild_permissions WHERE user_id=? AND guild_id=?", (user_id, str(guild_id))
+    )
+    if not row:
+        return RedirectResponse(f"/servers/{guild_id}?tab=users&error=Kein+Zugriff+gewährt", status_code=302)
+    form = await request.form()
+    submitted = {t for t in form.getlist("tabs") if t in _TOGGLEABLE_FEATURES}
+    # Every toggleable tab checked is equivalent to no restriction at all - stored as an empty
+    # string so it reads the exact same way as "never restricted" everywhere else (an admin who
+    # later ADDS a brand-new feature tab shouldn't have it silently stay blocked for a moderator
+    # who was simply granted "everything" back when fewer tabs existed).
+    allowed_tabs = "" if submitted == set(_TOGGLEABLE_FEATURES.keys()) else ",".join(sorted(submitted))
+    await db_exec(
+        "UPDATE user_guild_permissions SET allowed_tabs=? WHERE user_id=? AND guild_id=?",
+        (allowed_tabs, user_id, str(guild_id)),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=users&success=Rechte+gespeichert", status_code=302)
 
 
 # ── Reaction Roles ────────────────────────────────────────────────────────────

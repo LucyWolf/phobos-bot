@@ -829,6 +829,16 @@ async def init_db():
             "ALTER TABLE rating_items ADD COLUMN image_url TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE rating_items ADD COLUMN image_data TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE rating_items ADD COLUMN image_filename TEXT NOT NULL DEFAULT ''",
+            # User-requested ("es wäre schön wenn mann den moderatoren nur zu bestimmte rechte
+            # geben kann mansche brauchen nur umfragen oder tikets") - a per-moderator, per-
+            # server restriction ON TOP OF the existing user_guild_permissions grant (that one
+            # is all-or-nothing: this whole server's dashboard, or none of it). Empty/unset
+            # means UNRESTRICTED (every tab the server itself has enabled) - the opposite
+            # default of guild_configs' own "enabled_features" column, since this is an opt-in
+            # NARROWING an admin applies to an already-granted moderator, not an opt-in
+            # enabling - an existing grant keeps working exactly as before until an admin
+            # explicitly restricts it on the "👥 Nutzer" tab.
+            "ALTER TABLE user_guild_permissions ADD COLUMN allowed_tabs TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

@@ -1,36 +1,43 @@
-{% macro server_subnav(guild_id, active_page='', enabled_features=none) %}
+{% macro server_subnav(guild_id, active_page='', enabled_features=none, user_allowed_tabs=none) %}
 {# Sidebar sub-navigation shared by server_config.html and its standalone sibling pages
    (freestuff.html, notifications.html, server_log.html, bot_design.html - anywhere that
    belongs "inside" one specific guild). Labels here are hardcoded German by design, mirroring
    _SERVER_CONFIG_TAB_LABELS in main.py (that one's German too) - keep both in sync if a tab
    is ever renamed. enabled_features=none (not passed) falls back to "show everything" - keeps
    every OTHER caller safe even if a template forgets to pass it, rather than silently hiding
-   every optional tab for anyone who does. #}
+   every optional tab for anyone who does.
+
+   user_allowed_tabs is a SEPARATE, per-VIEWER restriction on top of enabled_features (which is
+   per-SERVER, same for everyone) - "es wäre schön wenn mann den moderatoren nur zu bestimmte
+   rechte geben kann mansche brauchen nur umfragen oder tikets": an admin narrows a specific
+   moderator down to only some of the tabs the server itself already has enabled, configured on
+   the "👥 Nutzer" tab. none (admin, or a moderator never narrowed down) means unrestricted -
+   same "none = no restriction" convention as enabled_features. #}
 <div class="server-subnav">
   <a href="/servers/{{ guild_id }}?tab=config"     class="ssnav-item {% if active_page == 'config' %}active{% endif %}">⚙️ Config</a>
-  {% if enabled_features is none or 'welcome' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=welcome"    class="ssnav-item {% if active_page == 'welcome' %}active{% endif %}">👋 Willkommen</a>{% endif %}
-  {% if enabled_features is none or 'automod' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=automod"    class="ssnav-item {% if active_page == 'automod' %}active{% endif %}">🛡️ Spam-Schutz</a>{% endif %}
-  {% if enabled_features is none or 'leveling' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=leveling"   class="ssnav-item {% if active_page == 'leveling' %}active{% endif %}">🏆 Leveling</a>{% endif %}
-  {% if enabled_features is none or 'rr' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=rr"         class="ssnav-item {% if active_page == 'rr' %}active{% endif %}">🎭 Reaction Roles</a>{% endif %}
-  {% if enabled_features is none or 'commands' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=commands"   class="ssnav-item {% if active_page == 'commands' %}active{% endif %}">📢 Commands</a>{% endif %}
-  {% if enabled_features is none or 'tickets' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=tickets"    class="ssnav-item {% if active_page == 'tickets' %}active{% endif %}">🎫 Tickets</a>{% endif %}
-  {% if enabled_features is none or 'giveaways' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=giveaways"  class="ssnav-item {% if active_page == 'giveaways' %}active{% endif %}">🎉 Giveaways</a>{% endif %}
-  {% if enabled_features is none or 'polls' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=polls"      class="ssnav-item {% if active_page == 'polls' %}active{% endif %}">🗳️ Umfragen</a>{% endif %}
-  {% if enabled_features is none or 'ratings' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=ratings"    class="ssnav-item {% if active_page == 'ratings' %}active{% endif %}">⭐ Bewertungen</a>{% endif %}
-  {% if enabled_features is none or 'warnings' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=warnings"   class="ssnav-item {% if active_page == 'warnings' %}active{% endif %}">⚠️ Warnungen</a>{% endif %}
+  {% if (enabled_features is none or 'welcome' in enabled_features) and (user_allowed_tabs is none or 'welcome' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=welcome"    class="ssnav-item {% if active_page == 'welcome' %}active{% endif %}">👋 Willkommen</a>{% endif %}
+  {% if (enabled_features is none or 'automod' in enabled_features) and (user_allowed_tabs is none or 'automod' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=automod"    class="ssnav-item {% if active_page == 'automod' %}active{% endif %}">🛡️ Spam-Schutz</a>{% endif %}
+  {% if (enabled_features is none or 'leveling' in enabled_features) and (user_allowed_tabs is none or 'leveling' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=leveling"   class="ssnav-item {% if active_page == 'leveling' %}active{% endif %}">🏆 Leveling</a>{% endif %}
+  {% if (enabled_features is none or 'rr' in enabled_features) and (user_allowed_tabs is none or 'rr' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=rr"         class="ssnav-item {% if active_page == 'rr' %}active{% endif %}">🎭 Reaction Roles</a>{% endif %}
+  {% if (enabled_features is none or 'commands' in enabled_features) and (user_allowed_tabs is none or 'commands' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=commands"   class="ssnav-item {% if active_page == 'commands' %}active{% endif %}">📢 Commands</a>{% endif %}
+  {% if (enabled_features is none or 'tickets' in enabled_features) and (user_allowed_tabs is none or 'tickets' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=tickets"    class="ssnav-item {% if active_page == 'tickets' %}active{% endif %}">🎫 Tickets</a>{% endif %}
+  {% if (enabled_features is none or 'giveaways' in enabled_features) and (user_allowed_tabs is none or 'giveaways' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=giveaways"  class="ssnav-item {% if active_page == 'giveaways' %}active{% endif %}">🎉 Giveaways</a>{% endif %}
+  {% if (enabled_features is none or 'polls' in enabled_features) and (user_allowed_tabs is none or 'polls' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=polls"      class="ssnav-item {% if active_page == 'polls' %}active{% endif %}">🗳️ Umfragen</a>{% endif %}
+  {% if (enabled_features is none or 'ratings' in enabled_features) and (user_allowed_tabs is none or 'ratings' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=ratings"    class="ssnav-item {% if active_page == 'ratings' %}active{% endif %}">⭐ Bewertungen</a>{% endif %}
+  {% if (enabled_features is none or 'warnings' in enabled_features) and (user_allowed_tabs is none or 'warnings' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=warnings"   class="ssnav-item {% if active_page == 'warnings' %}active{% endif %}">⚠️ Warnungen</a>{% endif %}
   <a href="/servers/{{ guild_id }}?tab=users"      class="ssnav-item {% if active_page == 'users' %}active{% endif %}">👥 Nutzer</a>
-  {% if enabled_features is none or 'tempvoice' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=tempvoice"  class="ssnav-item {% if active_page == 'tempvoice' %}active{% endif %}">🔊 Temp-Voice</a>{% endif %}
-  {% if enabled_features is none or 'scheduled' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=scheduled"  class="ssnav-item {% if active_page == 'scheduled' %}active{% endif %}">📅 Geplant</a>{% endif %}
-  {% if enabled_features is none or 'events' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=events"     class="ssnav-item {% if active_page == 'events' %}active{% endif %}">🗓️ Events</a>{% endif %}
-  {% if enabled_features is none or 'birthday' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=birthday"   class="ssnav-item {% if active_page == 'birthday' %}active{% endif %}">🎂 Geburtstage</a>{% endif %}
-  {% if enabled_features is none or 'autodelete' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=autodelete" class="ssnav-item {% if active_page == 'autodelete' %}active{% endif %}">🗑️ Auto-Delete</a>{% endif %}
-  {% if enabled_features is none or 'amp' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=amp"        class="ssnav-item {% if active_page == 'amp' %}active{% endif %}">🎮 Gameserver</a>{% endif %}
-  {% if enabled_features is none or 'autokick' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=autokick" class="ssnav-item {% if active_page == 'autokick' %}active{% endif %}">🚪 Auto-Kick</a>{% endif %}
-  {% if enabled_features is none or 'embeds' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=embeds" class="ssnav-item {% if active_page == 'embeds' %}active{% endif %}">📨 Embed-Nachrichten</a>{% endif %}
-  {% if enabled_features is none or 'rolerules' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=rolerules" class="ssnav-item {% if active_page == 'rolerules' %}active{% endif %}">🔗 CrossVerification</a>{% endif %}
-  {% if enabled_features is none or 'notifications' in enabled_features %}<a href="/servers/{{ guild_id }}/notifications"  class="ssnav-item {% if active_page == 'notifications' %}active{% endif %}">🟣 Streaming</a>{% endif %}
-  {% if enabled_features is none or 'freestuff' in enabled_features %}<a href="/servers/{{ guild_id }}/freestuff"      class="ssnav-item {% if active_page == 'freestuff' %}active{% endif %}">🎁 Free Stuff</a>{% endif %}
-  {% if enabled_features is none or 'log' in enabled_features %}<a href="/servers/{{ guild_id }}/log"            class="ssnav-item {% if active_page == 'log' %}active{% endif %}">📋 Log</a>{% endif %}
+  {% if (enabled_features is none or 'tempvoice' in enabled_features) and (user_allowed_tabs is none or 'tempvoice' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=tempvoice"  class="ssnav-item {% if active_page == 'tempvoice' %}active{% endif %}">🔊 Temp-Voice</a>{% endif %}
+  {% if (enabled_features is none or 'scheduled' in enabled_features) and (user_allowed_tabs is none or 'scheduled' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=scheduled"  class="ssnav-item {% if active_page == 'scheduled' %}active{% endif %}">📅 Geplant</a>{% endif %}
+  {% if (enabled_features is none or 'events' in enabled_features) and (user_allowed_tabs is none or 'events' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=events"     class="ssnav-item {% if active_page == 'events' %}active{% endif %}">🗓️ Events</a>{% endif %}
+  {% if (enabled_features is none or 'birthday' in enabled_features) and (user_allowed_tabs is none or 'birthday' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=birthday"   class="ssnav-item {% if active_page == 'birthday' %}active{% endif %}">🎂 Geburtstage</a>{% endif %}
+  {% if (enabled_features is none or 'autodelete' in enabled_features) and (user_allowed_tabs is none or 'autodelete' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=autodelete" class="ssnav-item {% if active_page == 'autodelete' %}active{% endif %}">🗑️ Auto-Delete</a>{% endif %}
+  {% if (enabled_features is none or 'amp' in enabled_features) and (user_allowed_tabs is none or 'amp' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=amp"        class="ssnav-item {% if active_page == 'amp' %}active{% endif %}">🎮 Gameserver</a>{% endif %}
+  {% if (enabled_features is none or 'autokick' in enabled_features) and (user_allowed_tabs is none or 'autokick' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=autokick" class="ssnav-item {% if active_page == 'autokick' %}active{% endif %}">🚪 Auto-Kick</a>{% endif %}
+  {% if (enabled_features is none or 'embeds' in enabled_features) and (user_allowed_tabs is none or 'embeds' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=embeds" class="ssnav-item {% if active_page == 'embeds' %}active{% endif %}">📨 Embed-Nachrichten</a>{% endif %}
+  {% if (enabled_features is none or 'rolerules' in enabled_features) and (user_allowed_tabs is none or 'rolerules' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=rolerules" class="ssnav-item {% if active_page == 'rolerules' %}active{% endif %}">🔗 CrossVerification</a>{% endif %}
+  {% if (enabled_features is none or 'notifications' in enabled_features) and (user_allowed_tabs is none or 'notifications' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}/notifications"  class="ssnav-item {% if active_page == 'notifications' %}active{% endif %}">🟣 Streaming</a>{% endif %}
+  {% if (enabled_features is none or 'freestuff' in enabled_features) and (user_allowed_tabs is none or 'freestuff' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}/freestuff"      class="ssnav-item {% if active_page == 'freestuff' %}active{% endif %}">🎁 Free Stuff</a>{% endif %}
+  {% if (enabled_features is none or 'log' in enabled_features) and (user_allowed_tabs is none or 'log' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}/log"            class="ssnav-item {% if active_page == 'log' %}active{% endif %}">📋 Log</a>{% endif %}
   <a href="/bot/design?guild_id={{ guild_id }}"    class="ssnav-item {% if active_page == 'botdesign' %}active{% endif %}">🤖 Bot-Design</a>
 </div>
 {% endmacro %}
