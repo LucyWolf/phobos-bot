@@ -7095,13 +7095,12 @@ async def poll_create_web(request: Request, guild_id: int):
             # kept only so an already-restored backup row still has SOMETHING recognizable there.
             (pid, i, label[:80], opt_final_url[:500], opt_link[:500], opt_final_data, opt_final_filename, "custom", opt_width),
         )
-        # Unlike the vote/end paths in cogs/polls.py (which may omit attachments= entirely and
-        # let Discord keep a picture already on the message), THIS is the very first send - there
-        # is no "already on the message" to fall back on, so every option's own upload has to be
-        # included here explicitly, unconditionally, regardless of whether any option elsewhere
-        # in this poll also needs a bar-chart file (_build_poll_embed's chart_files never
-        # includes this - see its own docstring).
-        files += _embed_post_files(opt_final_data, opt_final_filename)
+    # An option's own uploaded picture is NOT separately attached here - _build_poll_embed's
+    # chart_files is now the complete, authoritative attachment list for every option (composited
+    # into a combo PNG with its bar, re-attached as-is for its two-card fallback, or not needed
+    # at all for a plain URL) - attaching it again here as well would create a stray, UNREFERENCED
+    # duplicate attachment for a composited option (Discord shows an attachment nobody's embed
+    # points to as its own extra inline image at the bottom of the message).
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
     embeds, chart_files = _build_poll_embed(
         question, multiple, opt_rows, {}, image_url=final_image_url, image_filename=final_image_filename,
@@ -7333,15 +7332,12 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
         image_url=final_image_url, image_filename=final_image_filename,
         ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "", bar_color=bar_color,
     )
-    # This route always passes attachments= explicitly below (an edit can add/remove/swap
-    # pictures far more broadly than a mere vote), so - unlike the vote/end paths in
-    # cogs/polls.py, which may omit attachments= and let Discord keep an untouched picture as-is
-    # - every option's own upload has to be included here unconditionally, regardless of whether
-    # any option elsewhere in this poll also needs a bar-chart file (chart_files never includes
-    # this - see _build_poll_embed's own docstring).
+    # An option's own uploaded picture is NOT separately attached here - chart_files is now the
+    # complete, authoritative attachment list for every option (composited into a combo PNG with
+    # its bar, re-attached as-is for its two-card fallback, or not needed at all for a plain URL)
+    # - attaching it again here as well would create a stray, UNREFERENCED duplicate attachment
+    # for a composited option (see _build_poll_embed's docstring).
     files = _embed_post_files(final_image_data, final_image_filename)
-    for row in opt_rows:
-        files += _embed_post_files(row.get("image_data") or "", row.get("image_filename") or "")
     files.extend(chart_files)
     channel = bot.get_channel(int(poll["channel_id"])) if poll["channel_id"] else None
     if channel and poll["message_id"]:

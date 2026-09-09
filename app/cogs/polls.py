@@ -132,13 +132,13 @@ def _render_bar_chart_image(rows: list, bar_color: str) -> bytes:
 def _option_upload_file(opt: dict):
     """Rebuilds a discord.File for a per-option DASHBOARD UPLOAD (not a URL) from its stored
     base64 image_data - own copy of main.py's _embed_post_files() logic (cogs don't import from
-    main.py, see cogs/tickets.py's _parse_ticket_blocks for the same established reason). Only
-    needed when SOME option in the same poll needs attachments= passed explicitly on a vote/end
-    (an imageless rich option's own generated bar, or the shared header bar for plain_options -
-    see build_poll_embed) - Discord replaces the WHOLE attachment set whenever attachments= is
-    given, not just the file(s) being added, so a poll with its own uploaded picture would
-    otherwise silently lose it the moment any sibling option forces that explicit attachments=.
-    Returns None for a plain image_url (no attachment needed for that) or no image at all."""
+    main.py, see cogs/tickets.py's _parse_ticket_blocks for the same established reason). Used by
+    build_poll_embed() exclusively for its two-card fallback (an uploaded picture that couldn't
+    be composited with its bar, or that has no bar to begin with) - that embed references the
+    upload directly via attachment://, so the file has to physically ride along in chart_files
+    every time, unlike a composited picture (which folds the upload INTO a fresh combo PNG
+    instead, see _render_option_image_with_bar) or a plain image_url (no file needed at all,
+    Discord fetches the URL itself). Returns None for a plain image_url or no image at all."""
     data_b64, filename = opt.get("image_data") or "", opt.get("image_filename") or ""
     if not data_b64 or not filename:
         return None
@@ -148,33 +148,53 @@ def _option_upload_file(opt: dict):
         return None
 
 
-def _ensure_option_uploads_attached(options: list, chart_files: list) -> list:
-    """For a VOTE/END edit specifically (never creation/full-edit - see below): folds every
-    option's own uploaded picture into chart_files, but only IF chart_files is already non-empty
-    for some other reason (a bar image somewhere in this poll). A vote/end may OMIT attachments=
-    entirely when chart_files is empty, letting Discord keep whatever's already on the message
-    untouched (a picture attached back at creation, never touched since) - cheaper than
-    re-uploading it on every single vote for no reason. But the instant attachments= DOES need to
-    be explicit for some other option's fresh bar, Discord replaces the WHOLE attachment set, not
-    just the file(s) being added - so every other option's own upload has to ride along too, or
-    it would vanish from the message despite nothing about IT having changed.
-    Deliberately NOT used by main.py's create/edit routes - those pass attachments=/files=
-    explicitly on every single call regardless (an edit can add/remove/swap pictures far more
-    broadly than a vote ever does), so for them "only when chart_files is already non-empty"
-    would silently drop an option's own picture the FIRST time it's set (nothing "already on the
-    message" to fall back on yet) - those routes unconditionally collect every option's own
-    upload themselves instead, via their own pre-existing _embed_post_files() helper."""
-    if not chart_files:
-        return chart_files
-    seen = {f.filename for f in chart_files}
-    for opt in options:
-        filename = opt.get("image_filename") or ""
-        if filename and filename not in seen:
-            upload_file = _option_upload_file(opt)
-            if upload_file:
-                chart_files.append(upload_file)
-                seen.add(filename)
-    return chart_files
+def _render_option_image_with_bar(image_bytes: bytes, n: int, pct: float, bar_color: str):
+    """v1.15.39's separate-card layout ("unter dem bild ... nicht im bild") got put side by
+    side against baking the bar right into the picture instead ("baue den balken mal in das
+    bild mit ein um zu schauen wie das jetzt ausieht") - this is that alternative: composites
+    the option's own picture with a bar strip appended directly below it, INTO one single PNG,
+    so the whole thing is one embed's one image again instead of two stacked cards. Only usable
+    when the picture's raw bytes are already available locally (a dashboard upload, or a link's
+    auto-fetched image after it went through the px-width resize pass) - a plain external
+    image_url's bytes aren't fetched here (this function runs synchronously inside embed-
+    building code called from vote/interaction handlers; a blocking network request there would
+    stall the bot's event loop) - build_poll_embed's caller falls back to the two-card layout
+    for that case instead. Returns None on any failure (corrupt/unreadable bytes) rather than
+    raising - the caller then falls back to the two-card layout exactly as if there were no
+    local bytes to begin with, never breaking the whole embed over one bad image."""
+    from PIL import Image, ImageDraw
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        img.load()
+    except Exception:
+        return None
+    img = img.convert("RGBA")
+    max_w = 440
+    if img.width > max_w:
+        img = img.resize((max_w, round(img.height * max_w / img.width)), Image.LANCZOS)
+    pad = 18
+    bar_h = 16
+    text_h = 22
+    strip_h = pad + text_h + bar_h + pad
+    canvas = Image.new("RGBA", (img.width, img.height + strip_h), (0x2b, 0x2d, 0x31, 255))
+    canvas.paste(img, (0, 0), img)
+    draw = ImageDraw.Draw(canvas)
+    meta_font = _load_font(15, bold=True)
+    fill_rgb = _hex_to_rgb(bar_color)
+    track_rgb = (0x40, 0x44, 0x4b)
+    meta = f"{pct:.0f}% ({n} Stimme(n))"
+    text_y = img.height + pad
+    draw.text((pad, text_y), meta, font=meta_font, fill=(255, 255, 255))
+    bar_y = text_y + text_h
+    bar_x2 = img.width - pad
+    draw.rounded_rectangle([pad, bar_y, bar_x2, bar_y + bar_h], radius=bar_h // 2, fill=track_rgb)
+    fill_w = max(0, min(bar_x2 - pad, round((bar_x2 - pad) * (pct / 100))))
+    if fill_w > 0:
+        fill_w = max(fill_w, bar_h)
+        draw.rounded_rectangle([pad, bar_y, pad + fill_w, bar_y + bar_h], radius=bar_h // 2, fill=fill_rgb)
+    buf = io.BytesIO()
+    canvas.convert("RGB").save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def _render_option_bar_image(n: int, pct: float, bar_color: str) -> bytes:
@@ -232,20 +252,20 @@ def build_poll_embed(
     _render_bar_chart_image/_render_option_bar_image): one shared bar-chart image for every
     option WITHOUT its own picture/link (the header embed's own image slot, unless a legacy
     per-poll banner from before v1.15.20 already occupies it - then those options fall back to a
-    plain percentage line with no bar instead), PLUS one per-option bar image for EVERY rich
-    option regardless of whether it has its own picture - a pictured option's bar just lives in
-    its own second embed rather than sharing the picture's. chart_files deliberately NEVER
-    contains an option's own uploaded picture itself - unlike a bar image (regenerated every
-    vote, since its fill % changes), an uploaded picture doesn't change on its own between votes,
-    so re-uploading it every time would be wasteful; each CALLER decides how to handle it instead
-    (main.py's create/edit routes always attach it directly, unconditionally, alongside
-    chart_files; cogs/polls.py's vote/end handlers fold it in only when chart_files is already
-    non-empty for some other reason - see _ensure_option_uploads_attached). Every file THIS
-    function DOES return has to be regenerated and RE-ATTACHED on every single vote/end, since
-    its whole content (the bar fill %) changes every time - every caller MUST pass chart_files
-    back in via `attachments=chart_files` whenever the list isn't empty, `omitted entirely` (not
-    `attachments=[]` or `None`) whenever it IS, exactly mirroring the existing per-poll-image
-    omission rule below.
+    plain percentage line with no bar instead), PLUS - for EVERY rich option - either a
+    composite picture+bar PNG (an uploaded picture, bar baked directly in, see
+    _render_option_image_with_bar) or a plain bar-only image (nothing of its own, or a bare
+    external URL that couldn't be composited - the latter also re-attaches the picture's own
+    upload alongside its bar, see the per-option loop). chart_files is the COMPLETE, authoritative
+    attachment list needed to render everything build_poll_embed just returned - a caller never
+    needs to separately collect anything for an option's own picture, only the per-POLL banner
+    image stays the caller's own responsibility (attached once at creation, never re-touched -
+    see below). Every file in chart_files has to be regenerated and RE-ATTACHED on every single
+    vote/end regardless of which of these cases produced it (a bar's fill % or a composite's
+    whole content changes every time) - every caller MUST pass chart_files back in via
+    `attachments=chart_files` whenever the list isn't empty, `omitted entirely` (not
+    `attachments=[]` or `None`) whenever it IS empty, exactly mirroring the existing per-poll-
+    image omission rule below.
 
     image_filename (set only when the per-POLL banner image came from a dashboard upload, not
     a pasted URL - a now-legacy field, see above) takes precedence over image_url and points at
@@ -363,25 +383,26 @@ def build_poll_embed(
                 _pct_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in plain_options
             ]
 
-    # v1.15.34-38 went back and forth on where an option's own picture and its bar can coexist
-    # in ONE embed (thumbnail+bar, picture-only-no-bar, ...) - all rejected in turn, down to the
-    # final, explicit instruction: "unter dem bild dann der balken ... nicht im bild ... die
-    # balken dürfen nicht dopelt existieren nicht im bild und auch nicht auserhalb" (the bar
-    # belongs BELOW the picture, never drawn INTO it, and never in two places at once). Discord's
-    # own embed layout (title > description > fields > ONE image > footer, fixed order, no
-    # second image slot after the first) has no way to place a second, genuinely separate visual
-    # element below an embed's image WITHIN that same embed - the only way to get something
-    # visually "below" a picture without touching the picture itself is a SEPARATE embed
-    # immediately following it in the same message (Discord renders consecutive embeds as
-    # stacked cards). So an option with its own picture now costs TWO embeds (picture, then a
-    # second, title-less card holding just the bar) instead of one; an option with no picture of
-    # its own still costs only one (the bar has nothing to share that embed's image slot with).
+    # v1.15.34-39 went back and forth on where an option's own picture and its bar can coexist:
+    # thumbnail+bar, picture-only-no-bar, then a genuinely separate second card below the
+    # picture (v1.15.39, "nicht im bild"). Immediately compared side by side against the
+    # opposite ("baue den balken mal in das bild mit ein um zu schauen wie das jetzt ausieht") -
+    # baking it directly into the picture as ONE composite PNG (_render_option_image_with_bar)
+    # instead. That's only possible when the picture's raw bytes are available LOCALLY (a
+    # dashboard upload, or a link's auto-fetched image after the px-width resize pass turned it
+    # into one - see that function's docstring for why a plain external image_url can't be
+    # composited here) - a picture with no local bytes still falls back to the v1.15.39 two-card
+    # layout, the only way left to keep bar and picture visually distinct without them.
+    # Budgeted per-option against Discord's 10-embeds-per-message cap (minus 1 for the header):
+    # 1 for no picture (bar in its own slot) or a picture WITH local bytes (composited into one
+    # embed), 2 only for a picture that's a bare external URL (needs the two-card fallback).
     BAR_EMBED_BUDGET = MAX_RICH_OPTION_EMBEDS
     rich_options, overflow_options = [], []
     used_budget = 0
     for opt in image_options:
         has_pic = bool(opt.get("image_filename") or opt.get("image_url"))
-        cost = 2 if has_pic else 1
+        has_local_bytes = bool(opt.get("image_data")) and bool(opt.get("image_filename"))
+        cost = 1 if (not has_pic or has_local_bytes) else 2
         if used_budget + cost <= BAR_EMBED_BUDGET:
             rich_options.append(opt)
             used_budget += cost
@@ -403,24 +424,55 @@ def build_poll_embed(
         if opt.get("link_url"):
             option_embed.url = opt["link_url"]
 
-        bar_filename = f"poll_opt_bar_{opt['id']}.png"
-        bar_bytes = _render_option_bar_image(n, pct, bar_color)
-        chart_files.append(discord.File(io.BytesIO(bar_bytes), filename=bar_filename))
-
-        if img_src:
-            # Picture keeps this embed's one image slot to itself; the bar rides as its own,
-            # title-less embed directly after - visually a separate card right below the
-            # picture, never drawn into it, never shown a second time anywhere else.
-            option_embed.set_image(url=img_src)
+        if img_src is None:
+            # Nothing of its own - the bar goes directly into this embed's own image slot.
+            bar_filename = f"poll_opt_bar_{opt['id']}.png"
+            bar_bytes = _render_option_bar_image(n, pct, bar_color)
+            chart_files.append(discord.File(io.BytesIO(bar_bytes), filename=bar_filename))
+            option_embed.set_image(url=f"attachment://{bar_filename}")
             embeds.append(option_embed)
+            continue
+
+        combo_bytes = None
+        if opt.get("image_data") and opt.get("image_filename"):
+            try:
+                combo_bytes = _render_option_image_with_bar(
+                    base64.b64decode(opt["image_data"]), n, pct, bar_color,
+                )
+            except Exception:
+                combo_bytes = None
+
+        if combo_bytes:
+            # Picture + bar baked into one PNG - a single embed, single image slot.
+            combo_filename = f"poll_opt_combo_{opt['id']}.png"
+            chart_files.append(discord.File(io.BytesIO(combo_bytes), filename=combo_filename))
+            option_embed.set_image(url=f"attachment://{combo_filename}")
+            embeds.append(option_embed)
+        else:
+            # No local bytes to composite (a plain external URL), or compositing failed on a
+            # corrupt upload - two-card fallback: the picture keeps this embed (re-attaching the
+            # raw upload itself if it IS an upload, since this embed references it directly -
+            # a plain URL needs no file at all), the bar rides as its own separate card after.
+            if opt.get("image_filename"):
+                upload_file = _option_upload_file(opt)
+                if upload_file:
+                    chart_files.append(upload_file)
+                else:
+                    # Same corrupt/unreadable bytes that already failed to composite also failed
+                    # to decode here - nothing valid to reference, so don't set an image at all
+                    # rather than pointing at attachment://a-file-that-was-never-attached (a
+                    # broken image in Discord, same failure mode this whole file exists to
+                    # avoid). The option still gets its title + bar card below.
+                    img_src = None
+            if img_src:
+                option_embed.set_image(url=img_src)
+            embeds.append(option_embed)
+            bar_filename = f"poll_opt_bar_{opt['id']}.png"
+            bar_bytes = _render_option_bar_image(n, pct, bar_color)
+            chart_files.append(discord.File(io.BytesIO(bar_bytes), filename=bar_filename))
             bar_embed = discord.Embed(color=0x64748b if ended else 0x7c3aed)
             bar_embed.set_image(url=f"attachment://{bar_filename}")
             embeds.append(bar_embed)
-        else:
-            # Nothing of its own competing for the image slot - the bar goes directly into this
-            # same embed instead of needing a second one.
-            option_embed.set_image(url=f"attachment://{bar_filename}")
-            embeds.append(option_embed)
     if overflow_options:
         header_lines += [
             _pct_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in overflow_options
@@ -489,7 +541,6 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
         ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
         bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR,
     )
-    chart_files = _ensure_option_uploads_attached(options, chart_files)
     # No view= here on purpose - discord.py's edit_message() default for view is MISSING (not
     # None), so omitting it leaves the existing buttons untouched instead of needing to rebuild+
     # reattach an identical PollView on every single vote (verified directly against discord.py
@@ -568,7 +619,6 @@ class Polls(commands.Cog):
             ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
             bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR,
         )
-        chart_files = _ensure_option_uploads_attached(options, chart_files)
         try:
             if chart_files:
                 await msg.edit(embeds=embeds, view=None, attachments=chart_files)
