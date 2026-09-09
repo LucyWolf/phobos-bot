@@ -478,10 +478,26 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
         return response
 
 
+async def _current_session_epoch() -> str:
+    """A global, admin-bumpable counter (config table) that every session carries a snapshot
+    of at login time - SessionValidityMiddleware compares the two on each request, so bumping
+    this instantly logs out every session everywhere (see /admin/logout-all), without needing
+    to touch secret.key or restart the process. Requested after a live incident where a
+    moderator's browser, on a different device, ended up inside the admin's already-logged-in
+    session (most likely a caching reverse proxy replaying a cached Set-Cookie response) -
+    rotating secret.key + restarting was the only way to kill every session at the time; this
+    gives the admin an instant, in-dashboard equivalent for that specific emergency."""
+    return await get_config("session_epoch") or "0"
+
+
 class SessionValidityMiddleware(BaseHTTPMiddleware):
     """Re-checks role/active status from the DB on every request — otherwise a
     deactivated or demoted user keeps full access for the rest of their
-    (up to 14 day) session cookie lifetime."""
+    (up to 14 day) session cookie lifetime. Also enforces the global session_epoch (see
+    _current_session_epoch) so an admin's "log everyone out" action takes effect immediately,
+    on the very next request of every session - including the admin's own, once their own
+    next request comes in (the request that triggers the bump itself has already passed this
+    check earlier in the same dispatch chain, so it isn't cut off mid-action)."""
     async def dispatch(self, request: Request, call_next):
         try:
             uid = request.session.get("user_id")
@@ -490,6 +506,8 @@ class SessionValidityMiddleware(BaseHTTPMiddleware):
         if uid:
             row = await db_one("SELECT role, active FROM users WHERE id=?", (uid,))
             if not row or not row.get("active", 1):
+                request.session.clear()
+            elif request.session.get("session_epoch") != await _current_session_epoch():
                 request.session.clear()
             elif row["role"] != request.session.get("role"):
                 request.session["role"] = row["role"]
@@ -683,6 +701,7 @@ async def _complete_login(request: Request, user: dict) -> None:
     request.session["user_tz"] = user_tz
     request.session["sidebar_collapsed"] = bool(user.get("sidebar_collapsed"))
     request.session["nav_settings_open"] = bool(user.get("nav_settings_open"))
+    request.session["session_epoch"] = await _current_session_epoch()
 
 
 def _totp_lock_remaining_minutes(user: dict) -> int:
@@ -2255,6 +2274,24 @@ async def admin_invite_revoke(request: Request):
     if r := admin_redirect(request): return r
     await db_exec("DELETE FROM invite_codes WHERE used=0")
     return JSONResponse({"ok": True})
+
+
+@web.post("/admin/logout-all")
+async def admin_logout_all(request: Request):
+    """User-requested ("mach führ den admin ein all logaut buton unter benutzer") after a live
+    incident where a moderator's session ended up pointing at the admin's own account - see
+    _current_session_epoch. Bumping the global epoch signs out every OTHER session on its next
+    request; this clicking admin's own session is cleared explicitly right here instead of
+    relying on that same indirect mechanism - a real browser follows the redirect below
+    immediately, so leaving it to "their next request" would have them bounce through /users
+    for a single unseen instant before landing on /login anyway (confirmed live: the automatic
+    redirect-follow already IS that next request) - explicit is clearer than relying on that
+    coincidence, and redirecting straight to /login here (with the success message) avoids the
+    pointless bounce through a page they can no longer see."""
+    if r := admin_redirect(request): return r
+    await set_config("session_epoch", secrets.token_urlsafe(8))
+    request.session.clear()
+    return RedirectResponse("/login?success=Alle+angemeldeten+Sitzungen+wurden+beendet+–+bitte+erneut+einloggen", status_code=302)
 
 
 @web.get("/register", response_class=HTMLResponse)

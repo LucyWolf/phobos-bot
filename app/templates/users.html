@@ -33,6 +33,19 @@
   </div>
 </div>
 
+<!-- ── Alle Sitzungen beenden ── -->
+<div class="card" style="margin-bottom:1.25rem;">
+  <div style="font-size:0.95rem;font-weight:700;margin-bottom:0.5rem;">🔒 Alle Sitzungen beenden</div>
+  <p style="font-size:0.82rem;color:var(--muted);margin-bottom:1rem;">
+    Meldet sofort JEDEN eingeloggten Nutzer ab (dich selbst eingeschlossen) - jeder muss sich danach neu einloggen.
+    Für den Notfall (z.B. eine fremde Sitzung landet unerwartet in einem falschen Konto).
+  </p>
+  <form method="post" action="/admin/logout-all"
+        onsubmit="return confirm('Wirklich ALLE Sitzungen sofort beenden? Auch du wirst dabei ausgeloggt.')">
+    <button type="submit" class="btn btn-danger">🔒 Alle ausloggen</button>
+  </form>
+</div>
+
 <div class="card">
   <div style="font-size:0.95rem; font-weight:700; margin-bottom:1.25rem;">➕ Neuen Benutzer erstellen</div>
   <form method="post" action="/users/create?next=/users">
