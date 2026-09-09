@@ -21,7 +21,22 @@ with an interactive Select menu right on that message so anyone can rate WITHOUT
 the /bewerten command at all - picking an item opens an ephemeral row of 5 star buttons for that
 one item. Both the Select and the star buttons feed through the exact same upsert as /bewerten
 (never a second, diverging code path), and successfully rating from the posted message best-
-effort refreshes that same message afterwards so its shown average/count never goes stale."""
+effort refreshes that same message afterwards so its shown average/count never goes stale.
+
+Second follow-up ("wäre cool wenn man da auch ein bild rein machen könnte genau wie bei
+umfragen"): every item can now carry its own picture (dashboard-only, URL or upload - see
+main.py's rating_item_add/edit). Discord only allows ONE image per embed, so - deliberately
+mirroring cogs/polls.py's own _render_combined_poll_image solution to the exact same constraint
+- every item's picture (when its raw bytes are available locally), label, star average/count
+and a small fill bar (scaled to rating/5 rather than a vote share) are drawn together into ONE
+combined canvas, which becomes this embed's single image. The handful of small helpers below
+(_load_font/_hex_to_rgb/_fit_text/_cap_text_lines) are duplicated from cogs/polls.py rather than
+imported - no cog in this project imports from another cog (see e.g. cogs/tickets.py's own
+_parse_ticket_blocks docstring for the same, already-established convention), only main.py
+imports shared pieces FROM cogs."""
+import base64
+import io
+
 import discord
 from discord import app_commands, ui
 from discord.ext import commands
@@ -34,6 +49,50 @@ STAR_CHOICES = [
     app_commands.Choice(name="⭐⭐⭐⭐ 4", value=4),
     app_commands.Choice(name="⭐⭐⭐⭐⭐ 5", value=5),
 ]
+
+_FONT_PATHS = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+]
+_FONT_PATHS_REG = [p.replace("Bold", "").replace("-Bold", "") for p in _FONT_PATHS]
+
+
+def _load_font(size: int, bold: bool = True):
+    from PIL import ImageFont
+    for p in (_FONT_PATHS if bold else _FONT_PATHS_REG):
+        try:
+            return ImageFont.truetype(p, size)
+        except Exception:
+            pass
+    return ImageFont.load_default()
+
+
+def _fit_text(draw, text: str, font, max_width: float) -> str:
+    if draw.textlength(text, font=font) <= max_width:
+        return text
+    while text and draw.textlength(text + "…", font=font) > max_width:
+        text = text[:-1]
+    return (text + "…") if text else "…"
+
+
+def _cap_text_lines(lines: list, budget: int, joiner: str, more_label: str) -> str:
+    """See cogs/polls.py's identical helper for the full rationale - duplicated rather than
+    imported (no cog imports from another cog in this project)."""
+    if not lines:
+        return ""
+    if budget <= 0:
+        return more_label.format(n=len(lines))
+    kept = []
+    used = 0
+    for i, line in enumerate(lines):
+        added = len(line) + (len(joiner) if kept else 0)
+        if used + added > budget:
+            kept.append(more_label.format(n=len(lines) - i))
+            break
+        kept.append(line)
+        used += added
+    return joiner.join(kept)
 
 
 def _stars_label(avg, count: int) -> str:
@@ -56,49 +115,126 @@ async def _ranked_items(guild_id: int) -> list:
     )
 
 
-async def build_ratings_embed(guild_id: int) -> discord.Embed:
+def _render_combined_ratings_image(rows: list) -> bytes:
+    """Same one-shared-canvas solution as cogs/polls.py's _render_combined_poll_image, applied
+    to ratings instead of vote shares: Discord allows exactly one image per embed, so every
+    item's own picture (drawn only when its raw bytes are already available locally - a bare
+    external image_url with no local bytes falls back to a picture-less row, same reasoning as
+    polls: this runs synchronously inside interaction/vote-handling code, a blocking network
+    fetch here would stall the bot's event loop), label, star average/count, and a fill bar
+    (scaled to avg/5 rather than a percentage of a shared vote total) are stacked into ONE PNG."""
+    from PIL import Image, ImageDraw
+    width = 440
+    pad = 18
+    bar_h = 16
+    text_h = 24
+    pic_gap = 8
+    row_gap = 20
+    label_font = _load_font(16, bold=True)
+    meta_font = _load_font(13, bold=False)
+    fill_rgb = (0xf5, 0xb4, 0x00)  # gold, matches the ⭐ theme (polls' bar is admin-colorable;
+    # ratings has no such picker, a fixed gold keeps it unambiguously "this is a star rating")
+    track_rgb = (0x40, 0x44, 0x4b)
+    bg_rgba = (0x2b, 0x2d, 0x31, 255)
+
+    prepared = []
+    total_h = pad
+    for i, row in enumerate(rows):
+        pic = None
+        if row.get("image_bytes"):
+            try:
+                pic = Image.open(io.BytesIO(row["image_bytes"]))
+                pic.load()
+                pic = pic.convert("RGBA")
+                if pic.width > width:
+                    pic = pic.resize((width, round(pic.height * width / pic.width)), Image.LANCZOS)
+            except Exception:
+                pic = None
+        row_h = (pic.height + pic_gap if pic else 0) + text_h + bar_h
+        prepared.append((pic, row_h))
+        total_h += row_h + (row_gap if i < len(rows) - 1 else 0)
+    total_h += pad
+
+    canvas = Image.new("RGBA", (width, max(1, total_h)), bg_rgba)
+    draw = ImageDraw.Draw(canvas)
+    y = pad
+    for row, (pic, _) in zip(rows, prepared):
+        if pic is not None:
+            x = (width - pic.width) // 2
+            canvas.paste(pic, (x, y), pic)
+            y += pic.height + pic_gap
+        avg = row.get("avg_stars") or 0
+        count = row.get("vote_count") or 0
+        meta = f"⭐ {avg:.1f} ({count})" if count else "– keine Bewertungen –"
+        meta_w = draw.textlength(meta, font=meta_font)
+        prefix = "🌟 " if row.get("recommended") else ""
+        label = _fit_text(draw, prefix + row["label"], label_font, width - pad * 2 - meta_w - 10)
+        draw.text((pad, y), label, font=label_font, fill=(255, 255, 255))
+        draw.text((width - pad - meta_w, y + 2), meta, font=meta_font, fill=(0xb5, 0xb8, 0xbe))
+        bar_y = y + 24
+        draw.rounded_rectangle([pad, bar_y, width - pad, bar_y + bar_h], radius=bar_h // 2, fill=track_rgb)
+        pct = (avg / 5 * 100) if count else 0
+        fill_w = max(0, min(width - pad * 2, round((width - pad * 2) * (pct / 100))))
+        if fill_w > 0:
+            fill_w = max(fill_w, bar_h)  # keeps a visible rounded blob even for a low average
+            draw.rounded_rectangle([pad, bar_y, pad + fill_w, bar_y + bar_h], radius=bar_h // 2, fill=fill_rgb)
+        y += text_h + bar_h + row_gap
+    buf = io.BytesIO()
+    canvas.convert("RGB").save(buf, format="PNG")
+    return buf.getvalue()
+
+
+async def build_ratings_embed(guild_id: int) -> tuple:
     """Shared by /bewertungen, the dashboard's post/update-message route, and every live refresh
     after a rating comes in via the posted message's own Select - one place for the layout so
-    none of those three call sites can ever drift apart from the others."""
+    none of those call sites can ever drift apart from each other. Returns (embed, chart_files) -
+    chart_files is a freshly generated discord.File list, same "always rebuild the attachment
+    from scratch on every edit rather than trusting Discord kept an old one around" convention as
+    cogs/polls.py's own chart_files (a rating's own picture/average/bar changes over time, unlike
+    e.g. a ticket panel's static banner)."""
     items = await _ranked_items(guild_id)
     embed = discord.Embed(title="⭐ Bewertungsliste", color=0x7c3aed)
     if not items:
         embed.description = "Noch keine Einträge in der Bewertungsliste."
-        return embed
-    lines = []
+        return embed, []
+    rows = []
     for it in items:
-        prefix = "🌟 " if it["recommended"] else ""
-        if it.get("url"):
-            line = f"{prefix}**[{it['label']}]({it['url']})**"
-        else:
-            line = f"{prefix}**{it['label']}**"
-        line += f"\n{_stars_label(it['avg_stars'], it['vote_count'])}"
-        lines.append(line)
-    # Same real Discord embed-description limit / cut-without-breaking-a-line safety margin
-    # already established in cogs/polls.py for its own option lists - a catalog can grow past
-    # what fits in one message just as easily as a poll's options can.
-    budget = 3900
-    kept = []
-    used = 0
-    for i, line in enumerate(lines):
-        added = len(line) + (2 if kept else 0)
-        if used + added > budget:
-            kept.append(f"… und {len(lines) - i} weitere")
-            break
-        kept.append(line)
-        used += added
-    embed.description = "\n\n".join(kept)
+        image_bytes = None
+        if it.get("image_data") and it.get("image_filename"):
+            try:
+                image_bytes = base64.b64decode(it["image_data"])
+            except Exception:
+                image_bytes = None
+        rows.append({
+            "label": it["label"], "recommended": it["recommended"],
+            "avg_stars": it["avg_stars"], "vote_count": it["vote_count"],
+            "image_bytes": image_bytes,
+        })
+    chart_bytes = _render_combined_ratings_image(rows)
+    chart_files = [discord.File(io.BytesIO(chart_bytes), filename="ratings_bars.png")]
+    embed.set_image(url="attachment://ratings_bars.png")
+
+    # A picture is never clickable on Discord regardless of how it's rendered - same reasoning
+    # as cogs/polls.py's own per-option link lines, listed separately here as real markdown
+    # links right below the combined image instead of losing click-through entirely.
+    link_lines = [f"🔗 [{it['label']}]({it['url']})" for it in items if it.get("url")]
+    if link_lines:
+        embed.description = _cap_text_lines(link_lines, 3900, "\n", "🔗 … und {n} weitere Links")
     embed.set_footer(text="🌟 = vom Team empfohlen  •  Zum Bewerten unten einen Eintrag wählen")
-    return embed
+    return embed, chart_files
 
 
 async def refresh_posted_list(bot, guild_id: int):
     """Best-effort - called after every successful rating AND every dashboard add/edit/delete of
-    an item, so a persistently posted list message never shows a stale average/count. Silently
-    does nothing if this guild never posted one (no channel/message configured), the channel got
-    deleted, or the message was removed outside the bot - exactly the same "don't let a cosmetic
-    refresh crash the actual action that triggered it" principle as e.g. poll_edit_web's own
-    best-effort live-message update in main.py."""
+    an item, so a persistently posted list message never shows a stale average/count/picture.
+    Silently does nothing if this guild never posted one (no channel/message configured), the
+    channel got deleted, or the message was removed outside the bot - exactly the same "don't
+    let a cosmetic refresh crash the actual action that triggered it" principle as e.g.
+    poll_edit_web's own best-effort live-message update in main.py. attachments= is always
+    passed explicitly (even as an empty list, if the catalog was emptied out entirely) rather
+    than omitted - unlike polls' rare legacy-banner exception, ratings has no "leave whatever's
+    already attached alone" case to preserve, so every state transition controls its own
+    attachment list outright."""
     channel_id = await get_guild_config(guild_id, "ratings_channel_id")
     message_id = await get_guild_config(guild_id, "ratings_message_id")
     if not channel_id or not message_id:
@@ -109,8 +245,8 @@ async def refresh_posted_list(bot, guild_id: int):
             return
         msg = await channel.fetch_message(int(message_id))
         items = await _ranked_items(guild_id)
-        embed = await build_ratings_embed(guild_id)
-        await msg.edit(embed=embed, view=RatingsListView(items))
+        embed, chart_files = await build_ratings_embed(guild_id)
+        await msg.edit(embed=embed, view=RatingsListView(items), attachments=chart_files)
     except Exception:
         pass
 
@@ -245,8 +381,8 @@ class Ratings(commands.Cog):
     @app_commands.command(name="bewertungen", description="Postet die aktuelle Bewertungsliste (mit Bewerten-Menü)")
     async def list_ratings(self, interaction: discord.Interaction):
         items = await _ranked_items(interaction.guild_id)
-        embed = await build_ratings_embed(interaction.guild_id)
-        await interaction.response.send_message(embed=embed, view=RatingsListView(items))
+        embed, chart_files = await build_ratings_embed(interaction.guild_id)
+        await interaction.response.send_message(embed=embed, view=RatingsListView(items), files=chart_files)
 
 
 async def setup(bot):

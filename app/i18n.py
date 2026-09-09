@@ -507,7 +507,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # Ratings
         "ratings_info_tooltip": "Was ist das?",
         "ratings_info_title": "Bewertungsliste",
-        "ratings_info_body": "Trage hier Maps, Seiten, Spiele oder was auch immer in eine Liste ein - Mitglieder können jeden Eintrag in Discord über /bewerten mit 1-5 Sternen bewerten (eine neue Bewertung ersetzt die eigene alte, zählt also nicht doppelt). /bewertungen postet die aktuelle Liste einmalig, oder wähle unten einen Kanal aus um sie dauerhaft zu posten - beide Nachrichten haben ein Auswahlmenü, über das jeder direkt bewerten kann, ganz ohne den Befehl zu kennen. Die dauerhaft gepostete Nachricht aktualisiert sich automatisch bei jeder neuen Bewertung sowie beim Bearbeiten der Liste. 🌟 markiert einen von dir manuell empfohlenen Eintrag - unabhängig vom Stern-Durchschnitt bleibt der immer ganz oben, alles andere sortiert sich automatisch nach Durchschnitt.",
+        "ratings_info_body": "Trage hier Maps, Seiten, Spiele oder was auch immer in eine Liste ein - optional mit eigenem Bild (URL oder Datei-Upload, nicht beides), das dann zusammen mit allen anderen Eintrags-Bildern in einem gemeinsamen Bild in der geposteten Nachricht erscheint, genau wie bei den Umfragen. Mitglieder können jeden Eintrag in Discord über /bewerten mit 1-5 Sternen bewerten (eine neue Bewertung ersetzt die eigene alte, zählt also nicht doppelt). /bewertungen postet die aktuelle Liste einmalig, oder wähle unten einen Kanal aus um sie dauerhaft zu posten - beide Nachrichten haben ein Auswahlmenü, über das jeder direkt bewerten kann, ganz ohne den Befehl zu kennen. Die dauerhaft gepostete Nachricht aktualisiert sich automatisch bei jeder neuen Bewertung sowie beim Bearbeiten der Liste. 🌟 markiert einen von dir manuell empfohlenen Eintrag - unabhängig vom Stern-Durchschnitt bleibt der immer ganz oben, alles andere sortiert sich automatisch nach Durchschnitt.",
         "ratings_hint": "Maps, Seiten, Spiele o.ä. eintragen - Mitglieder bewerten sie in Discord per /bewerten mit Sternen.",
         "ratings_post_hint": "Kanal wählen und die Liste dauerhaft dort posten - die Nachricht aktualisiert sich automatisch, sobald sich etwas ändert.",
         "ratings_btn_post": "🚀 Posten / aktualisieren",
@@ -519,6 +519,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ratings_url_placeholder": "https://...",
         "ratings_name_placeholder": "z.B. Palworld, VRChat-Welt, ...",
         "ratings_recommended_label": "🌟 Als empfohlen markieren",
+        "ratings_image_label": "Bild (URL, optional)",
+        "ratings_image_file_label": "Bild (Datei, optional)",
         "ratings_confirm_delete": "Eintrag „{name}“ wirklich löschen? Alle Bewertungen dafür gehen dabei verloren.",
         # Age Verification
         "autokick_enabled_label": "Auto-Kick aktivieren",
@@ -1279,7 +1281,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # Ratings
         "ratings_info_tooltip": "What is this?",
         "ratings_info_title": "Rating list",
-        "ratings_info_body": "Add maps, sites, games, or whatever else to a list - members can rate any entry in Discord via /bewerten with 1-5 stars (a new rating replaces their own old one, so it never counts twice). /bewertungen posts the current list once, or pick a channel below to post it there permanently - both messages include a picker menu so anyone can rate directly, without ever needing to know the command. The permanently posted message updates itself automatically on every new rating and whenever the list is edited. 🌟 marks an entry you've manually recommended - independent of its star average, it always stays at the top; everything else sorts itself by average automatically.",
+        "ratings_info_body": "Add maps, sites, games, or whatever else to a list - optionally with its own picture (URL or file upload, not both), which then appears together with every other entry's picture in one combined image on the posted message, exactly like polls. Members can rate any entry in Discord via /bewerten with 1-5 stars (a new rating replaces their own old one, so it never counts twice). /bewertungen posts the current list once, or pick a channel below to post it there permanently - both messages include a picker menu so anyone can rate directly, without ever needing to know the command. The permanently posted message updates itself automatically on every new rating and whenever the list is edited. 🌟 marks an entry you've manually recommended - independent of its star average, it always stays at the top; everything else sorts itself by average automatically.",
         "ratings_hint": "Add maps, sites, games etc. - members rate them in Discord via /bewerten with stars.",
         "ratings_post_hint": "Pick a channel and post the list there permanently - the message updates itself automatically whenever anything changes.",
         "ratings_btn_post": "🚀 Post / update",
@@ -1291,6 +1293,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ratings_url_placeholder": "https://...",
         "ratings_name_placeholder": "e.g. Palworld, VRChat world, ...",
         "ratings_recommended_label": "🌟 Mark as recommended",
+        "ratings_image_label": "Image (URL, optional)",
+        "ratings_image_file_label": "Image (file, optional)",
         "ratings_confirm_delete": "Really delete \"{name}\"? All ratings for it will be lost.",
         # Age Verification
         "autokick_enabled_label": "Enable auto-kick",

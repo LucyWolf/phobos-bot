@@ -821,6 +821,14 @@ async def init_db():
             # hardcoded text exactly, so an already-published panel's behavior is unchanged
             # until an admin explicitly edits it.
             "ALTER TABLE ticket_panels ADD COLUMN close_button_label TEXT DEFAULT 'Ticket schließen'",
+            # User-requested ("wäre cool wenn man da auch ein bild rein machen könnte genau wie
+            # bei umfragen") - same three-column URL-XOR-upload shape as poll_options'
+            # image_url/image_data/image_filename, so main.py can reuse the same
+            # _read_embed_image_upload()/_embed_post_files() validation/encoding helpers as-is
+            # instead of duplicating that logic a third time.
+            "ALTER TABLE rating_items ADD COLUMN image_url TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE rating_items ADD COLUMN image_data TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE rating_items ADD COLUMN image_filename TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

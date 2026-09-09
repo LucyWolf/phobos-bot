@@ -1741,7 +1741,7 @@ document.querySelectorAll('.poll-form').forEach(function(form) {
     </tr>
     <tr id="rating-edit-{{ r.id }}" style="display:none;" class="panel-edit-row">
       <td colspan="4" style="padding:1rem 1.25rem;">
-        <form method="post" action="/servers/{{ guild.id }}/ratings/edit/{{ r.id }}">
+        <form method="post" action="/servers/{{ guild.id }}/ratings/edit/{{ r.id }}" enctype="multipart/form-data">
           <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
             <div>
               <label style="font-size:0.82rem;">{{ tr.label_name }}</label>
@@ -1751,9 +1751,23 @@ document.querySelectorAll('.poll-form').forEach(function(form) {
               <label style="font-size:0.82rem;">{{ tr.ratings_url_label }}</label>
               <input type="url" name="url" value="{{ r.url }}" placeholder="{{ tr.ratings_url_placeholder }}" style="margin-bottom:0;">
             </div>
+            <div>
+              <label style="font-size:0.82rem;">{{ tr.ratings_image_label }}</label>
+              <input type="url" name="image_url" value="{{ r.image_url }}" placeholder="{{ tr.polls_option_image_placeholder }}" style="margin-bottom:0;">
+            </div>
+            <div>
+              <label style="font-size:0.82rem;">{{ tr.ratings_image_file_label }}</label>
+              <input type="file" name="image_file" accept="image/*" style="margin-bottom:0;">
+            </div>
           </div>
+          {% if r.image_url or r.image_filename %}
+          <div style="margin-bottom:0.75rem;">
+            <img src="{{ ('/servers/' ~ guild.id ~ '/ratings/' ~ r.id ~ '/image') if r.image_filename else r.image_url }}" style="max-width:80px;max-height:80px;border-radius:0.3rem;display:block;margin-bottom:0.4rem;">
+            <label style="font-size:0.78rem;"><input type="checkbox" name="remove_image" value="1" style="width:auto;display:inline;margin-right:0.4rem;"> {{ tr.embeds_remove_image_label }}</label>
+          </div>
+          {% endif %}
           <label style="font-size:0.82rem;"><input type="checkbox" name="recommended" value="1" style="width:auto;display:inline;margin-right:0.4rem;" {% if r.recommended %}checked{% endif %}> {{ tr.ratings_recommended_label }}</label>
-          <button type="submit" class="btn btn-primary" style="font-size:0.8rem;margin-top:0.6rem;">{{ tr.btn_save }}</button>
+          <button type="submit" class="btn btn-primary" style="font-size:0.8rem;margin-top:0.6rem;display:block;">{{ tr.btn_save }}</button>
         </form>
       </td>
     </tr>
@@ -1762,7 +1776,7 @@ document.querySelectorAll('.poll-form').forEach(function(form) {
   </table>
   {% endif %}
 
-  <form method="post" action="/servers/{{ guild.id }}/ratings/add">
+  <form method="post" action="/servers/{{ guild.id }}/ratings/add" enctype="multipart/form-data">
     <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
       <div>
         <label style="font-size:0.82rem;">{{ tr.label_name }}</label>
@@ -1771,6 +1785,14 @@ document.querySelectorAll('.poll-form').forEach(function(form) {
       <div>
         <label style="font-size:0.82rem;">{{ tr.ratings_url_label }}</label>
         <input type="url" name="url" placeholder="{{ tr.ratings_url_placeholder }}">
+      </div>
+      <div>
+        <label style="font-size:0.82rem;">{{ tr.ratings_image_label }}</label>
+        <input type="url" name="image_url" placeholder="{{ tr.polls_option_image_placeholder }}">
+      </div>
+      <div>
+        <label style="font-size:0.82rem;">{{ tr.ratings_image_file_label }}</label>
+        <input type="file" name="image_file" accept="image/*">
       </div>
     </div>
     <button type="submit" class="btn btn-primary">{{ tr.btn_add }}</button>

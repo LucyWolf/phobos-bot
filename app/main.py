@@ -7543,6 +7543,7 @@ async def rating_item_add(request: Request, guild_id: int):
     form = await request.form()
     label = form.get("label", "").strip()
     url = form.get("url", "").strip()
+    image_url = form.get("image_url", "").strip()
     if not label:
         return RedirectResponse(f"/servers/{guild_id}?tab=ratings&error=Name+erforderlich", status_code=302)
     if len(label) > 100:
@@ -7551,9 +7552,22 @@ async def rating_item_add(request: Request, guild_id: int):
         )
     if url and not url.startswith(("http://", "https://")):
         return RedirectResponse(f"/servers/{guild_id}?tab=ratings&error=Ungültige+URL", status_code=302)
+    try:
+        upload_data, upload_filename = await _read_embed_image_upload(form.get("image_file"))
+    except ValueError as msg:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=ratings&error={urllib.parse.quote(str(msg))}", status_code=302
+        )
+    if upload_data and image_url:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=ratings&error=Entweder+Bild-URL+ODER+Datei,+nicht+beides", status_code=302
+        )
+    if image_url and not image_url.startswith(("http://", "https://")):
+        return RedirectResponse(f"/servers/{guild_id}?tab=ratings&error=Ungültige+Bild-URL", status_code=302)
+    final_image_url = "" if upload_data else image_url
     await db_exec(
-        "INSERT INTO rating_items (guild_id,label,url) VALUES (?,?,?)",
-        (str(guild_id), label, url[:500]),
+        "INSERT INTO rating_items (guild_id,label,url,image_url,image_data,image_filename) VALUES (?,?,?,?,?,?)",
+        (str(guild_id), label, url[:500], final_image_url, upload_data or "", upload_filename or ""),
     )
     await _refresh_ratings_list(bot, guild_id)
     return RedirectResponse(f"/servers/{guild_id}?tab=ratings&success=Eintrag+hinzugefügt", status_code=302)
@@ -7564,12 +7578,14 @@ async def rating_item_edit(request: Request, guild_id: int, item_id: int):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
-    item = await db_one("SELECT id FROM rating_items WHERE id=? AND guild_id=?", (item_id, str(guild_id)))
+    item = await db_one("SELECT * FROM rating_items WHERE id=? AND guild_id=?", (item_id, str(guild_id)))
     if not item:
         return RedirectResponse(f"/servers/{guild_id}?tab=ratings&error=Eintrag+nicht+gefunden", status_code=302)
     form = await request.form()
     label = form.get("label", "").strip()
     url = form.get("url", "").strip()
+    image_url = form.get("image_url", "").strip()
+    remove_image = bool(form.get("remove_image", ""))
     recommended = bool(form.get("recommended", ""))
     if not label:
         return RedirectResponse(f"/servers/{guild_id}?tab=ratings&error=Name+erforderlich", status_code=302)
@@ -7579,9 +7595,35 @@ async def rating_item_edit(request: Request, guild_id: int, item_id: int):
         )
     if url and not url.startswith(("http://", "https://")):
         return RedirectResponse(f"/servers/{guild_id}?tab=ratings&error=Ungültige+URL", status_code=302)
+    try:
+        upload_data, upload_filename = await _read_embed_image_upload(form.get("image_file"))
+    except ValueError as msg:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=ratings&error={urllib.parse.quote(str(msg))}", status_code=302
+        )
+    if upload_data and image_url:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=ratings&error=Entweder+Bild-URL+ODER+Datei,+nicht+beides", status_code=302
+        )
+    if image_url and not image_url.startswith(("http://", "https://")):
+        return RedirectResponse(f"/servers/{guild_id}?tab=ratings&error=Ungültige+Bild-URL", status_code=302)
+    # Same "leave a blank field alone on a normal re-submit, only an explicit checkbox actually
+    # removes it" precedent as embed_post_update's own image handling - a file input can never
+    # be pre-filled, so an empty image_file/image_url on this edit must mean "keep the existing
+    # picture", not "delete it".
+    if remove_image:
+        final_image_url, final_image_data, final_image_filename = "", "", ""
+    elif upload_data:
+        final_image_url, final_image_data, final_image_filename = "", upload_data, upload_filename
+    elif image_url:
+        final_image_url, final_image_data, final_image_filename = image_url, "", ""
+    else:
+        final_image_url = item.get("image_url") or ""
+        final_image_data = item.get("image_data") or ""
+        final_image_filename = item.get("image_filename") or ""
     await db_exec(
-        "UPDATE rating_items SET label=?, url=?, recommended=? WHERE id=?",
-        (label, url[:500], int(recommended), item_id),
+        "UPDATE rating_items SET label=?, url=?, recommended=?, image_url=?, image_data=?, image_filename=? WHERE id=?",
+        (label, url[:500], int(recommended), final_image_url, final_image_data, final_image_filename, item_id),
     )
     await _refresh_ratings_list(bot, guild_id)
     return RedirectResponse(f"/servers/{guild_id}?tab=ratings&success=Eintrag+gespeichert", status_code=302)
@@ -7614,6 +7656,12 @@ async def rating_list_post(request: Request, guild_id: int):
     channel_id = form.get("channel_id", "").strip()
     if not channel_id or channel_id not in {str(c.id) for c in guild.text_channels}:
         return RedirectResponse(f"/servers/{guild_id}?tab=ratings&error=Ungültiger+Kanal", status_code=302)
+    # Read the PREVIOUS channel/message BEFORE overwriting ratings_channel_id below - reading
+    # them after would always see the just-written NEW channel_id, making the "did the channel
+    # actually change" check below permanently true and skipping the fresh-post path even on a
+    # real channel switch.
+    old_channel_id = await get_guild_config(guild_id, "ratings_channel_id")
+    old_message_id = await get_guild_config(guild_id, "ratings_message_id")
     await set_guild_config(guild_id, "ratings_channel_id", channel_id)
     items = await db_rows(
         "SELECT i.*, "
@@ -7623,10 +7671,8 @@ async def rating_list_post(request: Request, guild_id: int):
         "ORDER BY i.recommended DESC, avg_stars DESC, i.label COLLATE NOCASE",
         (str(guild_id),),
     )
-    embed = await _build_ratings_embed(guild_id)
+    embed, chart_files = await _build_ratings_embed(guild_id)
     view = _RatingsListView(items)
-    old_channel_id = await get_guild_config(guild_id, "ratings_channel_id")
-    old_message_id = await get_guild_config(guild_id, "ratings_message_id")
     b = bot._bot_for_guild(guild_id)
     try:
         # Same "edit the existing message in place unless the channel changed or it's gone"
@@ -7643,12 +7689,12 @@ async def rating_list_post(request: Request, guild_id: int):
                 except discord.NotFound:
                     msg = None
         if msg:
-            await msg.edit(embed=embed, view=view)
+            await msg.edit(embed=embed, view=view, attachments=chart_files)
         else:
             channel = b.get_channel(int(channel_id)) if b else None
             if not channel:
                 return RedirectResponse(f"/servers/{guild_id}?tab=ratings&error=Bot+nicht+online", status_code=302)
-            msg = await channel.send(embed=embed, view=view)
+            msg = await channel.send(embed=embed, view=view, files=chart_files)
         if b:
             b.add_view(view)
     except Exception as e:
@@ -7657,6 +7703,29 @@ async def rating_list_post(request: Request, guild_id: int):
         )
     await set_guild_config(guild_id, "ratings_message_id", str(msg.id))
     return RedirectResponse(f"/servers/{guild_id}?tab=ratings&success=Liste+gepostet", status_code=302)
+
+
+@web.get("/servers/{guild_id}/ratings/{item_id}/image")
+async def rating_item_image_web(request: Request, guild_id: int, item_id: int):
+    """Serves an uploaded rating item's image for the dashboard's OWN edit-form preview only -
+    never the actual Discord embed URL (that goes via a real message attachment, see
+    build_ratings_embed's chart_files). Same pattern as poll_option_image_web above."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    row = await db_one(
+        "SELECT image_data, image_filename FROM rating_items WHERE id=? AND guild_id=?",
+        (item_id, str(guild_id)),
+    )
+    if not row or not row.get("image_data"):
+        raise HTTPException(status_code=404)
+    try:
+        raw = base64.b64decode(row["image_data"])
+    except Exception:
+        raise HTTPException(status_code=404)
+    ext = (row.get("image_filename") or "").rsplit(".", 1)[-1].lower()
+    media_type = _EMBED_IMAGE_MEDIA_TYPES.get(ext, "application/octet-stream")
+    return Response(content=raw, media_type=media_type)
 
 
 # ── Warnings ──────────────────────────────────────────────────────────────────
