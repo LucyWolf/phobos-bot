@@ -1237,6 +1237,7 @@ document.addEventListener('click', function(e) {
       <li>{{ tr.polls_info_item_schedule }}</li>
       <li>{{ tr.polls_info_item_autofetch }}</li>
       <li>{{ tr.polls_info_item_edit }}</li>
+      <li>{{ tr.polls_info_item_delete }}</li>
     </ul>
   </div>
 </div>
@@ -1262,6 +1263,9 @@ document.addEventListener('click', function(e) {
               {% else %}
               <button class="btn btn-danger" onclick="return confirm({{ tr.polls_confirm_end | js }})">{{ tr.polls_btn_end }}</button>
               {% endif %}
+            </form>
+            <form method="post" action="/servers/{{ guild.id }}/polls/{{ p.id }}/delete" style="display:inline" onsubmit="return confirm({{ tr.polls_confirm_delete.replace('{question}', p.question) | js }})">
+              <button class="btn btn-danger" title="{{ tr.btn_delete }}">✕</button>
             </form>
           </td>
         </tr>

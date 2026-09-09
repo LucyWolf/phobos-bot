@@ -7211,6 +7211,38 @@ async def poll_end_web(request: Request, guild_id: int, poll_id: int):
     return RedirectResponse(f"/servers/{guild_id}?tab=polls", status_code=302)
 
 
+@web.post("/servers/{guild_id}/polls/{poll_id}/delete")
+async def poll_delete_web(request: Request, guild_id: int, poll_id: int):
+    """Distinct from /end - ending keeps the poll's message around with its final results and
+    just stops further votes (build_poll_embed(ended=True) + view=None, see _end_poll), while
+    this removes the poll entirely: the live Discord message too (best-effort, same "channel/
+    message/bot-offline could all be gone already" tolerance as poll_edit_web's live-edit
+    block), not just the dashboard row - user-requested explicitly ("wenn ich das lösche dann
+    will ich auch das es in dc auch gelöscht wirt")."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    poll = await db_one("SELECT * FROM polls WHERE id=? AND guild_id=?", (poll_id, str(guild_id)))
+    if not poll:
+        return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Umfrage+nicht+gefunden", status_code=302)
+    if poll["message_id"]:
+        channel = bot.get_channel(int(poll["channel_id"])) if poll["channel_id"] else None
+        if channel:
+            try:
+                msg = await channel.fetch_message(int(poll["message_id"]))
+                await msg.delete()
+            except Exception:
+                # Already deleted directly in Discord, channel gone, or bot offline for this
+                # guild's token - the dashboard/DB side of the delete below must not depend on
+                # this succeeding, same best-effort principle as every other live-message
+                # touch-point in this file.
+                pass
+    await db_exec("DELETE FROM poll_votes WHERE poll_id=?", (poll_id,))
+    await db_exec("DELETE FROM poll_options WHERE poll_id=?", (poll_id,))
+    await db_exec("DELETE FROM polls WHERE id=?", (poll_id,))
+    return RedirectResponse(f"/servers/{guild_id}?tab=polls&success=Umfrage+gelöscht", status_code=302)
+
+
 @web.post("/servers/{guild_id}/polls/preview-link-image")
 async def poll_preview_link_image(request: Request, guild_id: int):
     """Live, save-nothing Open Graph image lookup for the create/edit forms' automatic
