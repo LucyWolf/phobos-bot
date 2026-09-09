@@ -1291,11 +1291,7 @@ document.addEventListener('click', function(e) {
                     </label>
                   </div>
                   {% endif %}
-                  <div style="display:flex;gap:0.4rem;">
-                    <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" value="{{ opt.link_url }}" style="margin:0;flex:1;font-size:0.78rem;">
-                    <button type="button" class="btn btn-secondary" onclick="previewPollOptionLink(this)" title="{{ tr.polls_btn_preview }}" style="padding:0.25rem 0.5rem;font-size:0.72rem;">🔍</button>
-                  </div>
-                  <div class="poll-option-preview-gallery" style="display:flex;gap:0.3rem;flex-wrap:wrap;"></div>
+                  <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" value="{{ opt.link_url }}" style="margin:0;font-size:0.78rem;">
                 </div>
                 {% endfor %}
               </div>
@@ -1336,11 +1332,7 @@ document.addEventListener('click', function(e) {
           <input type="file" name="option_image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin:0;flex:1;font-size:0.72rem;">
           <input type="number" name="option_image_width" min="50" max="2000" value="300" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;">
         </div>
-        <div style="display:flex;gap:0.4rem;">
-          <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
-          <button type="button" class="btn btn-secondary" onclick="previewPollOptionLink(this)" title="{{ tr.polls_btn_preview }}" style="padding:0.25rem 0.5rem;font-size:0.72rem;">🔍</button>
-        </div>
-        <div class="poll-option-preview-gallery" style="display:flex;gap:0.3rem;flex-wrap:wrap;"></div>
+        <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;font-size:0.78rem;">
       </div>
       <div class="poll-option-row" style="display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.6rem;padding:0.5rem;border:1px solid var(--border);border-radius:0.5rem;">
         <input type="text" name="option" maxlength="80" required placeholder="{{ tr.polls_option_placeholder }} 2" style="margin:0;">
@@ -1349,11 +1341,7 @@ document.addEventListener('click', function(e) {
           <input type="file" name="option_image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin:0;flex:1;font-size:0.72rem;">
           <input type="number" name="option_image_width" min="50" max="2000" value="300" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;">
         </div>
-        <div style="display:flex;gap:0.4rem;">
-          <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
-          <button type="button" class="btn btn-secondary" onclick="previewPollOptionLink(this)" title="{{ tr.polls_btn_preview }}" style="padding:0.25rem 0.5rem;font-size:0.72rem;">🔍</button>
-        </div>
-        <div class="poll-option-preview-gallery" style="display:flex;gap:0.3rem;flex-wrap:wrap;"></div>
+        <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;font-size:0.78rem;">
       </div>
     </div>
     <button type="button" class="btn btn-secondary" onclick="addPollOption('poll-options-new')" style="font-size:0.75rem;padding:0.3rem 0.7rem;margin-bottom:0.75rem;">{{ tr.polls_add_option }}</button>
@@ -1422,54 +1410,13 @@ function addPollOption(containerId) {
   widthInput.title = '{{ tr.polls_image_width_label }}';
   widthInput.style.cssText = 'margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;';
   extrasRow.appendChild(imageInput); extrasRow.appendChild(imageFileInput); extrasRow.appendChild(widthInput);
-  const linkRow = document.createElement('div');
-  linkRow.style.cssText = 'display:flex;gap:0.4rem;';
   const linkInput = document.createElement('input');
   linkInput.type = 'url'; linkInput.name = 'option_link';
   linkInput.placeholder = '{{ tr.polls_option_link_placeholder }}';
-  linkInput.style.cssText = 'margin:0;flex:1;font-size:0.78rem;';
-  const previewBtn = document.createElement('button');
-  previewBtn.type = 'button'; previewBtn.className = 'btn btn-secondary';
-  previewBtn.title = '{{ tr.polls_btn_preview }}';
-  previewBtn.style.cssText = 'padding:0.25rem 0.5rem;font-size:0.72rem;';
-  previewBtn.textContent = '🔍';
-  previewBtn.onclick = function() { previewPollOptionLink(previewBtn); };
-  linkRow.appendChild(linkInput); linkRow.appendChild(previewBtn);
-  const gallery = document.createElement('div');
-  gallery.className = 'poll-option-preview-gallery';
-  gallery.style.cssText = 'display:flex;gap:0.3rem;flex-wrap:wrap;';
-  row.appendChild(topRow); row.appendChild(extrasRow); row.appendChild(linkRow); row.appendChild(gallery);
+  linkInput.style.cssText = 'margin:0;font-size:0.78rem;';
+  row.appendChild(topRow); row.appendChild(extrasRow); row.appendChild(linkInput);
   container.appendChild(row);
   input.focus();
-}
-function previewPollOptionLink(button) {
-  const row = button.closest('.poll-option-row');
-  const linkInput = row.querySelector('input[name="option_link"]');
-  const imageInput = row.querySelector('input[name="option_image"]');
-  const gallery = row.querySelector('.poll-option-preview-gallery');
-  const url = linkInput ? linkInput.value.trim() : '';
-  gallery.innerHTML = '';
-  if (!url) return;
-  button.disabled = true;
-  fetch('/servers/' + POLLS_GUILD_ID + '/polls/preview-link-image', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-    body: 'url=' + encodeURIComponent(url),
-  }).then(function(r) { return r.json(); }).then(function(data) {
-    (data.image_urls || []).forEach(function(u) {
-      const thumb = document.createElement('img');
-      thumb.src = u;
-      thumb.className = 'poll-option-preview-thumb';
-      thumb.title = '{{ tr.polls_preview_pick_hint }}';
-      thumb.style.cssText = 'width:60px;height:60px;object-fit:cover;border-radius:0.3rem;cursor:pointer;border:2px solid transparent;';
-      thumb.onclick = function() {
-        imageInput.value = u;
-        gallery.querySelectorAll('.poll-option-preview-thumb').forEach(function(t) { t.style.borderColor = 'transparent'; });
-        thumb.style.borderColor = 'var(--accent)';
-      };
-      gallery.appendChild(thumb);
-    });
-  }).catch(function() {}).finally(function() { button.disabled = false; });
 }
 function removePollOptionRow(el) {
   const row = el.closest('.poll-option-row');
@@ -1591,11 +1538,13 @@ function renderPollPreview(form) {
   box.innerHTML = html;
 }
 // Background counterpart to renderPollPreview()'s otherwise-synchronous, never-fetching read of
-// each option row - lets the preview show an option's link image automatically, without making
-// the admin click "🔍" first, matching what _resolve_poll_option_image() will do anyway once
-// the poll is actually saved (same single-best-guess endpoint, just triggered by typing instead
-// of a button). Keyed by the row ELEMENT (not the link string) so two different option rows
-// with in-flight fetches never clobber each other's debounce timer or cached result.
+// each option row - lets the preview show an option's link image automatically as soon as a
+// link is typed, matching what _resolve_poll_option_image() will do anyway once the poll is
+// actually saved (same single-best-guess endpoint). The manual "🔍 Vorschau holen" button +
+// per-row candidate gallery that used to trigger this same endpoint on demand was removed
+// entirely ("man hat ja oben den forschau bild") - this automatic fetch is the only trigger
+// left. Keyed by the row ELEMENT (not the link string) so two different option rows with
+// in-flight fetches never clobber each other's debounce timer or cached result.
 const _pollPreviewAutoFetched = new WeakMap(); // row -> {link, image}
 const _pollPreviewFetchTimers = new WeakMap(); // row -> setTimeout id
 function schedulePollPreviewAutoFetch(row) {
