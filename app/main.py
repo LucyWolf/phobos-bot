@@ -222,6 +222,7 @@ COGS = [
     "cogs.auto_kick",
     "cogs.role_rules",
     "cogs.polls",
+    "cogs.ratings",
 ]
 
 
@@ -4438,7 +4439,7 @@ _SERVER_CONFIG_TAB_LABELS = {
     "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant", "events": "🗓️ Events",
     "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
     "amp": "🎮 Gameserver", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
-    "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen",
+    "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen", "ratings": "⭐ Bewertungen",
 }
 
 # Features an admin can hide from THIS server's own sidebar to cut down on clutter for
@@ -4456,7 +4457,7 @@ _TOGGLEABLE_FEATURES = {
     "events": "🗓️ Events", "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
     "amp": "🎮 Gameserver", "notifications": "🟣 Streaming", "freestuff": "🎁 Free Stuff",
     "log": "📋 Log", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
-    "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen",
+    "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen", "ratings": "⭐ Bewertungen",
 }
 
 
@@ -4712,6 +4713,17 @@ async def server_config(
             "SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (p["id"],)
         )
 
+    # Rating list ("die maps oder seiten in eine liste eintragen") - recommended items first
+    # (manual admin flag), then everything else sorted by average rating.
+    rating_list = await db_rows(
+        "SELECT i.*, "
+        "(SELECT COUNT(*) FROM rating_votes v WHERE v.item_id=i.id) AS vote_count, "
+        "(SELECT AVG(stars) FROM rating_votes v WHERE v.item_id=i.id) AS avg_stars "
+        "FROM rating_items i WHERE i.guild_id=? "
+        "ORDER BY i.recommended DESC, avg_stars DESC, i.label COLLATE NOCASE",
+        (str(guild_id),),
+    )
+
     # Notifications
     subs = await db_rows(
         "SELECT * FROM notifications WHERE guild_id=? ORDER BY platform, target_name", (str(guild_id),)
@@ -4836,6 +4848,7 @@ async def server_config(
         "leaderboard": lb, "warn_groups": warn_groups,
         "ticket_panels": ticket_panels, "ticket_list": ticket_list, "ga_list": ga_list,
         "poll_list": poll_list,
+        "rating_list": rating_list,
         "embed_posts": embed_posts,
         "subs": subs, "twitch_configured": twitch_configured,
         "all_users": all_users, "server_perms": server_perms,
@@ -7499,6 +7512,75 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
         # offline for this guild's token, etc.).
         pass
     return RedirectResponse(f"/servers/{guild_id}?tab=polls&success=Umfrage+aktualisiert", status_code=302)
+
+
+# ── Ratings ───────────────────────────────────────────────────────────────────
+# Admin-curated catalog (maps/sites/games/...) managed entirely here on the dashboard - the
+# Discord-facing half (/bewerten, /bewertungen) lives in cogs/ratings.py. See that module's own
+# docstring for why this is a separate feature from polls rather than a poll variant.
+
+@web.post("/servers/{guild_id}/ratings/add")
+async def rating_item_add(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    label = form.get("label", "").strip()
+    url = form.get("url", "").strip()
+    if not label:
+        return RedirectResponse(f"/servers/{guild_id}?tab=ratings&error=Name+erforderlich", status_code=302)
+    if len(label) > 100:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=ratings&error=Name+zu+lang+(max.+100+Zeichen)", status_code=302
+        )
+    if url and not url.startswith(("http://", "https://")):
+        return RedirectResponse(f"/servers/{guild_id}?tab=ratings&error=Ungültige+URL", status_code=302)
+    await db_exec(
+        "INSERT INTO rating_items (guild_id,label,url) VALUES (?,?,?)",
+        (str(guild_id), label, url[:500]),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=ratings&success=Eintrag+hinzugefügt", status_code=302)
+
+
+@web.post("/servers/{guild_id}/ratings/edit/{item_id}")
+async def rating_item_edit(request: Request, guild_id: int, item_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    item = await db_one("SELECT id FROM rating_items WHERE id=? AND guild_id=?", (item_id, str(guild_id)))
+    if not item:
+        return RedirectResponse(f"/servers/{guild_id}?tab=ratings&error=Eintrag+nicht+gefunden", status_code=302)
+    form = await request.form()
+    label = form.get("label", "").strip()
+    url = form.get("url", "").strip()
+    recommended = bool(form.get("recommended", ""))
+    if not label:
+        return RedirectResponse(f"/servers/{guild_id}?tab=ratings&error=Name+erforderlich", status_code=302)
+    if len(label) > 100:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=ratings&error=Name+zu+lang+(max.+100+Zeichen)", status_code=302
+        )
+    if url and not url.startswith(("http://", "https://")):
+        return RedirectResponse(f"/servers/{guild_id}?tab=ratings&error=Ungültige+URL", status_code=302)
+    await db_exec(
+        "UPDATE rating_items SET label=?, url=?, recommended=? WHERE id=?",
+        (label, url[:500], int(recommended), item_id),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=ratings&success=Eintrag+gespeichert", status_code=302)
+
+
+@web.post("/servers/{guild_id}/ratings/delete/{item_id}")
+async def rating_item_delete(request: Request, guild_id: int, item_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    # poll_votes-style cascade: an item's ratings have no meaning once the item itself is gone,
+    # deleted explicitly here rather than left as orphaned rows (rating_votes has no FK/CASCADE
+    # of its own, same convention as every other comma-list/child-row relationship in this app).
+    await db_exec("DELETE FROM rating_votes WHERE item_id IN (SELECT id FROM rating_items WHERE id=? AND guild_id=?)",
+                  (item_id, str(guild_id)))
+    await db_exec("DELETE FROM rating_items WHERE id=? AND guild_id=?", (item_id, str(guild_id)))
+    return RedirectResponse(f"/servers/{guild_id}?tab=ratings&success=Eintrag+gelöscht", status_code=302)
 
 
 # ── Warnings ──────────────────────────────────────────────────────────────────

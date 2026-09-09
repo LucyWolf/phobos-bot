@@ -16,6 +16,7 @@
   {% if enabled_features is none or 'tickets' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=tickets"    class="ssnav-item {% if active_page == 'tickets' %}active{% endif %}">🎫 Tickets</a>{% endif %}
   {% if enabled_features is none or 'giveaways' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=giveaways"  class="ssnav-item {% if active_page == 'giveaways' %}active{% endif %}">🎉 Giveaways</a>{% endif %}
   {% if enabled_features is none or 'polls' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=polls"      class="ssnav-item {% if active_page == 'polls' %}active{% endif %}">🗳️ Umfragen</a>{% endif %}
+  {% if enabled_features is none or 'ratings' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=ratings"    class="ssnav-item {% if active_page == 'ratings' %}active{% endif %}">⭐ Bewertungen</a>{% endif %}
   {% if enabled_features is none or 'warnings' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=warnings"   class="ssnav-item {% if active_page == 'warnings' %}active{% endif %}">⚠️ Warnungen</a>{% endif %}
   <a href="/servers/{{ guild_id }}?tab=users"      class="ssnav-item {% if active_page == 'users' %}active{% endif %}">👥 Nutzer</a>
   {% if enabled_features is none or 'tempvoice' in enabled_features %}<a href="/servers/{{ guild_id }}?tab=tempvoice"  class="ssnav-item {% if active_page == 'tempvoice' %}active{% endif %}">🔊 Temp-Voice</a>{% endif %}

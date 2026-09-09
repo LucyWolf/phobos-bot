@@ -786,6 +786,33 @@ async def init_db():
             # ("nur wenn ich das dann aktiviere"), shown alongside the existing bar chart, live
             # (updates with every vote, not just once the poll ends).
             "ALTER TABLE polls ADD COLUMN show_ranking INTEGER NOT NULL DEFAULT 0",
+            # Ratings (cogs/ratings.py) - separate, persistent feature from polls: an admin-
+            # curated catalog of maps/sites/games/whatever ("die maps oder seiten in eine liste
+            # eintragen") that members can star-rate at any time via /bewerten, not a one-shot
+            # time-boxed vote. One row per item, one row per (item, user) star rating - a re-
+            # rating REPLACES the user's previous one rather than accumulating (confirmed:
+            # "pro map/link/spiel ... hat einer nur 1 stern"), so a plain UNIQUE(item_id,user_id)
+            # + INSERT OR REPLACE is enough, no separate "current rating" bookkeeping needed.
+            # `recommended` is a manual per-item admin flag, independent of the star average -
+            # both signals ("automatisch die best-bewerteten" AND "Admin markiert manuell") are
+            # meant to coexist side by side, not be an either/or choice (confirmed: "beides
+            # einstellbar") - the average is simply computed on read from rating_votes, never
+            # stored redundantly on rating_items itself.
+            """CREATE TABLE IF NOT EXISTS rating_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                label TEXT NOT NULL,
+                url TEXT NOT NULL DEFAULT '',
+                recommended INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS rating_votes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                stars INTEGER NOT NULL,
+                UNIQUE(item_id, user_id)
+            )""",
         ]:
             try:
                 await db.execute(col)

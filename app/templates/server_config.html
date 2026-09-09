@@ -1670,6 +1670,109 @@ document.querySelectorAll('.poll-form').forEach(function(form) {
 
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Bewertungen                                                    -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-ratings">
+
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="toggleRatingsInfo()" title="{{ tr.ratings_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="ratings-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:280px;max-width:400px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.ratings_info_title }}</div>
+    <div style="color:var(--muted);">{{ tr.ratings_info_body }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.ratings_hint }}</p>
+
+  {% if rating_list %}
+  <table style="width:100%;border-collapse:collapse;margin-bottom:1.25rem;">
+    <thead>
+      <tr style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;">
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.label_name }}</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.ratings_col_rating }}</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.ratings_col_recommended }}</th>
+        <th style="padding:0.4rem 0.5rem;"></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in rating_list %}
+    <tr style="border-top:1px solid var(--border);font-size:0.85rem;">
+      <td style="padding:0.5rem;">
+        {% if r.url %}<a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.label }}</a>{% else %}{{ r.label }}{% endif %}
+      </td>
+      <td style="padding:0.5rem;white-space:nowrap;">
+        {% if r.vote_count %}⭐ {{ '%.1f'|format(r.avg_stars) }} ({{ r.vote_count }}){% else %}<span style="color:var(--muted);">{{ tr.ratings_no_votes }}</span>{% endif %}
+      </td>
+      <td style="padding:0.5rem;">{% if r.recommended %}🌟{% else %}<span style="color:var(--muted);">—</span>{% endif %}</td>
+      <td style="padding:0.5rem;text-align:right;white-space:nowrap;">
+        <button type="button" class="btn btn-secondary" onclick="toggleRatingEdit({{ r.id }})" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_settings }}">⚙</button>
+        <form method="post" action="/servers/{{ guild.id }}/ratings/delete/{{ r.id }}" style="margin:0;display:inline;"
+          onsubmit="return confirm({{ tr.ratings_confirm_delete.replace('{name}', r.label) | js }})">
+          <button type="submit" class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_delete }}">✕</button>
+        </form>
+      </td>
+    </tr>
+    <tr id="rating-edit-{{ r.id }}" style="display:none;" class="panel-edit-row">
+      <td colspan="4" style="padding:1rem 1.25rem;">
+        <form method="post" action="/servers/{{ guild.id }}/ratings/edit/{{ r.id }}">
+          <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
+            <div>
+              <label style="font-size:0.82rem;">{{ tr.label_name }}</label>
+              <input type="text" name="label" value="{{ r.label }}" maxlength="100" required style="margin-bottom:0;">
+            </div>
+            <div>
+              <label style="font-size:0.82rem;">{{ tr.ratings_url_label }}</label>
+              <input type="url" name="url" value="{{ r.url }}" placeholder="{{ tr.ratings_url_placeholder }}" style="margin-bottom:0;">
+            </div>
+          </div>
+          <label style="font-size:0.82rem;"><input type="checkbox" name="recommended" value="1" style="width:auto;display:inline;margin-right:0.4rem;" {% if r.recommended %}checked{% endif %}> {{ tr.ratings_recommended_label }}</label>
+          <button type="submit" class="btn btn-primary" style="font-size:0.8rem;margin-top:0.6rem;">{{ tr.btn_save }}</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <form method="post" action="/servers/{{ guild.id }}/ratings/add">
+    <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
+      <div>
+        <label style="font-size:0.82rem;">{{ tr.label_name }}</label>
+        <input type="text" name="label" maxlength="100" required placeholder="{{ tr.ratings_name_placeholder }}">
+      </div>
+      <div>
+        <label style="font-size:0.82rem;">{{ tr.ratings_url_label }}</label>
+        <input type="url" name="url" placeholder="{{ tr.ratings_url_placeholder }}">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">{{ tr.btn_add }}</button>
+  </form>
+</div>
+</div>
+<script>
+function toggleRatingsInfo() {
+  const box = document.getElementById('ratings-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('ratings-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleRatingsInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+function toggleRatingEdit(id) {
+  const row = document.getElementById('rating-edit-' + id);
+  if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+</script>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <!-- TAB: Warnungen                                                      -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-warnings">
@@ -3522,7 +3625,7 @@ document.addEventListener('click', function(e) {
 </script>
 
 <script>
-const TABS = ['config','welcome','automod','leveling','rr','commands','tickets','giveaways','polls','warnings','users','tempvoice','scheduled','events','birthday','autodelete','amp','autokick','embeds','rolerules'];
+const TABS = ['config','welcome','automod','leveling','rr','commands','tickets','giveaways','polls','ratings','warnings','users','tempvoice','scheduled','events','birthday','autodelete','amp','autokick','embeds','rolerules'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {
