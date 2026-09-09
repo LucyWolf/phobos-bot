@@ -144,6 +144,34 @@ def _option_upload_file(opt: dict):
         return None
 
 
+def _ensure_option_uploads_attached(options: list, chart_files: list) -> list:
+    """For a VOTE/END edit specifically (never creation/full-edit - see below): folds every
+    option's own uploaded picture into chart_files, but only IF chart_files is already non-empty
+    for some other reason (a bar image somewhere in this poll). A vote/end may OMIT attachments=
+    entirely when chart_files is empty, letting Discord keep whatever's already on the message
+    untouched (a picture attached back at creation, never touched since) - cheaper than
+    re-uploading it on every single vote for no reason. But the instant attachments= DOES need to
+    be explicit for some other option's fresh bar, Discord replaces the WHOLE attachment set, not
+    just the file(s) being added - so every other option's own upload has to ride along too, or
+    it would vanish from the message despite nothing about IT having changed.
+    Deliberately NOT used by main.py's create/edit routes - those pass attachments= explicitly on
+    every single call regardless (an edit can add/remove/swap pictures far more broadly than a
+    vote ever does), so for them "only when chart_files is already non-empty" would silently drop
+    an option's own picture the FIRST time it's set (nothing "already on the message" to fall
+    back on yet) - those routes call _option_upload_file directly, unconditionally, instead."""
+    if not chart_files:
+        return chart_files
+    seen = {f.filename for f in chart_files}
+    for opt in options:
+        filename = opt.get("image_filename") or ""
+        if filename and filename not in seen:
+            upload_file = _option_upload_file(opt)
+            if upload_file:
+                chart_files.append(upload_file)
+                seen.add(filename)
+    return chart_files
+
+
 def _render_option_bar_image(n: int, pct: float, bar_color: str) -> bytes:
     """Single-bar sibling of _render_bar_chart_image, used ONLY for a per-option RICH embed that
     has NO picture of its own (a bare link_url, or truly nothing) - an option WITH its own
@@ -197,15 +225,18 @@ def build_poll_embed(
     plain percentage line with no bar instead), PLUS one per-option bar image for every RICH
     option (has its own link but no picture of its own) - an option WITH its own picture instead
     keeps that picture in its embed's one large image slot at its own configured pixel width, no
-    bar for that one (there's no second slot to put it in). Unlike a per-poll/per-option image
-    (attached ONCE at creation, never re-touched - see below), every file in chart_files has to
-    be regenerated and RE-ATTACHED on every single vote/end, since either its whole content (the
-    bar fill %, for a bar image) or its very presence in the list (for a still-current per-option
-    upload, needed only because SOME other file in the same list forces attachments= to be
-    explicit - see the per-option loop below) can change every time - every caller MUST pass
-    chart_files back in via `attachments=chart_files` whenever the
-    list isn't empty, `omitted entirely` (not `attachments=[]` or `None`) whenever it IS, exactly
-    mirroring the existing per-poll-image omission rule below.
+    bar for that one (there's no second slot to put it in). chart_files deliberately NEVER
+    contains an option's own uploaded picture itself - unlike a bar image (regenerated every
+    vote, since its fill % changes), an uploaded picture doesn't change on its own between votes,
+    so re-uploading it every time would be wasteful; each CALLER decides how to handle it instead
+    (main.py's create/edit routes always attach it directly, unconditionally, alongside
+    chart_files; cogs/polls.py's vote/end handlers fold it in only when chart_files is already
+    non-empty for some other reason - see _ensure_option_uploads_attached). Every file THIS
+    function DOES return has to be regenerated and RE-ATTACHED on every single vote/end, since
+    its whole content (the bar fill %) changes every time - every caller MUST pass chart_files
+    back in via `attachments=chart_files` whenever the list isn't empty, `omitted entirely` (not
+    `attachments=[]` or `None`) whenever it IS, exactly mirroring the existing per-poll-image
+    omission rule below.
 
     image_filename (set only when the per-POLL banner image came from a dashboard upload, not
     a pasted URL - a now-legacy field, see above) takes precedence over image_url and points at
@@ -349,21 +380,18 @@ def build_poll_embed(
         needs_bar = img_src is None
         rich_info.append((opt, img_src, needs_bar))
 
-    # Whenever ANY attachment here needs a fresh (re-)upload this time - an imageless option's
-    # bar, or the shared header bar built above for plain_options - every caller ends up passing
-    # attachments= explicitly, which REPLACES the whole attachment set rather than adding to it.
-    # So every rich option's own UPLOADED picture (a plain image_url needs no file at all) has to
-    # ride along too, even though it itself shows no bar, or it would vanish on the very next
-    # vote/edit even though nothing about THAT option changed. When nothing anywhere needs a bar
-    # (e.g. every option has its own picture and there are no plain_options), chart_files stays
-    # empty and every caller correctly omits attachments= entirely instead - the original "attach
-    # once, never touch again" behavior, still intact for that case.
-    if chart_files or any(needs_bar for _, _, needs_bar in rich_info):
-        for opt, img_src, _ in rich_info:
-            if opt.get("image_filename"):
-                upload_file = _option_upload_file(opt)
-                if upload_file:
-                    chart_files.append(upload_file)
+    # chart_files returned by THIS function only ever holds freshly generated bar images (the
+    # shared header one above, plus one per imageless rich option below) - deliberately NOT an
+    # option's own uploaded picture. That distinction matters to callers: a vote/end only needs
+    # to re-attach a bar's ever-changing content, and can otherwise omit attachments= to let
+    # Discord keep whatever's already on the message (a picture attached back at creation and
+    # never touched since) - so those callers only need to fold an own-upload back in AS WELL
+    # whenever chart_files is non-empty anyway (see _handle_vote/_end_poll's own comment). But an
+    # option whose own picture is being introduced or changed for the FIRST time (this exact
+    # send/edit) has nothing "already on the message" to fall back on - the caller must include
+    # it unconditionally, which only the caller can know (main.py's create/edit routes always do;
+    # see _option_upload_file, used directly by those routes and by build_poll_embed's callers
+    # below for exactly this purpose).
 
     embeds = [header]
     for opt, img_src, needs_bar in rich_info:
@@ -451,6 +479,7 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
         ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
         bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR,
     )
+    chart_files = _ensure_option_uploads_attached(options, chart_files)
     # No view= here on purpose - discord.py's edit_message() default for view is MISSING (not
     # None), so omitting it leaves the existing buttons untouched instead of needing to rebuild+
     # reattach an identical PollView on every single vote (verified directly against discord.py
@@ -529,6 +558,7 @@ class Polls(commands.Cog):
             ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
             bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR,
         )
+        chart_files = _ensure_option_uploads_attached(options, chart_files)
         try:
             if chart_files:
                 await msg.edit(embeds=embeds, view=None, attachments=chart_files)
