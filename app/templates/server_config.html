@@ -1212,10 +1212,6 @@ document.addEventListener('click', function(e) {
   .poll-preview-option { margin-bottom:0.6rem; font-size:0.85rem; }
   .poll-preview-option:last-child { margin-bottom:0; }
   .poll-preview-option-row { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.25rem; }
-  /* Mirrors Discord's own two real embed-image sizes: small = set_thumbnail (a small square
-     next to the text), large = set_image (a full-width banner BELOW the text) - not just two
-     different sizes of the same layout, the image actually moves position between the two. */
-  .poll-preview-option-thumb { width:32px; height:32px; object-fit:cover; border-radius:4px; flex-shrink:0; }
   .poll-preview-option-large-img { display:block; width:100%; max-height:160px; object-fit:cover; border-radius:4px; margin:0.3rem 0 0.4rem; }
   .poll-preview-option b { color:#f2f3f5; }
   .poll-preview-progress-track { display:inline-block; width:140px; height:8px; background:#40444b; border-radius:4px; vertical-align:middle; margin-right:0.5rem; overflow:hidden; }
@@ -1285,12 +1281,7 @@ document.addEventListener('click', function(e) {
                   <div style="display:flex;gap:0.4rem;">
                     <input type="url" name="option_image" placeholder="{{ tr.polls_option_image_placeholder }}" value="{{ opt.image_url }}" style="margin:0;flex:1;font-size:0.78rem;">
                     <input type="file" name="option_image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin:0;flex:1;font-size:0.72rem;">
-                    <select name="option_image_size" title="{{ tr.polls_image_size_label }}" style="margin:0;flex:0 0 auto;width:auto;font-size:0.72rem;">
-                      <option value="large" {% if opt.image_size != 'small' and opt.image_size != 'custom' %}selected{% endif %}>{{ tr.polls_image_size_large }}</option>
-                      <option value="small" {% if opt.image_size == 'small' %}selected{% endif %}>{{ tr.polls_image_size_small }}</option>
-                      <option value="custom" {% if opt.image_size == 'custom' %}selected{% endif %}>{{ tr.polls_image_size_custom }}</option>
-                    </select>
-                    <input type="number" name="option_image_width" min="50" max="2000" value="{{ opt.image_width or 300 }}" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 70px;width:70px;font-size:0.72rem;{% if opt.image_size != 'custom' %}display:none;{% endif %}">
+                    <input type="number" name="option_image_width" min="50" max="2000" value="{{ opt.image_width or 300 }}" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;">
                   </div>
                   {% if opt.image_url or opt.image_filename %}
                   <div style="display:flex;align-items:center;gap:0.5rem;">
@@ -1343,12 +1334,7 @@ document.addEventListener('click', function(e) {
         <div style="display:flex;gap:0.4rem;">
           <input type="url" name="option_image" placeholder="{{ tr.polls_option_image_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
           <input type="file" name="option_image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin:0;flex:1;font-size:0.72rem;">
-          <select name="option_image_size" title="{{ tr.polls_image_size_label }}" style="margin:0;flex:0 0 auto;width:auto;font-size:0.72rem;">
-            <option value="large">{{ tr.polls_image_size_large }}</option>
-            <option value="small">{{ tr.polls_image_size_small }}</option>
-            <option value="custom">{{ tr.polls_image_size_custom }}</option>
-          </select>
-          <input type="number" name="option_image_width" min="50" max="2000" value="300" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 70px;width:70px;font-size:0.72rem;display:none;">
+          <input type="number" name="option_image_width" min="50" max="2000" value="300" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;">
         </div>
         <div style="display:flex;gap:0.4rem;">
           <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
@@ -1361,12 +1347,7 @@ document.addEventListener('click', function(e) {
         <div style="display:flex;gap:0.4rem;">
           <input type="url" name="option_image" placeholder="{{ tr.polls_option_image_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
           <input type="file" name="option_image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin:0;flex:1;font-size:0.72rem;">
-          <select name="option_image_size" title="{{ tr.polls_image_size_label }}" style="margin:0;flex:0 0 auto;width:auto;font-size:0.72rem;">
-            <option value="large">{{ tr.polls_image_size_large }}</option>
-            <option value="small">{{ tr.polls_image_size_small }}</option>
-            <option value="custom">{{ tr.polls_image_size_custom }}</option>
-          </select>
-          <input type="number" name="option_image_width" min="50" max="2000" value="300" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 70px;width:70px;font-size:0.72rem;display:none;">
+          <input type="number" name="option_image_width" min="50" max="2000" value="300" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;">
         </div>
         <div style="display:flex;gap:0.4rem;">
           <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
@@ -1434,24 +1415,13 @@ function addPollOption(containerId) {
   imageFileInput.type = 'file'; imageFileInput.name = 'option_image_file';
   imageFileInput.accept = 'image/png,image/jpeg,image/gif,image/webp';
   imageFileInput.style.cssText = 'margin:0;flex:1;font-size:0.72rem;';
-  const sizeSelect = document.createElement('select');
-  sizeSelect.name = 'option_image_size';
-  sizeSelect.title = '{{ tr.polls_image_size_label }}';
-  sizeSelect.style.cssText = 'margin:0;flex:0 0 auto;width:auto;font-size:0.72rem;';
-  const sizeLarge = document.createElement('option');
-  sizeLarge.value = 'large'; sizeLarge.textContent = '{{ tr.polls_image_size_large }}';
-  const sizeSmall = document.createElement('option');
-  sizeSmall.value = 'small'; sizeSmall.textContent = '{{ tr.polls_image_size_small }}';
-  const sizeCustom = document.createElement('option');
-  sizeCustom.value = 'custom'; sizeCustom.textContent = '{{ tr.polls_image_size_custom }}';
-  sizeSelect.appendChild(sizeLarge); sizeSelect.appendChild(sizeSmall); sizeSelect.appendChild(sizeCustom);
   const widthInput = document.createElement('input');
   widthInput.type = 'number'; widthInput.name = 'option_image_width';
   widthInput.min = '50'; widthInput.max = '2000'; widthInput.value = '300';
   widthInput.placeholder = '{{ tr.polls_image_width_placeholder }}';
   widthInput.title = '{{ tr.polls_image_width_label }}';
-  widthInput.style.cssText = 'margin:0;flex:0 0 70px;width:70px;font-size:0.72rem;display:none;';
-  extrasRow.appendChild(imageInput); extrasRow.appendChild(imageFileInput); extrasRow.appendChild(sizeSelect); extrasRow.appendChild(widthInput);
+  widthInput.style.cssText = 'margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;';
+  extrasRow.appendChild(imageInput); extrasRow.appendChild(imageFileInput); extrasRow.appendChild(widthInput);
   const linkRow = document.createElement('div');
   linkRow.style.cssText = 'display:flex;gap:0.4rem;';
   const linkInput = document.createElement('input');
@@ -1561,7 +1531,6 @@ function renderPollPreview(form) {
     const fileInput = row.querySelector('input[name="option_image_file"]');
     const urlInput = row.querySelector('input[name="option_image"]');
     const linkInput = row.querySelector('input[name="option_link"]');
-    const sizeSelect = row.querySelector('select[name="option_image_size"]');
     const widthInput = row.querySelector('input[name="option_image_width"]');
     if (fileInput && fileInput.files && fileInput.files[0]) {
       image = pollPreviewFileUrl(fileInput.files[0]);
@@ -1574,10 +1543,9 @@ function renderPollPreview(form) {
         image = fetched.image;
       }
     }
-    const large = !sizeSelect || sizeSelect.value !== 'small';
-    const customWidth = (sizeSelect && sizeSelect.value === 'custom' && widthInput)
+    const customWidth = widthInput
       ? Math.max(50, Math.min(2000, parseInt(widthInput.value, 10) || 300)) : 0;
-    options.push({label: label, image: image, large: large, customWidth: customWidth});
+    options.push({label: label, image: image, customWidth: customWidth});
   });
   if (!question && options.length === 0) {
     box.innerHTML = '<div class="poll-preview-empty">{{ tr.polls_preview_empty }}</div>';
@@ -1596,20 +1564,14 @@ function renderPollPreview(form) {
   options.forEach(function(opt) {
     html += '<div class="poll-preview-option">';
     html += '<div class="poll-preview-option-row">';
-    // 'small' mirrors Discord's set_thumbnail (a little square next to the text) - shown
-    // inline right here. 'large' mirrors set_image (full embed width, BELOW the text) - shown
-    // as its own block after this row instead, not inline with the label.
-    if (opt.image && !opt.large) {
-      html += '<img class="poll-preview-option-thumb" src="' + opt.image + '" onerror="this.remove()">';
-    }
     html += '<b>' + pollPreviewEscapeHtml(opt.label) + '</b>';
     html += '</div>';
-    if (opt.image && opt.large) {
-      // A 'custom' width approximates Discord's real behaviour (an attachment renders at its
-      // actual pixel width, not stretched) by overriding the class's width:100% with an inline
-      // px width - max-width:100% still caps it to the preview box on a narrow screen, since
-      // this preview is explicitly an approximation, not a pixel-exact mockup (see the
-      // renderPollPreview() doc comment above).
+    if (opt.image) {
+      // Approximates Discord's real behaviour (an attachment renders at its actual pixel
+      // width, not stretched) by overriding the class's width:100% with an inline px width -
+      // max-width:100% still caps it to the preview box on a narrow screen, since this preview
+      // is explicitly an approximation, not a pixel-exact mockup (see renderPollPreview()'s doc
+      // comment above).
       var widthStyle = opt.customWidth ? ' style="width:' + opt.customWidth + 'px;max-width:100%;"' : '';
       html += '<img class="poll-preview-option-large-img" src="' + opt.image + '"' + widthStyle + ' onerror="this.remove()">';
     }
@@ -1665,11 +1627,6 @@ function pollPreviewAutoFetch(row) {
 // Shows/hides an option row's "width (px)" field alongside its size dropdown - only the
 // 'custom' mode has a real use for a pixel width, 'large'/'small' both mean a fixed Discord
 // embed variant with no field to fill in (see database.py's image_size/image_width comment).
-function updatePollImageWidthVisibility(select) {
-  const widthInput = select.nextElementSibling;
-  if (!widthInput || widthInput.name !== 'option_image_width') return;
-  widthInput.style.display = select.value === 'custom' ? '' : 'none';
-}
 document.querySelectorAll('.poll-form').forEach(function(form) {
   form.addEventListener('input', function(e) {
     renderPollPreview(form);
@@ -1678,12 +1635,8 @@ document.querySelectorAll('.poll-form').forEach(function(form) {
       if (row) schedulePollPreviewAutoFetch(row);
     }
   });
-  form.addEventListener('change', function(e) {
-    if (e.target && e.target.name === 'option_image_size') updatePollImageWidthVisibility(e.target);
-    renderPollPreview(form);
-  });
+  form.addEventListener('change', function() { renderPollPreview(form); });
   renderPollPreview(form);
-  form.querySelectorAll('select[name="option_image_size"]').forEach(function(sel) { updatePollImageWidthVisibility(sel); });
   form.querySelectorAll('.poll-option-row').forEach(function(row) { schedulePollPreviewAutoFetch(row); });
 });
 </script>

@@ -129,10 +129,11 @@ def _option_upload_file(opt: dict):
     """Rebuilds a discord.File for a per-option DASHBOARD UPLOAD (not a URL) from its stored
     base64 image_data - own copy of main.py's _embed_post_files() logic (cogs don't import from
     main.py, see cogs/tickets.py's _parse_ticket_blocks for the same established reason). Only
-    needed now that a per-option rich embed always attaches a fresh generated bar image too
-    (see build_poll_embed) - passing attachments= explicitly on every vote/end for THAT reason
-    would otherwise silently drop an uploaded (non-URL) option picture, since Discord replaces
-    the whole attachment set whenever attachments= is given, not just the file(s) being added.
+    needed when SOME option in the same poll needs attachments= passed explicitly on a vote/end
+    (an imageless rich option's own generated bar, or the shared header bar for plain_options -
+    see build_poll_embed) - Discord replaces the WHOLE attachment set whenever attachments= is
+    given, not just the file(s) being added, so a poll with its own uploaded picture would
+    otherwise silently lose it the moment any sibling option forces that explicit attachments=.
     Returns None for a plain image_url (no attachment needed for that) or no image at all."""
     data_b64, filename = opt.get("image_data") or "", opt.get("image_filename") or ""
     if not data_b64 or not filename:
@@ -144,14 +145,12 @@ def _option_upload_file(opt: dict):
 
 
 def _render_option_bar_image(n: int, pct: float, bar_color: str) -> bytes:
-    """Single-bar sibling of _render_bar_chart_image, for a per-option RICH embed (one that has
-    its own picture and/or link). No label drawn - the option's name already shows as that
-    embed's own title, so a second copy inside the image would be redundant. Exists because
-    Discord gives one embed only ONE large image slot: as long as the option's own picture also
-    wanted that slot, there was no room left for a real bar there at all (v1.15.29-1.15.33 all
-    fell back to text-only for this one case in turn). build_poll_embed() now moves the option's
-    own picture to the embed's SEPARATE, smaller thumbnail slot instead, freeing the large slot
-    for this - both are visible at once, not a choice between them."""
+    """Single-bar sibling of _render_bar_chart_image, used ONLY for a per-option RICH embed that
+    has NO picture of its own (a bare link_url, or truly nothing) - an option WITH its own
+    picture keeps it in the embed's one large image slot at its own configured pixel width
+    instead (see build_poll_embed's per-option loop), no bar for that case, there's no room left
+    for one. No label drawn here - the option's name already shows as that embed's own title, so
+    a second copy inside the image would be redundant."""
     from PIL import Image, ImageDraw
     width = 440
     pad = 18
@@ -192,17 +191,19 @@ def build_poll_embed(
     embed's description, so no option's tally is ever dropped.
 
     chart_files is a list of freshly generated discord.File objects (see
-    _render_bar_chart_image/_render_option_bar_image) - empty only when the poll has a legacy
-    per-poll banner image occupying every image slot that would otherwise hold a generated bar
-    (an old pre-v1.15.20 poll still has its original banner, the one remaining case with no bar
-    at all). Otherwise: one shared bar-chart image for every option WITHOUT its own picture/link
-    (the header embed's own image slot), PLUS one per-option bar image for every option WITH its
-    own picture/link (that embed's image slot - its own picture moves to the smaller thumbnail
-    slot instead, see build_poll_embed's per-option loop below, so both are visible together
-    instead of one replacing the other). Unlike a per-poll/per-option image (attached ONCE at
-    creation, never re-touched - see below), every file in chart_files has to be regenerated and
-    RE-ATTACHED on every single vote/end, since its whole content (the bar fill %) changes every
-    time - every caller MUST pass chart_files back in via `attachments=chart_files` whenever the
+    _render_bar_chart_image/_render_option_bar_image): one shared bar-chart image for every
+    option WITHOUT its own picture/link (the header embed's own image slot, unless a legacy
+    per-poll banner from before v1.15.20 already occupies it - then those options fall back to a
+    plain percentage line with no bar instead), PLUS one per-option bar image for every RICH
+    option (has its own link but no picture of its own) - an option WITH its own picture instead
+    keeps that picture in its embed's one large image slot at its own configured pixel width, no
+    bar for that one (there's no second slot to put it in). Unlike a per-poll/per-option image
+    (attached ONCE at creation, never re-touched - see below), every file in chart_files has to
+    be regenerated and RE-ATTACHED on every single vote/end, since either its whole content (the
+    bar fill %, for a bar image) or its very presence in the list (for a still-current per-option
+    upload, needed only because SOME other file in the same list forces attachments= to be
+    explicit - see the per-option loop below) can change every time - every caller MUST pass
+    chart_files back in via `attachments=chart_files` whenever the
     list isn't empty, `omitted entirely` (not `attachments=[]` or `None`) whenever it IS, exactly
     mirroring the existing per-poll-image omission rule below.
 
@@ -326,16 +327,17 @@ def build_poll_embed(
 
     rich_options, overflow_options = image_options[:MAX_RICH_OPTION_EMBEDS], image_options[MAX_RICH_OPTION_EMBEDS:]
 
-    # v1.15.34's first attempt moved EVERY option's own picture to the small thumbnail slot,
-    # regardless of its admin-chosen size ("groß"/"klein"/benutzerdefinierte px) - rejected on
-    # sight ("jetzt wieder zur bild größe ... das px 300 war perfekt lass es nur in px
-    # skalieren"): a deliberately large/custom-width picture shrunk down to a ~80px thumbnail
-    # defeats the whole point of that size choice. The size setting is respected again below -
-    # 'large'/'custom' keep the picture in the big slot at its own configured size (no room left
-    # there for a bar, same trade-off v1.15.29-33 settled on, just scoped to this one size now
-    # instead of every option); only 'small' (which already shrinks the picture on purpose) frees
-    # the big slot for a real bar. An option with a link but no picture of its own never competes
-    # for either slot, so it gets the bar too.
+    # v1.15.34 briefly moved EVERY option's own picture to the small thumbnail slot to free the
+    # large one for a bar - rejected on sight ("jetzt wieder zur bild größe ... das px 300 war
+    # perfekt lass es nur in px skalieren"): a deliberately-sized picture shrunk to a ~80px
+    # thumbnail defeats the whole point of choosing a size for it. v1.15.35 then respected a
+    # 'large'/'small'/'custom' picker for this, but the picker itself got removed right after
+    # ("ich wil die gröse nur nuch mit px machen nix andeeres") - image_width (a plain px number,
+    # 0 = unset = keep the image's own size) is the only sizing control left, so there's no
+    # longer any "this option's image is intentionally tiny, might as well add a bar too" signal
+    # to react to. An option WITH its own picture always keeps it in the large slot at that
+    # width, no bar; only an option with nothing of its own (a bare link, or truly no image) has
+    # no image to protect there, so it gets the bar instead.
     rich_info = []
     for opt in rich_options:
         if opt.get("image_filename"):
@@ -344,18 +346,18 @@ def build_poll_embed(
             img_src = opt["image_url"]
         else:
             img_src = None
-        needs_bar = (img_src is None) or (opt.get("image_size") == "small")
+        needs_bar = img_src is None
         rich_info.append((opt, img_src, needs_bar))
 
-    # Whenever ANY attachment here needs a fresh (re-)upload this time - this option's own bar,
-    # or the shared header bar built above for plain_options - every caller ends up passing
+    # Whenever ANY attachment here needs a fresh (re-)upload this time - an imageless option's
+    # bar, or the shared header bar built above for plain_options - every caller ends up passing
     # attachments= explicitly, which REPLACES the whole attachment set rather than adding to it.
     # So every rich option's own UPLOADED picture (a plain image_url needs no file at all) has to
-    # ride along too, even one that itself shows no bar ('large'/'custom'), or it would vanish on
-    # the very next vote/edit even though nothing about THAT option changed. When nothing
-    # anywhere needs a bar (e.g. every option is 'large'/'custom' with no plain_options),
-    # chart_files stays empty and every caller correctly omits attachments= entirely instead -
-    # the original "attach once, never touch again" behavior, still intact for that case.
+    # ride along too, even though it itself shows no bar, or it would vanish on the very next
+    # vote/edit even though nothing about THAT option changed. When nothing anywhere needs a bar
+    # (e.g. every option has its own picture and there are no plain_options), chart_files stays
+    # empty and every caller correctly omits attachments= entirely instead - the original "attach
+    # once, never touch again" behavior, still intact for that case.
     if chart_files or any(needs_bar for _, _, needs_bar in rich_info):
         for opt, img_src, _ in rich_info:
             if opt.get("image_filename"):
@@ -371,13 +373,13 @@ def build_poll_embed(
         if opt.get("link_url"):
             option_embed.url = opt["link_url"]
         if needs_bar:
-            if img_src:
-                option_embed.set_thumbnail(url=img_src)
+            # needs_bar is exactly "no picture of its own" (see the loop above) - never true
+            # alongside img_src, so there's nothing here to protect in a thumbnail anymore.
             bar_filename = f"poll_opt_bar_{opt['id']}.png"
             bar_bytes = _render_option_bar_image(n, pct, bar_color)
             chart_files.append(discord.File(io.BytesIO(bar_bytes), filename=bar_filename))
             option_embed.set_image(url=f"attachment://{bar_filename}")
-        elif img_src:
+        else:
             option_embed.set_image(url=img_src)
         option_embed.set_footer(text=f"{pct:.0f}% ({n} Stimme(n))")
         embeds.append(option_embed)
@@ -457,8 +459,8 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
     # attachments=, unlike view=, MUST be passed whenever chart_files is non-empty - unlike a
     # per-poll/per-option image (attached once, never touched again), a generated bar image's
     # whole content (the fill %) changes with every vote, so fresh ones have to ride along on
-    # every edit; the omit-to-preserve trick only applies to the OTHER, unrelated attachments (an
-    # option's own picture, now always in its embed's thumbnail slot - see build_poll_embed).
+    # every edit; the omit-to-preserve trick only applies when NOTHING in the poll needs a bar at
+    # all, so nothing here needed re-attaching in the first place (see build_poll_embed).
     if chart_files:
         await interaction.response.edit_message(embeds=embeds, attachments=chart_files)
     else:
