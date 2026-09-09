@@ -325,6 +325,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "server_users_info_item_grant": "Hier lässt sich für Moderatoren gezielt der Zugriff auf DIESEN einen Server freigeben oder entziehen.",
         "server_users_info_item_global": "Alternative Ansicht: unter Einstellungen → Benutzer lässt sich pro Nutzer auf einen Blick festlegen, auf welche Server er insgesamt zugreifen darf.",
         "server_users_tabs_hint":    "Alle Häkchen gesetzt = uneingeschränkter Zugriff auf alle Bereiche dieses Servers. Nur ausgewählte Häkchen beschränken diesen Moderator auf genau diese Reiter.",
+        "server_users_you":          "Du",
+        "server_users_promote":      "↑ Admin",
+        "server_users_demote":       "↓ Mod",
         # Config (Willkommen/Verlassen/Autorole)
         "config_welcome_channel_label": "Willkommens-Kanal",
         "config_channel_disabled_option": "— Deaktiviert —",
@@ -1100,6 +1103,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "server_users_info_item_grant": "Use this to grant or revoke a moderator's access to THIS one server specifically.",
         "server_users_info_item_global": "Alternative view: Settings → Users lets you see and set which servers a given user can access overall, at a glance.",
         "server_users_tabs_hint":    "All boxes checked = unrestricted access to every area of this server. Only checking some restricts this moderator to exactly those tabs.",
+        "server_users_you":          "You",
+        "server_users_promote":      "↑ Admin",
+        "server_users_demote":       "↓ Mod",
         # Config (Welcome/Leave/Autorole)
         "config_welcome_channel_label": "Welcome Channel",
         "welcome_info_tooltip":       "What is this?",

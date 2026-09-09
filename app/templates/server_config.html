@@ -1907,11 +1907,26 @@ document.addEventListener('click', function(e) {
 <div class="card">
   <p class="hint" style="margin-bottom:1rem;">{{ tr.server_users_hint }}</p>
   {% for u in all_users %}
-  <div style="display:flex;align-items:center;gap:0.75rem;padding:0.65rem 0;border-bottom:1px solid var(--border);">
+  <div style="display:flex;align-items:center;gap:0.75rem;padding:0.65rem 0;border-bottom:1px solid var(--border);flex-wrap:wrap;">
     <div style="flex:1;">
       <span style="font-weight:600;">{{ u.username }}</span>
       <span class="badge badge-{{ u.role }}" style="margin-left:0.5rem;font-size:0.72rem;">{{ u.role }}</span>
     </div>
+    {% if u.username == username %}
+    <span style="font-size:0.78rem;color:var(--muted);">{{ tr.server_users_you }}</span>
+    {% elif u.role == 'moderator' %}
+    <form method="post" action="/users/role/{{ u.id }}" style="margin:0;">
+      <input type="hidden" name="role" value="admin">
+      <input type="hidden" name="next" value="/servers/{{ guild.id }}?tab=users">
+      <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;padding:0.25rem 0.6rem;">{{ tr.server_users_promote }}</button>
+    </form>
+    {% elif server_admin_count > 1 %}
+    <form method="post" action="/users/role/{{ u.id }}" style="margin:0;">
+      <input type="hidden" name="role" value="moderator">
+      <input type="hidden" name="next" value="/servers/{{ guild.id }}?tab=users">
+      <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;padding:0.25rem 0.6rem;">{{ tr.server_users_demote }}</button>
+    </form>
+    {% endif %}
     {% if u.role == 'admin' %}
     <span style="color:var(--muted);font-size:0.8rem;">{{ tr.server_users_global_access }}</span>
     {% elif u.id in server_perms %}

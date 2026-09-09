@@ -1837,18 +1837,20 @@ async def users_create(request: Request, username: str = Form(...), password: st
 
 
 @web.post("/users/role/{user_id}")
-async def users_role(request: Request, user_id: int, role: str = Form(...)):
+async def users_role(request: Request, user_id: int, role: str = Form(...), next: str = Form("/users")):
     if r := admin_redirect(request): return r
+    dest = next if (next == "/users" or next.startswith("/servers/")) else "/users"
+    sep = "&" if "?" in dest else "?"
     if role not in ("admin", "moderator"):
-        return RedirectResponse("/users?error=Ungültige+Rolle", status_code=302)
+        return RedirectResponse(f"{dest}{sep}error=Ungültige+Rolle", status_code=302)
     if role == "moderator":
         other_admins = await db_one(
             "SELECT COUNT(*) as c FROM users WHERE role='admin' AND id!=?", (user_id,)
         )
         if not other_admins or other_admins.get("c", 0) == 0:
-            return RedirectResponse("/users?error=Letzter+Admin+kann+nicht+herabgestuft+werden", status_code=302)
+            return RedirectResponse(f"{dest}{sep}error=Letzter+Admin+kann+nicht+herabgestuft+werden", status_code=302)
     await db_exec("UPDATE users SET role=? WHERE id=?", (role, user_id))
-    return RedirectResponse("/users?success=Rolle+geändert", status_code=302)
+    return RedirectResponse(f"{dest}{sep}success=Rolle+geändert", status_code=302)
 
 
 @web.post("/users/delete/{user_id}")
@@ -4802,6 +4804,7 @@ async def server_config(
     server_user_allowed_tabs = {
         p["user_id"]: {t for t in (p["allowed_tabs"] or "").split(",") if t} for p in perm_rows
     }
+    server_admin_count = sum(1 for u in all_users if u["role"] == "admin")
 
     # Seeded once per guild, tracked separately from "table is empty" - otherwise a user who
     # deliberately deletes every preset would see the defaults silently reappear on next load.
@@ -4920,6 +4923,7 @@ async def server_config(
         "subs": subs, "twitch_configured": twitch_configured,
         "all_users": all_users, "server_perms": server_perms,
         "server_user_allowed_tabs": server_user_allowed_tabs,
+        "server_admin_count": server_admin_count,
         "automod_presets": automod_presets,
         "leveling_channels": leveling_channels,
         "level_roles": level_roles,
