@@ -1946,7 +1946,7 @@ document.addEventListener('click', function(e) {
     <form method="post" action="/servers/{{ guild.id }}/users/{{ u.id }}/tabs">
       <p class="hint" style="margin-bottom:0.6rem;">{{ tr.server_users_tabs_hint }}</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:0.4rem 1rem;margin-bottom:0.85rem;">
-        {% for key, label in toggleable_features.items() %}
+        {% for key, label in moderator_restrictable_tabs.items() %}
         <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;font-weight:400;">
           <input type="checkbox" name="tabs" value="{{ key }}" style="width:auto;margin:0;" {% if not allowed or key in allowed %}checked{% endif %}>
           {{ label }}

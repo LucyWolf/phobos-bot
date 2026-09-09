@@ -3050,7 +3050,7 @@ async def freestuff_page(request: Request, guild_id: str, success: str = "", err
         return RedirectResponse("/servers", status_code=302)
     user_allowed_tabs = await _viewer_allowed_tabs(request, guild_id)
     if user_allowed_tabs is not None and "freestuff" not in user_allowed_tabs:
-        return RedirectResponse(f"/servers/{guild_id}?tab=config&error=Kein+Zugriff+auf+diesen+Bereich", status_code=302)
+        return _redirect_no_access(guild_id, user_allowed_tabs)
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
     cfg = await db_one("SELECT * FROM freestuff_channels WHERE guild_id=?", (guild_id,))
     return templates.TemplateResponse("freestuff.html", {
@@ -3750,7 +3750,7 @@ async def notifications_page(request: Request, guild_id: str, success: str = "",
         return RedirectResponse("/servers", status_code=302)
     user_allowed_tabs = await _viewer_allowed_tabs(request, guild_id)
     if user_allowed_tabs is not None and "notifications" not in user_allowed_tabs:
-        return RedirectResponse(f"/servers/{guild_id}?tab=config&error=Kein+Zugriff+auf+diesen+Bereich", status_code=302)
+        return _redirect_no_access(guild_id, user_allowed_tabs)
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
     subs = await db_rows("SELECT * FROM notifications WHERE guild_id=? ORDER BY platform, target_name", (guild_id,))
     uid = request.session.get("user_id")
@@ -4303,7 +4303,7 @@ async def server_log_page(request: Request, guild_id: str, success: str = "", er
         return RedirectResponse("/servers", status_code=302)
     user_allowed_tabs = await _viewer_allowed_tabs(request, guild_id)
     if user_allowed_tabs is not None and "log" not in user_allowed_tabs:
-        return RedirectResponse(f"/servers/{guild_id}?tab=config&error=Kein+Zugriff+auf+diesen+Bereich", status_code=302)
+        return _redirect_no_access(guild_id, user_allowed_tabs)
     uid = request.session.get("user_id")
     if limit is not None and limit in LOG_LIMIT_OPTIONS:
         if uid:
@@ -4461,13 +4461,17 @@ _SERVER_CONFIG_TAB_LABELS = {
     "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen", "ratings": "⭐ Bewertungen",
 }
 
-# Features an admin can hide from THIS server's own sidebar to cut down on clutter for
-# servers that only use a handful of them - "config" (base settings), "users" (access
-# control) and "botdesign" (bot identity) are deliberately left out of this list and stay
-# permanently visible, since they're structural/administrative rather than a feature someone
-# would opt in or out of. Hiding a tab here only removes its sidebar link - a bookmarked or
-# manually-typed URL to it still works, this is about decluttering navigation, not gating
-# access (that's what user_guild_permissions/admin-only routes already handle separately).
+# Features an admin can hide from THIS server's own sidebar (for everyone alike) to cut down on
+# clutter for servers that only use a handful of them - "config" (base settings), "users"
+# (access control) and "botdesign" (bot identity) are deliberately left out of THIS server-wide
+# list and stay permanently visible here, since they're structural/administrative rather than a
+# feature someone would opt in or out of for the whole server. Hiding a tab here only removes
+# its sidebar link - a bookmarked or manually-typed URL to it still works, this is about
+# decluttering navigation, not gating access (that's what user_guild_permissions/admin-only
+# routes already handle separately). "config" specifically CAN still be hidden on a PER-
+# MODERATOR basis though - see _MODERATOR_RESTRICTABLE_TABS just below, a separate, narrower
+# restriction that only ever affects one already-granted moderator at a time, never the server
+# as a whole.
 _TOGGLEABLE_FEATURES = {
     "welcome": "👋 Willkommen",
     "automod": "🛡️ Spam-Schutz", "leveling": "🏆 Leveling", "rr": "🎭 Reaction Roles",
@@ -4478,6 +4482,37 @@ _TOGGLEABLE_FEATURES = {
     "log": "📋 Log", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
     "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen", "ratings": "⭐ Bewertungen",
 }
+
+# User-requested ("ich will den das der mod auch nur das sieht was weigegeben ist ... also
+# komplete ausblendung") - unlike _TOGGLEABLE_FEATURES above (server-wide declutter, config/
+# users/botdesign deliberately excluded and always visible), the per-moderator restriction on
+# the "👥 Nutzer" tab DOES let an admin hide "⚙️ Config" for a specific moderator - that tab's
+# own content (feature-toggle + backup/restore) is already admin-only in the template regardless
+# of this, so restricting it here is pure sidebar declutter, never a new access boundary. "users"/
+# "botdesign" stay out of this superset too: their content is likewise already fully admin-gated
+# (a restricted moderator visiting either just sees an empty/admin-only state), so hiding their
+# links wouldn't add anything a determined narrowing-down admin actually needs.
+_MODERATOR_RESTRICTABLE_TABS = {**_TOGGLEABLE_FEATURES, "config": "⚙️ Config"}
+
+
+def _restriction_fallback_url(guild_id, user_allowed_tabs: Optional[set]) -> str:
+    """Where to bounce a moderator away from a tab they don't have - never straight back to
+    'config' if THAT is also one of their blocked tabs (would otherwise redirect right back
+    into the same enforcement check, config -> config -> ...). Picks their own 'config' first
+    if they still have it (keeps the familiar landing spot for everyone else), else the first
+    tab they DO have. `user_allowed_tabs` is only ever empty for a row that was never actually
+    restricted (see _user_guild_allowed_tabs - an all-unchecked save also normalizes to
+    unrestricted), so a restricted moderator always has at least one tab left to land on."""
+    if user_allowed_tabs:
+        tab = "config" if "config" in user_allowed_tabs else sorted(user_allowed_tabs)[0]
+        return f"/servers/{guild_id}?tab={tab}"
+    return "/servers"
+
+
+def _redirect_no_access(guild_id, user_allowed_tabs: Optional[set]) -> RedirectResponse:
+    base = _restriction_fallback_url(guild_id, user_allowed_tabs)
+    sep = "&" if "?" in base else "?"
+    return RedirectResponse(f"{base}{sep}error=Kein+Zugriff+auf+diesen+Bereich", status_code=302)
 
 
 async def _get_enabled_features(guild_id) -> set:
@@ -4547,14 +4582,13 @@ async def server_config(
         return RedirectResponse("/", status_code=302)
 
     # A restricted moderator ("nur umfragen oder tikets") gets bounced off any tab outside their
-    # own allowed set - "config"/"users"/"botdesign" stay reachable regardless (same structural-
-    # vs-feature line _TOGGLEABLE_FEATURES already draws for enabled_features), an admin is never
-    # subject to this at all.
+    # own allowed set - "users"/"botdesign" stay reachable regardless (their content is already
+    # fully admin-gated in the template either way), but "config" CAN be hidden per moderator
+    # too (_MODERATOR_RESTRICTABLE_TABS) since the user explicitly asked for it to be fully
+    # hideable, not just its content admin-gated. An admin is never subject to this at all.
     user_allowed_tabs = await _viewer_allowed_tabs(request, guild_id)
-    if user_allowed_tabs is not None and tab in _TOGGLEABLE_FEATURES and tab not in user_allowed_tabs:
-        return RedirectResponse(
-            f"/servers/{guild_id}?tab=config&error=Kein+Zugriff+auf+diesen+Bereich", status_code=302
-        )
+    if user_allowed_tabs is not None and tab in _MODERATOR_RESTRICTABLE_TABS and tab not in user_allowed_tabs:
+        return _redirect_no_access(guild_id, user_allowed_tabs)
 
     token_set = await _token_configured()
     cfg = await get_all_guild_config(guild_id)
@@ -4941,6 +4975,7 @@ async def server_config(
         "amp_raw_debug": amp_raw_debug,
         "welcome_overlay_presets": _WELCOME_OVERLAY_PRESETS,
         "toggleable_features": _TOGGLEABLE_FEATURES,
+        "moderator_restrictable_tabs": _MODERATOR_RESTRICTABLE_TABS,
         "enabled_features": await _get_enabled_features(guild_id),
         "user_allowed_tabs": user_allowed_tabs,
         "scheduled_messages": _scheduled_messages,
@@ -6845,12 +6880,12 @@ async def server_user_tabs_save(request: Request, guild_id: int, user_id: int):
     if not row:
         return RedirectResponse(f"/servers/{guild_id}?tab=users&error=Kein+Zugriff+gewährt", status_code=302)
     form = await request.form()
-    submitted = {t for t in form.getlist("tabs") if t in _TOGGLEABLE_FEATURES}
+    submitted = {t for t in form.getlist("tabs") if t in _MODERATOR_RESTRICTABLE_TABS}
     # Every toggleable tab checked is equivalent to no restriction at all - stored as an empty
     # string so it reads the exact same way as "never restricted" everywhere else (an admin who
     # later ADDS a brand-new feature tab shouldn't have it silently stay blocked for a moderator
     # who was simply granted "everything" back when fewer tabs existed).
-    allowed_tabs = "" if submitted == set(_TOGGLEABLE_FEATURES.keys()) else ",".join(sorted(submitted))
+    allowed_tabs = "" if submitted == set(_MODERATOR_RESTRICTABLE_TABS.keys()) else ",".join(sorted(submitted))
     await db_exec(
         "UPDATE user_guild_permissions SET allowed_tabs=? WHERE user_id=? AND guild_id=?",
         (allowed_tabs, user_id, str(guild_id)),
