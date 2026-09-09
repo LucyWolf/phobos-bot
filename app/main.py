@@ -7167,11 +7167,11 @@ async def poll_create_web(request: Request, guild_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&success=Umfrage+geplant", status_code=302)
 
     # An option's own uploaded picture is NOT separately attached here - _build_poll_embed's
-    # chart_files is now the complete, authoritative attachment list for every option (composited
-    # into a combo PNG with its bar, re-attached as-is for its two-card fallback, or not needed
-    # at all for a plain URL) - attaching it again here as well would create a stray, UNREFERENCED
-    # duplicate attachment for a composited option (Discord shows an attachment nobody's embed
-    # points to as its own extra inline image at the bottom of the message).
+    # chart_files is now the complete, authoritative attachment list (the one combined image
+    # holding every option's own picture/bar, see cogs/polls.py's _render_combined_poll_image) -
+    # attaching an option's raw upload again here as well would create a stray, UNREFERENCED
+    # duplicate attachment (Discord shows an attachment nobody's embed points to as its own
+    # extra inline image at the bottom of the message).
     files = _embed_post_files(final_image_data, final_image_filename)
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
     embeds, chart_files = _build_poll_embed(
@@ -7405,10 +7405,10 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
         ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "", bar_color=bar_color,
     )
     # An option's own uploaded picture is NOT separately attached here - chart_files is now the
-    # complete, authoritative attachment list for every option (composited into a combo PNG with
-    # its bar, re-attached as-is for its two-card fallback, or not needed at all for a plain URL)
-    # - attaching it again here as well would create a stray, UNREFERENCED duplicate attachment
-    # for a composited option (see _build_poll_embed's docstring).
+    # complete, authoritative attachment list (the one combined image holding every option's
+    # own picture/bar, see cogs/polls.py's _render_combined_poll_image) - attaching an option's
+    # raw upload again here as well would create a stray, UNREFERENCED duplicate attachment (see
+    # _build_poll_embed's docstring).
     files = _embed_post_files(final_image_data, final_image_filename)
     files.extend(chart_files)
     channel = bot.get_channel(int(poll["channel_id"])) if poll["channel_id"] else None
