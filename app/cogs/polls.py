@@ -62,6 +62,38 @@ def _pct_line(label: str, n: int, total: int) -> tuple:
     return f"**{label}**\n{pct:.0f}% ({n} Stimme(n))", pct
 
 
+MAX_DESCRIPTION_CHARS = 3900  # Discord's real embed-description hard limit is 4096 - same
+# safety margin already used elsewhere in this project for user-editable text blocks. Matters
+# here because the header embed's description can carry a per-option link line (label up to 80
+# chars + a link_url up to 500, see main.py's poll_create_web/poll_edit_web) for as many as 25
+# options - unbounded, that's up to ~14,700 characters, several times over the real limit, which
+# would make Discord reject the whole send/edit outright (exactly the VRChat-multi-map-with-
+# links use case this feature exists for).
+
+
+def _cap_text_lines(lines: list, budget: int, joiner: str, more_label: str) -> str:
+    """Joins as many whole `lines` (in order) with `joiner` as fit within `budget` characters -
+    stops the moment the NEXT full line wouldn't fit rather than cutting one in half (a half-
+    emitted markdown link like "[label](https://exam" can't be parsed as a link at all by
+    Discord, worse than just not showing it) and appends one final line (`more_label`, formatted
+    with the count of everything left out) for whatever had to be dropped. Returns '' for an
+    empty `lines`."""
+    if not lines:
+        return ""
+    if budget <= 0:
+        return more_label.format(n=len(lines))
+    kept = []
+    used = 0
+    for i, line in enumerate(lines):
+        added = len(line) + (len(joiner) if kept else 0)
+        if used + added > budget:
+            kept.append(more_label.format(n=len(lines) - i))
+            break
+        kept.append(line)
+        used += added
+    return joiner.join(kept)
+
+
 def _fit_text(draw, text: str, font, max_width: float) -> str:
     if draw.textlength(text, font=font) <= max_width:
         return text
@@ -262,15 +294,30 @@ def build_poll_embed(
         # Legacy per-poll banner image already occupies the header's image slot (a poll created
         # before v1.15.20) - keep showing IT rather than silently swapping in the combined
         # options image, and fall back to a plain percentage line since there's no image slot
-        # left for anything else.
-        header_lines += [_pct_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in options]
+        # left for anything else. Budget-capped same as the link list below - up to 25 options'
+        # worth of these lines could otherwise exceed Discord's real description limit on their
+        # own, before the header's own timestamp lines are even counted.
+        pct_lines = [_pct_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in options]
+        used = len("\n\n".join(header_lines)) + (4 if header_lines else 0)
+        capped = _cap_text_lines(
+            pct_lines, MAX_DESCRIPTION_CHARS - used, "\n\n", "… und {n} weitere Optionen ohne Platz"
+        )
+        if capped:
+            header_lines.append(capped)
 
     # A clickable link can never live inside the combined image itself (see this function's own
     # docstring) - listed as its own markdown line per option that has one, right after
-    # everything else in the header's description.
+    # everything else in the header's description. Budget-capped against the SAME real Discord
+    # limit (see MAX_DESCRIPTION_CHARS) - a poll with many options each carrying their own long
+    # link (e.g. several VRChat world links) could otherwise push the whole description past
+    # what Discord accepts, making the entire send/edit fail outright rather than just this list
+    # looking incomplete.
     link_lines = [f"🔗 [{opt['label']}]({opt['link_url']})" for opt in options if opt.get("link_url")]
     if link_lines:
-        header_lines.append("\n".join(link_lines))
+        used = len("\n\n".join(header_lines)) + (4 if header_lines else 0)
+        capped = _cap_text_lines(link_lines, MAX_DESCRIPTION_CHARS - used, "\n", "🔗 … und {n} weitere Links")
+        if capped:
+            header_lines.append(capped)
 
     if header_lines:
         header.description = "\n\n".join(header_lines)
@@ -346,10 +393,35 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
     # whole content (the fill %) changes with every vote, so fresh ones have to ride along on
     # every edit; the omit-to-preserve trick only applies when NOTHING in the poll needs a bar at
     # all, so nothing here needed re-attaching in the first place (see build_poll_embed).
-    if chart_files:
-        await interaction.response.edit_message(embeds=embeds, attachments=chart_files)
-    else:
-        await interaction.response.edit_message(embeds=embeds)
+    try:
+        if chart_files:
+            await interaction.response.edit_message(embeds=embeds, attachments=chart_files)
+        else:
+            await interaction.response.edit_message(embeds=embeds)
+    except (discord.HTTPException, OSError) as e:
+        # The vote is already written to the DB above by this point - a failure here (a genuine
+        # network hiccup, or discord.py 2.3.2's http.py re-raising a real connection failure
+        # unwrapped on Linux; also newly reachable since the combined chart image can grow large
+        # enough with many picture options to exceed Discord's upload size limit) would
+        # otherwise leave the vote counted but the visible message never updated, with zero
+        # feedback for the voter - every other Discord-API call in this file already has this
+        # same guard, this was the one gap. response.send_message can itself raise
+        # InteractionResponded if edit_message got far enough to consume the response before
+        # failing - followup is the only thing left that can still reach the user in that case.
+        print(f"[Polls] failed to update poll {poll_id} after vote: {e}")
+        try:
+            await interaction.response.send_message(
+                "Deine Stimme wurde gezählt, aber die Anzeige konnte nicht aktualisiert werden.",
+                ephemeral=True,
+            )
+        except discord.InteractionResponded:
+            try:
+                await interaction.followup.send(
+                    "Deine Stimme wurde gezählt, aber die Anzeige konnte nicht aktualisiert werden.",
+                    ephemeral=True,
+                )
+            except Exception:
+                pass
 
 
 class Polls(commands.Cog):
