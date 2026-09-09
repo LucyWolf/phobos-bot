@@ -15,6 +15,7 @@ except ImportError:
 import discord
 from discord.ext import commands, tasks
 from database import db_rows, db_exec
+from cogs.log_utils import log_bot_event
 
 # Kept identical to main.py's own copies (events_create/events_edit) - both must announce the
 # exact same text so a viewer can't tell the difference between a first occurrence created via
@@ -90,7 +91,15 @@ class Scheduler(commands.Cog):
                     else:
                         await ch.send(row["message"])
                 else:
+                    # Only a genuine standalone scheduled message (not tied to an event's own
+                    # reminder/announcement, handled above) counts as "scheduled" for the
+                    # opt-in bot-action log - an event reminder is conceptually a different
+                    # thing and would misrepresent what the category name promises.
                     await ch.send(row["message"])
+                    await log_bot_event(
+                        self.bot, int(row["guild_id"]), "📨", "Geplante Nachricht gesendet", "scheduled",
+                        plain=f"#{ch.name} · {row['message'][:200]}",
+                    )
                 await db_exec("UPDATE scheduled_messages SET sent=1 WHERE id=?", (row["id"],))
             except Exception as e:
                 # Unlike `if not ch: continue` above (which can legitimately mean another bot

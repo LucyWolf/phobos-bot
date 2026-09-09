@@ -7,6 +7,7 @@ import time
 import discord
 from discord.ext import commands
 from database import get_guild_config, db_exec, log_mod_action
+from cogs.log_utils import log_bot_event
 
 # discord.gg/... was the only invite format matched without a http(s):// prefix - Discord
 # invites shared as plain text just as often use discord.com/invite/... or the legacy
@@ -141,6 +142,10 @@ class AutoMod(commands.Cog):
             print(f"[AutoMod] Konnte {action} nicht ausführen auf {member}: {e}")
             return
         await log_mod_action(f"automod:{action}", member, bot_member, message.guild.id, reason)
+        await log_bot_event(
+            self.bot, message.guild.id, "🛡️", "Auto-Mod-Aktion", "automod",
+            plain=f"{action} · {member.display_name} · {reason}",
+        )
 
 
 async def setup(bot):

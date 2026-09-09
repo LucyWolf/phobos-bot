@@ -115,6 +115,7 @@ from cogs.ratings import (
     build_ratings_embed as _build_ratings_embed, RatingsListView as _RatingsListView,
     refresh_posted_list as _refresh_ratings_list,
 )
+from cogs.log_utils import log_bot_event as _log_bot_event, BOT_EVENT_CATEGORIES
 from i18n import get_tr
 import uvicorn
 from discord.ext import commands
@@ -563,11 +564,13 @@ templates.env.filters["jsraw"] = _js_raw
 def _log_bar_class(icon: str) -> str:
     _map = {
         "📥": "bar-green", "✅": "bar-green", "🔊": "bar-green", "📁": "bar-green",
+        "🎉": "bar-green", "🏆": "bar-green",
         "📤": "bar-red",   "🔨": "bar-red",   "🔇": "bar-red",   "🗑️": "bar-red",
+        "🛡️": "bar-red",
         "✏️": "bar-yellow", "🔀": "bar-amber",
-        "⏱️": "bar-amber",
-        "🏷️": "bar-blue",
-        "💎": "bar-pink",
+        "⏱️": "bar-amber",  "⚠️": "bar-amber",
+        "🏷️": "bar-blue",   "🗳️": "bar-blue",  "🎫": "bar-blue", "📨": "bar-blue",
+        "💎": "bar-pink",   "🎂": "bar-pink",
     }
     for k, v in _map.items():
         if icon and k in icon:
@@ -4346,8 +4349,14 @@ async def servers_list(request: Request, success: str = ""):
 LOG_LIMIT_OPTIONS = (10, 50, 100, 200)
 # Matches the 9 bullet points already documented in the Log page's info box
 # (log_info_item_member/_roles/_bans/_delete/_bulk/_edit/_voice/_channel/_boost) - one
-# category per bullet, tagged by cogs/logging_cog.py on every write.
-LOG_CATEGORIES = ("member", "roles", "bans", "delete", "bulk", "edit", "voice", "channel", "boost")
+# category per bullet, tagged by cogs/logging_cog.py on every write. Always-on (no per-server
+# switch), unlike BOT_EVENT_CATEGORIES below.
+NATIVE_LOG_CATEGORIES = ("member", "roles", "bans", "delete", "bulk", "edit", "voice", "channel", "boost")
+# The per-user display filter (checkboxes on the Log page) covers both the always-on native
+# Discord-event categories AND the opt-in bot-action categories (cogs/log_utils.py) with the
+# exact same mechanism - a viewer doesn't need to care which of the two a category belongs to
+# when deciding what to look at.
+LOG_CATEGORIES = NATIVE_LOG_CATEGORIES + BOT_EVENT_CATEGORIES
 
 
 @web.get("/servers/{guild_id}/log", response_class=HTMLResponse)
@@ -4392,6 +4401,8 @@ async def server_log_page(request: Request, guild_id: str, success: str = "", er
     log_channel = await get_guild_config(int(guild_id), "log_channel") or ""
     exclude_raw = await get_guild_config(int(guild_id), "log_exclude_channels") or ""
     log_exclude_channels = [c.strip() for c in exclude_raw.split(",") if c.strip()]
+    bot_events_raw = await get_guild_config(int(guild_id), "log_bot_events") or ""
+    active_bot_events = [c.strip() for c in bot_events_raw.split(",") if c.strip()]
     if log_categories_value:
         # Rows written before this feature existed (or by a future, not-yet-known category)
         # carry an empty category - always shown regardless of the filter, so switching the
@@ -4418,6 +4429,7 @@ async def server_log_page(request: Request, guild_id: str, success: str = "", er
         "logs": logs, "success": success, "error": error,
         "log_limit": limit, "log_limit_options": LOG_LIMIT_OPTIONS,
         "log_categories": LOG_CATEGORIES, "active_log_categories": active_log_categories,
+        "bot_event_categories": BOT_EVENT_CATEGORIES, "active_bot_events": active_bot_events,
         "enabled_features": await _get_enabled_features(guild_id),
         "user_allowed_tabs": user_allowed_tabs,
     })
@@ -4438,10 +4450,12 @@ async def server_log_save(request: Request, guild_id: str):
     if log_channel and log_channel not in valid_channel_ids:
         return RedirectResponse(f"/servers/{guild_id}/log?error=Ungültiger+Log-Kanal", status_code=302)
     exclude_channels = ",".join(c for c in form.getlist("log_exclude_channels") if c in valid_channel_ids)
+    bot_events = ",".join(c for c in form.getlist("log_bot_events") if c in BOT_EVENT_CATEGORIES)
 
     from database import set_guild_config
     await set_guild_config(int(guild_id), "log_channel", log_channel)
     await set_guild_config(int(guild_id), "log_exclude_channels", exclude_channels)
+    await set_guild_config(int(guild_id), "log_bot_events", bot_events)
     return RedirectResponse(f"/servers/{guild_id}/log?success=1", status_code=302)
 
 
@@ -5837,6 +5851,10 @@ async def ticket_close(request: Request, guild_id: int, ticket_id: int):
         "UPDATE tickets SET status='closed' WHERE id=? AND guild_id=?",
         (ticket_id, guild_id),
     )
+    await _log_bot_event(
+        bot, guild_id, "🔒", "Ticket geschlossen", "ticket",
+        plain=f"#{ch.name} · über Dashboard" if ch else "über Dashboard",
+    )
     return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Ticket+geschlossen", status_code=302)
 
 
@@ -7170,6 +7188,10 @@ async def giveaway_start_web(
     cog = b.cogs.get("Giveaways") if b else None
     if cog and g:
         cog._schedule(g)
+    await _log_bot_event(
+        bot, guild_id, "🎉", "Giveaway gestartet", "giveaway",
+        plain=f"{prize} · #{channel.name} · {winners} Gewinner",
+    )
 
     return RedirectResponse(
         f"/servers/{guild_id}?tab=giveaways&success=Giveaway+gestartet", status_code=302
@@ -7445,6 +7467,10 @@ async def poll_create_web(request: Request, guild_id: int):
         await db_exec("DELETE FROM polls WHERE id=?", (pid,))
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Umfrage+konnte+nicht+gepostet+werden", status_code=302)
     await db_exec("UPDATE polls SET message_id=? WHERE id=?", (str(msg.id), pid))
+    await _log_bot_event(
+        bot, guild_id, "🗳️", "Umfrage gepostet", "poll",
+        plain=f"{question} · #{channel.name} · {len(opt_rows)} Optionen",
+    )
     if ends_at:
         b = bot._bot_for_guild(guild_id)
         cog = b.cogs.get("Polls") if b else None

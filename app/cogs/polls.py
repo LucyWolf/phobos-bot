@@ -10,6 +10,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from database import db_exec, db_exec_rowcount, db_insert, db_one, db_rows
+from cogs.log_utils import log_bot_event
 
 MAX_OPTIONS = 25  # Discord's own hard ceiling for buttons on one message (5 rows x 5) - there
 # is no way to have "unlimited" options with a button-per-option design, this is the real max.
@@ -566,6 +567,10 @@ class Polls(commands.Cog):
             "UPDATE polls SET message_id=?, ends_at=?, created_at=? WHERE id=?",
             (str(msg.id), ends_at, created_at, poll_id),
         )
+        await log_bot_event(
+            self.bot, int(poll["guild_id"]), "🗳️", "Umfrage gepostet", "poll",
+            plain=f"{poll['question']} · #{channel.name} · {len(options)} Optionen",
+        )
         if ends_at:
             poll_row = await db_one("SELECT * FROM polls WHERE id=?", (poll_id,))
             self._schedule(poll_row)
@@ -605,6 +610,11 @@ class Polls(commands.Cog):
                 await msg.edit(embeds=embeds, view=None)
         except Exception as e:
             print(f"[Polls] failed to finalize poll {poll_id}: {e}")
+        total_votes = sum(counts.values())
+        await log_bot_event(
+            self.bot, int(poll["guild_id"]), "🔒", "Umfrage beendet", "poll",
+            plain=f"{poll['question']} · {total_votes} Stimme(n)",
+        )
 
     @app_commands.command(name="poll-create", description="Umfrage erstellen")
     @app_commands.default_permissions(manage_guild=True)
@@ -669,6 +679,10 @@ class Polls(commands.Cog):
             await interaction.followup.send(f"Umfrage konnte nicht gestartet werden: {e}", ephemeral=True)
             return
         await db_exec("UPDATE polls SET message_id=? WHERE id=?", (str(msg.id), pid))
+        await log_bot_event(
+            self.bot, interaction.guild_id, "🗳️", "Umfrage gepostet", "poll",
+            plain=f"{question} · #{interaction.channel.name} · {len(options)} Optionen",
+        )
         if ends_at:
             poll_row = await db_one("SELECT * FROM polls WHERE id=?", (pid,))
             self._schedule(poll_row)

@@ -6,6 +6,7 @@ import datetime
 import discord
 from discord.ext import commands, tasks
 from database import db_rows, db_exec, db_exec_rowcount, get_guild_config
+from cogs.log_utils import log_bot_event
 
 try:
     from zoneinfo import ZoneInfo
@@ -73,6 +74,10 @@ class Birthday(commands.Cog):
                 embed.set_author(name=member.display_name, icon_url=member.display_avatar.url)
                 embed.set_thumbnail(url=member.display_avatar.url)
                 await channel.send(embed=embed)
+                await log_bot_event(
+                    self.bot, int(gid), "🎂", "Geburtstags-Glückwunsch gesendet", "birthday",
+                    plain=f"{member.display_name} · #{channel.name}",
+                )
             except Exception:
                 pass
 

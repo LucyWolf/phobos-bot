@@ -5,6 +5,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from database import log_mod_action, db_rows, db_exec
+from cogs.log_utils import log_bot_event
 
 
 class Moderation(commands.Cog):
@@ -65,6 +66,10 @@ class Moderation(commands.Cog):
             (member.id, interaction.guild_id, interaction.user.id, reason),
         )
         await log_mod_action("warn", member, interaction.user, interaction.guild_id, reason)
+        await log_bot_event(
+            self.bot, interaction.guild_id, "⚠️", "Verwarnung erteilt", "warning",
+            plain=f"{member.display_name} · von {interaction.user.display_name} · {reason}",
+        )
         # The warning itself is already saved above regardless of what happens next - only
         # truncate the echoed reason here, not what's stored, so a very long reason (Discord's
         # slash command string limit is well above 2000) can't make this confirmation message

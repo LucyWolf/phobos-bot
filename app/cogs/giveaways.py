@@ -8,6 +8,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from database import db_exec, db_exec_rowcount, db_insert, db_one, db_rows
+from cogs.log_utils import log_bot_event
 
 
 GIVEAWAY_EMOJI = "🎉"
@@ -79,6 +80,10 @@ class Giveaways(commands.Cog):
                 # task, or a web route where it'd surface as a raw 500 instead of the normal
                 # redirect).
                 print(f"[Giveaways] no-participants announcement failed for giveaway {giveaway_id}: {e}")
+            await log_bot_event(
+                self.bot, g["guild_id"], "🏆", "Giveaway beendet", "giveaway",
+                plain=f"{g['prize']} · niemand hat teilgenommen",
+            )
             return
 
         # A reroll (giveaway_reroll resets ended=0 and calls this again) would otherwise be
@@ -124,6 +129,10 @@ class Giveaways(commands.Cog):
                 )
             except Exception:
                 pass
+        await log_bot_event(
+            self.bot, g["guild_id"], "🏆", "Giveaway beendet", "giveaway",
+            plain=f"{g['prize']} · Gewinner: {', '.join(str(w) for w in winners)}",
+        )
 
     @app_commands.command(name="giveaway-start", description="Giveaway starten")
     @app_commands.default_permissions(manage_guild=True)
@@ -173,6 +182,10 @@ class Giveaways(commands.Cog):
 
         g = await db_one("SELECT * FROM giveaways WHERE id=?", (gid,))
         self._schedule(g)
+        await log_bot_event(
+            self.bot, interaction.guild_id, "🎉", "Giveaway gestartet", "giveaway",
+            plain=f"{prize} · #{interaction.channel.name} · {winners} Gewinner",
+        )
         await interaction.followup.send(f"Giveaway gestartet! Endet in {duration_minutes} Minuten.", ephemeral=True)
 
     @app_commands.command(name="giveaway-end", description="Giveaway sofort beenden")

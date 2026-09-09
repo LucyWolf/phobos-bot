@@ -11,6 +11,7 @@ import discord
 from discord import app_commands, ui
 from discord.ext import commands
 from database import db_exec, db_one, db_rows
+from cogs.log_utils import log_bot_event
 
 
 def _fill_ticket_placeholders(text: str, member: discord.Member, guild: discord.Guild) -> str:
@@ -102,6 +103,10 @@ class _CloseTicketButton(ui.Button):
         ):
             return
         await db_exec("UPDATE tickets SET status='closed' WHERE channel_id=?", (interaction.channel_id,))
+        await log_bot_event(
+            interaction.client, interaction.guild.id, "🔒", "Ticket geschlossen", "ticket",
+            plain=f"#{interaction.channel.name} · von {interaction.user.display_name}",
+        )
 
 
 class CloseTicketView(ui.View):
@@ -238,6 +243,10 @@ class PanelButton(ui.Button):
                 ping += f" {support_role.mention}"
             close_label = panel.get("close_button_label") or "Ticket schließen"
             await channel.send(content=ping, embeds=embeds, view=CloseTicketView(close_label))
+            await log_bot_event(
+                interaction.client, guild.id, "🎫", "Ticket erstellt", "ticket",
+                plain=f"{interaction.user.display_name} · Panel: {panel['name']} · #{channel.name}",
+            )
             await interaction.response.send_message(f"Ticket erstellt: {channel.mention}", ephemeral=True)
         except Exception as e:
             # If channel creation itself fails (missing "Manage Channels" permission, guild
@@ -302,6 +311,10 @@ class Tickets(commands.Cog):
         ):
             return
         await db_exec("UPDATE tickets SET status='closed' WHERE channel_id=?", (interaction.channel_id,))
+        await log_bot_event(
+            interaction.client, interaction.guild.id, "🔒", "Ticket geschlossen", "ticket",
+            plain=f"#{interaction.channel.name} · von {interaction.user.display_name}",
+        )
 
 
 async def setup(bot):
