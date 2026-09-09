@@ -7226,17 +7226,23 @@ async def poll_delete_web(request: Request, guild_id: int, poll_id: int):
     if not poll:
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Umfrage+nicht+gefunden", status_code=302)
     if poll["message_id"]:
-        channel = bot.get_channel(int(poll["channel_id"])) if poll["channel_id"] else None
-        if channel:
-            try:
+        # The whole block - including the int(channel_id) conversion, not just the actual
+        # network calls - is inside this one try/except: a malformed channel_id (DB corruption
+        # or manual tampering, channel_id is always a validated str(channel.id) under normal
+        # operation) would otherwise raise OUTSIDE any handler and crash this whole route with
+        # an unhandled 500, even though the DB rows get deleted just fine below regardless of
+        # whether this Discord-side cleanup succeeds.
+        try:
+            channel = bot.get_channel(int(poll["channel_id"])) if poll["channel_id"] else None
+            if channel:
                 msg = await channel.fetch_message(int(poll["message_id"]))
                 await msg.delete()
-            except Exception:
-                # Already deleted directly in Discord, channel gone, or bot offline for this
-                # guild's token - the dashboard/DB side of the delete below must not depend on
-                # this succeeding, same best-effort principle as every other live-message
-                # touch-point in this file.
-                pass
+        except Exception:
+            # Already deleted directly in Discord, channel gone, or bot offline for this
+            # guild's token - the dashboard/DB side of the delete below must not depend on
+            # this succeeding, same best-effort principle as every other live-message
+            # touch-point in this file.
+            pass
     await db_exec("DELETE FROM poll_votes WHERE poll_id=?", (poll_id,))
     await db_exec("DELETE FROM poll_options WHERE poll_id=?", (poll_id,))
     await db_exec("DELETE FROM polls WHERE id=?", (poll_id,))
@@ -7447,9 +7453,15 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     # _build_poll_embed's docstring).
     files = _embed_post_files(final_image_data, final_image_filename)
     files.extend(chart_files)
-    channel = bot.get_channel(int(poll["channel_id"])) if poll["channel_id"] else None
-    if channel and poll["message_id"]:
-        try:
+    # The int(channel_id) conversion sits INSIDE this try/except too, not just the network
+    # calls after it - the DB save above already succeeded regardless of what happens here (a
+    # malformed channel_id, DB corruption or manual tampering since it's always a validated
+    # str(channel.id) under normal operation, would otherwise crash this whole route with an
+    # unhandled 500 AFTER the save already went through - directly contradicting this block's
+    # own "best-effort, doesn't matter if it fails" comment below).
+    try:
+        channel = bot.get_channel(int(poll["channel_id"])) if poll["channel_id"] else None
+        if channel and poll["message_id"]:
             msg = await channel.fetch_message(int(poll["message_id"]))
             # Buttons can change (an option was renamed/added/removed) so, unlike a plain vote,
             # view= is passed explicitly here rather than omitted - same reasoning as
@@ -7460,11 +7472,11 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
             # moment an image is swapped/removed during this edit (same reasoning as
             # embed_post_update's identical attachments= usage above).
             await msg.edit(embeds=embeds, view=view, attachments=files)
-        except Exception:
-            # Best-effort - the DB save above already succeeded regardless of whether the live
-            # Discord message could still be found/edited (channel or message deleted, bot
-            # offline for this guild's token, etc.).
-            pass
+    except Exception:
+        # Best-effort - the DB save above already succeeded regardless of whether the live
+        # Discord message could still be found/edited (channel or message deleted, bot
+        # offline for this guild's token, etc.).
+        pass
     return RedirectResponse(f"/servers/{guild_id}?tab=polls&success=Umfrage+aktualisiert", status_code=302)
 
 
