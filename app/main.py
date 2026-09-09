@@ -7093,14 +7093,16 @@ async def poll_create_web(request: Request, guild_id: int):
             "VALUES (?,?,?,?,?,?,?,?,?)",
             (pid, i, label[:80], opt_final_url[:500], opt_link[:500], opt_final_data, opt_final_filename, opt_size, opt_width),
         )
-        files += _embed_post_files(opt_final_data, opt_final_filename)
+    # An option's own uploaded picture is NOT separately re-attached here (unlike the per-poll
+    # banner image right above) - _build_poll_embed()'s chart_files already includes it for
+    # every option that has one, alongside that option's freshly generated bar image, so both
+    # ride together on the SAME discord.File list without a duplicate-filename collision.
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
-    embeds, chart_file = _build_poll_embed(
+    embeds, chart_files = _build_poll_embed(
         question, multiple, opt_rows, {}, image_url=final_image_url, image_filename=final_image_filename,
         ends_at=ends_at, created_at=created_at, bar_color=bar_color,
     )
-    if chart_file:
-        files.append(chart_file)
+    files.extend(chart_files)
     view = _PollView(pid, opt_rows)
     try:
         msg = await channel.send(embeds=embeds, view=view, files=files)
@@ -7322,16 +7324,17 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
     vote_rows = await db_rows("SELECT option_id, COUNT(*) c FROM poll_votes WHERE poll_id=? GROUP BY option_id", (poll_id,))
     counts = {r["option_id"]: r["c"] for r in vote_rows}
-    embeds, chart_file = _build_poll_embed(
+    embeds, chart_files = _build_poll_embed(
         question, multiple, opt_rows, counts, ended=bool(poll["ended"]),
         image_url=final_image_url, image_filename=final_image_filename,
         ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "", bar_color=bar_color,
     )
+    # An option's own uploaded picture is NOT separately re-attached here (unlike the per-poll
+    # banner image right above) - chart_files already includes it for every option that has one,
+    # alongside that option's freshly generated bar image, so both ride together on the SAME
+    # discord.File list without a duplicate-filename collision (see _build_poll_embed).
     files = _embed_post_files(final_image_data, final_image_filename)
-    for row in opt_rows:
-        files += _embed_post_files(row.get("image_data") or "", row.get("image_filename") or "")
-    if chart_file:
-        files.append(chart_file)
+    files.extend(chart_files)
     channel = bot.get_channel(int(poll["channel_id"])) if poll["channel_id"] else None
     if channel and poll["message_id"]:
         try:

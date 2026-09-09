@@ -3,6 +3,7 @@ dashboard. Survives a bot restart like tickets/giveaways: persistent views (cust
 get re-registered in cog_load(), and any poll with an auto-end time gets rescheduled with its
 remaining delay, mirroring cogs/giveaways.py's _schedule()/_end_giveaway()."""
 import asyncio
+import base64
 import datetime
 import io
 import discord
@@ -124,30 +125,86 @@ def _render_bar_chart_image(rows: list, bar_color: str) -> bytes:
     return buf.getvalue()
 
 
+def _option_upload_file(opt: dict):
+    """Rebuilds a discord.File for a per-option DASHBOARD UPLOAD (not a URL) from its stored
+    base64 image_data - own copy of main.py's _embed_post_files() logic (cogs don't import from
+    main.py, see cogs/tickets.py's _parse_ticket_blocks for the same established reason). Only
+    needed now that a per-option rich embed always attaches a fresh generated bar image too
+    (see build_poll_embed) - passing attachments= explicitly on every vote/end for THAT reason
+    would otherwise silently drop an uploaded (non-URL) option picture, since Discord replaces
+    the whole attachment set whenever attachments= is given, not just the file(s) being added.
+    Returns None for a plain image_url (no attachment needed for that) or no image at all."""
+    data_b64, filename = opt.get("image_data") or "", opt.get("image_filename") or ""
+    if not data_b64 or not filename:
+        return None
+    try:
+        return discord.File(io.BytesIO(base64.b64decode(data_b64)), filename=filename)
+    except Exception:
+        return None
+
+
+def _render_option_bar_image(n: int, pct: float, bar_color: str) -> bytes:
+    """Single-bar sibling of _render_bar_chart_image, for a per-option RICH embed (one that has
+    its own picture and/or link). No label drawn - the option's name already shows as that
+    embed's own title, so a second copy inside the image would be redundant. Exists because
+    Discord gives one embed only ONE large image slot: as long as the option's own picture also
+    wanted that slot, there was no room left for a real bar there at all (v1.15.29-1.15.33 all
+    fell back to text-only for this one case in turn). build_poll_embed() now moves the option's
+    own picture to the embed's SEPARATE, smaller thumbnail slot instead, freeing the large slot
+    for this - both are visible at once, not a choice between them."""
+    from PIL import Image, ImageDraw
+    width = 440
+    pad = 18
+    bar_h = 16
+    text_h = 22
+    height = pad * 2 + text_h + bar_h
+    img = Image.new("RGB", (width, height), (0x2b, 0x2d, 0x31))
+    draw = ImageDraw.Draw(img)
+    meta_font = _load_font(15, bold=True)
+    fill_rgb = _hex_to_rgb(bar_color)
+    track_rgb = (0x40, 0x44, 0x4b)
+    meta = f"{pct:.0f}% ({n} Stimme(n))"
+    draw.text((pad, pad), meta, font=meta_font, fill=(255, 255, 255))
+    bar_y = pad + text_h
+    draw.rounded_rectangle([pad, bar_y, width - pad, bar_y + bar_h], radius=bar_h // 2, fill=track_rgb)
+    fill_w = max(0, min(width - pad * 2, round((width - pad * 2) * (pct / 100))))
+    if fill_w > 0:
+        fill_w = max(fill_w, bar_h)
+        draw.rounded_rectangle([pad, bar_y, pad + fill_w, bar_y + bar_h], radius=bar_h // 2, fill=fill_rgb)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def build_poll_embed(
     question: str, multiple_choice: bool, options: list, counts: dict, ended: bool = False,
     image_url: str = "", image_filename: str = "", ends_at: str = "", created_at: str = "",
     bar_color: str = DEFAULT_BAR_COLOR,
 ) -> tuple:
     """Shared by creation, every vote, and _end_poll - one place for the bar/percentage layout
-    so it can never drift between the three call sites. Returns (embeds, chart_file): embeds is
+    so it can never drift between the three call sites. Returns (embeds, chart_files): embeds is
     a LIST, not a single one - if any option has its own image_url/link_url set (e.g. a VRChat
     world's cover image + world page link, one per map/option in the same poll), each such
     option gets its OWN embed (title = option label, clickable via embed.url when link_url is
-    set, image = the option's own image) instead of being squeezed into one shared text
-    description - up to MAX_RICH_OPTION_EMBEDS of them, Discord's 10-embeds-per-message limit
-    otherwise. Options without their own image/link (or the overflow beyond that cap) still get
-    a bar line in the header embed's description, so no option's tally is ever dropped.
+    set) instead of being squeezed into one shared text description - up to MAX_RICH_OPTION_EMBEDS
+    of them, Discord's 10-embeds-per-message limit otherwise. Options without their own
+    image/link (or the overflow beyond that cap) still get a percentage line in the header
+    embed's description, so no option's tally is ever dropped.
 
-    chart_file is a freshly generated discord.File (see _render_bar_chart_image) whenever NO
-    option has its own image/link AND the poll has no legacy per-poll banner image occupying the
-    header's image slot (the common case, and what most polls look like) - None otherwise (an
-    option has its own image, or an old pre-v1.15.20 poll still has its original banner). Unlike
-    a per-poll/per-option image (attached ONCE at creation, never re-touched - see below), this
-    one has to be regenerated and RE-ATTACHED on every single vote/end, since its whole content
-    (the bar fill %) changes every time - every caller MUST pass chart_file back in via
-    `attachments=[chart_file]` whenever it isn't None, `omitted entirely` (not `attachments=[]`
-    or `None`) whenever it IS, exactly mirroring the existing per-poll-image omission rule below.
+    chart_files is a list of freshly generated discord.File objects (see
+    _render_bar_chart_image/_render_option_bar_image) - empty only when the poll has a legacy
+    per-poll banner image occupying every image slot that would otherwise hold a generated bar
+    (an old pre-v1.15.20 poll still has its original banner, the one remaining case with no bar
+    at all). Otherwise: one shared bar-chart image for every option WITHOUT its own picture/link
+    (the header embed's own image slot), PLUS one per-option bar image for every option WITH its
+    own picture/link (that embed's image slot - its own picture moves to the smaller thumbnail
+    slot instead, see build_poll_embed's per-option loop below, so both are visible together
+    instead of one replacing the other). Unlike a per-poll/per-option image (attached ONCE at
+    creation, never re-touched - see below), every file in chart_files has to be regenerated and
+    RE-ATTACHED on every single vote/end, since its whole content (the bar fill %) changes every
+    time - every caller MUST pass chart_files back in via `attachments=chart_files` whenever the
+    list isn't empty, `omitted entirely` (not `attachments=[]` or `None`) whenever it IS, exactly
+    mirroring the existing per-poll-image omission rule below.
 
     image_filename (set only when the per-POLL banner image came from a dashboard upload, not
     a pasted URL - a now-legacy field, see above) takes precedence over image_url and points at
@@ -229,7 +286,7 @@ def build_poll_embed(
             header.set_image(url="attachment://poll_bars.png")
             if header_lines:
                 header.description = "\n\n".join(header_lines)
-            return [header], chart_file
+            return [header], [chart_file]
         # Legacy per-poll banner image already occupies the header's image slot (a poll created
         # before v1.15.20) - keep showing IT rather than silently swapping in the new bar-chart
         # image, and fall back to a plain percentage line since there's no image slot left.
@@ -237,7 +294,7 @@ def build_poll_embed(
         combined = header_lines + pct_lines
         if combined:
             header.description = "\n\n".join(combined)
-        return [header], None
+        return [header], []
 
     # At least one option has its own image/link. Those still get their own individual embed
     # (own image, own text/emoji footer bar - Discord allows only one image per embed, so a
@@ -248,7 +305,7 @@ def build_poll_embed(
     # slot. Doesn't cost an extra embed slot (still header + up to MAX_RICH_OPTION_EMBEDS image
     # options, exactly Discord's 10-embeds-per-message ceiling as before this split) since it's
     # the header's EXISTING image, not a new embed.
-    chart_file = None
+    chart_files = []
     if plain_options:
         if not has_legacy_image:
             rows = [
@@ -257,7 +314,7 @@ def build_poll_embed(
                 for opt in plain_options
             ]
             chart_bytes = _render_bar_chart_image(rows, bar_color)
-            chart_file = discord.File(io.BytesIO(chart_bytes), filename="poll_bars.png")
+            chart_files.append(discord.File(io.BytesIO(chart_bytes), filename="poll_bars.png"))
             header.set_image(url="attachment://poll_bars.png")
         else:
             # Rare edge case: an old poll's legacy banner already occupies the header's one
@@ -281,16 +338,24 @@ def build_poll_embed(
             img_src = opt["image_url"]
         else:
             img_src = None
+        # v1.15.29-1.15.33 all treated this as an either/or: the option's own picture took the
+        # embed's one large image slot, leaving no room for a real bar there (a plain percentage
+        # line was the least-bad fallback each time). Discord embeds actually have a SECOND,
+        # separate image slot though - set_thumbnail(), a small square next to the text - so the
+        # own picture moves there now regardless of its previously admin-chosen size (that
+        # large/small choice only ever mattered when this was the only image the embed could
+        # show at all), freeing the large slot for an actual generated bar image below. An
+        # option with only a link_url and no picture of its own never had this conflict in the
+        # first place - the large slot goes straight to the bar for it too.
         if img_src:
-            # Discord's embeds only offer two real image sizes, no continuous scale: a large
-            # one (set_image, full embed width, below the text) or a small one (set_thumbnail,
-            # a small square in the top-right corner) - user-requested per-option choice
-            # between the two, 'large' (the only size that existed before this) stays the
-            # default for any option that never set this explicitly.
-            if opt.get("image_size") == "small":
-                option_embed.set_thumbnail(url=img_src)
-            else:
-                option_embed.set_image(url=img_src)
+            option_embed.set_thumbnail(url=img_src)
+            upload_file = _option_upload_file(opt)
+            if upload_file:
+                chart_files.append(upload_file)
+        bar_filename = f"poll_opt_bar_{opt['id']}.png"
+        bar_bytes = _render_option_bar_image(n, pct, bar_color)
+        chart_files.append(discord.File(io.BytesIO(bar_bytes), filename=bar_filename))
+        option_embed.set_image(url=f"attachment://{bar_filename}")
         option_embed.set_footer(text=f"{pct:.0f}% ({n} Stimme(n))")
         embeds.append(option_embed)
     if overflow_options:
@@ -299,7 +364,7 @@ def build_poll_embed(
         ]
     if header_lines:
         header.description = "\n\n".join(header_lines)
-    return embeds, chart_file
+    return embeds, chart_files
 
 
 class PollButton(discord.ui.Button):
@@ -355,7 +420,7 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
     options = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
     rows = await db_rows("SELECT option_id, COUNT(*) c FROM poll_votes WHERE poll_id=? GROUP BY option_id", (poll_id,))
     counts = {r["option_id"]: r["c"] for r in rows}
-    embeds, chart_file = build_poll_embed(
+    embeds, chart_files = build_poll_embed(
         poll["question"], bool(poll["multiple_choice"]), options, counts,
         image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
         ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
@@ -366,13 +431,13 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
     # reattach an identical PollView on every single vote (verified directly against discord.py
     # 2.3.2's own source: InteractionResponse.edit_message only calls state.
     # prevent_view_updates_for()/replaces components when view is explicitly passed).
-    # attachments=, unlike view=, MUST be passed whenever chart_file exists - unlike a per-poll/
-    # per-option image (attached once, never touched again), the bar-chart image's whole content
-    # (the fill %) changes with every vote, so a fresh one has to ride along on every edit; the
-    # omit-to-preserve trick only applies to the OTHER, unrelated attachments (a poll with its
-    # own per-option pictures never reaches this branch at all, see build_poll_embed).
-    if chart_file:
-        await interaction.response.edit_message(embeds=embeds, attachments=[chart_file])
+    # attachments=, unlike view=, MUST be passed whenever chart_files is non-empty - unlike a
+    # per-poll/per-option image (attached once, never touched again), a generated bar image's
+    # whole content (the fill %) changes with every vote, so fresh ones have to ride along on
+    # every edit; the omit-to-preserve trick only applies to the OTHER, unrelated attachments (an
+    # option's own picture, now always in its embed's thumbnail slot - see build_poll_embed).
+    if chart_files:
+        await interaction.response.edit_message(embeds=embeds, attachments=chart_files)
     else:
         await interaction.response.edit_message(embeds=embeds)
 
@@ -433,15 +498,15 @@ class Polls(commands.Cog):
         options = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
         rows = await db_rows("SELECT option_id, COUNT(*) c FROM poll_votes WHERE poll_id=? GROUP BY option_id", (poll_id,))
         counts = {r["option_id"]: r["c"] for r in rows}
-        embeds, chart_file = build_poll_embed(
+        embeds, chart_files = build_poll_embed(
             poll["question"], bool(poll["multiple_choice"]), options, counts, ended=True,
             image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
             ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
             bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR,
         )
         try:
-            if chart_file:
-                await msg.edit(embeds=embeds, view=None, attachments=[chart_file])
+            if chart_files:
+                await msg.edit(embeds=embeds, view=None, attachments=chart_files)
             else:
                 await msg.edit(embeds=embeds, view=None)
         except Exception as e:
@@ -488,10 +553,10 @@ class Polls(commands.Cog):
                 (pid, i, label[:80]),
             )
         opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
-        embeds, chart_file = build_poll_embed(question, multiple, opt_rows, {}, ends_at=ends_at, created_at=created_at)
+        embeds, chart_files = build_poll_embed(question, multiple, opt_rows, {}, ends_at=ends_at, created_at=created_at)
         view = PollView(pid, opt_rows)
         try:
-            msg = await interaction.channel.send(embeds=embeds, view=view, files=[chart_file] if chart_file else [])
+            msg = await interaction.channel.send(embeds=embeds, view=view, files=chart_files)
         except (discord.HTTPException, OSError) as e:
             # defer() already ran above - an unhandled exception here (missing "Send
             # Messages", or a genuine network-level OSError; discord.py 2.3.2's http.py
