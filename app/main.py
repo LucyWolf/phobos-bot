@@ -5416,6 +5416,7 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     form = await request.form()
     name = form.get("name", "")
     button_label = form.get("button_label", "Ticket öffnen")
+    close_button_label = form.get("close_button_label", "Ticket schließen")
     emoji = form.get("emoji", "🎫")
     support_role_id = form.get("support_role_id", "")
     category_id = form.get("category_id", "")
@@ -5447,6 +5448,11 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
         # raise, which (before this fix) would have crashed /publish's request with an
         # unhandled 500 instead of a friendly error.
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Button-Text+zu+lang+(max.+80+Zeichen)", status_code=302)
+    if len(close_button_label.strip()) > 80:
+        # Same Discord button-label limit as above, for the in-ticket close button.
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=Schließen-Button-Text+zu+lang+(max.+80+Zeichen)", status_code=302
+        )
     # Discord's own hard cap on embeds per single message - a manually crafted POST could
     # otherwise submit more "+" blocks than the UI itself ever lets you add, which would make
     # every future channel.send(embeds=...) for this panel raise (caught, but with no
@@ -5474,13 +5480,14 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     panel_before = await db_one("SELECT * FROM ticket_panels WHERE id=? AND guild_id=?", (panel_id, guild_id))
     new_name = name.strip()
     new_label = button_label.strip() or "Ticket öffnen"
+    new_close_label = close_button_label.strip() or "Ticket schließen"
     new_emoji = emoji.strip() or "🎫"
     new_description = _djson.dumps(description_blocks)
     new_ticket_message = _djson.dumps(ticket_message_blocks)
     await db_exec(
-        "UPDATE ticket_panels SET name=?, button_label=?, description=?, ticket_message=?, emoji=?, "
+        "UPDATE ticket_panels SET name=?, button_label=?, close_button_label=?, description=?, ticket_message=?, emoji=?, "
         "support_role_id=?, category_id=?, archive_category_id=? WHERE id=? AND guild_id=?",
-        (new_name, new_label, new_description, new_ticket_message, new_emoji,
+        (new_name, new_label, new_close_label, new_description, new_ticket_message, new_emoji,
          support_role_id, category_id, archive_category_id, panel_id, guild_id),
     )
     # A published panel's button/embed lives on an already-sent Discord message - saving name/

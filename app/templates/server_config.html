@@ -879,6 +879,10 @@ document.addEventListener('click', function(e) {
                   <input type="text" name="button_label" value="{{ p.button_label or 'Ticket öffnen' }}" maxlength="80" style="margin-bottom:0;">
                 </div>
                 <div>
+                  <label>{{ tr.tickets_close_button_label_label }}</label>
+                  <input type="text" name="close_button_label" value="{{ p.close_button_label or 'Ticket schließen' }}" maxlength="80" style="margin-bottom:0;">
+                </div>
+                <div>
                   <label>{{ tr.tickets_emoji_label }}</label>
                   <input type="text" name="emoji" value="{{ p.emoji or '🎫' }}" style="margin-bottom:0;">
                 </div>

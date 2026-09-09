@@ -813,6 +813,14 @@ async def init_db():
                 stars INTEGER NOT NULL,
                 UNIQUE(item_id, user_id)
             )""",
+            # User-reported: "der button zum schließen von tickets sollte einfach umbenennbar
+            # sein weil englisch und so" - the in-ticket "Ticket schließen" close button
+            # (cogs/tickets.py's CloseTicketView) was the only remaining hardcoded-label button
+            # in the whole ticket flow; the panel's OWN open-ticket button already got this via
+            # `button_label` back when tickets first shipped. Default matches the previous
+            # hardcoded text exactly, so an already-published panel's behavior is unchanged
+            # until an admin explicitly edits it.
+            "ALTER TABLE ticket_panels ADD COLUMN close_button_label TEXT DEFAULT 'Ticket schließen'",
         ]:
             try:
                 await db.execute(col)

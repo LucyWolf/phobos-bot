@@ -71,12 +71,18 @@ async def close_ticket_channel(channel, guild: discord.Guild, panel: dict | None
     return True
 
 
-class CloseTicketView(ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
+class _CloseTicketButton(ui.Button):
+    # custom_id is fixed regardless of `label` (unlike PanelButton's per-panel custom_id) -
+    # there's only ever one active close button per ticket channel, and keeping it constant is
+    # what lets cog_load()'s single self.bot.add_view(CloseTicketView()) route interactions on
+    # ALREADY-SENT messages after a restart: discord.py matches a persistent view purely by each
+    # component's custom_id, never by its label, so the registered view's own label here is
+    # irrelevant for that - only the label baked into an already-posted message (set once, at
+    # send time, from the panel's close_button_label at that moment) is ever actually shown.
+    def __init__(self, label: str = "Ticket schließen"):
+        super().__init__(label=label, style=discord.ButtonStyle.danger, emoji="🔒", custom_id="close_ticket")
 
-    @ui.button(label="Ticket schließen", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="close_ticket")
-    async def close_ticket(self, interaction: discord.Interaction, button: ui.Button):
+    async def callback(self, interaction: discord.Interaction):
         ticket = await db_one(
             "SELECT * FROM tickets WHERE channel_id=? AND status='open'", (interaction.channel_id,)
         )
@@ -96,6 +102,12 @@ class CloseTicketView(ui.View):
         ):
             return
         await db_exec("UPDATE tickets SET status='closed' WHERE channel_id=?", (interaction.channel_id,))
+
+
+class CloseTicketView(ui.View):
+    def __init__(self, label: str = "Ticket schließen"):
+        super().__init__(timeout=None)
+        self.add_item(_CloseTicketButton(label))
 
 
 class PanelButton(ui.Button):
@@ -224,7 +236,8 @@ class PanelButton(ui.Button):
             ping = interaction.user.mention
             if support_role:
                 ping += f" {support_role.mention}"
-            await channel.send(content=ping, embeds=embeds, view=CloseTicketView())
+            close_label = panel.get("close_button_label") or "Ticket schließen"
+            await channel.send(content=ping, embeds=embeds, view=CloseTicketView(close_label))
             await interaction.response.send_message(f"Ticket erstellt: {channel.mention}", ephemeral=True)
         except Exception as e:
             # If channel creation itself fails (missing "Manage Channels" permission, guild
