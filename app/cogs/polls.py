@@ -154,11 +154,12 @@ def _ensure_option_uploads_attached(options: list, chart_files: list) -> list:
     be explicit for some other option's fresh bar, Discord replaces the WHOLE attachment set, not
     just the file(s) being added - so every other option's own upload has to ride along too, or
     it would vanish from the message despite nothing about IT having changed.
-    Deliberately NOT used by main.py's create/edit routes - those pass attachments= explicitly on
-    every single call regardless (an edit can add/remove/swap pictures far more broadly than a
-    vote ever does), so for them "only when chart_files is already non-empty" would silently drop
-    an option's own picture the FIRST time it's set (nothing "already on the message" to fall
-    back on yet) - those routes call _option_upload_file directly, unconditionally, instead."""
+    Deliberately NOT used by main.py's create/edit routes - those pass attachments=/files=
+    explicitly on every single call regardless (an edit can add/remove/swap pictures far more
+    broadly than a vote ever does), so for them "only when chart_files is already non-empty"
+    would silently drop an option's own picture the FIRST time it's set (nothing "already on the
+    message" to fall back on yet) - those routes unconditionally collect every option's own
+    upload themselves instead, via their own pre-existing _embed_post_files() helper."""
     if not chart_files:
         return chart_files
     seen = {f.filename for f in chart_files}
@@ -329,8 +330,9 @@ def build_poll_embed(
         return [header], []
 
     # At least one option has its own image/link. Those still get their own individual embed
-    # (own image, own text/emoji footer bar - Discord allows only one image per embed, so a
-    # generated bar-chart PNG genuinely has no room there). But any OTHER option in the SAME
+    # (own picture only, no bar - Discord allows only one image per embed, so a generated
+    # bar-chart PNG genuinely has no room there once the option's own picture is showing). But
+    # any OTHER option in the SAME
     # poll that has nothing of its own is no longer forced into the same text-bar fallback just
     # because a sibling option happens to have a picture - it joins a shared bar-chart image
     # instead, using the header embed's own (otherwise unused, see has_legacy_image above) image
@@ -380,19 +382,6 @@ def build_poll_embed(
         needs_bar = img_src is None
         rich_info.append((opt, img_src, needs_bar))
 
-    # chart_files returned by THIS function only ever holds freshly generated bar images (the
-    # shared header one above, plus one per imageless rich option below) - deliberately NOT an
-    # option's own uploaded picture. That distinction matters to callers: a vote/end only needs
-    # to re-attach a bar's ever-changing content, and can otherwise omit attachments= to let
-    # Discord keep whatever's already on the message (a picture attached back at creation and
-    # never touched since) - so those callers only need to fold an own-upload back in AS WELL
-    # whenever chart_files is non-empty anyway (see _handle_vote/_end_poll's own comment). But an
-    # option whose own picture is being introduced or changed for the FIRST time (this exact
-    # send/edit) has nothing "already on the message" to fall back on - the caller must include
-    # it unconditionally, which only the caller can know (main.py's create/edit routes always do;
-    # see _option_upload_file, used directly by those routes and by build_poll_embed's callers
-    # below for exactly this purpose).
-
     embeds = [header]
     for opt, img_src, needs_bar in rich_info:
         n = counts.get(opt["id"], 0)
@@ -402,14 +391,20 @@ def build_poll_embed(
             option_embed.url = opt["link_url"]
         if needs_bar:
             # needs_bar is exactly "no picture of its own" (see the loop above) - never true
-            # alongside img_src, so there's nothing here to protect in a thumbnail anymore.
+            # alongside img_src, so there's nothing here to protect in a thumbnail anymore. The
+            # generated bar image itself already draws "pct% (n Stimme(n))" as its own text (see
+            # _render_option_bar_image) - no separate footer needed on top of it.
             bar_filename = f"poll_opt_bar_{opt['id']}.png"
             bar_bytes = _render_option_bar_image(n, pct, bar_color)
             chart_files.append(discord.File(io.BytesIO(bar_bytes), filename=bar_filename))
             option_embed.set_image(url=f"attachment://{bar_filename}")
         else:
+            # An option with its own picture shows ONLY that picture - no percentage/vote-count
+            # footer here either ("du hast was in die einbettung rein gemacht was da nicht sein
+            # soll ... mach das raus"). The header embed's own footer already shows the poll's
+            # total vote count; per-option tallies for a picture-having option aren't shown
+            # anywhere else, by explicit request.
             option_embed.set_image(url=img_src)
-        option_embed.set_footer(text=f"{pct:.0f}% ({n} Stimme(n))")
         embeds.append(option_embed)
     if overflow_options:
         header_lines += [
