@@ -118,7 +118,7 @@ from cogs.ratings import (
 from i18n import get_tr
 import uvicorn
 from discord.ext import commands
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 import markupsafe
@@ -4344,10 +4344,16 @@ async def servers_list(request: Request, success: str = ""):
 
 
 LOG_LIMIT_OPTIONS = (10, 50, 100, 200)
+# Matches the 9 bullet points already documented in the Log page's info box
+# (log_info_item_member/_roles/_bans/_delete/_bulk/_edit/_voice/_channel/_boost) - one
+# category per bullet, tagged by cogs/logging_cog.py on every write.
+LOG_CATEGORIES = ("member", "roles", "bans", "delete", "bulk", "edit", "voice", "channel", "boost")
 
 
 @web.get("/servers/{guild_id}/log", response_class=HTMLResponse)
-async def server_log_page(request: Request, guild_id: str, success: str = "", error: str = "", limit: Optional[int] = None):
+async def server_log_page(request: Request, guild_id: str, success: str = "", error: str = "",
+                           limit: Optional[int] = None,
+                           categories: Optional[List[str]] = Query(None)):
     if r := auth_redirect(request): return r
     token_set = await _token_configured()
     guild = bot.get_guild(int(guild_id))
@@ -4367,14 +4373,41 @@ async def server_log_page(request: Request, guild_id: str, success: str = "", er
         limit = (user_row or {}).get("log_limit") or 200
     if limit not in LOG_LIMIT_OPTIONS:
         limit = 200
+
+    if categories is not None:
+        # Filter checkboxes were just submitted - normalize "every box checked" (or "none
+        # checked", equally meaningless as an actual restriction) back to the stored
+        # "show everything" empty value, same normalization already used for the
+        # per-moderator tab-restriction save route.
+        valid = [c for c in categories if c in LOG_CATEGORIES]
+        log_categories_value = "" if (not valid or len(valid) == len(LOG_CATEGORIES)) else ",".join(valid)
+        if uid:
+            await db_exec("UPDATE users SET log_categories=? WHERE id=?", (log_categories_value, uid))
+    else:
+        user_row = await db_one("SELECT log_categories FROM users WHERE id=?", (uid,)) if uid else None
+        log_categories_value = (user_row or {}).get("log_categories") or ""
+    active_log_categories = [c for c in log_categories_value.split(",") if c] or list(LOG_CATEGORIES)
+
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
     log_channel = await get_guild_config(int(guild_id), "log_channel") or ""
     exclude_raw = await get_guild_config(int(guild_id), "log_exclude_channels") or ""
     log_exclude_channels = [c.strip() for c in exclude_raw.split(",") if c.strip()]
-    logs = await db_rows(
-        "SELECT icon, title, description, created_at FROM server_logs WHERE guild_id=? ORDER BY id DESC LIMIT ?",
-        (guild_id, limit),
-    )
+    if log_categories_value:
+        # Rows written before this feature existed (or by a future, not-yet-known category)
+        # carry an empty category - always shown regardless of the filter, so switching the
+        # filter on for the first time never makes older history disappear.
+        placeholders = ",".join("?" for _ in active_log_categories)
+        logs = await db_rows(
+            f"""SELECT icon, title, description, created_at FROM server_logs
+                WHERE guild_id=? AND (category='' OR category IN ({placeholders}))
+                ORDER BY id DESC LIMIT ?""",
+            (guild_id, *active_log_categories, limit),
+        )
+    else:
+        logs = await db_rows(
+            "SELECT icon, title, description, created_at FROM server_logs WHERE guild_id=? ORDER BY id DESC LIMIT ?",
+            (guild_id, limit),
+        )
     return templates.TemplateResponse("server_log.html", {
         **session(request), "request": request,
         "guilds": await _guild_list(request), "token_set": token_set,
@@ -4384,6 +4417,7 @@ async def server_log_page(request: Request, guild_id: str, success: str = "", er
         "log_exclude_channels": log_exclude_channels,
         "logs": logs, "success": success, "error": error,
         "log_limit": limit, "log_limit_options": LOG_LIMIT_OPTIONS,
+        "log_categories": LOG_CATEGORIES, "active_log_categories": active_log_categories,
         "enabled_features": await _get_enabled_features(guild_id),
         "user_allowed_tabs": user_allowed_tabs,
     })

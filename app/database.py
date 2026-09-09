@@ -839,6 +839,25 @@ async def init_db():
             # enabling - an existing grant keeps working exactly as before until an admin
             # explicitly restricts it on the "👥 Nutzer" tab.
             "ALTER TABLE user_guild_permissions ADD COLUMN allowed_tabs TEXT NOT NULL DEFAULT ''",
+            # User-requested ("ich brauche einen einstelbaren filter was ich im log sehen
+            # will") - a stable, machine-readable category per server_logs row so the
+            # dashboard Log page can filter by event type. Needed because the existing
+            # `icon` column alone can't disambiguate: multiple event types share the same
+            # icon (✏️ covers nickname/message-edit/channel-rename, 🗑️ covers message-
+            # delete/bulk-delete/channel-delete, ✅ covers unban/timeout-lifted) - filtering
+            # on icon would group unrelated events together. Empty default keeps every
+            # already-logged row matching "show all" until the next event writes a real
+            # category (cogs/logging_cog.py backfills nothing retroactively - old rows
+            # simply always pass an active filter, same "don't touch history" precedent as
+            # ticket_panels.status/message_id on backup restore).
+            "ALTER TABLE server_logs ADD COLUMN category TEXT NOT NULL DEFAULT ''",
+            # Per-user display preference (same mechanism as the existing log_limit column
+            # from v1.4.15) - which of the 9 event categories to show on the Log page.
+            # Empty = show everything (unrestricted), same "empty = all" convention as
+            # user_guild_permissions.allowed_tabs above - a user who's never touched the
+            # filter, or who re-checks every box, sees the full log exactly like before
+            # this feature existed.
+            "ALTER TABLE users ADD COLUMN log_categories TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

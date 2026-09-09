@@ -28,7 +28,7 @@ class Logging(commands.Cog):
             return str(channel.parent_id) in excluded
         return False
 
-    async def _log(self, guild_id: int, embed: discord.Embed, plain: str = ""):
+    async def _log(self, guild_id: int, embed: discord.Embed, plain: str = "", category: str = ""):
         embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
         title = embed.title or ""
         icon = title.split()[0] if title else "📋"
@@ -36,8 +36,8 @@ class Logging(commands.Cog):
 
         try:
             await db_exec(
-                "INSERT INTO server_logs (guild_id, icon, title, description) VALUES (?,?,?,?)",
-                (str(guild_id), icon, label, plain[:300]),
+                "INSERT INTO server_logs (guild_id, icon, title, description, category) VALUES (?,?,?,?,?)",
+                (str(guild_id), icon, label, plain[:300], category),
             )
             await db_exec(
                 """DELETE FROM server_logs WHERE guild_id=? AND id NOT IN (
@@ -97,7 +97,7 @@ class Logging(commands.Cog):
         embed.add_field(name="Account-Alter", value=discord.utils.format_dt(member.created_at, "R"))
         embed.add_field(name="ID", value=str(member.id))
         embed.set_thumbnail(url=member.display_avatar.url)
-        await self._log(member.guild.id, embed, plain=f"{member.display_name} ({member.name})")
+        await self._log(member.guild.id, embed, plain=f"{member.display_name} ({member.name})", category="member")
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
@@ -111,7 +111,7 @@ class Logging(commands.Cog):
         plain = member.display_name
         if roles:
             plain += f" · Rollen: {', '.join(roles[:3])}"
-        await self._log(member.guild.id, embed, plain=plain)
+        await self._log(member.guild.id, embed, plain=plain, category="member")
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
@@ -134,7 +134,7 @@ class Logging(commands.Cog):
                     parts.append("+" + ", ".join(r.name for r in added))
                 if removed:
                     parts.append("-" + ", ".join(r.name for r in removed))
-                await self._log(after.guild.id, embed, plain=" · ".join(parts))
+                await self._log(after.guild.id, embed, plain=" · ".join(parts), category="roles")
 
         if before.nick != after.nick:
             embed = discord.Embed(title="✏️ Nickname geändert", color=0xa78bfa)
@@ -143,7 +143,7 @@ class Logging(commands.Cog):
             embed.add_field(name="Vorher", value=before.nick or before.name, inline=False)
             embed.add_field(name="Nachher", value=after.nick or after.name, inline=False)
             await self._log(after.guild.id, embed,
-                plain=f"{after.name} · {before.nick or before.name} → {after.nick or after.name}")
+                plain=f"{after.name} · {before.nick or before.name} → {after.nick or after.name}", category="roles")
 
         if before.timed_out_until != after.timed_out_until:
             if after.timed_out_until:
@@ -161,7 +161,7 @@ class Logging(commands.Cog):
                 embed.set_author(name=str(after), icon_url=after.display_avatar.url)
                 embed.add_field(name="Nutzer", value=after.mention)
                 plain = after.display_name
-            await self._log(after.guild.id, embed, plain=plain)
+            await self._log(after.guild.id, embed, plain=plain, category="roles")
 
     # ── Bans ──────────────────────────────────────────────────────────────────
 
@@ -171,14 +171,14 @@ class Logging(commands.Cog):
         embed.set_author(name=str(user), icon_url=user.display_avatar.url)
         embed.add_field(name="Nutzer", value=str(user))
         embed.add_field(name="ID", value=str(user.id))
-        await self._log(guild.id, embed, plain=f"{user.display_name} ({user.name})")
+        await self._log(guild.id, embed, plain=f"{user.display_name} ({user.name})", category="bans")
 
     @commands.Cog.listener()
     async def on_member_unban(self, guild: discord.Guild, user: discord.User):
         embed = discord.Embed(title="✅ Member entbannt", color=0x22c55e)
         embed.set_author(name=str(user), icon_url=user.display_avatar.url)
         embed.add_field(name="Nutzer", value=str(user))
-        await self._log(guild.id, embed, plain=f"{user.display_name} ({user.name})")
+        await self._log(guild.id, embed, plain=f"{user.display_name} ({user.name})", category="bans")
 
     # ── Voice-Kanäle ──────────────────────────────────────────────────────────
 
@@ -205,7 +205,7 @@ class Logging(commands.Cog):
             embed.add_field(name="Von", value=before.channel.mention)
             embed.add_field(name="Nach", value=after.channel.mention)
             plain = f"{member.display_name} · #{before.channel.name} → #{after.channel.name}"
-        await self._log(member.guild.id, embed, plain=plain)
+        await self._log(member.guild.id, embed, plain=plain, category="voice")
 
     # ── Nachrichten ───────────────────────────────────────────────────────────
 
@@ -264,7 +264,7 @@ class Logging(commands.Cog):
             if deleter and (not author or deleter.id != author.id):
                 plain += f" · gelöscht von {deleter.display_name}"
 
-        await self._log(payload.guild_id, embed, plain=plain)
+        await self._log(payload.guild_id, embed, plain=plain, category="delete")
 
     @commands.Cog.listener()
     async def on_raw_bulk_message_delete(self, payload: discord.RawBulkMessageDeleteEvent):
@@ -299,7 +299,7 @@ class Logging(commands.Cog):
         plain = f"#{chan_name} · {len(payload.message_ids)} Nachrichten"
         if mod:
             plain += f" · von {mod.display_name}"
-        await self._log(payload.guild_id, embed, plain=plain)
+        await self._log(payload.guild_id, embed, plain=plain, category="bulk")
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
@@ -317,7 +317,7 @@ class Logging(commands.Cog):
         embed.add_field(name="Link", value=f"[Zur Nachricht]({after.jump_url})")
         plain = (f"{before.author.display_name} · #{before.channel.name}"
                  f" · {before.content[:60] or '—'} → {after.content[:60] or '—'}")
-        await self._log(before.guild.id, embed, plain=plain)
+        await self._log(before.guild.id, embed, plain=plain, category="edit")
 
     # ── Kanäle ────────────────────────────────────────────────────────────────
 
@@ -326,14 +326,14 @@ class Logging(commands.Cog):
         embed = discord.Embed(title="📁 Kanal erstellt", color=0x22c55e)
         embed.add_field(name="Name", value=channel.mention if hasattr(channel, "mention") else channel.name)
         embed.add_field(name="Typ", value=str(channel.type).replace("_", " ").title())
-        await self._log(channel.guild.id, embed, plain=f"#{channel.name}")
+        await self._log(channel.guild.id, embed, plain=f"#{channel.name}", category="channel")
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
         embed = discord.Embed(title="🗑️ Kanal gelöscht", color=0xef4444)
         embed.add_field(name="Name", value=f"#{channel.name}")
         embed.add_field(name="Typ", value=str(channel.type).replace("_", " ").title())
-        await self._log(channel.guild.id, embed, plain=f"#{channel.name}")
+        await self._log(channel.guild.id, embed, plain=f"#{channel.name}", category="channel")
 
     @commands.Cog.listener()
     async def on_guild_channel_update(self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel):
@@ -342,7 +342,7 @@ class Logging(commands.Cog):
                 embed = discord.Embed(title="✏️ Kanal umbenannt", color=0xa78bfa)
                 embed.add_field(name="Vorher", value=f"#{before.name}")
                 embed.add_field(name="Nachher", value=after.mention if hasattr(after, "mention") else f"#{after.name}")
-                await self._log(after.guild.id, embed, plain=f"#{before.name} → #{after.name}")
+                await self._log(after.guild.id, embed, plain=f"#{before.name} → #{after.name}", category="channel")
         except Exception as e:
             print(f"[logging_cog] on_guild_channel_update failed for channel {getattr(after, 'id', '?')}: {e!r}")
 
@@ -359,7 +359,7 @@ class Logging(commands.Cog):
             embed.add_field(name="Boosts gesamt", value=str(after.premium_subscription_count))
             embed.add_field(name="Level", value=str(after.premium_tier))
             await self._log(after.id, embed,
-                plain=f"Boosts: {after.premium_subscription_count} · Level {after.premium_tier}")
+                plain=f"Boosts: {after.premium_subscription_count} · Level {after.premium_tier}", category="boost")
 
 
 async def setup(bot):
