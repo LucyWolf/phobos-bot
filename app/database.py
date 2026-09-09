@@ -781,6 +781,11 @@ async def init_db():
             # die möglichkeit rein das mann das aktivieren kann"), hence defaulting to 0/off for
             # both brand-new polls and every already-existing one.
             "ALTER TABLE polls ADD COLUMN show_started INTEGER NOT NULL DEFAULT 0",
+            # User-requested: a per-poll opt-in ranking list ("Spiel 1: X", "Spiel 2: Y", ...)
+            # sorted by vote count, for game-night-style polls with 3+ options - off by default
+            # ("nur wenn ich das dann aktiviere"), shown alongside the existing bar chart, live
+            # (updates with every vote, not just once the poll ends).
+            "ALTER TABLE polls ADD COLUMN show_ranking INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await db.execute(col)

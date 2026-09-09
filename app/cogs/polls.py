@@ -190,7 +190,7 @@ def _render_combined_poll_image(rows: list, bar_color: str) -> bytes:
 def build_poll_embed(
     question: str, multiple_choice: bool, options: list, counts: dict, ended: bool = False,
     image_url: str = "", image_filename: str = "", ends_at: str = "", created_at: str = "",
-    bar_color: str = DEFAULT_BAR_COLOR, show_started: bool = False,
+    bar_color: str = DEFAULT_BAR_COLOR, show_started: bool = False, show_ranking: bool = False,
 ) -> tuple:
     """Shared by creation, every vote, and _end_poll - one place for the bar/percentage layout
     so it can never drift between the three call sites. Returns (embeds, chart_files) - embeds
@@ -245,7 +245,13 @@ def build_poll_embed(
     since a relative "ended X ago" keeps counting up forever and isn't actually useful once it's
     already over. created_at's own "Gestartet: vor 5 Minuten" line is OFF by default
     (`show_started=False`, same reasoning: not something every poll needs) - only shown when a
-    poll's own `show_started` column is turned on."""
+    poll's own `show_started` column is turned on.
+
+    show_ranking (also OFF by default) adds a text ranking list to the description, sorted by
+    current vote count descending - built for game-night-style polls with 3+ options ("spiel 1
+    das was die meisten stimungen haben spiel zwei was dann als zweites gespielt wirt"). Runs
+    live, alongside the existing bar chart/percentage display (not a replacement for it) - ties
+    keep the options' original `option_index` order since Python's sort is stable."""
     total = sum(counts.values())
     header = discord.Embed(
         title=("🔒 " if ended else "🗳️ ") + question,
@@ -326,6 +332,21 @@ def build_poll_embed(
         if capped:
             header_lines.append(capped)
 
+    if show_ranking and options:
+        ranked = sorted(options, key=lambda o: counts.get(o["id"], 0), reverse=True)
+        medals = ["🥇", "🥈", "🥉"]
+        ranking_lines = []
+        for i, opt in enumerate(ranked):
+            n = counts.get(opt["id"], 0)
+            prefix = medals[i] if i < 3 else f"`{i + 1}.`"
+            ranking_lines.append(f"{prefix} {opt['label']} ({n} Stimme(n))")
+        used = len("\n\n".join(header_lines)) + (4 if header_lines else 0)
+        capped = _cap_text_lines(
+            ranking_lines, MAX_DESCRIPTION_CHARS - used, "\n", "… und {n} weitere Plätze ohne Platz"
+        )
+        if capped:
+            header_lines.append("**🏆 Rangliste:**\n" + capped)
+
     # A clickable link can never live inside the combined image itself (see this function's own
     # docstring) - listed as its own markdown line per option that has one, right after
     # everything else in the header's description. Budget-capped against the SAME real Discord
@@ -403,6 +424,7 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
         image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
         ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
         bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR, show_started=bool(poll.get("show_started")),
+        show_ranking=bool(poll.get("show_ranking")),
     )
     # No view= here on purpose - discord.py's edit_message() default for view is MISSING (not
     # None), so omitting it leaves the existing buttons untouched instead of needing to rebuild+
@@ -532,6 +554,7 @@ class Polls(commands.Cog):
             image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
             ends_at=ends_at, created_at=created_at,
             bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR, show_started=bool(poll.get("show_started")),
+        show_ranking=bool(poll.get("show_ranking")),
         )
         view = PollView(poll_id, options)
         try:
@@ -573,6 +596,7 @@ class Polls(commands.Cog):
             image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
             ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
             bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR, show_started=bool(poll.get("show_started")),
+        show_ranking=bool(poll.get("show_ranking")),
         )
         try:
             if chart_files:
