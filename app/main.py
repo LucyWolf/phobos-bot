@@ -454,10 +454,27 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
     bug that had already been fixed in the code kept appearing to persist because the browser
     was still showing the previous version). No static file mount exists in this app (avatars
     etc. are served through their own dynamic routes, not StaticFiles), so there's nothing here
-    that would actually benefit from caching in the first place."""
+    that would actually benefit from caching in the first place.
+
+    Belt-and-suspenders update after a real incident ("der einladungs link war aufeinmal mit dem
+    profil von mir drin und er hatte kein pw" - a moderator's browser, on a completely different
+    device, landed straight in the ADMIN's already-logged-in session with no login prompt at
+    all): every response here carries a Set-Cookie for the session, and per RFC 7234 a
+    RFC-compliant shared cache must never store a response with Set-Cookie unless the response
+    is explicitly marked cacheable - `no-store` alone already covers that, but plenty of real-
+    world reverse-proxy/CDN cache configs don't correctly implement that nuance and cache
+    anyway if told to via their own force-cache rules. Added `private` (explicitly forbids
+    shared/proxy caches, not just browsers), `no-cache` (forces revalidation even where a cache
+    insists on keeping a copy), and the legacy `Pragma`/`Expires` pair some older or oddly
+    configured proxies still key off instead of Cache-Control. None of this can force a
+    misconfigured proxy to behave - that's a server-side infra setting only the operator can
+    fix (disable caching for this specific proxy host/domain) - but it closes every header-level
+    loophole this app itself could still be leaving open."""
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store, must-revalidate"
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
         return response
 
 
