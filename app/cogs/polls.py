@@ -17,10 +17,14 @@ MAX_DURATION_MINUTES = 10080  # 7 days - same kind of sane upper bound as other 
 
 
 MAX_RICH_OPTION_EMBEDS = 9  # Discord caps a message at 10 embeds total - one of those is the
-# header embed (question/overall image/tally footer), leaving at most 9 for individual
-# per-option image/link embeds. Any option beyond that still gets a bar-chart line in the
-# header's description instead of its own rich embed - a poll with more than 9 image/link
-# options simply can't show all of them richly in one Discord message, this is the real ceiling.
+# header embed (question/overall image/tally footer), leaving a budget of 9 for individual
+# per-option image/link embeds. This is spent per-option, not counted 1:1 anymore: an option
+# with its own picture needs TWO embeds (the picture, then its bar as a genuinely separate card
+# directly below - see build_poll_embed's per-option loop for why), an option with only a link
+# needs just one (the bar has nowhere else to compete for the image slot there). Whatever
+# doesn't fit in the remaining budget still gets a bar-chart line in the header's description
+# instead of its own rich embed(s) - a poll with enough image/link options simply can't show all
+# of them richly in one Discord message, this is the real ceiling.
 
 
 # v1.15.28 shipped a dropdown of 10 fixed emoji-color styles - rejected on sight ("so meinte ich
@@ -213,20 +217,24 @@ def build_poll_embed(
     so it can never drift between the three call sites. Returns (embeds, chart_files): embeds is
     a LIST, not a single one - if any option has its own image_url/link_url set (e.g. a VRChat
     world's cover image + world page link, one per map/option in the same poll), each such
-    option gets its OWN embed (title = option label, clickable via embed.url when link_url is
-    set) instead of being squeezed into one shared text description - up to MAX_RICH_OPTION_EMBEDS
-    of them, Discord's 10-embeds-per-message limit otherwise. Options without their own
-    image/link (or the overflow beyond that cap) still get a percentage line in the header
-    embed's description, so no option's tally is ever dropped.
+    option gets its OWN embed(s) (title = option label, clickable via embed.url when link_url is
+    set) instead of being squeezed into one shared text description - a picture-having option
+    gets a SECOND embed right after it too, holding just its progress bar (Discord's embed
+    layout has no second image slot after the first within one embed, so a bar that must stay
+    visually separate from the picture - never drawn into it - needs its own card instead), an
+    option with only a link needs just the one. Costed against a shared MAX_RICH_OPTION_EMBEDS
+    budget (Discord's 10-embeds-per-message limit, minus 1 for the header), 1 or 2 per option
+    depending on whether it has its own picture - see the per-option loop below for the exact
+    accounting. Whatever doesn't fit (or has no image/link at all) still gets a percentage line
+    in the header embed's description, so no option's tally is ever dropped.
 
     chart_files is a list of freshly generated discord.File objects (see
     _render_bar_chart_image/_render_option_bar_image): one shared bar-chart image for every
     option WITHOUT its own picture/link (the header embed's own image slot, unless a legacy
     per-poll banner from before v1.15.20 already occupies it - then those options fall back to a
-    plain percentage line with no bar instead), PLUS one per-option bar image for every RICH
-    option (has its own link but no picture of its own) - an option WITH its own picture instead
-    keeps that picture in its embed's one large image slot at its own configured pixel width, no
-    bar for that one (there's no second slot to put it in). chart_files deliberately NEVER
+    plain percentage line with no bar instead), PLUS one per-option bar image for EVERY rich
+    option regardless of whether it has its own picture - a pictured option's bar just lives in
+    its own second embed rather than sharing the picture's. chart_files deliberately NEVER
     contains an option's own uploaded picture itself - unlike a bar image (regenerated every
     vote, since its fill % changes), an uploaded picture doesn't change on its own between votes,
     so re-uploading it every time would be wasteful; each CALLER decides how to handle it instead
@@ -329,16 +337,13 @@ def build_poll_embed(
             header.description = "\n\n".join(combined)
         return [header], []
 
-    # At least one option has its own image/link. Those still get their own individual embed
-    # (own picture only, no bar - Discord allows only one image per embed, so a generated
-    # bar-chart PNG genuinely has no room there once the option's own picture is showing). But
-    # any OTHER option in the SAME
-    # poll that has nothing of its own is no longer forced into the same text-bar fallback just
-    # because a sibling option happens to have a picture - it joins a shared bar-chart image
-    # instead, using the header embed's own (otherwise unused, see has_legacy_image above) image
-    # slot. Doesn't cost an extra embed slot (still header + up to MAX_RICH_OPTION_EMBEDS image
-    # options, exactly Discord's 10-embeds-per-message ceiling as before this split) since it's
-    # the header's EXISTING image, not a new embed.
+    # At least one option has its own image/link. Those still get their own individual embed(s)
+    # (see the per-option loop further below for exactly how the picture and its bar split
+    # across one or two cards). But any OTHER option in the SAME poll that has nothing of its
+    # own is no longer forced into the same fallback just because a sibling option happens to
+    # have a picture - it joins a shared bar-chart image instead, using the header embed's own
+    # (otherwise unused, see has_legacy_image above) image slot. Doesn't cost an extra embed slot
+    # since it's the header's EXISTING image, not a new embed.
     chart_files = []
     if plain_options:
         if not has_legacy_image:
@@ -358,54 +363,64 @@ def build_poll_embed(
                 _pct_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in plain_options
             ]
 
-    rich_options, overflow_options = image_options[:MAX_RICH_OPTION_EMBEDS], image_options[MAX_RICH_OPTION_EMBEDS:]
+    # v1.15.34-38 went back and forth on where an option's own picture and its bar can coexist
+    # in ONE embed (thumbnail+bar, picture-only-no-bar, ...) - all rejected in turn, down to the
+    # final, explicit instruction: "unter dem bild dann der balken ... nicht im bild ... die
+    # balken dürfen nicht dopelt existieren nicht im bild und auch nicht auserhalb" (the bar
+    # belongs BELOW the picture, never drawn INTO it, and never in two places at once). Discord's
+    # own embed layout (title > description > fields > ONE image > footer, fixed order, no
+    # second image slot after the first) has no way to place a second, genuinely separate visual
+    # element below an embed's image WITHIN that same embed - the only way to get something
+    # visually "below" a picture without touching the picture itself is a SEPARATE embed
+    # immediately following it in the same message (Discord renders consecutive embeds as
+    # stacked cards). So an option with its own picture now costs TWO embeds (picture, then a
+    # second, title-less card holding just the bar) instead of one; an option with no picture of
+    # its own still costs only one (the bar has nothing to share that embed's image slot with).
+    BAR_EMBED_BUDGET = MAX_RICH_OPTION_EMBEDS
+    rich_options, overflow_options = [], []
+    used_budget = 0
+    for opt in image_options:
+        has_pic = bool(opt.get("image_filename") or opt.get("image_url"))
+        cost = 2 if has_pic else 1
+        if used_budget + cost <= BAR_EMBED_BUDGET:
+            rich_options.append(opt)
+            used_budget += cost
+        else:
+            overflow_options.append(opt)
 
-    # v1.15.34 briefly moved EVERY option's own picture to the small thumbnail slot to free the
-    # large one for a bar - rejected on sight ("jetzt wieder zur bild größe ... das px 300 war
-    # perfekt lass es nur in px skalieren"): a deliberately-sized picture shrunk to a ~80px
-    # thumbnail defeats the whole point of choosing a size for it. v1.15.35 then respected a
-    # 'large'/'small'/'custom' picker for this, but the picker itself got removed right after
-    # ("ich wil die gröse nur nuch mit px machen nix andeeres") - image_width (a plain px number,
-    # 0 = unset = keep the image's own size) is the only sizing control left, so there's no
-    # longer any "this option's image is intentionally tiny, might as well add a bar too" signal
-    # to react to. An option WITH its own picture always keeps it in the large slot at that
-    # width, no bar; only an option with nothing of its own (a bare link, or truly no image) has
-    # no image to protect there, so it gets the bar instead.
-    rich_info = []
+    embeds = [header]
     for opt in rich_options:
+        n = counts.get(opt["id"], 0)
+        pct = (n / total * 100) if total else 0
         if opt.get("image_filename"):
             img_src = f"attachment://{opt['image_filename']}"
         elif opt.get("image_url"):
             img_src = opt["image_url"]
         else:
             img_src = None
-        needs_bar = img_src is None
-        rich_info.append((opt, img_src, needs_bar))
 
-    embeds = [header]
-    for opt, img_src, needs_bar in rich_info:
-        n = counts.get(opt["id"], 0)
-        pct = (n / total * 100) if total else 0
         option_embed = discord.Embed(title=opt["label"], color=0x64748b if ended else 0x7c3aed)
         if opt.get("link_url"):
             option_embed.url = opt["link_url"]
-        if needs_bar:
-            # needs_bar is exactly "no picture of its own" (see the loop above) - never true
-            # alongside img_src, so there's nothing here to protect in a thumbnail anymore. The
-            # generated bar image itself already draws "pct% (n Stimme(n))" as its own text (see
-            # _render_option_bar_image) - no separate footer needed on top of it.
-            bar_filename = f"poll_opt_bar_{opt['id']}.png"
-            bar_bytes = _render_option_bar_image(n, pct, bar_color)
-            chart_files.append(discord.File(io.BytesIO(bar_bytes), filename=bar_filename))
-            option_embed.set_image(url=f"attachment://{bar_filename}")
-        else:
-            # An option with its own picture shows ONLY that picture - no percentage/vote-count
-            # footer here either ("du hast was in die einbettung rein gemacht was da nicht sein
-            # soll ... mach das raus"). The header embed's own footer already shows the poll's
-            # total vote count; per-option tallies for a picture-having option aren't shown
-            # anywhere else, by explicit request.
+
+        bar_filename = f"poll_opt_bar_{opt['id']}.png"
+        bar_bytes = _render_option_bar_image(n, pct, bar_color)
+        chart_files.append(discord.File(io.BytesIO(bar_bytes), filename=bar_filename))
+
+        if img_src:
+            # Picture keeps this embed's one image slot to itself; the bar rides as its own,
+            # title-less embed directly after - visually a separate card right below the
+            # picture, never drawn into it, never shown a second time anywhere else.
             option_embed.set_image(url=img_src)
-        embeds.append(option_embed)
+            embeds.append(option_embed)
+            bar_embed = discord.Embed(color=0x64748b if ended else 0x7c3aed)
+            bar_embed.set_image(url=f"attachment://{bar_filename}")
+            embeds.append(bar_embed)
+        else:
+            # Nothing of its own competing for the image slot - the bar goes directly into this
+            # same embed instead of needing a second one.
+            option_embed.set_image(url=f"attachment://{bar_filename}")
+            embeds.append(option_embed)
     if overflow_options:
         header_lines += [
             _pct_line(opt["label"], counts.get(opt["id"], 0), total)[0] for opt in overflow_options
