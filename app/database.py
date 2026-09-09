@@ -753,14 +753,14 @@ async def init_db():
             # instead of the one fixed purple-square look - one style PER POLL (set at creation,
             # changeable when editing), not a single server-wide default. 'purple_square' as the
             # default is deliberately the exact style that already shipped, so an existing poll's
-            # bar keeps looking exactly the same after this migration - see BAR_STYLES in
-            # cogs/polls.py for the full list of selectable emoji pairs.
+            # bar keeps looking exactly the same after this migration - selectable emoji pairs
+            # used to live in a BAR_STYLES dict in cogs/polls.py, since removed (see below).
             "ALTER TABLE polls ADD COLUMN bar_style TEXT NOT NULL DEFAULT 'purple_square'",
             # bar_style above was rejected on sight ("so meinte ich das nicht ... ich meinte ein
             # Slider") in favor of a genuine RGB color picker whose bar is rendered to actually
-            # LOOK smoothly colored (see cogs/polls.py's _render_bar_chart_image) - column kept
-            # per this project's "never drop a column" convention, but now unused/superseded by
-            # bar_color below; every current codepath ignores it.
+            # LOOK smoothly colored (see cogs/polls.py's _render_combined_poll_image) - column
+            # kept per this project's "never drop a column" convention, but now unused/superseded
+            # by bar_color below; every current codepath ignores it.
             "ALTER TABLE polls ADD COLUMN bar_color TEXT NOT NULL DEFAULT '#7c3aed'",
             # User-requested: schedule a poll to start in the future instead of always posting
             # immediately on creation ("ich will angeben können wann die anfängt und wann die

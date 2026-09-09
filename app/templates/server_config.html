@@ -1201,10 +1201,11 @@ document.addEventListener('click', function(e) {
   /* Mimics a real Discord message (bot header + embed + buttons), not the dashboard's own
      theme - deliberately uses Discord's actual dark-theme colors so what's shown here matches
      what will really post, independent of whatever light/dark theme the dashboard itself is
-     in. The actual posted poll (cogs/polls.py's build_poll_embed()) now renders its bar as a
-     real generated PNG (_render_bar_chart_image, a smooth fill in the admin's chosen RGB
-     color) for the common case - this preview approximates that with an equally smooth CSS
-     fill using the same color, rather than trying to reproduce a generated image client-side.
+     in. The actual posted poll (cogs/polls.py's build_poll_embed()) now renders its bar as part
+     of one real generated PNG covering every option (_render_combined_poll_image, a smooth fill
+     in the admin's chosen RGB color) for the common case - this preview approximates that with
+     an equally smooth CSS fill using the same color, rather than trying to reproduce a generated
+     image client-side.
   */
   .poll-preview-message { max-width:480px; }
   .poll-preview-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.35rem; }
@@ -1528,16 +1529,17 @@ function pollPreviewFileUrl(file) {
 // look like" preview - deliberately in literal German ("Einzelauswahl"/"Mehrfachauswahl"/
 // "Stimme(n)"), not tr.*, since the REAL poll message posted to Discord is always German
 // regardless of the dashboard's own language (see cogs/polls.py) - a translated preview would
-// show something Discord itself never actually displays. Options with their own image/link get
-// the same plain bar line here as any other option - the richer per-option-embed layout
-// build_poll_embed() switches to once any option has an image isn't reproduced, this is a
-// preview of the text/bar/buttons, not a pixel-exact mockup of every embed variant.
+// show something Discord itself never actually displays. Every option gets its own bar+image
+// row here, same as the one combined image build_poll_embed() actually generates
+// (_render_combined_poll_image) - this is an approximation of that layout, not a pixel-exact
+// mockup of the generated PNG itself.
 // The bar itself is a real, smooth CSS fill in the exact color from the <input type="color">
-// picker below - a genuine, if approximate, stand-in for _render_bar_chart_image()'s generated
-// PNG (both are a smooth bar in an arbitrary RGB color, unlike the discrete-square-emoji
-// fallback _bar_line() only still uses for the one case that can't show an image at all). A
-// brand-new, not-yet-posted poll always has 0 votes, so the fill is always 0% wide here - the
-// color itself is the only thing worth previewing before anyone has actually voted.
+// picker below - a genuine, if approximate, stand-in for _render_combined_poll_image()'s
+// generated PNG (both are a smooth bar in an arbitrary RGB color; the plain percentage-text-only
+// fallback build_poll_embed() uses for the rare legacy-banner-image case has no bar to preview
+// at all, and isn't reproduced here either). A brand-new, not-yet-posted poll always has 0
+// votes, so the fill is always 0% wide here - the color itself is the only thing worth
+// previewing before anyone has actually voted.
 function renderPollPreview(form) {
   const box = form.querySelector('.poll-preview-box');
   if (!box) return;
