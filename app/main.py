@@ -5033,7 +5033,12 @@ _TAB_CHECKBOX_KEYS = {
 
 @web.post("/servers/{guild_id}/features/save")
 async def server_features_save(request: Request, guild_id: int):
-    if r := auth_redirect(request): return r
+    # Server-WIDE setting, same for every viewer of this server - the template already hides
+    # this card's form from anyone but an admin, but the route itself must refuse it too
+    # ("der mod kann die sachen die bei nutzer aus sind wieder an machen" - confirmed live: a
+    # granted moderator could POST here directly and rewrite it, even fully restricted via
+    # their own allowed_tabs, since that's a separate, per-viewer check this route never made).
+    if r := admin_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
     form = await request.form()
