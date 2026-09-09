@@ -1689,6 +1689,25 @@ document.querySelectorAll('.poll-form').forEach(function(form) {
   </div>
 </div>
 
+<div class="card" style="margin-bottom:1.25rem;">
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.ratings_post_hint }}</p>
+  <form method="post" action="/servers/{{ guild.id }}/ratings/post">
+    <div class="grid-2" style="gap:0.75rem;align-items:end;">
+      <div>
+        <label>{{ tr.label_channel }}</label>
+        <select name="channel_id" required style="margin-bottom:0;">
+          <option value="">{{ tr.autodelete_channel_placeholder }}</option>
+          {% for c in channels %}<option value="{{ c.id }}" {% if c.id == ratings_channel_id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <button type="submit" class="btn btn-primary">{{ tr.ratings_btn_post }}</button>
+        {% if ratings_posted %}<span style="font-size:0.78rem;color:var(--muted);margin-left:0.5rem;">{{ tr.ratings_already_posted }}</span>{% endif %}
+      </div>
+    </div>
+  </form>
+</div>
+
 <div class="card">
   <p class="hint" style="margin-bottom:1rem;">{{ tr.ratings_hint }}</p>
 

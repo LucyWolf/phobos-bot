@@ -111,6 +111,10 @@ from cogs.polls import (
     build_poll_embed as _build_poll_embed, PollView as _PollView,
     DEFAULT_BAR_COLOR as _DEFAULT_BAR_COLOR,
 )
+from cogs.ratings import (
+    build_ratings_embed as _build_ratings_embed, RatingsListView as _RatingsListView,
+    refresh_posted_list as _refresh_ratings_list,
+)
 from i18n import get_tr
 import uvicorn
 from discord.ext import commands
@@ -4723,6 +4727,10 @@ async def server_config(
         "ORDER BY i.recommended DESC, avg_stars DESC, i.label COLLATE NOCASE",
         (str(guild_id),),
     )
+    # "die bewerungen möchte ich auch in dc posten können ... ich muss dafür ein text chanel
+    # anbinden können" - the persistent posted-list channel, if one's configured/posted yet.
+    ratings_channel_id = await get_guild_config(guild_id, "ratings_channel_id") or ""
+    ratings_posted = bool(await get_guild_config(guild_id, "ratings_message_id"))
 
     # Notifications
     subs = await db_rows(
@@ -4848,7 +4856,8 @@ async def server_config(
         "leaderboard": lb, "warn_groups": warn_groups,
         "ticket_panels": ticket_panels, "ticket_list": ticket_list, "ga_list": ga_list,
         "poll_list": poll_list,
-        "rating_list": rating_list,
+        "rating_list": rating_list, "ratings_channel_id": ratings_channel_id,
+        "ratings_posted": ratings_posted,
         "embed_posts": embed_posts,
         "subs": subs, "twitch_configured": twitch_configured,
         "all_users": all_users, "server_perms": server_perms,
@@ -7546,6 +7555,7 @@ async def rating_item_add(request: Request, guild_id: int):
         "INSERT INTO rating_items (guild_id,label,url) VALUES (?,?,?)",
         (str(guild_id), label, url[:500]),
     )
+    await _refresh_ratings_list(bot, guild_id)
     return RedirectResponse(f"/servers/{guild_id}?tab=ratings&success=Eintrag+hinzugefügt", status_code=302)
 
 
@@ -7573,6 +7583,7 @@ async def rating_item_edit(request: Request, guild_id: int, item_id: int):
         "UPDATE rating_items SET label=?, url=?, recommended=? WHERE id=?",
         (label, url[:500], int(recommended), item_id),
     )
+    await _refresh_ratings_list(bot, guild_id)
     return RedirectResponse(f"/servers/{guild_id}?tab=ratings&success=Eintrag+gespeichert", status_code=302)
 
 
@@ -7587,7 +7598,65 @@ async def rating_item_delete(request: Request, guild_id: int, item_id: int):
     await db_exec("DELETE FROM rating_votes WHERE item_id IN (SELECT id FROM rating_items WHERE id=? AND guild_id=?)",
                   (item_id, str(guild_id)))
     await db_exec("DELETE FROM rating_items WHERE id=? AND guild_id=?", (item_id, str(guild_id)))
+    await _refresh_ratings_list(bot, guild_id)
     return RedirectResponse(f"/servers/{guild_id}?tab=ratings&success=Eintrag+gelöscht", status_code=302)
+
+
+@web.post("/servers/{guild_id}/ratings/post")
+async def rating_list_post(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    channel_id = form.get("channel_id", "").strip()
+    if not channel_id or channel_id not in {str(c.id) for c in guild.text_channels}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=ratings&error=Ungültiger+Kanal", status_code=302)
+    await set_guild_config(guild_id, "ratings_channel_id", channel_id)
+    items = await db_rows(
+        "SELECT i.*, "
+        "(SELECT COUNT(*) FROM rating_votes v WHERE v.item_id=i.id) AS vote_count, "
+        "(SELECT AVG(stars) FROM rating_votes v WHERE v.item_id=i.id) AS avg_stars "
+        "FROM rating_items i WHERE i.guild_id=? "
+        "ORDER BY i.recommended DESC, avg_stars DESC, i.label COLLATE NOCASE",
+        (str(guild_id),),
+    )
+    embed = await _build_ratings_embed(guild_id)
+    view = _RatingsListView(items)
+    old_channel_id = await get_guild_config(guild_id, "ratings_channel_id")
+    old_message_id = await get_guild_config(guild_id, "ratings_message_id")
+    b = bot._bot_for_guild(guild_id)
+    try:
+        # Same "edit the existing message in place unless the channel changed or it's gone"
+        # precedent as tickets_panel_update's own live-message handling above - a channel switch
+        # just means the OLD post is orphaned where it sits (not deleted automatically, an admin
+        # who moves the list to a different channel likely wants the old one either way, exactly
+        # like ticket panels behave on the same kind of channel change).
+        msg = None
+        if old_message_id and old_channel_id == channel_id:
+            old_channel = b.get_channel(int(channel_id)) if b else None
+            if old_channel:
+                try:
+                    msg = await old_channel.fetch_message(int(old_message_id))
+                except discord.NotFound:
+                    msg = None
+        if msg:
+            await msg.edit(embed=embed, view=view)
+        else:
+            channel = b.get_channel(int(channel_id)) if b else None
+            if not channel:
+                return RedirectResponse(f"/servers/{guild_id}?tab=ratings&error=Bot+nicht+online", status_code=302)
+            msg = await channel.send(embed=embed, view=view)
+        if b:
+            b.add_view(view)
+    except Exception as e:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=ratings&error=Discord-Fehler:+{urllib.parse.quote(str(e))}", status_code=302
+        )
+    await set_guild_config(guild_id, "ratings_message_id", str(msg.id))
+    return RedirectResponse(f"/servers/{guild_id}?tab=ratings&success=Liste+gepostet", status_code=302)
 
 
 # ── Warnings ──────────────────────────────────────────────────────────────────
