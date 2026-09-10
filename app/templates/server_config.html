@@ -2392,11 +2392,17 @@ function toggleScheduledEdit(id) {
     </thead>
     <tbody>
     {% for s in event_series %}
-    <tr style="border-top:1px solid var(--border);font-size:0.85rem;">
-      <td style="padding:0.5rem;">🔁 {{ s.name }}</td>
+    <tr style="border-top:1px solid var(--border);font-size:0.85rem;{% if s.paused %}opacity:0.6;{% endif %}">
+      <td style="padding:0.5rem;">{{ '⏸' if s.paused else '🔁' }} {{ s.name }}</td>
       <td style="padding:0.5rem;">{{ tr.get('events_recurrence_' + s.recurrence, s.recurrence) }}</td>
-      <td style="padding:0.5rem;white-space:nowrap;">{{ s.next_start_display }}</td>
+      <td style="padding:0.5rem;white-space:nowrap;">
+        {{ s.next_start_display }}
+        {% if s.paused %}<span style="color:var(--muted);font-size:0.72rem;">({{ tr.events_series_paused_label }})</span>{% endif %}
+      </td>
       <td style="padding:0.5rem;text-align:right;white-space:nowrap;">
+        <form method="post" action="/servers/{{ guild.id }}/events/series/pause/{{ s.id }}" style="margin:0;display:inline;">
+          <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;margin-right:0.3rem;" title="{{ tr.events_series_btn_resume if s.paused else tr.events_series_btn_pause }}">{{ '▶' if s.paused else '⏸' }}</button>
+        </form>
         <form method="post" action="/servers/{{ guild.id }}/events/series/delete/{{ s.id }}" style="margin:0;display:inline;" onsubmit="return confirm({{ tr.events_series_confirm_stop.replace('{name}', s.name) | js }})">
           <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);" title="{{ tr.events_series_btn_stop }}">✕</button>
         </form>

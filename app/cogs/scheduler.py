@@ -125,7 +125,7 @@ class Scheduler(commands.Cog):
         berlin_tz = ZoneInfo("Europe/Berlin")
         now = datetime.datetime.now(berlin_tz).strftime("%Y-%m-%dT%H:%M")
         series_rows = await db_rows(
-            "SELECT * FROM event_series WHERE active=1 AND next_start_at <= ?", (now,)
+            "SELECT * FROM event_series WHERE active=1 AND paused=0 AND next_start_at <= ?", (now,)
         )
         for series in series_rows:
             try:

@@ -3728,6 +3728,23 @@ async def events_series_delete(request: Request, guild_id: int, series_id: int):
     return RedirectResponse(f"/servers/{guild_id}?tab=events&success=Wiederholung+beendet", status_code=302)
 
 
+@web.post("/servers/{guild_id}/events/series/pause/{series_id}")
+async def events_series_pause(request: Request, guild_id: int, series_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    # Flips paused 0<->1 - cogs/scheduler.py's _check_recurring skips paused series entirely
+    # (no new occurrence gets created), but next_start_at itself is left untouched: resuming an
+    # already-overdue series creates its next occurrence on the very next 5-minute tick instead
+    # of silently skipping whatever was missed while paused, same catch-up behavior already
+    # used elsewhere in this project (giveaways/polls resuming after the bot was offline).
+    await db_exec(
+        "UPDATE event_series SET paused = 1 - paused WHERE id=? AND guild_id=?",
+        (series_id, str(guild_id)),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=events&success=Aktualisiert", status_code=302)
+
+
 # ── Temp Voice ────────────────────────────────────────────────────────────────
 
 @web.post("/servers/{guild_id}/tempvoice/add")

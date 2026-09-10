@@ -858,6 +858,20 @@ async def init_db():
             # filter, or who re-checks every box, sees the full log exactly like before
             # this feature existed.
             "ALTER TABLE users ADD COLUMN log_categories TEXT NOT NULL DEFAULT ''",
+            # User-requested ("🗓️ Events pausierbar machen") - a recurring event series'
+            # existing `active` column is never actually set to 0 anywhere in the code (the
+            # delete route hard-DELETEs the row instead) - reusing it for pause/resume would
+            # have meant a paused series either vanishes from _event_series_list's own
+            # `WHERE active=1` filter (no way to see/resume it) or that query would need
+            # loosening in a way that risks conflating "paused" with a future real soft-delete
+            # need. A dedicated column keeps both concepts separate: `_check_recurring` skips
+            # paused series (no new occurrence gets created while paused), but the dashboard
+            # list keeps showing them so there's something to click "Fortsetzen" on. Resuming
+            # an overdue series fires its next occurrence immediately on the next 5-minute
+            # tick - same "catch up on what was missed" behavior already used everywhere else
+            # in this project for a bot that was offline/paused past a due time (giveaways,
+            # polls), not silently skipped.
+            "ALTER TABLE event_series ADD COLUMN paused INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await db.execute(col)
