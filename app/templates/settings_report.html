@@ -26,7 +26,11 @@
     <label>Titel</label>
     <input type="text" name="title" placeholder="Kurz und knapp, z.B. 'Umfragen: Bild wird nicht angezeigt'" required>
     <label>Beschreibung</label>
-    <textarea name="body" rows="12" style="font-family:monospace;font-size:0.85rem;">{{ body_template }}</textarea>
+    <textarea name="body" rows="12"
+              style="width:100%;box-sizing:border-box;background:var(--bg);color:var(--text);
+                     border:1px solid var(--border);border-radius:0.5rem;padding:0.65rem 0.75rem;
+                     font-size:0.85rem;font-family:monospace;line-height:1.5;resize:vertical;
+                     outline:none;margin-bottom:0.9rem;">{{ body_template }}</textarea>
     <button type="submit" class="btn btn-primary" style="margin-top:0.5rem;">📣 Auf GitHub melden →</button>
   </form>
 </div>
