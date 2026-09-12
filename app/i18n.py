@@ -23,6 +23,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "btn_add":            "➕ Hinzufügen",
         "btn_delete":         "Löschen",
         "btn_settings":       "Einstellungen",
+        "untested_warning_tooltip": "⚠️ Diese Funktion wurde noch nicht ausführlich in echter Nutzung getestet — bitte mit Vorsicht verwenden und Rückmeldung geben, falls etwas nicht wie erwartet funktioniert.",
         # Common labels
         "label_name":         "Name",
         "label_channel":      "Kanal",
@@ -821,6 +822,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "btn_add":            "➕ Add",
         "btn_delete":         "Delete",
         "btn_settings":       "Settings",
+        "untested_warning_tooltip": "⚠️ This feature hasn't been thoroughly tested in real-world use yet — please use it with caution and report anything that doesn't work as expected.",
         # Common labels
         "label_name":         "Name",
         "label_channel":      "Channel",
