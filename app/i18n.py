@@ -24,6 +24,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "btn_delete":         "Löschen",
         "btn_settings":       "Einstellungen",
         "untested_warning_tooltip": "⚠️ Diese Funktion wurde noch nicht ausführlich in echter Nutzung getestet — bitte mit Vorsicht verwenden und Rückmeldung geben, falls etwas nicht wie erwartet funktioniert.",
+        "untested_warning_title": "Noch nicht ausführlich getestet",
         # Common labels
         "label_name":         "Name",
         "label_channel":      "Kanal",
@@ -823,6 +824,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "btn_delete":         "Delete",
         "btn_settings":       "Settings",
         "untested_warning_tooltip": "⚠️ This feature hasn't been thoroughly tested in real-world use yet — please use it with caution and report anything that doesn't work as expected.",
+        "untested_warning_title": "Not thoroughly tested yet",
         # Common labels
         "label_name":         "Name",
         "label_channel":      "Channel",
