@@ -2395,18 +2395,21 @@ _GITHUB_REPO_URL = "https://github.com/LucyWolf/phobos-bot"
 async def report_page(request: Request):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
+    lang = request.session.get("lang", "de")
+    tr = get_tr(lang)
     body_template = (
-        "**Was ist passiert / was fehlt dir?**\n\n\n"
+        f"**{tr['report_body_question']}**\n\n\n"
         "---\n"
-        "Automatisch angehängt:\n"
-        f"- Bot-Version: v{VERSION}\n"
-        f"- Plattform: {_os_display_string()}\n"
+        f"{tr['report_body_auto_attached']}\n"
+        f"- {tr['report_body_version_label']}: v{VERSION}\n"
+        f"- {tr['report_body_platform_label']}: {_os_display_string()}\n"
     )
     return templates.TemplateResponse("settings_report.html", {
         **session(request), "request": request,
         "guilds": await _guild_list(request),
         "active": "report",
         "github_repo_url": _GITHUB_REPO_URL,
+        "github_signup_url": "https://github.com/signup",
         "body_template": body_template,
     })
 

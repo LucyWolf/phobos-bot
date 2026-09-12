@@ -6,39 +6,67 @@
    reporter still finishes the submission on GitHub itself (needs a free GitHub account for
    that), but composing the report happens right here in the dashboard. #}
 {% extends "base.html" %}
-{% block title %}{{ app_name }} – Melden{% endblock %}
-{% block page_title %}📣 Melden{% endblock %}
+{% block title %}{{ app_name }} – {{ tr.nav_report }}{% endblock %}
+{% block page_title %}📣 {{ tr.nav_report }}{% endblock %}
 
 {% block content %}
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="toggleReportInfo()" title="{{ tr.report_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="report-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:300px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.report_info_title }}</div>
+    <div style="color:var(--muted);line-height:1.6;">
+      <p style="margin:0 0 0.5rem;">
+        {{ tr.report_info_account_note }}
+        {{ tr.report_info_signup_pre }}<a href="{{ github_signup_url }}" target="_blank">{{ tr.report_info_signup_link }}</a>
+      </p>
+      <p style="margin:0 0 0.5rem;">{{ tr.report_info_flow }}</p>
+      <p style="margin:0;">{{ tr.report_info_duplicate_hint }}</p>
+    </div>
+  </div>
+</div>
+
 <div class="card" style="max-width:620px;">
-  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.3rem;">Bug melden oder Erweiterung vorschlagen</div>
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.3rem;">{{ tr.report_page_heading }}</div>
   <p class="hint" style="margin-bottom:1.25rem;">
-    Landet als Issue im <a href="{{ github_repo_url }}" target="_blank">GitHub-Repository</a> des Bots.
-    Dafür brauchst du einen kostenlosen GitHub-Account — die Anfrage öffnet sich in einem neuen
-    Tab, du kannst dort vor dem Absenden nochmal alles gegenlesen.
+    {{ tr.report_hint_pre }}<a href="{{ github_repo_url }}" target="_blank">{{ tr.report_hint_link_text }}</a>{{ tr.report_hint_post }}
   </p>
   <form method="get" action="{{ github_repo_url }}/issues/new" target="_blank">
-    <label>Art</label>
+    <label>{{ tr.report_label_type }}</label>
     <select name="labels">
-      <option value="bug">🐛 Bug</option>
-      <option value="enhancement">💡 Erweiterung / Feature-Wunsch</option>
+      <option value="bug">{{ tr.report_option_bug }}</option>
+      <option value="enhancement">{{ tr.report_option_enhancement }}</option>
     </select>
-    <label>Titel</label>
-    <input type="text" name="title" placeholder="Kurz und knapp, z.B. 'Umfragen: Bild wird nicht angezeigt'" required>
-    <label>Beschreibung</label>
+    <label>{{ tr.report_label_title }}</label>
+    <input type="text" name="title" placeholder="{{ tr.report_title_placeholder }}" required>
+    <label>{{ tr.report_label_description }}</label>
     <textarea name="body" rows="12"
               style="width:100%;box-sizing:border-box;background:var(--bg);color:var(--text);
                      border:1px solid var(--border);border-radius:0.5rem;padding:0.65rem 0.75rem;
                      font-size:0.85rem;font-family:monospace;line-height:1.5;resize:vertical;
                      outline:none;margin-bottom:0.9rem;">{{ body_template }}</textarea>
-    <button type="submit" class="btn btn-primary" style="margin-top:0.5rem;">📣 Auf GitHub melden →</button>
+    <button type="submit" class="btn btn-primary" style="margin-top:0.5rem;">{{ tr.report_submit_btn }}</button>
   </form>
 </div>
 
 <div class="card" style="max-width:620px; margin-top:1rem; background:rgba(124,58,237,0.05); border-color:rgba(124,58,237,0.2);">
   <p class="hint">
-    Schon gemeldete Sachen erst gegenchecken, bevor eine neue Meldung erstellt wird:
-    <a href="{{ github_repo_url }}/issues" target="_blank">bestehende Issues ansehen →</a>
+    {{ tr.report_existing_issues_pre }}<a href="{{ github_repo_url }}/issues" target="_blank">{{ tr.report_existing_issues_link }}</a>
   </p>
 </div>
+
+<script>
+  function toggleReportInfo() {
+    const box = document.getElementById('report-info-box');
+    box.style.display = box.style.display === 'none' ? '' : 'none';
+  }
+  document.addEventListener('click', function(e) {
+    const box = document.getElementById('report-info-box');
+    if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleReportInfo()"]')) {
+      box.style.display = 'none';
+    }
+  });
+</script>
 {% endblock %}
