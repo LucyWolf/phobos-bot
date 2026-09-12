@@ -107,7 +107,7 @@ services:
     container_name: ${BOT_CONTAINER_NAME:-Phobos-Bot}
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${HOST_PORT:-8080}:8080"
     volumes:
       - ./app:/app
       - ./data:/app/data
@@ -121,6 +121,8 @@ services:
 ```
 
 > The `/var/run/docker.sock` mount lets the dashboard talk to the Docker Engine API directly (needed for the one-click update feature under **Settings → 🔄 Updates**). The `.:/repo` mount gives the container access to the git repository itself so updates can fetch and hard-reset to the new code (`git fetch` + `git reset --hard origin/main`, not a plain `git pull` — this forcibly overwrites any local drift instead of risking a merge conflict). Both are optional if you're fine doing updates manually from the server shell instead (`git pull` + `docker compose up -d --build`).
+
+> **Running multiple fully independent instances on the same server** (separate database, separate dashboard login, separate updates — not the same as the multi-bot-account feature above): clone this repo into its own directory per instance, then set `BOT_CONTAINER_NAME` and `HOST_PORT` to unique values in that instance's own `.env` file (see `.env.example`) before running `docker compose up -d --build`. Each clone already gets its own `./data` and `./app` automatically since those are relative paths.
 
 ---
 
@@ -592,7 +594,7 @@ services:
     container_name: ${BOT_CONTAINER_NAME:-Phobos-Bot}
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${HOST_PORT:-8080}:8080"
     volumes:
       - ./app:/app
       - ./data:/app/data
@@ -606,6 +608,8 @@ services:
 ```
 
 > Der `/var/run/docker.sock`-Mount erlaubt dem Dashboard direkten Zugriff auf die Docker Engine API (nötig für das One-Click-Update unter **Einstellungen → 🔄 Updates**). Der `.:/repo`-Mount gibt dem Container Zugriff auf das Git-Repository selbst, damit Updates den neuen Code per `git fetch` + `git reset --hard origin/main` holen können (kein normales `git pull` — das würde bei lokalen Abweichungen mit einem Konflikt fehlschlagen, der harte Reset überschreibt stattdessen absichtlich alles). Beide sind optional, falls Updates lieber manuell über die Server-Shell laufen sollen (`git pull` + `docker compose up -d --build`).
+
+> **Mehrere komplett eigenständige Instanzen auf demselben Server** (eigene Datenbank, eigenes Dashboard-Login, eigene Updates — nicht zu verwechseln mit der Multi-Bot-Account-Funktion oben): dieses Repo in ein eigenes Verzeichnis pro Instanz klonen, dann in der `.env`-Datei dieser Instanz `BOT_CONTAINER_NAME` und `HOST_PORT` auf eindeutige Werte setzen (siehe `.env.example`), bevor `docker compose up -d --build` läuft. Jeder Klon bekommt sein eigenes `./data` und `./app` automatisch, da das relative Pfade sind.
 
 ---
 

@@ -5,7 +5,7 @@ services:
     container_name: ${BOT_CONTAINER_NAME:-Phobos-Bot}
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${HOST_PORT:-8080}:8080"
     volumes:
       - ./app:/app
       - ./data:/app/data
