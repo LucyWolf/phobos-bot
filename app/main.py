@@ -2388,6 +2388,29 @@ async def bot_update_page(request: Request, success: str = "", error: str = ""):
     })
 
 
+_GITHUB_REPO_URL = "https://github.com/LucyWolf/phobos-bot"
+
+
+@web.get("/settings/report", response_class=HTMLResponse)
+async def report_page(request: Request):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    body_template = (
+        "**Was ist passiert / was fehlt dir?**\n\n\n"
+        "---\n"
+        "Automatisch angehängt:\n"
+        f"- Bot-Version: v{VERSION}\n"
+        f"- Plattform: {_os_display_string()}\n"
+    )
+    return templates.TemplateResponse("settings_report.html", {
+        **session(request), "request": request,
+        "guilds": await _guild_list(request),
+        "active": "report",
+        "github_repo_url": _GITHUB_REPO_URL,
+        "body_template": body_template,
+    })
+
+
 _update_status: dict = {"logs": [], "done": False, "error": ""}
 
 

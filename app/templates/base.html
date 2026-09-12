@@ -336,7 +336,7 @@
       <span class="label">{{ tr.nav_dashboard }}</span>
     </a>
 
-    <div class="nav-group {% if active in ['settings','users','bot_update','bot_info','notif_settings','smtp','servers','tokens'] or nav_settings_open %}open{% endif %}" id="nav-group-settings">
+    <div class="nav-group {% if active in ['settings','users','bot_update','bot_info','notif_settings','smtp','servers','tokens','report'] or nav_settings_open %}open{% endif %}" id="nav-group-settings">
       <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn-header{% endif %}"
            onclick="toggleNavGroup('settings')" title="{{ tr.nav_settings }}">
         <span class="icon">⚙️</span>
@@ -380,6 +380,12 @@
         <a href="/bot/update" class="nav-item nav-sub {% if active == 'bot_update' %}active{% endif %}" id="nav-update-link">
           <span class="icon">🔄</span>
           <span class="label">{{ tr.nav_updates }} <span id="nav-update-badge" style="display:none;background:#f59e0b;color:#000;font-size:0.6rem;font-weight:700;border-radius:999px;padding:0.1rem 0.4rem;margin-left:0.3rem;">NEU</span></span>
+        </a>
+        {% endif %}
+        {% if role == 'admin' %}
+        <a href="/settings/report" class="nav-item nav-sub {% if active == 'report' %}active{% endif %}">
+          <span class="icon">📣</span>
+          <span class="label">{{ tr.nav_report }}</span>
         </a>
         {% endif %}
       </div>

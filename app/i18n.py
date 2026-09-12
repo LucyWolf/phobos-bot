@@ -11,6 +11,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "nav_twitch_api":     "Streaming-API",
         "nav_smtp":           "E-Mail / SMTP",
         "nav_updates":        "Updates",
+        "nav_report":         "Melden",
         "nav_timezone":       "Zeitzone",
         # Sidebar – Server
         "nav_twitch":         "Streaming",
@@ -811,6 +812,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "nav_twitch_api":     "Streaming API",
         "nav_smtp":           "E-Mail / SMTP",
         "nav_updates":        "Updates",
+        "nav_report":         "Report",
         "nav_timezone":       "Timezone",
         # Sidebar – Server
         "nav_twitch":         "Streaming",
