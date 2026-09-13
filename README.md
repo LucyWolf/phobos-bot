@@ -88,13 +88,15 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 |---|---|
 | **Dashboard** | Bot status, connected servers, moderation statistics — personalized per user |
 | **Per Server** | Config, Welcome, Spam Protection, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Polls, Ratings, Streaming, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, CrossVerification, Birthdays, Auto-Delete, Gameserver, Auto-Kick, Embed Messages, Bot Design |
-| **Server List** | All connected servers, invite bot |
+| **Server List** | All connected servers, invite bot, remove bot from a server |
 | **🔑 Tokens** *(Admin)* | Manage multiple bot tokens — each token runs its own bot account, hot-reload without restart |
 | **👥 Users** *(Admin)* | Create/delete dashboard users, assign roles and server access, **download & restore backups** |
+| **🤖 Bot Design** | Change a bot token's Discord name and avatar (Discord allows 2 changes per hour per token) |
 | **🔐 Two-Factor Auth** | Optional TOTP-based 2FA for dashboard login (Google Authenticator, Authy, etc.), with one-time backup codes |
 | **📊 Bot Info** | Version, uptime, latency, CPU/RAM, hostname, OS |
 | **🔄 Updates** *(Admin)* | Check current version, one-click update from GitHub |
 | **🕐 Timezone** *(Admin to change)* | Configure timezone for all timestamps in the dashboard |
+| **🏷️ App Name** *(Admin)* | Rename the dashboard itself (shown everywhere in the UI and in emails instead of "Phobos Bot") |
 | **🟣 Streaming-API** *(Admin)* | Register one or more Twitch apps (Client ID + Secret), optionally shared with specific users |
 | **📧 E-Mail / SMTP** *(Admin)* | Configure SMTP for password reset |
 | **📣 Report** *(Admin)* | File a bug report or feature request as a pre-filled GitHub issue |
@@ -643,13 +645,15 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 |---|---|
 | **Dashboard** | Bot-Status, verbundene Server, Moderations-Statistiken — personalisiert pro Nutzer |
 | **Pro Server** | Konfiguration, Willkommen, Spam-Schutz, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Umfragen, Bewertungen, Streaming, Free Stuff, Log, Temp Voice, Geplant, Events, CrossVerification, Geburtstage, Auto-Delete, Gameserver, Auto-Kick, Embed-Nachrichten, Bot-Design |
-| **Server-Übersicht** | Alle verbundenen Server, Bot einladen |
+| **Server-Übersicht** | Alle verbundenen Server, Bot einladen, Bot von einem Server entfernen |
 | **🔑 Tokens** *(Admin)* | Mehrere Bot-Tokens verwalten – jeder Token startet einen eigenen Bot-Account, Hot-Reload ohne Neustart |
 | **👥 Benutzer** *(Admin)* | Dashboard-Nutzer anlegen/löschen, Rolle und Server-Zugriff vergeben, **Backups erstellen & einspielen** |
+| **🤖 Bot-Design** | Name und Avatar eines Bot-Tokens auf Discord ändern (Discord erlaubt 2 Änderungen pro Stunde und Token) |
 | **🔐 Zwei-Faktor-Auth** | Optionale TOTP-2FA für den Dashboard-Login (Google Authenticator, Authy, etc.), mit einmaligen Backup-Codes |
 | **📊 Bot-Info** | Version, Uptime, Latenz, CPU/RAM, Hostname, OS |
 | **🔄 Updates** *(Admin)* | Aktuelle Version prüfen, One-Click-Update von GitHub |
 | **🕐 Zeitzone** *(Ändern: Admin)* | Zeitzone für alle Zeitangaben im Dashboard konfigurieren |
+| **🏷️ App-Name** *(Admin)* | Das Dashboard selbst umbenennen (erscheint überall in der UI und in E-Mails statt "Phobos Bot") |
 | **🟣 Streaming-API** *(Admin)* | Eine oder mehrere Twitch-Apps (Client-ID + Secret) eintragen, optional für bestimmte Nutzer freigeben |
 | **📧 E-Mail / SMTP** *(Admin)* | SMTP für Passwort-Reset konfigurieren |
 | **📣 Melden** *(Admin)* | Bug oder Feature-Wunsch als vorausgefülltes GitHub-Issue melden |
