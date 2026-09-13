@@ -116,6 +116,7 @@ Phobos supports **multiple bot accounts simultaneously**. Go to **Settings → �
 services:
   bot:
     build: ./app
+    image: phobos-bot:latest
     container_name: ${BOT_CONTAINER_NAME:-Phobos-Bot}
     restart: unless-stopped
     ports:
@@ -663,6 +664,7 @@ Phobos unterstützt **mehrere Bot-Accounts gleichzeitig**. Unter **Einstellungen
 services:
   bot:
     build: ./app
+    image: phobos-bot:latest
     container_name: ${BOT_CONTAINER_NAME:-Phobos-Bot}
     restart: unless-stopped
     ports:
