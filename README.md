@@ -87,6 +87,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | Section | Function |
 |---|---|
 | **Dashboard** | Bot status, connected servers, moderation statistics — personalized per user |
+| **👤 Profile** | Avatar, display name, own backup export, account deletion, and personal language + timezone preference that overrides the server-wide default just for this user |
 | **Per Server** | Config, Welcome, Spam Protection, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Polls, Ratings, Streaming, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, CrossVerification, Birthdays, Auto-Delete, Gameserver, Auto-Kick, Embed Messages, Bot Design |
 | **Server List** | All connected servers, invite bot, remove bot from a server |
 | **🔑 Tokens** *(Admin)* | Manage multiple bot tokens — each token runs its own bot account, hot-reload without restart |
@@ -95,7 +96,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **🔐 Two-Factor Auth** | Optional TOTP-based 2FA for dashboard login (Google Authenticator, Authy, etc.), with one-time backup codes |
 | **📊 Bot Info** | Version, uptime, latency, CPU/RAM, hostname, OS |
 | **🔄 Updates** *(Admin)* | Check current version, one-click update from GitHub |
-| **🕐 Timezone** *(Admin to change)* | Configure timezone for all timestamps in the dashboard |
+| **🕐 Timezone** *(Admin to change)* | Server-wide default timezone for all timestamps in the dashboard (each user can override it for themselves under Profile) |
 | **🏷️ App Name** *(Admin)* | Rename the dashboard itself (shown everywhere in the UI and in emails instead of "Phobos Bot") |
 | **🟣 Streaming-API** *(Admin)* | Register one or more Twitch apps (Client ID + Secret), optionally shared with specific users |
 | **📧 E-Mail / SMTP** *(Admin)* | Configure SMTP for password reset |
@@ -644,6 +645,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | Bereich | Funktion |
 |---|---|
 | **Dashboard** | Bot-Status, verbundene Server, Moderations-Statistiken — personalisiert pro Nutzer |
+| **👤 Profil** | Avatar, Anzeigename, eigenes Backup exportieren, Konto löschen, sowie persönliche Sprach- und Zeitzonen-Einstellung — überschreibt den serverweiten Standard nur für diesen einen Nutzer |
 | **Pro Server** | Konfiguration, Willkommen, Spam-Schutz, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Umfragen, Bewertungen, Streaming, Free Stuff, Log, Temp Voice, Geplant, Events, CrossVerification, Geburtstage, Auto-Delete, Gameserver, Auto-Kick, Embed-Nachrichten, Bot-Design |
 | **Server-Übersicht** | Alle verbundenen Server, Bot einladen, Bot von einem Server entfernen |
 | **🔑 Tokens** *(Admin)* | Mehrere Bot-Tokens verwalten – jeder Token startet einen eigenen Bot-Account, Hot-Reload ohne Neustart |
@@ -652,7 +654,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **🔐 Zwei-Faktor-Auth** | Optionale TOTP-2FA für den Dashboard-Login (Google Authenticator, Authy, etc.), mit einmaligen Backup-Codes |
 | **📊 Bot-Info** | Version, Uptime, Latenz, CPU/RAM, Hostname, OS |
 | **🔄 Updates** *(Admin)* | Aktuelle Version prüfen, One-Click-Update von GitHub |
-| **🕐 Zeitzone** *(Ändern: Admin)* | Zeitzone für alle Zeitangaben im Dashboard konfigurieren |
+| **🕐 Zeitzone** *(Ändern: Admin)* | Serverweite Standard-Zeitzone für alle Zeitangaben im Dashboard (jeder Nutzer kann sie unter Profil für sich selbst überschreiben) |
 | **🏷️ App-Name** *(Admin)* | Das Dashboard selbst umbenennen (erscheint überall in der UI und in E-Mails statt "Phobos Bot") |
 | **🟣 Streaming-API** *(Admin)* | Eine oder mehrere Twitch-Apps (Client-ID + Secret) eintragen, optional für bestimmte Nutzer freigeben |
 | **📧 E-Mail / SMTP** *(Admin)* | SMTP für Passwort-Reset konfigurieren |
