@@ -89,6 +89,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **Dashboard** | Bot status, connected servers, moderation statistics — personalized per user |
 | **👤 Profile** | Avatar, display name, own backup export, account deletion, and personal language + timezone preference that overrides the server-wide default just for this user |
 | **Per Server** | Config, Welcome, Spam Protection, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Polls, Ratings, Streaming, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, CrossVerification, Birthdays, Auto-Delete, Gameserver, Auto-Kick, Embed Messages, Bot Design |
+| **🧩 Displayed Features** *(Admin)* | Per-server checklist to hide unused feature tabs from that server's own sidebar — pure decluttering, doesn't restrict access and keeps saved settings of a hidden tab intact |
 | **Server List** | All connected servers, invite bot, remove bot from a server |
 | **🔑 Tokens** *(Admin)* | Manage multiple bot tokens — each token runs its own bot account, hot-reload without restart |
 | **👥 Users** *(Admin)* | Create/delete dashboard users, assign roles and server access, **download & restore backups** |
@@ -647,6 +648,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **Dashboard** | Bot-Status, verbundene Server, Moderations-Statistiken — personalisiert pro Nutzer |
 | **👤 Profil** | Avatar, Anzeigename, eigenes Backup exportieren, Konto löschen, sowie persönliche Sprach- und Zeitzonen-Einstellung — überschreibt den serverweiten Standard nur für diesen einen Nutzer |
 | **Pro Server** | Konfiguration, Willkommen, Spam-Schutz, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Umfragen, Bewertungen, Streaming, Free Stuff, Log, Temp Voice, Geplant, Events, CrossVerification, Geburtstage, Auto-Delete, Gameserver, Auto-Kick, Embed-Nachrichten, Bot-Design |
+| **🧩 Angezeigte Funktionen** *(Admin)* | Pro-Server-Checkliste, um ungenutzte Funktions-Reiter aus der Seitenleiste dieses Servers auszublenden — reines Aufräumen, kein Zugriffsschutz, bereits gespeicherte Einstellungen eines ausgeblendeten Reiters bleiben erhalten |
 | **Server-Übersicht** | Alle verbundenen Server, Bot einladen, Bot von einem Server entfernen |
 | **🔑 Tokens** *(Admin)* | Mehrere Bot-Tokens verwalten – jeder Token startet einen eigenen Bot-Account, Hot-Reload ohne Neustart |
 | **👥 Benutzer** *(Admin)* | Dashboard-Nutzer anlegen/löschen, Rolle und Server-Zugriff vergeben, **Backups erstellen & einspielen** |
