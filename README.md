@@ -88,19 +88,19 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 |---|---|
 | **Dashboard** | Bot status, connected servers, moderation statistics — personalized per user |
 | **👤 Profile** | Avatar, display name, own backup export, account deletion, and personal language + timezone preference that overrides the server-wide default just for this user |
-| **Per Server** | Config, Welcome, Spam Protection, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Polls, Ratings, Streaming, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, CrossVerification, Birthdays, Auto-Delete, Gameserver, Auto-Kick, Embed Messages, Bot Design |
+| **Per Server** | Config, Users (grant/revoke moderator access to this server), Welcome, Spam Protection, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Polls, Ratings, Streaming, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, CrossVerification, Birthdays, Auto-Delete, Gameserver, Auto-Kick, Embed Messages, Bot Design |
 | **🧩 Displayed Features** *(Admin)* | Per-server checklist to hide unused feature tabs from that server's own sidebar — pure decluttering, doesn't restrict access and keeps saved settings of a hidden tab intact |
-| **Server List** | All connected servers, invite bot, remove bot from a server |
+| **Server List** | All connected servers, invite bot, re-invite a specific server (re-confirm permissions), remove bot from a server |
 | **🔑 Tokens** *(Admin)* | Manage multiple bot tokens — each token runs its own bot account, hot-reload without restart |
-| **👥 Users** *(Admin)* | Create/delete dashboard users, assign roles and server access, **download & restore backups** |
+| **👥 Users** *(Admin)* | Create/delete dashboard users, assign roles and server access, **download & restore backups**, force-logout every active session |
 | **🤖 Bot Design** | Change a bot token's Discord name and avatar (Discord allows 2 changes per hour per token) |
-| **🔐 Two-Factor Auth** | Optional TOTP-based 2FA for dashboard login (Google Authenticator, Authy, etc.), with one-time backup codes |
-| **📊 Bot Info** | Version, uptime, latency, CPU/RAM, hostname, OS |
-| **🔄 Updates** *(Admin)* | Check current version, one-click update from GitHub |
+| **🔐 Two-Factor Auth** | Optional TOTP-based 2FA for dashboard login (Google Authenticator, Authy, etc.), with backup codes that can be regenerated anytime |
+| **📊 Bot Info** | Version, uptime, latency, CPU/RAM, hostname, OS, Python version |
+| **🔄 Updates** *(Admin)* | Check current version, one-click update from GitHub (on Android: downloads the new APK and opens the OS install dialog, which still needs a manual tap to confirm) |
 | **🕐 Timezone** *(Admin to change)* | Server-wide default timezone for all timestamps in the dashboard (each user can override it for themselves under Profile) |
 | **🏷️ App Name** *(Admin)* | Rename the dashboard itself (shown everywhere in the UI and in emails instead of "Phobos Bot") |
 | **🟣 Streaming-API** *(Admin)* | Register one or more Twitch apps (Client ID + Secret), optionally shared with specific users |
-| **📧 E-Mail / SMTP** *(Admin)* | Configure SMTP for password reset |
+| **📧 E-Mail / SMTP** *(Admin)* | Configure SMTP for password reset, with provider presets (Gmail, Outlook, GMX, Web.de, Yahoo) and a test-email button |
 | **📣 Report** *(Admin)* | File a bug report or feature request as a pre-filled GitHub issue |
 
 ---
@@ -651,19 +651,19 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 |---|---|
 | **Dashboard** | Bot-Status, verbundene Server, Moderations-Statistiken — personalisiert pro Nutzer |
 | **👤 Profil** | Avatar, Anzeigename, eigenes Backup exportieren, Konto löschen, sowie persönliche Sprach- und Zeitzonen-Einstellung — überschreibt den serverweiten Standard nur für diesen einen Nutzer |
-| **Pro Server** | Konfiguration, Willkommen, Spam-Schutz, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Umfragen, Bewertungen, Streaming, Free Stuff, Log, Temp Voice, Geplant, Events, CrossVerification, Geburtstage, Auto-Delete, Gameserver, Auto-Kick, Embed-Nachrichten, Bot-Design |
+| **Pro Server** | Konfiguration, Nutzer (Moderator-Zugriff auf diesen Server gewähren/entziehen), Willkommen, Spam-Schutz, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Umfragen, Bewertungen, Streaming, Free Stuff, Log, Temp Voice, Geplant, Events, CrossVerification, Geburtstage, Auto-Delete, Gameserver, Auto-Kick, Embed-Nachrichten, Bot-Design |
 | **🧩 Angezeigte Funktionen** *(Admin)* | Pro-Server-Checkliste, um ungenutzte Funktions-Reiter aus der Seitenleiste dieses Servers auszublenden — reines Aufräumen, kein Zugriffsschutz, bereits gespeicherte Einstellungen eines ausgeblendeten Reiters bleiben erhalten |
-| **Server-Übersicht** | Alle verbundenen Server, Bot einladen, Bot von einem Server entfernen |
+| **Server-Übersicht** | Alle verbundenen Server, Bot einladen, einzelnen Server neu einladen (Berechtigungen erneut bestätigen), Bot von einem Server entfernen |
 | **🔑 Tokens** *(Admin)* | Mehrere Bot-Tokens verwalten – jeder Token startet einen eigenen Bot-Account, Hot-Reload ohne Neustart |
-| **👥 Benutzer** *(Admin)* | Dashboard-Nutzer anlegen/löschen, Rolle und Server-Zugriff vergeben, **Backups erstellen & einspielen** |
+| **👥 Benutzer** *(Admin)* | Dashboard-Nutzer anlegen/löschen, Rolle und Server-Zugriff vergeben, **Backups erstellen & einspielen**, alle aktiven Sitzungen sofort beenden |
 | **🤖 Bot-Design** | Name und Avatar eines Bot-Tokens auf Discord ändern (Discord erlaubt 2 Änderungen pro Stunde und Token) |
-| **🔐 Zwei-Faktor-Auth** | Optionale TOTP-2FA für den Dashboard-Login (Google Authenticator, Authy, etc.), mit einmaligen Backup-Codes |
-| **📊 Bot-Info** | Version, Uptime, Latenz, CPU/RAM, Hostname, OS |
-| **🔄 Updates** *(Admin)* | Aktuelle Version prüfen, One-Click-Update von GitHub |
+| **🔐 Zwei-Faktor-Auth** | Optionale TOTP-2FA für den Dashboard-Login (Google Authenticator, Authy, etc.), mit jederzeit neu erstellbaren Backup-Codes |
+| **📊 Bot-Info** | Version, Uptime, Latenz, CPU/RAM, Hostname, OS, Python-Version |
+| **🔄 Updates** *(Admin)* | Aktuelle Version prüfen, One-Click-Update von GitHub (auf Android: lädt die neue APK herunter und öffnet den System-Installationsdialog, der noch manuell bestätigt werden muss) |
 | **🕐 Zeitzone** *(Ändern: Admin)* | Serverweite Standard-Zeitzone für alle Zeitangaben im Dashboard (jeder Nutzer kann sie unter Profil für sich selbst überschreiben) |
 | **🏷️ App-Name** *(Admin)* | Das Dashboard selbst umbenennen (erscheint überall in der UI und in E-Mails statt "Phobos Bot") |
 | **🟣 Streaming-API** *(Admin)* | Eine oder mehrere Twitch-Apps (Client-ID + Secret) eintragen, optional für bestimmte Nutzer freigeben |
-| **📧 E-Mail / SMTP** *(Admin)* | SMTP für Passwort-Reset konfigurieren |
+| **📧 E-Mail / SMTP** *(Admin)* | SMTP für Passwort-Reset konfigurieren, mit Anbieter-Vorlagen (Gmail, Outlook, GMX, Web.de, Yahoo) und Test-E-Mail-Button |
 | **📣 Melden** *(Admin)* | Bug oder Feature-Wunsch als vorausgefülltes GitHub-Issue melden |
 
 ---
