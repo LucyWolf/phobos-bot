@@ -66,7 +66,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **Reaction Roles** | `/reactionrole-add` `/reactionrole-remove` `/reactionrole-list` |
 | **Event Logging** | Join/leave, bans, roles, messages, voice — **shows who deleted a message** via audit log, bulk-delete detection, exclude channels |
 | **Custom Commands** | `/addcommand` `/delcommand` `/commands` |
-| **Tickets** | Button-based ticket system with panels |
+| **Tickets** | Button-based ticket system with panels — support role, category, custom button/close-button text, optional archive category instead of deleting on close, `/ticket-close` |
 | **Giveaways** | `/giveaway-start` `/giveaway-end` `/giveaway-reroll` |
 | **Twitch Notifications** | Go-live alerts with embed (game, viewers, thumbnail) |
 | **Free Stuff & Deals** | Automatic free game alerts + configurable deal notifications + test button |
@@ -253,6 +253,7 @@ Every user can export their own data (account, bot tokens, all server configurat
 
 - Download a backup for any individual user
 - Download a **full backup** of the entire system (all users, tokens, configs)
+- Download a **single server's backup** (its configuration only — no users, no tokens) from that server's own dashboard page, and restore it onto any server, including a completely different one — handy for copying a set-up config to a new server
 - **Restore** any backup via file upload — existing entries are updated, new ones are added, nothing is deleted
 
 Passwords of existing accounts are never overwritten during a restore. This makes it easy to migrate to a new server or hand off a bot setup to someone else.
@@ -293,7 +294,7 @@ Admins can open **Settings → 📣 Report** to file a bug report or feature req
 
 ## Permission System
 
-Phobos keeps this deliberately simple — just two roles, no custom permission sets to configure:
+Phobos keeps this deliberately simple — just two base roles, no reusable custom permission sets to build and assign:
 
 | Role | Access |
 |---|---|
@@ -301,6 +302,13 @@ Phobos keeps this deliberately simple — just two roles, no custom permission s
 | **Moderator** | Only the servers explicitly granted to them under **Users**, or inherited automatically from a bot token they've been assigned to. Can still view (but not change) some read-only pages like Bot Info |
 
 The very first account (`admin` / `admin`, see Installation below) is always an Admin. There must always be at least one Admin — the dashboard blocks demoting or deleting the last remaining one.
+
+A few finer controls exist on top of this:
+
+- **New users** can be created directly by an admin, or self-register via a one-time **invite link** (Users page) that expires after 5 minutes
+- A granted moderator's access to one server can be **narrowed to specific tabs** (e.g. only Tickets and Polls) instead of the whole server, right from that server's own Users tab
+- Each server can independently **hide unused feature tabs** from its own sidebar for every viewer, purely to declutter navigation on servers that only use a handful of features — this doesn't restrict access, just what's shown
+- Admins can **instantly invalidate every active session everywhere** (Users page) — useful if a device or session ever gets compromised
 
 ---
 
@@ -605,7 +613,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **Reaction Roles** | `/reactionrole-add` `/reactionrole-remove` `/reactionrole-list` |
 | **Event-Logging** | Beitritt/Verlassen, Bans, Rollen, Nachrichten, Voice — **zeigt wer eine Nachricht gelöscht hat** via Audit-Log, Massenlöschungs-Erkennung, Kanäle ausschließen |
 | **Eigene Commands** | `/addcommand` `/delcommand` `/commands` |
-| **Tickets** | Button-basiertes Ticket-System mit Panels |
+| **Tickets** | Button-basiertes Ticket-System mit Panels — Support-Rolle, Kategorie, eigener Button-/Schließen-Text, optionale Archiv-Kategorie statt Löschen beim Schließen, `/ticket-close` |
 | **Giveaways** | `/giveaway-start` `/giveaway-end` `/giveaway-reroll` |
 | **Twitch-Benachrichtigungen** | Go-Live-Alerts mit Embed (Spiel, Zuschauer, Thumbnail) |
 | **Free Stuff & Deals** | Automatische Meldung kostenloser Spiele + konfigurierbare Angebote + Test-Button |
@@ -792,6 +800,7 @@ Jeder Nutzer kann seine eigenen Daten (Konto, Bot-Tokens, alle Server-Konfigurat
 
 - Backup eines einzelnen Nutzers herunterladen
 - **Komplett-Backup** des gesamten Systems (alle Nutzer, Tokens, Konfigurationen)
+- **Backup eines einzelnen Servers** (nur dessen Konfiguration — keine Nutzer, keine Tokens) direkt über die Dashboard-Seite dieses Servers herunterladen und auf einen beliebigen anderen Server wiederherstellen — praktisch um eine fertig eingerichtete Konfiguration auf einen neuen Server zu übertragen
 - Beliebiges Backup per Datei-Upload **wiederherstellen** — bestehende Einträge werden aktualisiert, neue hinzugefügt, nichts wird gelöscht
 
 Passwörter bestehender Konten werden beim Einspielen nie überschrieben. So lässt sich ein Bot-Setup einfach auf einen neuen Server migrieren oder an jemand anderen weitergeben.
@@ -832,7 +841,7 @@ Admins können unter **Einstellungen → 📣 Melden** einen Bug melden oder ein
 
 ## Berechtigungssystem
 
-Bewusst einfach gehalten — nur zwei Rollen, keine konfigurierbaren Berechtigungssets:
+Bewusst einfach gehalten — nur zwei Basis-Rollen, keine wiederverwendbaren, konfigurierbaren Berechtigungssets:
 
 | Rolle | Rechte |
 |---|---|
@@ -840,6 +849,13 @@ Bewusst einfach gehalten — nur zwei Rollen, keine konfigurierbaren Berechtigun
 | **Moderator** | Nur die Server, die ihm unter **Benutzer** explizit freigegeben wurden, oder automatisch über einen zugewiesenen Bot-Token. Manche rein lesbaren Seiten (z.B. Bot-Info) bleiben trotzdem sichtbar |
 
 Das allererste Konto (`admin` / `admin`, siehe Installation weiter unten) ist immer Admin. Es muss immer mindestens ein Admin existieren — das Dashboard verhindert das Herabstufen oder Löschen des letzten verbleibenden.
+
+Ein paar feinere Stellschrauben gibt es trotzdem:
+
+- **Neue Nutzer** können direkt von einem Admin angelegt werden, oder sich selbst über einen einmaligen **Einladungslink** (Benutzer-Seite) registrieren, der nach 5 Minuten abläuft
+- Der Zugriff eines Moderators auf einen bereits freigegebenen Server lässt sich auf **bestimmte Reiter einschränken** (z.B. nur Tickets und Umfragen), direkt im 👥-Nutzer-Tab dieses Servers
+- Jeder Server kann unabhängig **ungenutzte Funktions-Reiter aus seiner eigenen Seitenleiste ausblenden**, rein zum Aufräumen bei Servern die nur wenige Funktionen nutzen — das schränkt keinen Zugriff ein, blendet nur die Navigation aus
+- Admins können **sofort jede aktive Sitzung überall beenden** (Benutzer-Seite) — nützlich falls ein Gerät oder eine Sitzung mal kompromittiert wurde
 
 ---
 
