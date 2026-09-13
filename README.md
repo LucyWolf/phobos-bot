@@ -317,6 +317,12 @@ A few finer controls exist on top of this:
 - Docker & Docker Compose
 - Nginx Proxy Manager (recommended) or another reverse proxy
 
+> **Don't have Docker yet?** On Linux, the official install script sets up Docker Engine, the CLI and the Compose plugin (`docker compose`, used throughout this README) in one go:
+> ```bash
+> curl -fsSL https://get.docker.com | sh
+> ```
+> On Windows or macOS, install [Docker Desktop](https://www.docker.com/products/docker-desktop/) instead — it bundles the same Compose plugin.
+
 ```bash
 git clone https://github.com/LucyWolf/phobos-bot.git
 cd phobos-bot
@@ -851,6 +857,12 @@ Ein paar feinere Stellschrauben gibt es trotzdem:
 
 - Docker & Docker Compose
 - Nginx Proxy Manager (empfohlen) oder anderer Reverse-Proxy
+
+> **Docker noch nicht installiert?** Unter Linux richtet das offizielle Installations-Skript Docker Engine, die CLI und das Compose-Plugin (`docker compose`, wird in dieser README durchgehend verwendet) in einem Rutsch ein:
+> ```bash
+> curl -fsSL https://get.docker.com | sh
+> ```
+> Unter Windows oder macOS stattdessen [Docker Desktop](https://www.docker.com/products/docker-desktop/) installieren — bringt dasselbe Compose-Plugin schon mit.
 
 ```bash
 git clone https://github.com/LucyWolf/phobos-bot.git
