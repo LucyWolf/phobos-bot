@@ -507,6 +507,7 @@ phobos-bot/
 │   ├── main.py             # FastAPI routes + bot setup
 │   ├── database.py         # SQLite schema + helpers
 │   ├── i18n.py             # DE/EN translations
+│   ├── totp.py             # TOTP secret/QR/backup-code logic for 2FA
 │   ├── cogs/
 │   │   ├── moderation.py
 │   │   ├── leveling.py
@@ -514,6 +515,7 @@ phobos-bot/
 │   │   ├── automod.py      # Spam/link/word filtering
 │   │   ├── reaction_roles.py
 │   │   ├── logging_cog.py  # Event logging with audit log
+│   │   ├── log_utils.py    # Shared "log this bot action" helper (not a cog)
 │   │   ├── custom_commands.py
 │   │   ├── tickets.py
 │   │   ├── giveaways.py
@@ -528,7 +530,9 @@ phobos-bot/
 │   │   ├── ratings.py        # Persistent 1-5 star rating lists
 │   │   ├── amp.py            # CubeCoders AMP gameserver control
 │   │   └── role_rules.py     # CrossVerification (role condition rules)
-│   └── templates/            # Jinja2 HTML templates
+│   ├── templates/            # Jinja2 HTML templates
+│   └── assets/               # Bundled welcome card overlay presets (PNG)
+├── android/                  # Android Studio project - packages the bot as a real APK
 ├── data/                     # SQLite database + secret key (auto-created, do not commit)
 └── data-*/                   # Additional instance databases (if using multi-instance)
 ```
@@ -1070,6 +1074,7 @@ phobos-bot/
 │   ├── main.py               # FastAPI-Routen + Bot-Setup
 │   ├── database.py           # SQLite-Schema + Hilfsfunktionen
 │   ├── i18n.py               # DE/EN Übersetzungen
+│   ├── totp.py               # TOTP-Secret/QR/Backup-Code-Logik für 2FA
 │   ├── cogs/
 │   │   ├── moderation.py
 │   │   ├── leveling.py
@@ -1077,6 +1082,7 @@ phobos-bot/
 │   │   ├── automod.py        # Spam-/Link-/Wort-Filter
 │   │   ├── reaction_roles.py
 │   │   ├── logging_cog.py    # Event-Logging mit Audit-Log
+│   │   ├── log_utils.py      # Geteilter "Bot-Aktion loggen"-Helfer (kein Cog)
 │   │   ├── custom_commands.py
 │   │   ├── tickets.py
 │   │   ├── giveaways.py
@@ -1091,7 +1097,9 @@ phobos-bot/
 │   │   ├── ratings.py        # Dauerhafte 1-5-Sterne-Bewertungslisten
 │   │   ├── amp.py            # CubeCoders-AMP-Gameserver-Steuerung
 │   │   └── role_rules.py     # CrossVerification (Rollen-Bedingungsregeln)
-│   └── templates/            # Jinja2 HTML-Templates
+│   ├── templates/            # Jinja2 HTML-Templates
+│   └── assets/               # Mitgelieferte Willkommenskarte-Overlay-Vorlagen (PNG)
+├── android/                  # Android-Studio-Projekt - packt den Bot als echte APK
 ├── data/                     # SQLite-Datenbank + Secret-Key (auto-erstellt, nicht committen)
 └── data-*/                   # Weitere Instanz-Datenbanken (bei Multi-Instanz)
 ```
