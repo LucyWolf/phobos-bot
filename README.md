@@ -43,7 +43,6 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 - [Updates](#updates)
   - [Automatic (via Dashboard)](#automatic-via-dashboard)
   - [Manual (on the server)](#manual-on-the-server)
-  - [RAM Display](#ram-display)
 - [Twitch Notifications Setup](#twitch-notifications-setup)
 - [Free Stuff & Deals Setup](#free-stuff--deals-setup)
 - [Nginx Proxy Manager](#nginx-proxy-manager)
@@ -129,8 +128,6 @@ services:
     environment:
       - TZ=Europe/Berlin
       - PYTHONUNBUFFERED=1
-    mem_limit: ${MEM_LIMIT:-1g}
-    memswap_limit: ${MEM_LIMIT:-1g}
 ```
 
 > The `/var/run/docker.sock` mount lets the dashboard talk to the Docker Engine API directly (needed for the one-click update feature under **Settings → 🔄 Updates**). The `.:/repo` mount gives the container access to the git repository itself so updates can fetch and hard-reset to the new code (`git fetch` + `git reset --hard origin/main`, not a plain `git pull` — this forcibly overwrites any local drift instead of risking a merge conflict). Both are optional if you're fine doing updates manually from the server shell instead (`git pull` + `docker compose up -d --build`).
@@ -423,16 +420,6 @@ docker compose restart
 
 > A full rebuild (`docker compose up -d --build`) is only needed when `requirements.txt` or `Dockerfile` changes. For code or template changes, `docker compose restart` is enough.
 
-### RAM Display
-
-The container is limited to **1 GB RAM** by default (for correct display in Bot Info). Adjustable via `.env`:
-
-```env
-MEM_LIMIT=2g
-```
-
-Then restart: `docker compose up -d`
-
 ---
 
 ## Twitch Notifications Setup
@@ -591,7 +578,6 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 - [Updates](#updates-1)
   - [Automatisch (über Dashboard)](#automatisch-über-dashboard)
   - [Manuell (auf dem Server)](#manuell-auf-dem-server)
-  - [RAM-Anzeige konfigurieren](#ram-anzeige-konfigurieren)
 - [Twitch-Benachrichtigungen einrichten](#twitch-benachrichtigungen-einrichten)
 - [Free Stuff & Deals einrichten](#free-stuff--deals-einrichten)
 - [Nginx Proxy Manager](#nginx-proxy-manager-1)
@@ -677,8 +663,6 @@ services:
     environment:
       - TZ=Europe/Berlin
       - PYTHONUNBUFFERED=1
-    mem_limit: ${MEM_LIMIT:-1g}
-    memswap_limit: ${MEM_LIMIT:-1g}
 ```
 
 > Der `/var/run/docker.sock`-Mount erlaubt dem Dashboard direkten Zugriff auf die Docker Engine API (nötig für das One-Click-Update unter **Einstellungen → 🔄 Updates**). Der `.:/repo`-Mount gibt dem Container Zugriff auf das Git-Repository selbst, damit Updates den neuen Code per `git fetch` + `git reset --hard origin/main` holen können (kein normales `git pull` — das würde bei lokalen Abweichungen mit einem Konflikt fehlschlagen, der harte Reset überschreibt stattdessen absichtlich alles). Beide sind optional, falls Updates lieber manuell über die Server-Shell laufen sollen (`git pull` + `docker compose up -d --build`).
@@ -974,16 +958,6 @@ docker compose restart
 ```
 
 > Vollständiger Rebuild (`docker compose up -d --build`) ist nur nötig wenn sich `requirements.txt` oder `Dockerfile` geändert hat. Bei Code- oder Template-Änderungen reicht `docker compose restart`.
-
-### RAM-Anzeige konfigurieren
-
-Der Container ist standardmäßig auf **1 GB RAM** begrenzt (für korrekte Anzeige in Bot-Info). Per `.env`-Datei anpassbar:
-
-```env
-MEM_LIMIT=2g
-```
-
-Danach: `docker compose up -d`
 
 ---
 
