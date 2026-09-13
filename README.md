@@ -17,6 +17,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
   - [Web Dashboard](#web-dashboard)
 - [Multi-Bot](#multi-bot)
 - [Docker Compose](#docker-compose)
+- [Leveling / XP](#leveling--xp)
 - [Welcome Card](#welcome-card)
 - [Temp Voice Channels](#temp-voice-channels)
 - [Spam Protection / Auto-Moderation](#spam-protection--auto-moderation)
@@ -59,14 +60,14 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | Feature | Details |
 |---|---|
 | **Moderation** | `/kick` `/ban` `/unban` `/timeout` `/warn` `/warnings` `/clearwarns` `/clear` |
-| **Leveling / XP** | `/rank` `/leaderboard` `/setxp` — configurable XP per message, level-up channel, auto-assign a role at a chosen level, optional custom reward text shown at a level |
+| **Leveling / XP** | `/rank` `/leaderboard` `/setxp` — separate text and voice XP tracks with independently configurable curves, restrict XP to specific channels, auto-assign roles per level, optional custom reward text |
 | **Welcome** | Auto join/leave messages, auto-role assignment, **generated welcome card image** with custom colors |
 | **Auto-Moderation** | Configurable spam threshold/window, link filter, word filter with editable quick-add categories, configurable action (warn/timeout/kick/ban) |
-| **Reaction Roles** | `/reactionrole-add` `/reactionrole-remove` `/reactionrole-list` |
+| **Reaction Roles** | Set up from the dashboard or `/reactionrole-add` `/reactionrole-remove` `/reactionrole-list` |
 | **Event Logging** | Join/leave, bans, roles, messages, voice — **shows who deleted a message** via audit log, bulk-delete detection, exclude channels |
-| **Custom Commands** | `/addcommand` `/delcommand` `/commands` |
+| **Custom Commands** | Manage from the dashboard or `/addcommand` `/delcommand` `/commands` |
 | **Tickets** | Button-based ticket system with panels — support role, category, custom button/close-button text, optional archive category instead of deleting on close, `/ticket-close` |
-| **Giveaways** | `/giveaway-start` `/giveaway-end` `/giveaway-reroll` |
+| **Giveaways** | Start/end/reroll from the dashboard or `/giveaway-start` `/giveaway-end` `/giveaway-reroll` |
 | **Twitch Notifications** | Go-live alerts with embed (game, viewers, thumbnail) |
 | **Free Stuff & Deals** | Automatic free game alerts + configurable deal notifications + test button |
 | **Auto-Delete** | Automatically delete messages in selected channels after a configurable time |
@@ -134,14 +135,27 @@ services:
 
 ---
 
+## Leveling / XP
+
+Under **Server → 🏆 Leveling**, text messages and time spent in voice channels are tracked as two **independent** progressions — a member has both a text level and a voice level, each with its own XP curve.
+
+- **XP curve** — the amount of XP needed per level follows `quadratic·level² + linear·level + base` (defaults: 5/50/100); all three numbers are configurable separately for text and voice, so the pacing can be tuned per server
+- **Channel restriction** — optionally limit which channels count toward text XP (empty = all channels)
+- **Level roles** — assign a role once a member reaches a given level (either track), either **stacking** every role earned so far or **replacing** the previous one with the newest
+- **Level rewards** — an optional custom text shown in the level-up announcement at a specific level, independent of any role
+
+---
+
 ## Welcome Card
 
-When a member joins, the bot can send a **generated image card** instead of a plain text embed:
+When a member joins, the bot can send a **generated image card** instead of a plain text embed, with a live preview in the dashboard while editing:
 
-- Avatar displayed in a customizable colored circle
-- "WELCOME" title with configurable color
-- Username and member count
-- All colors freely configurable in the dashboard under **Server → Config**
+- **Avatar shape** — circle, hexagon, octagon, square, or diamond, with a configurable border color
+- **Layout** — avatar on the left, right, or centered above the text
+- **Text** — a freely editable heading and subtitle (no longer fixed to "WELCOME"), supporting the same `{user}`/`{username}`/`{server}`/`{count}` placeholders as the plain welcome message
+- **Background** — a custom uploaded image, or the default color gradient
+- **Overlay** — an optional image layered on top of everything (your own upload, or one of four bundled presets: shattered glass, hearts, pub, summer/tropical)
+- All colors freely configurable under **Server → Config**
 
 Requires the `fonts-dejavu-core` package (included in the Docker image). If image generation fails, falls back to a plain embed automatically.
 
@@ -558,6 +572,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
   - [Web-Dashboard](#web-dashboard-1)
 - [Multi-Bot](#multi-bot-1)
 - [Docker Compose](#docker-compose-1)
+- [Leveling / XP](#leveling--xp-1)
 - [Willkommenskarte](#willkommenskarte)
 - [Temporäre Voice-Kanäle](#temporäre-voice-kanäle)
 - [Spam-Schutz / Auto-Moderation](#spam-schutz--auto-moderation)
@@ -600,14 +615,14 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | Feature | Details |
 |---|---|
 | **Moderation** | `/kick` `/ban` `/unban` `/timeout` `/warn` `/warnings` `/clearwarns` `/clear` |
-| **Leveling / XP** | `/rank` `/leaderboard` `/setxp` — konfigurierbares XP pro Nachricht, Level-Up-Kanal, automatische Rollenvergabe ab einem gewählten Level, optionaler eigener Belohnungstext ab einem Level |
+| **Leveling / XP** | `/rank` `/leaderboard` `/setxp` — getrennte Text- und Voice-XP mit unabhängig einstellbaren Kurven, XP auf bestimmte Kanäle einschränkbar, automatische Rollenvergabe pro Level, optionaler eigener Belohnungstext |
 | **Willkommen** | Automatische Beitrittsnachrichten, Verlassensnachrichten, Auto-Rolle, **generierte Willkommenskarte** mit anpassbaren Farben |
 | **Auto-Moderation** | Einstellbare Spam-Schwelle/-Zeitfenster, Link-Filter, Wort-Filter mit bearbeitbaren Schnellauswahl-Kategorien, einstellbare Aktion (warn/timeout/kick/ban) |
-| **Reaction Roles** | `/reactionrole-add` `/reactionrole-remove` `/reactionrole-list` |
+| **Reaction Roles** | Über das Dashboard einrichten oder `/reactionrole-add` `/reactionrole-remove` `/reactionrole-list` |
 | **Event-Logging** | Beitritt/Verlassen, Bans, Rollen, Nachrichten, Voice — **zeigt wer eine Nachricht gelöscht hat** via Audit-Log, Massenlöschungs-Erkennung, Kanäle ausschließen |
-| **Eigene Commands** | `/addcommand` `/delcommand` `/commands` |
+| **Eigene Commands** | Über das Dashboard verwalten oder `/addcommand` `/delcommand` `/commands` |
 | **Tickets** | Button-basiertes Ticket-System mit Panels — Support-Rolle, Kategorie, eigener Button-/Schließen-Text, optionale Archiv-Kategorie statt Löschen beim Schließen, `/ticket-close` |
-| **Giveaways** | `/giveaway-start` `/giveaway-end` `/giveaway-reroll` |
+| **Giveaways** | Über das Dashboard starten/beenden/neu ziehen oder `/giveaway-start` `/giveaway-end` `/giveaway-reroll` |
 | **Twitch-Benachrichtigungen** | Go-Live-Alerts mit Embed (Spiel, Zuschauer, Thumbnail) |
 | **Free Stuff & Deals** | Automatische Meldung kostenloser Spiele + konfigurierbare Angebote + Test-Button |
 | **Auto-Delete** | Nachrichten in gewählten Kanälen automatisch nach konfigurierbarer Zeit löschen |
@@ -675,14 +690,27 @@ services:
 
 ---
 
+## Leveling / XP
+
+Unter **Server → 🏆 Leveling** werden Text-Nachrichten und Zeit in Voice-Kanälen als zwei **unabhängige** Fortschritte erfasst — ein Mitglied hat sowohl ein Text-Level als auch ein Voice-Level, jeweils mit eigener XP-Kurve.
+
+- **XP-Kurve** — die für ein Level benötigte XP-Menge folgt `quadratisch·Level² + linear·Level + Basis` (Standard: 5/50/100); alle drei Werte sind für Text und Voice getrennt einstellbar, damit sich das Tempo pro Server anpassen lässt
+- **Kanal-Einschränkung** — optional festlegen, welche Kanäle für Text-XP zählen (leer = alle Kanäle)
+- **Level-Rollen** — ab einem gewählten Level (beide Fortschritte) eine Rolle vergeben, entweder **stapelnd** (jede bisher erreichte Rolle bleibt) oder **ersetzend** (nur die zuletzt erreichte bleibt)
+- **Level-Belohnungen** — ein optionaler eigener Text, der bei einem bestimmten Level in der Level-Up-Ankündigung erscheint, unabhängig von einer Rolle
+
+---
+
 ## Willkommenskarte
 
-Wenn ein Mitglied beitritt, kann der Bot statt einer Text-Nachricht eine **generierte Bildkarte** senden:
+Wenn ein Mitglied beitritt, kann der Bot statt einer Text-Nachricht eine **generierte Bildkarte** senden, mit Live-Vorschau im Dashboard während des Bearbeitens:
 
-- Avatar in einem farblich anpassbaren Kreis
-- „WELCOME"-Titel mit konfigurierbarer Farbe
-- Username und Mitgliedsnummer
-- Alle Farben frei einstellbar im Dashboard unter **Server → Konfiguration**
+- **Avatar-Form** — Kreis, Hexagon, Achteck, Quadrat oder Raute, mit einstellbarer Rahmenfarbe
+- **Layout** — Avatar links, rechts, oder mittig über dem Text
+- **Text** — frei editierbare Überschrift und Unterzeile (nicht mehr fest auf "WELCOME"), unterstützt dieselben `{user}`/`{username}`/`{server}`/`{count}`-Platzhalter wie die normale Willkommensnachricht
+- **Hintergrund** — ein eigenes hochgeladenes Bild, oder der Standard-Farbverlauf
+- **Overlay** — ein optionales Bild über allem anderen (eigener Upload, oder eine von vier mitgelieferten Vorlagen: zersprungenes Glas, Herzen, Kneipe, Sommer/Tropisch)
+- Alle Farben frei einstellbar unter **Server → Konfiguration**
 
 Benötigt das Paket `fonts-dejavu-core` (im Docker-Image bereits enthalten). Schlägt die Bildgenerierung fehl, wird automatisch auf ein Text-Embed zurückgefallen.
 
