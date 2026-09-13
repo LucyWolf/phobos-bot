@@ -24,10 +24,16 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 - [Scheduled Messages](#scheduled-messages)
 - [Discord Events](#discord-events)
 - [CrossVerification](#crossverification)
+- [Polls](#polls)
+- [Ratings](#ratings)
+- [Gameserver (AMP)](#gameserver-amp)
+- [Auto-Kick](#auto-kick)
+- [Embed Messages](#embed-messages)
 - [Birthday System](#birthday-system)
 - [Backup & Restore](#backup--restore)
 - [Two-Factor Authentication](#two-factor-authentication)
 - [Event Logging](#event-logging)
+- [Bug & Feature Reports](#bug--feature-reports)
 - [Permission System](#permission-system)
 - [Installation](#installation)
   - [Requirements](#requirements)
@@ -68,15 +74,20 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **Temp Voice** | Join-to-Create temporary voice channels — auto-created on join, auto-deleted when empty |
 | **Scheduled Messages** | Schedule messages to be sent to any channel at a specific date and time |
 | **Birthday System** | `!geburtstag DD.MM` — daily congratulations at 8 AM, configurable channel and message |
-| **Discord Events** | Create/edit native Discord scheduled events (voice or external) from the dashboard, with optional reminders and start/end announcements posted to a channel |
+| **Discord Events** | Create/edit native Discord scheduled events (voice or external) from the dashboard, with optional reminders and start/end announcements posted to a channel; optionally recurring (daily/weekly/monthly), pausable/resumable |
 | **CrossVerification** | "IF a member has/lacks certain roles, THEN add/remove roles" rules — live or on a configurable interval, optionally targeting a different server, with a test sandbox |
+| **Polls** | `/poll-create` `/poll-end` — single- or multiple-choice, per-option images/links, scheduled start, live ranking, fully editable after posting |
+| **Ratings** | `/bewerten` `/bewertungen` — a persistent 1–5-star list (maps, games, servers, anything) members can rate anytime, optionally posted to a channel with a star picker |
+| **Gameserver (AMP)** | `/gameserver-status` `/gameserver-start` `/gameserver-stop` `/gameserver-restart` — control [CubeCoders AMP](https://cubecoders.com/AMP)-hosted game servers, auto-detects every instance |
+| **Auto-Kick** | Kicks members still holding a "not yet verified" role after a configurable deadline, with any number of reminder DMs beforehand |
+| **Embed Messages** | Post fully custom, multi-block embed messages (incl. forum channels) to any channel from the dashboard — images, footer, tags, editable after posting |
 
 ### Web Dashboard
 
 | Section | Function |
 |---|---|
 | **Dashboard** | Bot status, connected servers, moderation statistics — personalized per user |
-| **Per Server** | Config, Spam Protection, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Twitch, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, CrossVerification, Birthdays, Auto-Delete, Bot Design |
+| **Per Server** | Config, Welcome, Spam Protection, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Polls, Ratings, Streaming, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, CrossVerification, Birthdays, Auto-Delete, Gameserver, Auto-Kick, Embed Messages, Bot Design |
 | **Server List** | All connected servers, invite bot |
 | **🔑 Tokens** *(Admin)* | Manage multiple bot tokens — each token runs its own bot account, hot-reload without restart |
 | **👥 Users** *(Admin)* | Create/delete dashboard users, assign roles and server access, **download & restore backups** |
@@ -86,6 +97,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **🕐 Timezone** *(Admin to change)* | Configure timezone for all timestamps in the dashboard |
 | **🟣 Streaming-API** *(Admin)* | Register one or more Twitch apps (Client ID + Secret), optionally shared with specific users |
 | **📧 E-Mail / SMTP** *(Admin)* | Configure SMTP for password reset |
+| **📣 Report** *(Admin)* | File a bug report or feature request as a pre-filled GitHub issue |
 
 ---
 
@@ -184,6 +196,7 @@ Under **Server → Events** you can create native Discord scheduled events direc
 Optional extras when creating an event:
 - **Announcement channel** — the bot posts a message there automatically once the event starts (and, if enabled, once it ends), including name, time, location and a link to the event
 - **Reminders** — any number of custom messages posted a chosen number of minutes before the event starts
+- **Recurrence** — optionally daily/weekly/monthly; since discord.py doesn't support Discord's native recurring events yet, the bot recreates a fresh single event each time it's due (carrying over reminder templates). A recurring series can be paused and resumed anytime without losing its reminders, or stopped for good.
 
 ---
 
@@ -195,6 +208,36 @@ Under **Server → CrossVerification** you can define "IF a member has/lacks cer
 - **Action** — add or remove a chosen set of roles, either on this server or on a **different one** (cross-server sync for a network of servers sharing the same bot token — only guilds reachable that way appear in the target dropdown)
 - **Priority** — rules run in order (lowest number first); if two rules affect the same role, the one applied last wins
 - **Test sandbox** — simulate any role combination and see exactly what would happen, without touching a single real member
+
+---
+
+## Polls
+
+Under **Server → 🗳️ Polls** or `/poll-create` in Discord: single- or multiple-choice polls with live vote bars. Optional extras: an image and/or link per option (combined into one shared result image, with links listed as clickable text below it), a live-updating ranking of options by vote count, and either a fixed auto-end duration or a specific end date — a poll can even be scheduled to start at a future time, so it can be fully prepared in advance. Everything (question, options, images, links) stays editable after posting; edits update the live message in place.
+
+---
+
+## Ratings
+
+Under **Server → ⭐ Ratings**: a persistent, always-open list — maps, servers, games, anything — that members rate 1–5 stars anytime with `/bewerten` (autocompletes existing entries). Unlike a poll, there's no end: a member's rating can be changed anytime and simply replaces their previous one, and the average updates live. `/bewertungen` posts the list to a channel with a built-in star-picker so members can rate without knowing the command exists. Admins can additionally mark individual entries as recommended, independent of their average — recommended entries always sort to the top.
+
+---
+
+## Gameserver (AMP)
+
+Under **Server → 🎮 Gameserver**: control one or more [CubeCoders AMP](https://cubecoders.com/AMP)-hosted game server instances directly from Discord (`/gameserver-status` `/gameserver-start` `/gameserver-stop` `/gameserver-restart`) or the dashboard. Connect once with an AMP account's URL/username/password and every instance managed by it is detected automatically — no need to register each game server separately. Each instance can also get its own custom slash command names (e.g. `/palworld-start`) synced instantly, without a bot restart.
+
+---
+
+## Auto-Kick
+
+Under **Server → 🚪 Auto-Kick**: automatically kicks members who still hold a designated "not yet verified" role after a configurable deadline since they joined — useful for verification flows where a role is assigned automatically on join and removed manually once a moderator approves someone. Any number of reminder DMs can be scheduled at different points before the deadline, each with its own custom message.
+
+---
+
+## Embed Messages
+
+Under **Server → 📨 Embed Messages**: post fully custom, multi-block embed messages to any text or forum channel from the dashboard — each block becomes its own embed card in the same message. Supports an image, a footer, and (for forum channels) tags. Unlike a message typed directly in Discord, these stay editable afterwards from the dashboard — changes update the already-posted message in place instead of requiring a repost.
 
 ---
 
@@ -239,6 +282,12 @@ Logged events include:
 - Voice channel join / leave / switch
 - Channel created / deleted / renamed
 - Server boost changes
+
+---
+
+## Bug & Feature Reports
+
+Admins can open **Settings → 📣 Report** to file a bug report or feature request. The form pre-fills a title, description (bot version and platform are attached automatically), and a bug/enhancement label, then opens GitHub's own "new issue" page in a new tab for the [public repository](https://github.com/LucyWolf/phobos-bot/issues) — the bot itself never stores a GitHub token or submits anything on its own; a free GitHub account is needed to actually confirm the submission there.
 
 ---
 
@@ -451,9 +500,13 @@ phobos-bot/
 │   │   ├── notifications.py  # Twitch live notifications
 │   │   ├── freestuff.py      # Free stuff & deals
 │   │   ├── auto_delete.py    # Auto-delete messages by channel
+│   │   ├── auto_kick.py      # Kick members still holding a "not verified" role
 │   │   ├── temp_voice.py     # Join-to-Create temp voice channels
-│   │   ├── scheduler.py      # Scheduled messages
+│   │   ├── scheduler.py      # Scheduled messages + recurring Discord events
 │   │   ├── birthday.py       # Birthday congratulations
+│   │   ├── polls.py          # Polls with images, ranking, scheduling
+│   │   ├── ratings.py        # Persistent 1-5 star rating lists
+│   │   ├── amp.py            # CubeCoders AMP gameserver control
 │   │   └── role_rules.py     # CrossVerification (role condition rules)
 │   └── templates/            # Jinja2 HTML templates
 ├── data/                     # SQLite database + secret key (auto-created, do not commit)
@@ -474,6 +527,7 @@ phobos-bot/
 | bcrypt | 4.2.1 |
 | Pillow | 10.4.0 |
 | psutil | 5.9.8 |
+| pyotp + qrcode | 2.9.0 / 7.4.2 |
 
 Bot and web dashboard run in the **same asyncio process** — no separate web server needed.
 
@@ -509,10 +563,16 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 - [Geplante Nachrichten](#geplante-nachrichten)
 - [Discord-Events](#discord-events-1)
 - [CrossVerification](#crossverification-1)
+- [Umfragen](#umfragen)
+- [Bewertungen](#bewertungen)
+- [Gameserver (AMP)](#gameserver-amp-1)
+- [Auto-Kick](#auto-kick-1)
+- [Embed-Nachrichten](#embed-nachrichten)
 - [Geburtstags-System](#geburtstags-system)
 - [Backup & Wiederherstellen](#backup--wiederherstellen)
 - [Zwei-Faktor-Authentifizierung](#zwei-faktor-authentifizierung)
 - [Event-Logging](#event-logging-1)
+- [Bug & Feature-Meldungen](#bug--feature-meldungen)
 - [Berechtigungssystem](#berechtigungssystem)
 - [Installation](#installation-1)
   - [Voraussetzungen](#voraussetzungen)
@@ -553,15 +613,20 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **Temp Voice** | Join-to-Create temporäre Voice-Kanäle — automatisch erstellt beim Beitritt, automatisch gelöscht wenn leer |
 | **Geplante Nachrichten** | Nachrichten zu einem bestimmten Datum und Uhrzeit in jeden Kanal planen |
 | **Geburtstags-System** | `!geburtstag TT.MM` — tägliche Glückwünsche um 8 Uhr, konfigurierbarer Kanal und Text |
-| **Discord-Events** | Native Discord-Events (Voice oder extern) direkt im Dashboard erstellen/bearbeiten, mit optionalen Erinnerungen und Start-/Ende-Ankündigungen in einem Kanal |
+| **Discord-Events** | Native Discord-Events (Voice oder extern) direkt im Dashboard erstellen/bearbeiten, mit optionalen Erinnerungen und Start-/Ende-Ankündigungen in einem Kanal; optional wiederkehrend (täglich/wöchentlich/monatlich), pausierbar/fortsetzbar |
 | **CrossVerification** | "Wenn Rollen X, dann Rollen Y hinzufügen/entfernen"-Regeln — live oder in einstellbarem Intervall, optional auf einem anderen Server, inkl. Test-Sandbox |
+| **Umfragen** | `/poll-create` `/poll-end` — Einzel- oder Mehrfachauswahl, Bild/Link pro Option, geplanter Start, Live-Rangliste, nachträglich vollständig bearbeitbar |
+| **Bewertungen** | `/bewerten` `/bewertungen` — eine dauerhafte 1-5-Sterne-Liste (Maps, Spiele, Server, alles), jederzeit bewertbar, optional mit Sternauswahl in einem Kanal gepostet |
+| **Gameserver (AMP)** | `/gameserver-status` `/gameserver-start` `/gameserver-stop` `/gameserver-restart` — steuert [CubeCoders AMP](https://cubecoders.com/AMP)-Gameserver, erkennt jede Instanz automatisch |
+| **Auto-Kick** | Kickt Mitglieder, die nach einer einstellbaren Frist noch eine "noch nicht verifiziert"-Rolle tragen, mit beliebig vielen Erinnerungs-DMs davor |
+| **Embed-Nachrichten** | Komplett frei gestaltete, mehrteilige Embed-Nachrichten (inkl. Foren-Kanäle) aus dem Dashboard posten — Bild, Footer, Tags, nachträglich bearbeitbar |
 
 ### Web-Dashboard
 
 | Bereich | Funktion |
 |---|---|
 | **Dashboard** | Bot-Status, verbundene Server, Moderations-Statistiken — personalisiert pro Nutzer |
-| **Pro Server** | Konfiguration, Spam-Schutz, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Twitch, Free Stuff, Log, Temp Voice, Geplant, Events, CrossVerification, Geburtstage, Auto-Delete, Bot-Design |
+| **Pro Server** | Konfiguration, Willkommen, Spam-Schutz, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Umfragen, Bewertungen, Streaming, Free Stuff, Log, Temp Voice, Geplant, Events, CrossVerification, Geburtstage, Auto-Delete, Gameserver, Auto-Kick, Embed-Nachrichten, Bot-Design |
 | **Server-Übersicht** | Alle verbundenen Server, Bot einladen |
 | **🔑 Tokens** *(Admin)* | Mehrere Bot-Tokens verwalten – jeder Token startet einen eigenen Bot-Account, Hot-Reload ohne Neustart |
 | **👥 Benutzer** *(Admin)* | Dashboard-Nutzer anlegen/löschen, Rolle und Server-Zugriff vergeben, **Backups erstellen & einspielen** |
@@ -571,6 +636,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **🕐 Zeitzone** *(Ändern: Admin)* | Zeitzone für alle Zeitangaben im Dashboard konfigurieren |
 | **🟣 Streaming-API** *(Admin)* | Eine oder mehrere Twitch-Apps (Client-ID + Secret) eintragen, optional für bestimmte Nutzer freigeben |
 | **📧 E-Mail / SMTP** *(Admin)* | SMTP für Passwort-Reset konfigurieren |
+| **📣 Melden** *(Admin)* | Bug oder Feature-Wunsch als vorausgefülltes GitHub-Issue melden |
 
 ---
 
@@ -669,6 +735,7 @@ Unter **Server → Events** lassen sich native Discord-Events direkt im Dashboar
 Optionale Extras beim Erstellen:
 - **Ankündigungskanal** — der Bot postet dort automatisch eine Nachricht, sobald das Event startet (und optional, wenn es endet), mit Name, Zeit, Ort und einem Link zum Event
 - **Erinnerungen** — beliebig viele eigene Nachrichten, die eine wählbare Anzahl Minuten vor Start gepostet werden
+- **Wiederholung** — optional täglich/wöchentlich/monatlich; da discord.py Discords native Wiederhol-Events noch nicht unterstützt, legt der Bot bei Fälligkeit stattdessen automatisch ein frisches Einzel-Event an (Erinnerungs-Vorlagen werden dabei übernommen). Eine wiederholende Serie lässt sich jederzeit pausieren und fortsetzen, ohne die Erinnerungen zu verlieren, oder endgültig beenden.
 
 ---
 
@@ -680,6 +747,36 @@ Unter **Server → CrossVerification** lassen sich "Wenn ein Mitglied bestimmte 
 - **Aktion** — gewählte Rollen hinzufügen oder entfernen, entweder auf diesem Server oder auf einem **anderen** (Cross-Server-Sync für ein Netzwerk aus Servern, die denselben Bot-Token teilen — nur so erreichbare Server erscheinen im Zielserver-Dropdown)
 - **Priorität** — Regeln laufen in Reihenfolge (niedrigste Zahl zuerst); betreffen zwei Regeln dieselbe Rolle, gewinnt die zuletzt angewendete
 - **Test-Sandbox** — simuliert eine beliebige Rollen-Kombination und zeigt, was passieren würde, ohne ein echtes Mitglied anzufassen
+
+---
+
+## Umfragen
+
+Unter **Server → 🗳️ Umfragen** oder `/poll-create` in Discord: Umfragen mit Einzel- oder Mehrfachauswahl und live aktualisierten Stimmbalken. Optionale Extras: ein Bild und/oder Link pro Option (zu einem gemeinsamen Ergebnisbild zusammengefasst, Links darunter als klickbarer Text aufgelistet), eine live aktualisierte Rangliste der Optionen nach Stimmen, sowie entweder eine feste Auto-Ende-Dauer oder ein festes Enddatum — eine Umfrage kann sogar für einen zukünftigen Startzeitpunkt geplant werden, um sie komplett im Voraus vorzubereiten. Frage, Optionen, Bilder und Links bleiben nach dem Posten vollständig bearbeitbar; Änderungen aktualisieren die bereits gepostete Nachricht direkt.
+
+---
+
+## Bewertungen
+
+Unter **Server → ⭐ Bewertungen**: eine dauerhafte, immer offene Liste — Maps, Server, Spiele, was auch immer — die Mitglieder jederzeit mit `/bewerten` (mit Autovervollständigung bestehender Einträge) mit 1 bis 5 Sternen bewerten können. Anders als bei einer Umfrage gibt es kein Ende: eine Bewertung lässt sich jederzeit ändern und ersetzt einfach die vorherige, der Durchschnitt aktualisiert sich live. `/bewertungen` postet die Liste in einen Kanal mit eingebauter Sternauswahl, damit Mitglieder bewerten können, ohne den Befehl zu kennen. Admins können einzelne Einträge zusätzlich unabhängig vom Durchschnitt als empfohlen markieren — empfohlene Einträge stehen immer ganz oben.
+
+---
+
+## Gameserver (AMP)
+
+Unter **Server → 🎮 Gameserver**: eine oder mehrere von [CubeCoders AMP](https://cubecoders.com/AMP) gehostete Gameserver-Instanzen direkt aus Discord (`/gameserver-status` `/gameserver-start` `/gameserver-stop` `/gameserver-restart`) oder dem Dashboard steuern. Einmal mit URL/Nutzername/Passwort eines AMP-Accounts verbinden, jede von ihm verwaltete Instanz wird automatisch erkannt — kein einzelnes Registrieren jedes Gameservers nötig. Jede Instanz kann zusätzlich eigene Slash-Befehlsnamen bekommen (z.B. `/palworld-start`), sofort synchronisiert, ohne Bot-Neustart.
+
+---
+
+## Auto-Kick
+
+Unter **Server → 🚪 Auto-Kick**: kickt automatisch Mitglieder, die nach einer einstellbaren Frist seit ihrem Beitritt noch eine dafür festgelegte "noch nicht verifiziert"-Rolle tragen — nützlich für Verifizierungs-Abläufe, bei denen eine Rolle automatisch beim Beitritt vergeben und erst manuell von einem Moderator entfernt wird, sobald jemand freigegeben ist. Beliebig viele Erinnerungs-DMs lassen sich zu unterschiedlichen Zeitpunkten vor der Frist einplanen, jede mit eigenem Text.
+
+---
+
+## Embed-Nachrichten
+
+Unter **Server → 📨 Embed-Nachrichten**: komplett frei gestaltete, mehrteilige Embed-Nachrichten aus dem Dashboard in einen beliebigen Text- oder Forum-Kanal posten — jeder Block wird zu einer eigenen Embed-Karte in derselben Nachricht. Unterstützt ein Bild, einen Footer und (bei Forum-Kanälen) Tags. Anders als eine direkt in Discord getippte Nachricht bleiben diese danach aus dem Dashboard bearbeitbar — Änderungen aktualisieren die bereits gepostete Nachricht direkt, statt sie neu posten zu müssen.
 
 ---
 
@@ -724,6 +821,12 @@ Geloggte Ereignisse:
 - Voice-Kanal beigetreten / verlassen / gewechselt
 - Kanal erstellt / gelöscht / umbenannt
 - Server-Boost-Änderungen
+
+---
+
+## Bug & Feature-Meldungen
+
+Admins können unter **Einstellungen → 📣 Melden** einen Bug melden oder eine Erweiterung vorschlagen. Das Formular füllt Titel, Beschreibung (Bot-Version und Plattform werden automatisch angehängt) und ein Bug-/Erweiterung-Label vor, öffnet dann GitHubs eigene "New Issue"-Seite in einem neuen Tab für das [öffentliche Repository](https://github.com/LucyWolf/phobos-bot/issues) — der Bot selbst speichert nie einen GitHub-Token und schickt nichts von sich aus ab; zum tatsächlichen Absenden dort ist ein kostenloser GitHub-Account nötig.
 
 ---
 
@@ -940,9 +1043,13 @@ phobos-bot/
 │   │   ├── notifications.py  # Twitch Live-Benachrichtigungen
 │   │   ├── freestuff.py      # Free Stuff & Deals
 │   │   ├── auto_delete.py    # Automatisches Löschen nach Zeit
+│   │   ├── auto_kick.py      # Kickt Mitglieder mit "nicht verifiziert"-Rolle
 │   │   ├── temp_voice.py     # Join-to-Create Temp-Voice-Kanäle
-│   │   ├── scheduler.py      # Geplante Nachrichten
+│   │   ├── scheduler.py      # Geplante Nachrichten + wiederkehrende Events
 │   │   ├── birthday.py       # Geburtstags-Glückwünsche
+│   │   ├── polls.py          # Umfragen mit Bildern, Rangliste, Planung
+│   │   ├── ratings.py        # Dauerhafte 1-5-Sterne-Bewertungslisten
+│   │   ├── amp.py            # CubeCoders-AMP-Gameserver-Steuerung
 │   │   └── role_rules.py     # CrossVerification (Rollen-Bedingungsregeln)
 │   └── templates/            # Jinja2 HTML-Templates
 ├── data/                     # SQLite-Datenbank + Secret-Key (auto-erstellt, nicht committen)
@@ -963,6 +1070,7 @@ phobos-bot/
 | bcrypt | 4.2.1 |
 | Pillow | 10.4.0 |
 | psutil | 5.9.8 |
+| pyotp + qrcode | 2.9.0 / 7.4.2 |
 
 Bot und Web-Dashboard laufen im **selben asyncio-Prozess** — kein separater Web-Server nötig.
 
