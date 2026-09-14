@@ -61,16 +61,16 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 |---|---|
 | **Moderation** | `/kick` `/ban` `/unban` `/timeout` `/warn` `/warnings` `/clearwarns` `/clear` |
 | **Leveling / XP** | `/rank` `/leaderboard` `/setxp` — separate text and voice XP tracks with independently configurable curves, restrict XP to specific channels, auto-assign roles per level, optional custom reward text |
-| **Welcome** | Auto join/leave messages, auto-role assignment, **generated welcome card image** with custom colors |
+| **Welcome** | Auto join/leave messages, auto-role assignment, **generated welcome card image** with custom colors, own background image, transparent overlay (built-in or custom presets), free-text heading/subtitle, and 5 avatar shapes/3 layouts |
 | **Auto-Moderation** | Configurable spam threshold/window, link filter, word filter with editable quick-add categories, configurable action (warn/timeout/kick/ban) |
 | **Reaction Roles** | Set up from the dashboard or `/reactionrole-add` `/reactionrole-remove` `/reactionrole-list` |
 | **Event Logging** | Join/leave, bans, roles, messages, voice — **shows who deleted a message** via audit log, bulk-delete detection, exclude channels |
 | **Custom Commands** | Manage from the dashboard or `/addcommand` `/delcommand` `/commands` |
 | **Tickets** | Button-based ticket system with panels — support role, category, custom button/close-button text, optional archive category instead of deleting on close, `/ticket-close` |
-| **Giveaways** | Start/end/reroll from the dashboard or `/giveaway-start` `/giveaway-end` `/giveaway-reroll` |
+| **Giveaways** | Start/end/reroll from the dashboard or `/giveaway-start` `/giveaway-end` `/giveaway-reroll` — reroll excludes previous winners, winners get a DM in addition to the channel announcement |
 | **Twitch Notifications** | Go-live alerts with embed (game, viewers, thumbnail) |
 | **Free Stuff & Deals** | Automatic free game alerts + configurable deal notifications + test button |
-| **Auto-Delete** | Automatically delete messages in selected channels after a configurable time |
+| **Auto-Delete** | Automatically delete messages in selected channels after a configurable time, optionally including the bot's own messages (off by default) |
 | **Temp Voice** | Join-to-Create temporary voice channels — auto-created on join, auto-deleted when empty |
 | **Scheduled Messages** | Schedule messages to be sent to any channel at a specific date and time |
 | **Birthday System** | `!geburtstag DD.MM` — daily congratulations at 8 AM, configurable channel and message |
@@ -78,7 +78,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **CrossVerification** | "IF a member has/lacks certain roles, THEN add/remove roles" rules — live or on a configurable interval, optionally targeting a different server, with a test sandbox |
 | **Polls** | `/poll-create` `/poll-end` — single- or multiple-choice, per-option images/links, scheduled start, live ranking, fully editable after posting |
 | **Ratings** | `/bewerten` `/bewertungen` — a persistent 1–5-star list (maps, games, servers, anything) members can rate anytime, optionally posted to a channel with a star picker |
-| **Gameserver (AMP)** | `/gameserver-status` `/gameserver-start` `/gameserver-stop` `/gameserver-restart` — control [CubeCoders AMP](https://cubecoders.com/AMP)-hosted game servers, auto-detects every instance |
+| **Gameserver (AMP)** | `/gameserver-status` `/gameserver-start` `/gameserver-stop` `/gameserver-restart` — control [CubeCoders AMP](https://cubecoders.com/AMP)-hosted game servers, auto-detects every instance as its own tile, with optional per-instance custom slash commands |
 | **Auto-Kick** | Kicks members still holding a "not yet verified" role after a configurable deadline, with any number of reminder DMs beforehand |
 | **Embed Messages** | Post fully custom, multi-block embed messages (incl. forum channels) to any channel from the dashboard — images, footer, tags, editable after posting |
 
@@ -289,7 +289,7 @@ Under **Server → Log** configure:
 - **Log channel** — Discord channel where events are posted
 - **Exclude channels** — channels whose messages are NOT logged (e.g. spam channels)
 
-Logged events include:
+The 9 native categories below are always tracked. Each dashboard user can additionally set a **personal display filter** (which categories they see in the dashboard log view — the configured log channel always receives every native event regardless of anyone's personal filter):
 - Member join / leave (with roles on leave)
 - Role changes, nickname changes, timeouts
 - Bans / unbans
@@ -299,6 +299,8 @@ Logged events include:
 - Voice channel join / leave / switch
 - Channel created / deleted / renamed
 - Server boost changes
+
+Beyond that, 7 **bot action categories** can be opted into per server (all off by default): polls posted/ended, tickets created/closed, giveaways started/ended, warnings (`/warn`), auto-mod actions (warn/timeout/kick/ban from the spam filter), scheduled messages sent, and birthday congratulations sent.
 
 ---
 
@@ -624,16 +626,16 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 |---|---|
 | **Moderation** | `/kick` `/ban` `/unban` `/timeout` `/warn` `/warnings` `/clearwarns` `/clear` |
 | **Leveling / XP** | `/rank` `/leaderboard` `/setxp` — getrennte Text- und Voice-XP mit unabhängig einstellbaren Kurven, XP auf bestimmte Kanäle einschränkbar, automatische Rollenvergabe pro Level, optionaler eigener Belohnungstext |
-| **Willkommen** | Automatische Beitrittsnachrichten, Verlassensnachrichten, Auto-Rolle, **generierte Willkommenskarte** mit anpassbaren Farben |
+| **Willkommen** | Automatische Beitrittsnachrichten, Verlassensnachrichten, Auto-Rolle, **generierte Willkommenskarte** mit anpassbaren Farben, eigenem Hintergrundbild, transparentem Overlay (vorgefertigt oder eigenes Bild), frei editierbarer Überschrift/Untertitel und 5 Avatar-Formen/3 Layouts |
 | **Auto-Moderation** | Einstellbare Spam-Schwelle/-Zeitfenster, Link-Filter, Wort-Filter mit bearbeitbaren Schnellauswahl-Kategorien, einstellbare Aktion (warn/timeout/kick/ban) |
 | **Reaction Roles** | Über das Dashboard einrichten oder `/reactionrole-add` `/reactionrole-remove` `/reactionrole-list` |
 | **Event-Logging** | Beitritt/Verlassen, Bans, Rollen, Nachrichten, Voice — **zeigt wer eine Nachricht gelöscht hat** via Audit-Log, Massenlöschungs-Erkennung, Kanäle ausschließen |
 | **Eigene Commands** | Über das Dashboard verwalten oder `/addcommand` `/delcommand` `/commands` |
 | **Tickets** | Button-basiertes Ticket-System mit Panels — Support-Rolle, Kategorie, eigener Button-/Schließen-Text, optionale Archiv-Kategorie statt Löschen beim Schließen, `/ticket-close` |
-| **Giveaways** | Über das Dashboard starten/beenden/neu ziehen oder `/giveaway-start` `/giveaway-end` `/giveaway-reroll` |
+| **Giveaways** | Über das Dashboard starten/beenden/neu ziehen oder `/giveaway-start` `/giveaway-end` `/giveaway-reroll` — Neu-Ziehen schließt bisherige Gewinner aus, Gewinner bekommen zusätzlich zur Kanal-Ankündigung eine DM |
 | **Twitch-Benachrichtigungen** | Go-Live-Alerts mit Embed (Spiel, Zuschauer, Thumbnail) |
 | **Free Stuff & Deals** | Automatische Meldung kostenloser Spiele + konfigurierbare Angebote + Test-Button |
-| **Auto-Delete** | Nachrichten in gewählten Kanälen automatisch nach konfigurierbarer Zeit löschen |
+| **Auto-Delete** | Nachrichten in gewählten Kanälen automatisch nach konfigurierbarer Zeit löschen, optional auch bot-eigene Nachrichten (standardmäßig aus) |
 | **Temp Voice** | Join-to-Create temporäre Voice-Kanäle — automatisch erstellt beim Beitritt, automatisch gelöscht wenn leer |
 | **Geplante Nachrichten** | Nachrichten zu einem bestimmten Datum und Uhrzeit in jeden Kanal planen |
 | **Geburtstags-System** | `!geburtstag TT.MM` — tägliche Glückwünsche um 8 Uhr, konfigurierbarer Kanal und Text |
@@ -641,7 +643,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **CrossVerification** | "Wenn Rollen X, dann Rollen Y hinzufügen/entfernen"-Regeln — live oder in einstellbarem Intervall, optional auf einem anderen Server, inkl. Test-Sandbox |
 | **Umfragen** | `/poll-create` `/poll-end` — Einzel- oder Mehrfachauswahl, Bild/Link pro Option, geplanter Start, Live-Rangliste, nachträglich vollständig bearbeitbar |
 | **Bewertungen** | `/bewerten` `/bewertungen` — eine dauerhafte 1-5-Sterne-Liste (Maps, Spiele, Server, alles), jederzeit bewertbar, optional mit Sternauswahl in einem Kanal gepostet |
-| **Gameserver (AMP)** | `/gameserver-status` `/gameserver-start` `/gameserver-stop` `/gameserver-restart` — steuert [CubeCoders AMP](https://cubecoders.com/AMP)-Gameserver, erkennt jede Instanz automatisch |
+| **Gameserver (AMP)** | `/gameserver-status` `/gameserver-start` `/gameserver-stop` `/gameserver-restart` — steuert [CubeCoders AMP](https://cubecoders.com/AMP)-Gameserver, erkennt jede Instanz automatisch als eigene Kachel, mit optionalen eigenen Slash-Befehlen pro Instanz |
 | **Auto-Kick** | Kickt Mitglieder, die nach einer einstellbaren Frist noch eine "noch nicht verifiziert"-Rolle tragen, mit beliebig vielen Erinnerungs-DMs davor |
 | **Embed-Nachrichten** | Komplett frei gestaltete, mehrteilige Embed-Nachrichten (inkl. Foren-Kanäle) aus dem Dashboard posten — Bild, Footer, Tags, nachträglich bearbeitbar |
 
@@ -852,7 +854,7 @@ Unter **Server → Log** konfigurierbar:
 - **Log-Kanal** — Discord-Kanal für die Ereignis-Meldungen
 - **Kanäle ausschließen** — Kanäle, deren Nachrichten NICHT geloggt werden (z.B. Spam-Kanal)
 
-Geloggte Ereignisse:
+Die 9 nativen Kategorien unten laufen immer mit. Jeder Dashboard-Nutzer kann sich zusätzlich einen **persönlichen Anzeige-Filter** setzen (welche Kategorien er selbst in der Dashboard-Log-Ansicht sieht — der konfigurierte Log-Kanal bekommt unabhängig vom persönlichen Filter immer jedes native Ereignis):
 - Mitglied beigetreten / verlassen (mit Rollen beim Verlassen)
 - Rollen-Änderungen, Nickname-Änderungen, Timeouts
 - Bans / Entbannungen
@@ -862,6 +864,8 @@ Geloggte Ereignisse:
 - Voice-Kanal beigetreten / verlassen / gewechselt
 - Kanal erstellt / gelöscht / umbenannt
 - Server-Boost-Änderungen
+
+Zusätzlich gibt es 7 **Bot-Aktions-Kategorien**, die pro Server einzeln zuschaltbar sind (standardmäßig alle aus): Umfragen gepostet/beendet, Tickets erstellt/geschlossen, Giveaways gestartet/beendet, Warnungen (`/warn`), Auto-Mod-Aktionen (Warn/Timeout/Kick/Ban durch den Spam-Schutz), gesendete geplante Nachrichten sowie versendete Geburtstags-Glückwünsche.
 
 ---
 
