@@ -7126,6 +7126,69 @@ async def rr_delete(request: Request, guild_id: int, rr_id: int):
     return RedirectResponse(f"/servers/{guild_id}?tab=rr&success=Reaction+Role+gelöscht", status_code=302)
 
 
+@web.post("/servers/{guild_id}/reaction_roles/{rr_id}/edit")
+async def rr_edit(
+    request: Request, guild_id: int, rr_id: int,
+    channel_id: str = Form(...), message_id: str = Form(...),
+    emoji: str = Form(...), role_id: str = Form(...),
+):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    row = await db_one("SELECT * FROM reaction_roles WHERE id=? AND guild_id=?", (rr_id, guild_id))
+    if not row:
+        return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Nicht+gefunden", status_code=302)
+    emoji = emoji.strip()
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Bot+nicht+verbunden", status_code=302)
+    try:
+        channel_id_i, message_id_i, role_id_i = int(channel_id), int(message_id), int(role_id)
+    except (ValueError, TypeError):
+        return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Ungültige+Eingabe", status_code=302)
+    channel = guild.get_channel(channel_id_i)
+    if not channel:
+        return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Kanal+nicht+gefunden", status_code=302)
+    role = guild.get_role(role_id_i)
+    if not role:
+        return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Rolle+nicht+gefunden", status_code=302)
+
+    target_changed = (channel_id_i, message_id_i, emoji) != (row["channel_id"], row["message_id"], row["emoji"])
+    if target_changed:
+        # Editing into a combo another row already owns would leave two DB rows for the same
+        # message+emoji, only one of which _handle_reaction ever reads - reject instead of
+        # silently shadowing it.
+        conflict = await db_one(
+            "SELECT id FROM reaction_roles WHERE guild_id=? AND message_id=? AND emoji=? AND id!=?",
+            (guild_id, message_id_i, emoji, rr_id),
+        )
+        if conflict:
+            return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Kombination+existiert+bereits", status_code=302)
+        try:
+            new_msg = await channel.fetch_message(message_id_i)
+        except Exception:
+            return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Nachricht+nicht+gefunden", status_code=302)
+        try:
+            await new_msg.add_reaction(emoji)
+        except (discord.HTTPException, discord.NotFound):
+            return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Ungültiger+Emoji", status_code=302)
+        # Best-effort: remove the reaction from the OLD message/emoji so it doesn't keep looking
+        # clickable there while silently doing nothing anymore.
+        old_channel = guild.get_channel(row["channel_id"])
+        if old_channel:
+            try:
+                old_msg = await old_channel.fetch_message(row["message_id"])
+                await old_msg.remove_reaction(row["emoji"], guild.me)
+            except Exception:
+                pass
+
+    await db_exec(
+        "UPDATE reaction_roles SET channel_id=?, message_id=?, emoji=?, role_id=? WHERE id=? AND guild_id=?",
+        (channel_id_i, message_id_i, emoji, role_id_i, rr_id, guild_id),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=rr&success=Reaction+Role+aktualisiert", status_code=302)
+
+
 # ── Custom Commands ───────────────────────────────────────────────────────────
 
 @web.post("/servers/{guild_id}/commands/add")
