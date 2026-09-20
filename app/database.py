@@ -872,6 +872,17 @@ async def init_db():
             # in this project for a bot that was offline/paused past a due time (giveaways,
             # polls), not silently skipped.
             "ALTER TABLE event_series ADD COLUMN paused INTEGER NOT NULL DEFAULT 0",
+            # User-requested ("dass auch wenn die role fehlt das dann die role auf der anderen
+            # seite automatisch erstellt wird") - action_role_ids alone is not enough to
+            # RECREATE a since-deleted role: an id that no longer resolves carries no name,
+            # colour or any other trace of what the role once was, so cogs/role_rules.py could
+            # only ever skip it silently. This column stores a snapshot of exactly that, taken
+            # at save time from the target guild's real roles:
+            # {"<role_id>": {"name": ..., "color": int, "hoist": bool, "mentionable": bool}}.
+            # JSON rather than a parallel comma-list because a Discord role name may itself
+            # contain a comma, which every other comma-list-of-ids column in this project gets
+            # away with only because those hold ids, never free text.
+            "ALTER TABLE role_rules ADD COLUMN action_role_meta TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

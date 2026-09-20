@@ -3486,6 +3486,7 @@ function updateAmpCmdPreview(id, action, value) {
         <li>{{ tr.rolerules_info_item_live }}</li>
         <li>{{ tr.rolerules_info_item_priority }}</li>
         <li>{{ tr.rolerules_info_item_cross }}</li>
+        <li>{{ tr.rolerules_info_item_autocreate }}</li>
         <li>{{ tr.rolerules_info_item_sandbox }}</li>
       </ul>
     </div>
@@ -3715,6 +3716,19 @@ function updateAmpCmdPreview(id, action, value) {
     <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
   </form>
   <div style="font-size:0.72rem;color:var(--muted);margin-top:0.4rem;">{{ tr.rolerules_interval_hint }}</div>
+</div>
+
+<div class="card" style="margin-bottom:1.25rem;">
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.5rem;">{{ tr.rolerules_autocreate_title }}</div>
+  <form method="post" action="/servers/{{ guild.id }}/role-rules/save-autocreate" style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+    <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.85rem;margin:0;flex:1;min-width:200px;">
+      <input type="checkbox" name="autocreate" value="1" {% if role_rules_autocreate %}checked{% endif %}>
+      {{ tr.rolerules_autocreate_label }}
+    </label>
+    <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
+  </form>
+  <div style="font-size:0.72rem;color:var(--muted);margin-top:0.4rem;">{{ tr.rolerules_autocreate_hint }}</div>
+  <div style="font-size:0.72rem;color:var(--muted);margin-top:0.3rem;">{{ tr.rolerules_autocreate_note }}</div>
 </div>
 
 <div class="card">

@@ -1175,9 +1175,13 @@ _BACKUP_TBL_INSERT = {
     "embed_posts":
         "INSERT INTO embed_posts (guild_id,name,channel_id,content,image_url,footer_text,image_data,image_filename) "
         "VALUES (:guild_id,:name,:channel_id,:content,:image_url,:footer_text,:image_data,:image_filename)",
+    # action_role_meta rides along deliberately: it is the ONLY thing that lets a restored rule
+    # still mean something once its role ids no longer resolve - cogs/role_rules.py recreates
+    # (or re-links by name) the action roles from this snapshot. Dropping it here would make a
+    # restore look successful while leaving every rule permanently inert.
     "role_rules":
-        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,priority,enabled) "
-        "VALUES (:guild_id,:name,:match_type,:match_role_ids,:action,:action_guild_id,:action_role_ids,:priority,:enabled)",
+        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,priority,enabled) "
+        "VALUES (:guild_id,:name,:match_type,:match_role_ids,:action,:action_guild_id,:action_role_ids,:action_role_meta,:priority,:enabled)",
 }
 
 
@@ -1440,6 +1444,14 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
                     # to the panel's existing description instead of losing the row.
                     if tbl == "ticket_panels" and "ticket_message" not in row:
                         row = {**row, "ticket_message": row.get("description", "")}
+                    # Exactly the same trap as ticket_message above, for CrossVerification's
+                    # role snapshot: a backup taken before action_role_meta existed has no such
+                    # key, and the named-parameter INSERT would raise on the missing parameter -
+                    # dropping the ENTIRE rule, not just the snapshot. An empty snapshot only
+                    # costs the auto-create ability until the rule is saved once through the
+                    # dashboard (which refreshes it); losing the rule outright costs everything.
+                    if tbl == "role_rules" and "action_role_meta" not in row:
+                        row = {**row, "action_role_meta": ""}
                     await db.execute(sql, row)
                 except Exception:
                     pass
@@ -1600,6 +1612,9 @@ async def server_backup_restore(request: Request, guild_id: int, backup_file: Up
                         # path above - default to the existing description instead of losing
                         # the whole panel to a missing named parameter.
                         merged["ticket_message"] = row.get("description", "")
+                    if tbl == "role_rules" and "action_role_meta" not in row:
+                        # Same fallback as the full-backup path for pre-snapshot backups.
+                        merged["action_role_meta"] = ""
                     await db.execute(sql, merged)
                 except Exception:
                     pass
@@ -4897,6 +4912,8 @@ async def server_config(
         )
         rr["action_role_names"] = [target_names_by_id.get(i, "?") for i in action_ids]
     role_rules_interval = await get_guild_config(guild_id, "role_rules_interval_minutes") or "0"
+    # Absent = on, mirroring the cog's own default - see role_rule_save_autocreate().
+    role_rules_autocreate = (await get_guild_config(guild_id, "role_rules_autocreate") or "1") != "0"
     # Debug trace straight from the cog's own in-memory ring buffer (cogs/role_rules.py's
     # self._debug_log) - shown on the dashboard itself instead of requiring a docker exec/logs
     # round-trip for every troubleshooting attempt. Filtered to lines that mention THIS guild's
@@ -5084,6 +5101,7 @@ async def server_config(
         "role_rule_target_guilds": role_rule_target_guilds,
         "role_rule_target_roles": role_rule_target_roles,
         "role_rules_interval": role_rules_interval,
+        "role_rules_autocreate": role_rules_autocreate,
         "role_rules_debug_log": role_rules_debug_log,
         "role_rules_cog_missing": role_rules_cog_missing,
         "roles": roles, "categories": categories,
@@ -6906,6 +6924,22 @@ async def _role_rule_form_data(request: Request, guild: discord.Guild, form) -> 
     action_role_ids = list(dict.fromkeys(r for r in form.getlist("action_role_ids") if r in valid_action_role_ids))
     if not action_role_ids:
         return None, "Mindestens+eine+Aktions-Rolle+erforderlich"
+    # Snapshot of what each picked role looks like RIGHT NOW, so cogs/role_rules.py can
+    # recreate it on the target guild if it gets deleted later (a bare id resolves to nothing
+    # once the role is gone - no name to recreate it under). Taken here rather than in the cog
+    # because this is the only moment the role is guaranteed to still exist: the ids above were
+    # just validated against target_guild.roles. Refreshed on every save, so renaming a role in
+    # Discord and re-saving the rule updates the snapshot too.
+    _t_roles = {str(ro.id): ro for ro in target_guild.roles}
+    action_role_meta = _djson.dumps({
+        rid: {
+            "name": _t_roles[rid].name,
+            "color": _t_roles[rid].colour.value,
+            "hoist": _t_roles[rid].hoist,
+            "mentionable": _t_roles[rid].mentionable,
+        }
+        for rid in action_role_ids if rid in _t_roles
+    })
     try:
         priority = int(form.get("priority", "100"))
         if not (1 <= priority <= 1000):
@@ -6916,7 +6950,8 @@ async def _role_rule_form_data(request: Request, guild: discord.Guild, form) -> 
     return {
         "name": name, "match_type": match_type, "match_role_ids": ",".join(match_role_ids),
         "action": action, "action_guild_id": action_guild_id,
-        "action_role_ids": ",".join(action_role_ids), "priority": priority, "enabled": enabled,
+        "action_role_ids": ",".join(action_role_ids), "action_role_meta": action_role_meta,
+        "priority": priority, "enabled": enabled,
     }, None
 
 
@@ -6933,10 +6968,11 @@ async def role_rule_add(request: Request, guild_id: int):
     if error:
         return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error={error}", status_code=302)
     await db_exec(
-        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,priority,enabled) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,priority,enabled) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
         (str(guild_id), data["name"], data["match_type"], data["match_role_ids"], data["action"],
-         data["action_guild_id"], data["action_role_ids"], data["priority"], data["enabled"]),
+         data["action_guild_id"], data["action_role_ids"], data["action_role_meta"],
+         data["priority"], data["enabled"]),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Regel+hinzugefügt", status_code=303)
 
@@ -6955,10 +6991,10 @@ async def role_rule_edit(request: Request, guild_id: int, rule_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error={error}", status_code=302)
     await db_exec(
         "UPDATE role_rules SET name=?, match_type=?, match_role_ids=?, action=?, action_guild_id=?, "
-        "action_role_ids=?, priority=?, enabled=? WHERE id=? AND guild_id=?",
+        "action_role_ids=?, action_role_meta=?, priority=?, enabled=? WHERE id=? AND guild_id=?",
         (data["name"], data["match_type"], data["match_role_ids"], data["action"],
-         data["action_guild_id"], data["action_role_ids"], data["priority"], data["enabled"],
-         rule_id, str(guild_id)),
+         data["action_guild_id"], data["action_role_ids"], data["action_role_meta"],
+         data["priority"], data["enabled"], rule_id, str(guild_id)),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Regel+gespeichert", status_code=303)
 
@@ -6998,6 +7034,21 @@ async def role_rule_save_interval(request: Request, guild_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error=Ungültiges+Intervall+(0-1440)", status_code=302)
     await set_guild_config(guild_id, "role_rules_interval_minutes", str(interval))
     return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Intervall+gespeichert", status_code=303)
+
+
+@web.post("/servers/{guild_id}/role-rules/save-autocreate")
+async def role_rule_save_autocreate(request: Request, guild_id: int):
+    """Whether cogs/role_rules.py may recreate an action role that no longer exists on the
+    target server. Stored as "1"/"0" with an ABSENT key meaning on - the behaviour was
+    user-requested as what the feature should simply do, so an install that never touches this
+    switch gets it, and only an explicit opt-out writes "0"."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    await set_guild_config(guild_id, "role_rules_autocreate",
+                           "1" if form.get("autocreate") == "1" else "0")
+    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Gespeichert", status_code=303)
 
 
 # ── Server User Access ────────────────────────────────────────────────────────

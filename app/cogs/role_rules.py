@@ -16,12 +16,13 @@ self-hoster to run docker exec commands for every troubleshooting round doesn't 
 """
 import collections
 import datetime
+import json
 import time
 
 import discord
 from discord.ext import commands, tasks
 
-from database import db_rows, get_guild_config
+from database import db_exec, db_rows, get_guild_config
 
 # How many hops (same-guild re-evaluation passes AND cross-guild jumps both count as one hop
 # each) a single triggering role change may cascade through before _evaluate_member gives up.
@@ -34,6 +35,13 @@ MAX_HOP_BUDGET = 8
 # this is purely an in-memory ring buffer for the dashboard debug view, not persisted anywhere.
 DEBUG_LOG_MAXLEN = 200
 
+# How long a failed auto-create (missing "Manage Roles", role limit reached, ...) is remembered
+# before it is attempted again. Without this, the periodic mode would retry the same doomed
+# create_role call once per MEMBER of the guild on every single sweep - hundreds of pointless
+# API calls per pass for one misconfigured permission. A cooldown rather than a permanent
+# block, so fixing the permission in Discord heals itself without a bot restart.
+AUTOCREATE_RETRY_SECONDS = 300
+
 
 class RoleRules(commands.Cog):
     def __init__(self, bot):
@@ -45,6 +53,17 @@ class RoleRules(commands.Cog):
         self._processing: set[tuple[int, int]] = set()
         self._last_run: dict[int, float] = {}
         self._debug_log: collections.deque = collections.deque(maxlen=DEBUG_LOG_MAXLEN)
+        # (guild_id, role_id) -> time.monotonic() of the last FAILED auto-create, see
+        # AUTOCREATE_RETRY_SECONDS.
+        self._autocreate_block: dict[tuple[int, int], float] = {}
+        # (guild_id, lowercased role name) -> the Role this cog created itself. Discord.py's
+        # Guild.create_role() returns a Role WITHOUT putting it into guild._roles - only the
+        # GUILD_ROLE_CREATE gateway event does that, and it may not have arrived yet. In
+        # periodic mode the very next member is evaluated immediately afterwards, so without
+        # this map neither guild.get_role(new_id) nor the by-name lookup would see the role
+        # that was just created, and a second (third, fourth...) duplicate would be created
+        # for every remaining member of the sweep.
+        self._created_roles: dict[tuple[int, str], discord.Role] = {}
         self._periodic.start()
 
     def cog_unload(self):
@@ -76,6 +95,145 @@ class RoleRules(commands.Cog):
         # silently matches everything or nothing due to a typo/future value.
         return bool(match_ids & current_role_ids)
 
+    @staticmethod
+    def _rule_meta(rule) -> dict:
+        """The rule's {"<role_id>": {"name", "color", "hoist", "mentionable"}} snapshot of its
+        action roles, written by main.py at save time. Every failure mode degrades to {} (which
+        just means "cannot auto-create, skip the missing role") instead of raising: an
+        aiosqlite.Row from a database that predates the action_role_meta migration raises
+        IndexError on the lookup, and a hand-edited/corrupted backup can put anything at all in
+        the column."""
+        try:
+            raw = rule["action_role_meta"]
+        except (IndexError, KeyError):
+            return {}
+        try:
+            parsed = json.loads(raw or "{}")
+        except ValueError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+
+    async def _resolve_add_roles(self, guild: discord.Guild, role_ids: set, meta: dict,
+                                 autocreate: bool) -> tuple[list, dict]:
+        """Turn the ids a rule wants to ADD into real Role objects on `guild`, recreating any
+        that no longer exist there. Returns (roles, remap) where remap is {old_id_str: new_id}
+        for every id that changed, for _persist_remap() to write back.
+
+        Only ever called for ADD actions: a "remove" action naming a role that doesn't exist is
+        already satisfied - creating the role just to strip it off again would be absurd.
+        """
+        roles, remap = [], {}
+        for rid in sorted(role_ids):
+            role = guild.get_role(rid)
+            if role:
+                roles.append(role)
+                continue
+            info = meta.get(str(rid)) or {}
+            name = str(info.get("name") or "").strip() if isinstance(info, dict) else ""
+            if not name:
+                self._log(f"Rolle {rid} existiert auf Guild {guild.id} nicht (mehr) und es ist kein "
+                          f"Namens-Schnappschuss hinterlegt - übersprungen. Die Regel einmal im "
+                          f"Dashboard speichern legt den Schnappschuss an.")
+                continue
+            if not autocreate:
+                self._log(f"Rolle {rid} ('{name}') fehlt auf Guild {guild.id} - automatisches Anlegen "
+                          f"ist für diesen Server ausgeschaltet, übersprungen")
+                continue
+            # Reuse before create, in this order: a role this cog created moments ago (may not
+            # be in the guild cache yet), then any role of the same name that already exists
+            # (the admin deleted and manually recreated it - same name, new id). Creating
+            # blindly would leave the server with two identically named roles, and only one of
+            # them wired up to anything.
+            existing = self._created_roles.get((guild.id, name.lower())) or discord.utils.get(guild.roles, name=name)
+            if existing:
+                if existing.id == rid:
+                    # Same role, just not in guild._roles yet - this cog created it moments ago
+                    # and the GUILD_ROLE_CREATE event hasn't landed. Nothing to remap (the id
+                    # is already correct): recording it would write a no-op UPDATE per member
+                    # of a periodic sweep and log a baffling "remapped 9001 -> 9001" line.
+                    self._log(f"Rolle {rid} ('{name}') wurde gerade erst angelegt und ist noch nicht "
+                              f"im Cache von Guild {guild.id} - direkt weiterverwendet")
+                else:
+                    self._log(f"Rolle {rid} ('{name}') fehlt auf Guild {guild.id}, eine Rolle gleichen Namens "
+                              f"existiert aber bereits ({existing.id}) - Regel wird darauf umgebogen, "
+                              f"statt eine zweite gleichnamige anzulegen")
+                    remap[str(rid)] = existing.id
+                roles.append(existing)
+                continue
+            blocked_at = self._autocreate_block.get((guild.id, rid))
+            if blocked_at is not None and time.monotonic() - blocked_at < AUTOCREATE_RETRY_SECONDS:
+                continue  # already failed recently - see AUTOCREATE_RETRY_SECONDS
+            try:
+                colour_value = int(info.get("color") or 0)
+                if not 0 <= colour_value <= 0xFFFFFF:
+                    raise ValueError
+            except (TypeError, ValueError):
+                colour_value = 0
+            try:
+                created = await guild.create_role(
+                    name=name[:100],
+                    colour=discord.Colour(colour_value),
+                    hoist=bool(info.get("hoist")),
+                    mentionable=bool(info.get("mentionable")),
+                    reason="CrossVerification: fehlende Rolle automatisch angelegt",
+                )
+            except discord.Forbidden:
+                self._autocreate_block[(guild.id, rid)] = time.monotonic()
+                self._log(f"FEHLER: Rolle '{name}' konnte auf Guild {guild.id} nicht angelegt werden - "
+                          f"dem Bot fehlt dort die Berechtigung 'Rollen verwalten'")
+                continue
+            except (discord.HTTPException, OSError) as e:
+                # Same OSError-alongside-HTTPException reasoning as at the member.edit() calls
+                # below; additionally covers Discord's own 250-roles-per-guild limit, which
+                # comes back as a plain HTTPException.
+                self._autocreate_block[(guild.id, rid)] = time.monotonic()
+                self._log(f"FEHLER: Rolle '{name}' konnte auf Guild {guild.id} nicht angelegt werden: {e}")
+                continue
+            self._autocreate_block.pop((guild.id, rid), None)
+            self._created_roles[(guild.id, name.lower())] = created
+            self._log(f"Fehlende Rolle '{name}' auf Guild {guild.id} automatisch angelegt (neue ID {created.id}). "
+                      f"Sie sitzt zunächst ganz unten in der Rollenliste - Position und Rechte ggf. in Discord anpassen.")
+            remap[str(rid)] = created.id
+            roles.append(created)
+        return roles, remap
+
+    async def _persist_remap(self, action_guild_id: int, remap: dict) -> None:
+        """Point every rule that targets this guild at the replacement role ids, so the dead id
+        is gone for good. Without this the very next evaluation would find the same dead id
+        again - and while the by-name reuse in _resolve_add_roles() keeps that from piling up
+        duplicate roles, the dashboard would still keep showing the rule pointing at a role
+        that no longer exists.
+
+        Scoped by action_guild_id rather than by rule id: a Discord role id identifies exactly
+        one role on exactly one guild, so any rule pointing at the dead id on THIS target guild
+        means the same now-recreated role, no matter which source guild the rule belongs to.
+        """
+        try:
+            rows = await db_rows(
+                "SELECT id, action_role_ids, action_role_meta FROM role_rules WHERE action_guild_id=?",
+                (str(action_guild_id),),
+            )
+        except Exception as e:
+            self._log(f"FEHLER: Regeln für Guild {action_guild_id} zum Umbiegen nicht ladbar: {e}")
+            return
+        for row in rows:
+            ids = [x for x in (row["action_role_ids"] or "").split(",") if x]
+            if not any(old in ids for old in remap):
+                continue
+            new_ids = list(dict.fromkeys(str(remap.get(x, x)) for x in ids))
+            meta = self._rule_meta(row)
+            for old, new in remap.items():
+                if old in meta:
+                    meta[str(new)] = meta.pop(old)
+            try:
+                await db_exec(
+                    "UPDATE role_rules SET action_role_ids=?, action_role_meta=? WHERE id=?",
+                    (",".join(new_ids), json.dumps(meta), row["id"]),
+                )
+                self._log(f"Regel #{row['id']}: Rollen-ID(s) dauerhaft umgebogen {remap}")
+            except Exception as e:
+                self._log(f"FEHLER: Regel #{row['id']} konnte nicht umgebogen werden: {e}")
+
     async def _evaluate_member(self, guild: discord.Guild, member, hop_budget: int = MAX_HOP_BUDGET):
         if hop_budget <= 0 or member is None:
             self._log(f"Auswertung abgebrochen: hop_budget={hop_budget}, member={member}")
@@ -87,6 +245,12 @@ class RoleRules(commands.Cog):
         current = {r.id for r in member.roles}
         to_add, to_remove = set(), set()
         cross_by_guild: dict = {}  # action_guild_id -> {"add": set(), "remove": set()}
+        # Role snapshots merged per target guild, exactly alongside the action sets above -
+        # keyed by role id, so merging several rules' snapshots can never conflict. Needed
+        # because cross_by_guild deliberately merges rules into ONE edit per target guild (see
+        # there), which loses track of which rule an individual role id came from.
+        meta_local: dict = {}
+        meta_by_guild: dict = {}
         for rule in rules:
             # Everything in this iteration is wrapped so a single malformed rule (e.g. a
             # non-numeric id in match_role_ids/action_role_ids - unreachable through the
@@ -119,7 +283,9 @@ class RoleRules(commands.Cog):
                 # targets the same role on the same guild overrides an earlier one's effect on it
                 # (e.g. rule 1 removes role X, rule 2 re-adds it - rule 2 wins since it's applied
                 # after). Deliberate "later rule can override" semantics, not "first match wins".
+                rule_meta = self._rule_meta(rule)
                 if str(rule["action_guild_id"]) == str(guild.id):
+                    meta_local.update(rule_meta)
                     if rule["action"] == "remove":
                         to_remove |= action_ids
                         to_add -= action_ids
@@ -138,6 +304,7 @@ class RoleRules(commands.Cog):
                     # merged edit per target guild avoids that entirely, exactly like the
                     # same-guild to_add/to_remove sets already did.
                     bucket = cross_by_guild.setdefault(str(rule["action_guild_id"]), {"add": set(), "remove": set()})
+                    meta_by_guild.setdefault(str(rule["action_guild_id"]), {}).update(rule_meta)
                     if rule["action"] == "remove":
                         bucket["remove"] |= action_ids
                         bucket["add"] -= action_ids
@@ -149,13 +316,23 @@ class RoleRules(commands.Cog):
                           f"(match_roles={rule['match_role_ids']!r}, action_roles={rule['action_role_ids']!r}) "
                           f"und wird übersprungen: {e}")
                 continue
+        # Read once per pass, and only when there is actually something to apply - the periodic
+        # mode runs this method once per MEMBER, so an unconditional read would add a DB round
+        # trip per member on guilds where no rule matched at all. Missing key = on: the feature
+        # was user-requested as the expected behaviour, not as an extra to be switched on first.
+        autocreate = True
+        if to_add or cross_by_guild:
+            autocreate_raw = await get_guild_config(guild.id, "role_rules_autocreate")
+            autocreate = (autocreate_raw or "1") != "0"
         changed = False
         updated_member = None
         if to_add or to_remove:
+            add_roles, remap = await self._resolve_add_roles(guild, to_add, meta_local, autocreate)
+            if remap:
+                await self._persist_remap(guild.id, remap)
             new_roles = [r for r in member.roles if r.id not in to_remove]
-            for rid in to_add:
-                role = guild.get_role(rid)
-                if role and role not in new_roles:
+            for role in add_roles:
+                if role not in new_roles:
                     new_roles.append(role)
             if {r.id for r in new_roles} != current:
                 try:
@@ -207,13 +384,24 @@ class RoleRules(commands.Cog):
                     self._log(f"FEHLER: Mitglied {member.id} auf Guild {target_guild.id} nicht auflösbar: {e}")
                     continue
             t_current = {r.id for r in target_member.roles}
-            t_new_ids = (t_current | bucket["add"]) - bucket["remove"]
+            t_add_roles, t_remap = await self._resolve_add_roles(
+                target_guild, bucket["add"], meta_by_guild.get(action_guild_id, {}), autocreate)
+            if t_remap:
+                await self._persist_remap(target_guild.id, t_remap)
+            # Built from Role OBJECTS rather than by resolving an id set through
+            # target_guild.get_role(): a role _resolve_add_roles just created is not in
+            # guild._roles until the GUILD_ROLE_CREATE gateway event lands, so a get_role()
+            # round trip would drop the freshly created role right back out again - the exact
+            # silent skip this whole change exists to remove.
+            t_new_roles = [r for r in target_member.roles if r.id not in bucket["remove"]]
+            for role in t_add_roles:
+                if role not in t_new_roles:
+                    t_new_roles.append(role)
+            t_new_ids = {r.id for r in t_new_roles}
             self._log(f"Ziel-Mitglied {target_member.id} auf Guild {target_guild.id}: "
                       f"aktuelle Rollen={t_current}, gewünscht={t_new_ids}, ändert sich={t_new_ids != t_current}")
             if t_new_ids != t_current:
-                t_new_roles = [r for r in (target_guild.get_role(rid) for rid in t_new_ids) if r]
-                self._log(f"Aufgelöste Ziel-Rollenobjekte: {[(r.id, r.name) for r in t_new_roles]} "
-                          f"(erwartet {len(t_new_ids)} IDs, {len(t_new_roles)} aufgelöst)")
+                self._log(f"Aufgelöste Ziel-Rollenobjekte: {[(r.id, r.name) for r in t_new_roles]}")
                 try:
                     # Same staleness issue as above - use the returned Member (reflects the
                     # edit we just made) for the recursion below, not the pre-edit target_member.
