@@ -3486,6 +3486,7 @@ function updateAmpCmdPreview(id, action, value) {
         <li>{{ tr.rolerules_info_item_live }}</li>
         <li>{{ tr.rolerules_info_item_priority }}</li>
         <li>{{ tr.rolerules_info_item_cross }}</li>
+        <li>{{ tr.rolerules_info_item_multi }}</li>
         <li>{{ tr.rolerules_info_item_autocreate }}</li>
         <li>{{ tr.rolerules_info_item_sandbox }}</li>
       </ul>
@@ -3519,6 +3520,46 @@ function updateAmpCmdPreview(id, action, value) {
     <button class="btn btn-primary" style="font-size:0.78rem;padding:0.3rem 0.75rem;" onclick="const b=document.getElementById('create-rolerule-box');b.style.display=b.style.display==='none'?'':'none';">{{ tr.rolerules_btn_new }}</button>
   </div>
 
+
+{# One action block ("Aktion" + target server + roles). Rendered once as a hidden prototype
+   whose __IDX__ placeholders JS replaces on clone, so the role checkbox lists for every
+   target server exist exactly once in the markup instead of once per block per rule. #}
+<div id="rr-action-proto" style="display:none;">
+  <div class="rr-action-block" data-idx="__IDX__" style="border:1px solid var(--border);border-radius:0.6rem;padding:0.75rem 0.85rem;margin-bottom:0.6rem;background:var(--surface);">
+    <input type="hidden" name="action_idx" value="__IDX__">
+    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem;">
+      <span class="rr-action-and" style="font-size:0.75rem;font-weight:700;color:#a78bfa;">{{ tr.rolerules_and_label }}</span>
+      <div style="flex:1;"></div>
+      <button type="button" class="btn btn-danger" style="padding:0.15rem 0.5rem;font-size:0.75rem;" onclick="removeRoleRuleAction(this)" title="{{ tr.rolerules_action_remove_block }}">🗑</button>
+    </div>
+    <div class="grid-2" style="gap:0.75rem;margin-bottom:0.6rem;">
+      <div>
+        <label>{{ tr.rolerules_action_label }}</label>
+        <select name="action___IDX__" style="margin-bottom:0;">
+          <option value="add">{{ tr.rolerules_action_add }}</option>
+          <option value="remove">{{ tr.rolerules_action_remove }}</option>
+        </select>
+      </div>
+      <div>
+        <label>{{ tr.rolerules_target_label }}</label>
+        <select name="action_guild_id___IDX__" style="margin-bottom:0;" onchange="showRoleRuleActionPicker(this.value, '__IDX__')">
+          {% for target in role_rule_target_guilds %}<option value="{{ target.id }}">{{ target.name }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <label>{{ tr.rolerules_action_roles_label }}</label>
+    {% for target in role_rule_target_guilds %}
+    <div id="rr-action-roles-__IDX__-{{ target.id }}" class="rr-action-picker" style="display:{{ 'block' if loop.first else 'none' }};max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem 0.7rem;background:var(--bg);">
+      {% for ro in role_rule_target_roles.get(target.id, []) %}
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;padding:0.15rem 0;margin:0;">
+        <input type="checkbox" name="action_role_ids___IDX__" value="{{ ro.id }}" data-role-name="{{ ro.name }}"> @{{ ro.name }}
+      </label>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
   <div id="create-rolerule-box" style="display:none;padding:1rem 1.25rem;border-bottom:1px solid var(--border);background:var(--bg);">
     <form method="post" action="/servers/{{ guild.id }}/role-rules/add">
       <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
@@ -3543,31 +3584,9 @@ function updateAmpCmdPreview(id, action, value) {
         </label>
         {% endfor %}
       </div>
-      <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
-        <div>
-          <label>{{ tr.rolerules_action_label }}</label>
-          <select name="action" style="margin-bottom:0;">
-            <option value="add">{{ tr.rolerules_action_add }}</option>
-            <option value="remove">{{ tr.rolerules_action_remove }}</option>
-          </select>
-        </div>
-        <div>
-          <label>{{ tr.rolerules_target_label }}</label>
-          <select name="action_guild_id" style="margin-bottom:0;" onchange="showRoleRuleActionPicker(this.value, 'new')">
-            {% for target in role_rule_target_guilds %}<option value="{{ target.id }}">{{ target.name }}</option>{% endfor %}
-          </select>
-        </div>
-      </div>
-      <label>{{ tr.rolerules_action_roles_label }}</label>
-      {% for target in role_rule_target_guilds %}
-      <div id="rr-action-roles-new-{{ target.id }}" class="rr-action-picker" style="display:{{ 'block' if loop.first else 'none' }};max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem 0.7rem;background:var(--surface);margin-bottom:0.5rem;">
-        {% for ro in role_rule_target_roles.get(target.id, []) %}
-        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;padding:0.15rem 0;margin:0;">
-          <input type="checkbox" name="action_role_ids" value="{{ ro.id }}" data-role-name="{{ ro.name }}"> @{{ ro.name }}
-        </label>
-        {% endfor %}
-      </div>
-      {% endfor %}
+      <div style="font-weight:700;font-size:0.82rem;color:#a78bfa;margin-bottom:0.4rem;">{{ tr.rolerules_then_label }}</div>
+      <div class="rr-action-list" id="rr-actions-new"></div>
+      <button type="button" class="btn btn-secondary" style="font-size:0.78rem;margin-bottom:0.5rem;" onclick="addRoleRuleAction('new')">{{ tr.rolerules_add_action }}</button>
       <div class="grid-2" style="gap:0.75rem;margin:0.75rem 0;">
         <div>
           <label>{{ tr.rolerules_priority_label }}</label>
@@ -3598,9 +3617,14 @@ function updateAmpCmdPreview(id, action, value) {
             </div>
           </td>
           <td style="font-size:0.82rem;">
-            {% if rr.action == 'remove' %}{{ tr.rolerules_action_remove }}{% else %}{{ tr.rolerules_action_add }}{% endif %}:
-            {% for n in rr.action_role_names %}@{{ n }}{% if not loop.last %}, {% endif %}{% endfor %}
-            {% if rr.action_guild_id != guild.id %}<div style="color:var(--muted);font-size:0.72rem;">→ {{ rr.action_guild_name }}</div>{% endif %}
+            {% for b in rr.action_blocks %}
+            <div{% if not loop.first %} style="margin-top:0.25rem;"{% endif %}>
+              {% if not loop.first %}<span style="color:#a78bfa;font-size:0.72rem;font-weight:700;">{{ tr.rolerules_and_label }}</span> {% endif %}
+              {% if b.action == 'remove' %}{{ tr.rolerules_action_remove }}{% else %}{{ tr.rolerules_action_add }}{% endif %}:
+              {% for n in b.role_names %}@{{ n }}{% if not loop.last %}, {% endif %}{% endfor %}
+              {% if b.is_cross %}<span style="color:var(--muted);font-size:0.72rem;">→ {{ b.guild_name }}</span>{% endif %}
+            </div>
+            {% endfor %}
           </td>
           <td style="text-align:center;">{{ rr.priority }}</td>
           <td>
@@ -3642,31 +3666,15 @@ function updateAmpCmdPreview(id, action, value) {
                 </label>
                 {% endfor %}
               </div>
-              <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
-                <div>
-                  <label>{{ tr.rolerules_action_label }}</label>
-                  <select name="action" style="margin-bottom:0;">
-                    <option value="add" {% if rr.action == 'add' %}selected{% endif %}>{{ tr.rolerules_action_add }}</option>
-                    <option value="remove" {% if rr.action == 'remove' %}selected{% endif %}>{{ tr.rolerules_action_remove }}</option>
-                  </select>
-                </div>
-                <div>
-                  <label>{{ tr.rolerules_target_label }}</label>
-                  <select name="action_guild_id" style="margin-bottom:0;" onchange="showRoleRuleActionPicker(this.value, '{{ rr.id }}')">
-                    {% if not (role_rule_target_guilds | selectattr('id', 'equalto', rr.action_guild_id) | list) %}<option value="{{ rr.action_guild_id }}" selected disabled>{{ rr.action_guild_name }} ({{ tr.rolerules_target_unavailable }})</option>{% endif %}
-                    {% for target in role_rule_target_guilds %}<option value="{{ target.id }}" {% if target.id == rr.action_guild_id %}selected{% endif %}>{{ target.name }}</option>{% endfor %}
-                  </select>
-                </div>
-              </div>
-              <label>{{ tr.rolerules_action_roles_label }}</label>
-              {% for target in role_rule_target_guilds %}
-              <div id="rr-action-roles-{{ rr.id }}-{{ target.id }}" class="rr-action-picker" style="display:{{ 'block' if target.id == rr.action_guild_id else 'none' }};max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem 0.7rem;background:var(--bg);margin-bottom:0.5rem;">
-                {% for ro in role_rule_target_roles.get(target.id, []) %}
-                <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;padding:0.15rem 0;margin:0;">
-                  <input type="checkbox" name="action_role_ids" value="{{ ro.id }}" data-role-name="{{ ro.name }}" {% if target.id == rr.action_guild_id and ro.id in rr.action_role_ids_list %}checked{% endif %}> @{{ ro.name }}
-                </label>
-                {% endfor %}
-              </div>
+              <div style="font-weight:700;font-size:0.82rem;color:#a78bfa;margin-bottom:0.4rem;">{{ tr.rolerules_then_label }}</div>
+              <div class="rr-action-list" id="rr-actions-{{ rr.id }}"></div>
+              <button type="button" class="btn btn-secondary" style="font-size:0.78rem;margin-bottom:0.5rem;" onclick="addRoleRuleAction('{{ rr.id }}')">{{ tr.rolerules_add_action }}</button>
+              {# Saved blocks as plain data - restoreRoleRuleActions() turns each into a real
+                 block from the prototype above once, when the edit panel is first opened. #}
+              {% for b in rr.action_blocks %}
+              <div class="rr-saved-action" data-rule="{{ rr.id }}" data-action="{{ b.action }}"
+                   data-guild="{{ b.guild_id }}" data-guild-name="{{ b.guild_name }}"
+                   data-roles="{{ b.role_ids | join(',') }}" style="display:none;"></div>
               {% endfor %}
               <div class="grid-2" style="gap:0.75rem;margin:0.75rem 0;">
                 <div>
@@ -3699,9 +3707,12 @@ function updateAmpCmdPreview(id, action, value) {
 <div style="display:none;">
   {% for rr in role_rules %}
   <div class="rr-rule-data" data-id="{{ rr.id }}" data-name="{{ rr.name }}" data-match-type="{{ rr.match_type }}"
-       data-match-roles="{{ rr.match_role_ids }}" data-action="{{ rr.action }}"
-       data-action-guild="{{ rr.action_guild_id }}" data-action-guild-name="{{ rr.action_guild_name }}"
-       data-action-roles="{{ rr.action_role_ids }}" data-priority="{{ rr.priority }}" data-enabled="{{ rr.enabled }}"></div>
+       data-match-roles="{{ rr.match_role_ids }}"
+       data-actions="{{ rr.actions_encoded }}" data-priority="{{ rr.priority }}" data-enabled="{{ rr.enabled }}"></div>
+  {% endfor %}
+  {# Target-server names for the sandbox, which only has ids in data-actions above. #}
+  {% for target in role_rule_target_guilds %}
+  <div class="rr-target-name" data-guild="{{ target.id }}" data-name="{{ target.name }}"></div>
   {% endfor %}
 </div>
 
@@ -3768,8 +3779,92 @@ document.addEventListener('click', function(e) {
 });
 function toggleRoleRuleEdit(id) {
   const row = document.getElementById('rolerule-edit-' + id);
-  if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+  if (!row) return;
+  // Built on first open rather than at page load: one rule's blocks mean cloning the full
+  // role checkbox list per target server, and a guild with many rules would pay that cost for
+  // every collapsed panel nobody looks at.
+  restoreRoleRuleActions(String(id));
+  row.style.display = row.style.display === 'none' ? '' : 'none';
 }
+// Every action block in the document gets a unique index, so a rule's blocks and the create
+// form's blocks can never collide in the submitted field names (action_<idx> etc.).
+let rrActionSeq = 0;
+const RR_TARGET_UNAVAILABLE = {{ tr.rolerules_target_unavailable | jsraw }};
+function addRoleRuleAction(ruleKey, preset) {
+  const list = document.getElementById('rr-actions-' + ruleKey);
+  const proto = document.getElementById('rr-action-proto');
+  if (!list || !proto) return null;
+  const idx = ruleKey + '_' + (rrActionSeq++);
+  const wrap = document.createElement('div');
+  wrap.innerHTML = proto.innerHTML.split('__IDX__').join(idx);
+  const block = wrap.firstElementChild;
+  list.appendChild(block);
+  if (preset) {
+    const actionSel = block.querySelector('[name="action_' + idx + '"]');
+    if (actionSel) actionSel.value = preset.action;
+    const guildSel = block.querySelector('[name="action_guild_id_' + idx + '"]');
+    if (guildSel && preset.guild) {
+      // A saved block may point at a server this viewer can no longer pick from the dropdown
+      // (access narrowed after the rule was made). Keep it selectable-but-disabled instead of
+      // silently snapping the rule onto a different server on the next save.
+      if (!guildSel.querySelector('option[value="' + preset.guild + '"]')) {
+        const opt = document.createElement('option');
+        opt.value = preset.guild;
+        opt.textContent = (preset.guildName || preset.guild) + ' (' + RR_TARGET_UNAVAILABLE + ')';
+        opt.disabled = true;
+        guildSel.insertBefore(opt, guildSel.firstChild);
+      }
+      guildSel.value = preset.guild;
+      showRoleRuleActionPicker(preset.guild, idx);
+    }
+    (preset.roles || []).forEach(function(rid) {
+      const cb = block.querySelector('input[name="action_role_ids_' + idx + '"][value="' + rid + '"]');
+      if (cb) cb.checked = true;
+    });
+  }
+  refreshRoleRuleAndLabels(list);
+  return block;
+}
+function removeRoleRuleAction(btn) {
+  const block = btn.closest('.rr-action-block');
+  const list = block ? block.parentElement : null;
+  if (!list) return;
+  // Never let the last block go - a rule with no action at all would be rejected by the server
+  // anyway, and an empty "THEN.." reads like a bug rather than a choice.
+  if (list.querySelectorAll('.rr-action-block').length <= 1) return;
+  block.remove();
+  refreshRoleRuleAndLabels(list);
+}
+function refreshRoleRuleAndLabels(list) {
+  list.querySelectorAll('.rr-action-block').forEach(function(block, i) {
+    const label = block.querySelector('.rr-action-and');
+    if (label) label.style.visibility = i === 0 ? 'hidden' : 'visible';
+    const del = block.querySelector('.btn-danger');
+    if (del) del.style.visibility = i === 0 && list.querySelectorAll('.rr-action-block').length === 1 ? 'hidden' : 'visible';
+  });
+}
+function restoreRoleRuleActions(ruleKey) {
+  const list = document.getElementById('rr-actions-' + ruleKey);
+  if (!list || list.dataset.restored === '1') return;
+  list.dataset.restored = '1';
+  const names = {};
+  document.querySelectorAll('.rr-target-name').forEach(function(el) { names[el.dataset.guild] = el.dataset.name; });
+  const saved = document.querySelectorAll('.rr-saved-action[data-rule="' + ruleKey + '"]');
+  saved.forEach(function(el) {
+    addRoleRuleAction(ruleKey, {
+      action: el.dataset.action,
+      guild: el.dataset.guild,
+      guildName: el.dataset.guildName || names[el.dataset.guild],
+      roles: el.dataset.roles ? el.dataset.roles.split(',') : [],
+    });
+  });
+  if (!saved.length) addRoleRuleAction(ruleKey);
+}
+document.addEventListener('DOMContentLoaded', function() {
+  // The create form starts with exactly one block, like the "THEN.." section of the editor
+  // this was modelled on - the "+ UND.." button adds more.
+  if (document.getElementById('rr-actions-new')) addRoleRuleAction('new');
+});
 function showRoleRuleActionPicker(guildId, suffix) {
   document.querySelectorAll('.rr-action-picker[id^="rr-action-roles-' + suffix + '-"]').forEach(function(el) {
     const isTarget = el.id === ('rr-action-roles-' + suffix + '-' + guildId);
@@ -3786,6 +3881,8 @@ function testRoleRules() {
   document.querySelectorAll('#rr-sandbox-roles input[type=checkbox]:checked').forEach(function(cb) {
     current.add(cb.value);
   });
+  const targetNames = {};
+  document.querySelectorAll('.rr-target-name').forEach(function(el) { targetNames[el.dataset.guild] = el.dataset.name; });
   const rules = Array.from(document.querySelectorAll('.rr-rule-data'))
     .filter(function(el) { return el.dataset.enabled === '1'; })
     .map(function(el) {
@@ -3793,10 +3890,16 @@ function testRoleRules() {
         id: el.dataset.id, name: el.dataset.name,
         matchType: el.dataset.matchType,
         matchRoles: el.dataset.matchRoles ? el.dataset.matchRoles.split(',') : [],
-        action: el.dataset.action,
-        actionGuild: el.dataset.actionGuild,
-        actionGuildName: el.dataset.actionGuildName,
-        actionRoles: el.dataset.actionRoles ? el.dataset.actionRoles.split(',') : [],
+        // "add:guildId:roleId,roleId|remove:guildId:roleId" - see the data block above for
+        // why this is a flat string rather than JSON.
+        actions: (el.dataset.actions || '').split('|').filter(Boolean).map(function(part) {
+          const bits = part.split(':');
+          return {
+            action: bits[0],
+            guild: bits[1],
+            roles: (bits[2] || '').split(',').filter(Boolean),
+          };
+        }),
         priority: parseInt(el.dataset.priority, 10) || 100,
       };
     })
@@ -3813,11 +3916,14 @@ function testRoleRules() {
     } else {
       matched = rule.matchRoles.some(function(r) { return current.has(r); });
     }
-    if (!matched || rule.actionRoles.length === 0) return;
+    if (!matched || rule.actions.length === 0) return;
     used.push(rule);
-    if (rule.actionGuild === currentGuildId) {
-      rule.actionRoles.forEach(function(r) {
-        if (rule.action === 'add') { toAdd.add(r); toRemove.delete(r); }
+    // Each of the rule's action blocks in configured order, mirroring the cog's own loop -
+    // within a rule the later block wins for the same role, just like a later rule does.
+    rule.actions.forEach(function(block) {
+    if (block.guild === currentGuildId) {
+      block.roles.forEach(function(r) {
+        if (block.action === 'add') { toAdd.add(r); toRemove.delete(r); }
         else { toRemove.add(r); toAdd.delete(r); }
       });
     } else {
@@ -3828,15 +3934,16 @@ function testRoleRules() {
       // showing two matching rules that target the SAME external server as two separate,
       // possibly-contradictory lines (e.g. "add X" AND, right below it, "remove X") when the
       // real bot would merge them into a single edit and only ever apply the later one.
-      if (!crossByGuild[rule.actionGuild]) {
-        crossByGuild[rule.actionGuild] = { name: rule.actionGuildName, add: new Set(), remove: new Set() };
+      if (!crossByGuild[block.guild]) {
+        crossByGuild[block.guild] = { name: targetNames[block.guild] || block.guild, add: new Set(), remove: new Set() };
       }
-      const bucket = crossByGuild[rule.actionGuild];
-      rule.actionRoles.forEach(function(r) {
-        if (rule.action === 'add') { bucket.add.add(r); bucket.remove.delete(r); }
+      const bucket = crossByGuild[block.guild];
+      block.roles.forEach(function(r) {
+        if (block.action === 'add') { bucket.add.add(r); bucket.remove.delete(r); }
         else { bucket.remove.add(r); bucket.add.delete(r); }
       });
     }
+    });
   });
 
   let html = '';

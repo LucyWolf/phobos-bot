@@ -18,7 +18,9 @@ Layout of this file, top to bottom:
   - log_mod_action() - shared helper for writing to "mod_actions", used by every
     moderation-style command across the cogs (warn/kick/ban/timeout/...)
 """
+import json
 import os
+
 import aiosqlite
 from pathlib import Path
 from typing import Optional
@@ -883,6 +885,17 @@ async def init_db():
             # contain a comma, which every other comma-list-of-ids column in this project gets
             # away with only because those hold ids, never free text.
             "ALTER TABLE role_rules ADD COLUMN action_role_meta TEXT NOT NULL DEFAULT ''",
+            # User-requested (screenshot of a competing bot's rule editor: one IF block, then
+            # "THEN.. Assign roles" with a "+ AND.." button adding a second "Remove roles"
+            # block) - "dass er ihm rolle A gibt und rolle B weg nimmt", in ONE rule. The four
+            # action_* columns above can only ever express a SINGLE action, so giving and
+            # taking at the same time needed two separate rules that had to be kept in sync by
+            # hand. This column holds the full list instead:
+            # [{"action":"add"|"remove","guild_id":str,"role_ids":[str],"meta":{id:{...}}}].
+            # The old columns are still written (mirroring the FIRST block) rather than
+            # retired: they keep older backups, a downgrade, and every existing row readable,
+            # and role_rule_actions() below falls back to them whenever this column is empty.
+            "ALTER TABLE role_rules ADD COLUMN actions TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)
@@ -911,6 +924,65 @@ async def init_db():
         except Exception:
             pass
         await db.commit()
+
+
+def role_rule_actions(rule) -> list:
+    """A CrossVerification rule's action blocks, normalized to
+    [{"action": "add"|"remove", "guild_id": str, "role_ids": [str], "meta": {id: {...}}}].
+
+    Lives here rather than in main.py or cogs/role_rules.py because BOTH need to read the
+    column and must agree byte for byte on what it means - and a cog importing main.py would
+    be circular (see the cogs/role_rules.py module docstring). Takes an aiosqlite.Row or a
+    plain dict.
+
+    Every failure mode degrades to the single pre-multi-action columns instead of raising: a
+    row from a database that predates the `actions` migration, a rule saved before the feature
+    existed (empty column), and a hand-edited or corrupted backup all land on the same
+    fallback, which is exactly the behaviour those rules had before.
+    """
+    def col(name, default=""):
+        try:
+            value = rule[name]
+        except (IndexError, KeyError):
+            return default
+        return default if value is None else value
+
+    blocks = []
+    try:
+        parsed = json.loads(col("actions") or "[]")
+    except ValueError:
+        parsed = []
+    if isinstance(parsed, list):
+        for entry in parsed:
+            if not isinstance(entry, dict):
+                continue
+            role_ids = [str(r) for r in entry.get("role_ids") or [] if str(r).strip()]
+            if not role_ids:
+                continue
+            meta = entry.get("meta")
+            blocks.append({
+                # Anything other than an explicit "remove" is treated as "add", the same
+                # defaulting the single-action column has always used.
+                "action": "remove" if entry.get("action") == "remove" else "add",
+                "guild_id": str(entry.get("guild_id") or ""),
+                "role_ids": role_ids,
+                "meta": meta if isinstance(meta, dict) else {},
+            })
+    if blocks:
+        return blocks
+    role_ids = [r for r in str(col("action_role_ids")).split(",") if r]
+    if not role_ids:
+        return []
+    try:
+        meta = json.loads(col("action_role_meta") or "{}")
+    except ValueError:
+        meta = {}
+    return [{
+        "action": "remove" if col("action") == "remove" else "add",
+        "guild_id": str(col("action_guild_id")),
+        "role_ids": role_ids,
+        "meta": meta if isinstance(meta, dict) else {},
+    }]
 
 
 async def log_mod_action(action: str, target, moderator, guild_id: int, reason: str = None):

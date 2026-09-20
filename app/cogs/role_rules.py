@@ -22,7 +22,7 @@ import time
 import discord
 from discord.ext import commands, tasks
 
-from database import db_exec, db_rows, get_guild_config
+from database import db_exec, db_rows, get_guild_config, role_rule_actions
 
 # How many hops (same-guild re-evaluation passes AND cross-guild jumps both count as one hop
 # each) a single triggering role change may cascade through before _evaluate_member gives up.
@@ -97,8 +97,9 @@ class RoleRules(commands.Cog):
 
     @staticmethod
     def _rule_meta(rule) -> dict:
-        """The rule's {"<role_id>": {"name", "color", "hoist", "mentionable"}} snapshot of its
-        action roles, written by main.py at save time. Every failure mode degrades to {} (which
+        """The rule's LEGACY single-action {"<role_id>": {...}} snapshot column. The live
+        evaluation reads per-block snapshots through role_rule_actions() instead; this is only
+        still used by _persist_remap(), which rewrites that legacy column in place. Every failure mode degrades to {} (which
         just means "cannot auto-create, skip the missing role") instead of raising: an
         aiosqlite.Row from a database that predates the action_role_meta migration raises
         IndexError on the lookup, and a hand-edited/corrupted backup can put anything at all in
@@ -209,26 +210,39 @@ class RoleRules(commands.Cog):
         means the same now-recreated role, no matter which source guild the rule belongs to.
         """
         try:
-            rows = await db_rows(
-                "SELECT id, action_role_ids, action_role_meta FROM role_rules WHERE action_guild_id=?",
-                (str(action_guild_id),),
-            )
+            # Deliberately NOT filtered by action_guild_id: since multi-action rules, a rule's
+            # target guild lives inside each action BLOCK, and the legacy column only mirrors
+            # the first one - filtering on it would silently skip a rule whose second block is
+            # the one pointing at this guild. Filtering happens per block below instead.
+            rows = await db_rows("SELECT * FROM role_rules", ())
         except Exception as e:
             self._log(f"FEHLER: Regeln für Guild {action_guild_id} zum Umbiegen nicht ladbar: {e}")
             return
         for row in rows:
-            ids = [x for x in (row["action_role_ids"] or "").split(",") if x]
-            if not any(old in ids for old in remap):
+            blocks = role_rule_actions(row)
+            touched = False
+            for block in blocks:
+                if block["guild_id"] != str(action_guild_id):
+                    continue  # this block targets a different server - its ids mean nothing here
+                if not any(old in block["role_ids"] for old in remap):
+                    continue
+                block["role_ids"] = list(dict.fromkeys(str(remap.get(x, x)) for x in block["role_ids"]))
+                for old, new in remap.items():
+                    if old in block["meta"]:
+                        block["meta"][str(new)] = block["meta"].pop(old)
+                touched = True
+            if not touched:
                 continue
-            new_ids = list(dict.fromkeys(str(remap.get(x, x)) for x in ids))
-            meta = self._rule_meta(row)
-            for old, new in remap.items():
-                if old in meta:
-                    meta[str(new)] = meta.pop(old)
+            # The legacy single-action columns mirror the FIRST block (see database.py's
+            # migration note) - kept in sync here too, or a later read that falls back to them
+            # would resurrect the dead id this whole method exists to retire.
+            first = blocks[0]
             try:
                 await db_exec(
-                    "UPDATE role_rules SET action_role_ids=?, action_role_meta=? WHERE id=?",
-                    (",".join(new_ids), json.dumps(meta), row["id"]),
+                    "UPDATE role_rules SET actions=?, action=?, action_guild_id=?, "
+                    "action_role_ids=?, action_role_meta=? WHERE id=?",
+                    (json.dumps(blocks), first["action"], first["guild_id"],
+                     ",".join(first["role_ids"]), json.dumps(first["meta"]), row["id"]),
                 )
                 self._log(f"Regel #{row['id']}: Rollen-ID(s) dauerhaft umgebogen {remap}")
             except Exception as e:
@@ -273,44 +287,54 @@ class RoleRules(commands.Cog):
                 # not by chaining rules within one pass - keeps the ordering easy to reason about.
                 if not self._matches(rule, current):
                     continue
+                blocks = role_rule_actions(rule)
                 self._log(f"Regel #{rule['id']} ({rule['name'] or '—'}) trifft zu für Mitglied {member.id}: "
                           f"match_type={rule['match_type']} match_roles={rule['match_role_ids']} "
-                          f"-> action={rule['action']} action_guild={rule['action_guild_id']} action_roles={rule['action_role_ids']}")
-                action_ids = {int(x) for x in (rule["action_role_ids"] or "").split(",") if x}
-                if not action_ids:
-                    continue
-                # Rules are applied in priority order (lowest number first) - a LATER rule that
-                # targets the same role on the same guild overrides an earlier one's effect on it
-                # (e.g. rule 1 removes role X, rule 2 re-adds it - rule 2 wins since it's applied
-                # after). Deliberate "later rule can override" semantics, not "first match wins".
-                rule_meta = self._rule_meta(rule)
-                if str(rule["action_guild_id"]) == str(guild.id):
-                    meta_local.update(rule_meta)
-                    if rule["action"] == "remove":
-                        to_remove |= action_ids
-                        to_add -= action_ids
+                          f"-> {len(blocks)} Aktion(en): "
+                          f"{[(b['action'], b['guild_id'], b['role_ids']) for b in blocks]}")
+                # One rule can carry SEVERAL action blocks ("gib Rolle A" UND "nimm Rolle B"),
+                # applied in the order they were configured. Within a rule the later block
+                # wins over an earlier one for the same role, exactly like a later RULE wins
+                # over an earlier one below - so the two levels behave identically and there is
+                # only one rule to remember: whatever comes last decides.
+                for block in blocks:
+                    action_ids = {int(x) for x in block["role_ids"]}
+                    if not action_ids:
+                        continue
+                    # Rules are applied in priority order (lowest number first) - a LATER rule
+                    # that targets the same role on the same guild overrides an earlier one's
+                    # effect on it (e.g. rule 1 removes role X, rule 2 re-adds it - rule 2 wins
+                    # since it's applied after). Deliberate "later rule can override"
+                    # semantics, not "first match wins".
+                    if block["guild_id"] == str(guild.id):
+                        meta_local.update(block["meta"])
+                        if block["action"] == "remove":
+                            to_remove |= action_ids
+                            to_add -= action_ids
+                        else:
+                            to_add |= action_ids
+                            to_remove -= action_ids
                     else:
-                        to_add |= action_ids
-                        to_remove -= action_ids
-                else:
-                    # Grouped by target guild (not a flat list of per-rule actions) and merged
-                    # with the same "later rule in priority order overrides" semantics as the
-                    # same-guild case above - fixes a real bug: two rules targeting the SAME
-                    # other guild used to each run their own separate member.edit() call,
-                    # computed from separately fetched role snapshots. Discord's own gateway
-                    # MEMBER_UPDATE confirming the first edit isn't guaranteed to have reached
-                    # this bot's cache before the second edit reads it, so the second edit could
-                    # easily read a stale role set and wipe out the first edit's change. One
-                    # merged edit per target guild avoids that entirely, exactly like the
-                    # same-guild to_add/to_remove sets already did.
-                    bucket = cross_by_guild.setdefault(str(rule["action_guild_id"]), {"add": set(), "remove": set()})
-                    meta_by_guild.setdefault(str(rule["action_guild_id"]), {}).update(rule_meta)
-                    if rule["action"] == "remove":
-                        bucket["remove"] |= action_ids
-                        bucket["add"] -= action_ids
-                    else:
-                        bucket["add"] |= action_ids
-                        bucket["remove"] -= action_ids
+                        # Grouped by target guild (not a flat list of per-rule actions) and
+                        # merged with the same "later action wins" semantics as the same-guild
+                        # case above - fixes a real bug: two rules targeting the SAME other
+                        # guild used to each run their own separate member.edit() call,
+                        # computed from separately fetched role snapshots. Discord's own
+                        # gateway MEMBER_UPDATE confirming the first edit isn't guaranteed to
+                        # have reached this bot's cache before the second edit reads it, so the
+                        # second edit could easily read a stale role set and wipe out the
+                        # first edit's change. One merged edit per target guild avoids that
+                        # entirely, exactly like the same-guild to_add/to_remove sets already
+                        # did - and it is what makes "give A and take B on the same server" a
+                        # single atomic edit rather than two that can race each other.
+                        bucket = cross_by_guild.setdefault(block["guild_id"], {"add": set(), "remove": set()})
+                        meta_by_guild.setdefault(block["guild_id"], {}).update(block["meta"])
+                        if block["action"] == "remove":
+                            bucket["remove"] |= action_ids
+                            bucket["add"] -= action_ids
+                        else:
+                            bucket["add"] |= action_ids
+                            bucket["remove"] -= action_ids
             except (ValueError, TypeError) as e:
                 self._log(f"FEHLER: Regel #{rule['id']} ({rule['name'] or '—'}) hat fehlerhafte Daten "
                           f"(match_roles={rule['match_role_ids']!r}, action_roles={rule['action_role_ids']!r}) "

@@ -132,6 +132,7 @@ from database import (
     DB_PATH, init_db, get_config, set_config,
     get_guild_config, set_guild_config, get_all_guild_config,
     db_rows, db_one, db_exec, db_exec_rowcount, db_insert, log_mod_action,
+    role_rule_actions,
 )
 import totp
 
@@ -1180,8 +1181,8 @@ _BACKUP_TBL_INSERT = {
     # (or re-links by name) the action roles from this snapshot. Dropping it here would make a
     # restore look successful while leaving every rule permanently inert.
     "role_rules":
-        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,priority,enabled) "
-        "VALUES (:guild_id,:name,:match_type,:match_role_ids,:action,:action_guild_id,:action_role_ids,:action_role_meta,:priority,:enabled)",
+        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,actions,priority,enabled) "
+        "VALUES (:guild_id,:name,:match_type,:match_role_ids,:action,:action_guild_id,:action_role_ids,:action_role_meta,:actions,:priority,:enabled)",
 }
 
 
@@ -1450,8 +1451,9 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
                     # dropping the ENTIRE rule, not just the snapshot. An empty snapshot only
                     # costs the auto-create ability until the rule is saved once through the
                     # dashboard (which refreshes it); losing the rule outright costs everything.
-                    if tbl == "role_rules" and "action_role_meta" not in row:
-                        row = {**row, "action_role_meta": ""}
+                    if tbl == "role_rules":
+                        # Same trap for both columns a pre-existing backup cannot know about.
+                        row = {"action_role_meta": "", "actions": "", **row}
                     await db.execute(sql, row)
                 except Exception:
                     pass
@@ -1612,9 +1614,9 @@ async def server_backup_restore(request: Request, guild_id: int, backup_file: Up
                         # path above - default to the existing description instead of losing
                         # the whole panel to a missing named parameter.
                         merged["ticket_message"] = row.get("description", "")
-                    if tbl == "role_rules" and "action_role_meta" not in row:
-                        # Same fallback as the full-backup path for pre-snapshot backups.
-                        merged["action_role_meta"] = ""
+                    if tbl == "role_rules":
+                        # Same fallback as the full-backup path for older backups.
+                        merged = {"action_role_meta": "", "actions": "", **merged}
                     await db.execute(sql, merged)
                 except Exception:
                     pass
@@ -4911,6 +4913,30 @@ async def server_config(
             {str(ro.id): ro.name for ro in tg_obj.roles if not ro.is_default()} if tg_obj else {}
         )
         rr["action_role_names"] = [target_names_by_id.get(i, "?") for i in action_ids]
+        # Every action block of the rule, resolved for display and for re-populating the edit
+        # form. A rule saved before multi-action existed comes back from role_rule_actions() as
+        # a single block built from the legacy columns, so this list is never empty and the
+        # template needs no special case for "old rule".
+        rr["action_blocks"] = []
+        for block in role_rule_actions(rr):
+            b_guild = bot.get_guild(int(block["guild_id"])) if block["guild_id"].isdigit() else None
+            b_names = (
+                {str(ro.id): ro.name for ro in b_guild.roles if not ro.is_default()} if b_guild else {}
+            )
+            rr["action_blocks"].append({
+                "action": block["action"],
+                "guild_id": block["guild_id"],
+                "guild_name": b_guild.name if b_guild else "?",
+                "is_cross": block["guild_id"] != str(guild_id),
+                "role_ids": block["role_ids"],
+                "role_names": [b_names.get(i, "?") for i in block["role_ids"]],
+            })
+        # Flat "add:guild:id,id|remove:guild:id" encoding for the client-side test sandbox -
+        # deliberately not JSON, matching the existing data-* convention documented at the
+        # hidden .rr-rule-data block in the template (the js/jsraw filters only take scalars).
+        rr["actions_encoded"] = "|".join(
+            f"{b['action']}:{b['guild_id']}:{','.join(b['role_ids'])}" for b in rr["action_blocks"]
+        )
     role_rules_interval = await get_guild_config(guild_id, "role_rules_interval_minutes") or "0"
     # Absent = on, mirroring the cog's own default - see role_rule_save_autocreate().
     role_rules_autocreate = (await get_guild_config(guild_id, "role_rules_autocreate") or "1") != "0"
@@ -6888,6 +6914,12 @@ async def _role_rule_target_guilds(request: Request, guild_id: int) -> list:
     return [g for g in await _guild_list(request) if int(g["id"]) in same_token_ids]
 
 
+# Upper bound on action blocks per rule - purely a guard against a replayed/hand-crafted
+# request submitting thousands of action_idx values, each costing a guild+role validation pass.
+# Far above anything the "+ UND.." button is realistically used for.
+MAX_RULE_ACTIONS = 25
+
+
 def _role_rule_match_type_valid(v: str) -> bool:
     return v in ("any", "all", "none")
 
@@ -6910,36 +6942,57 @@ async def _role_rule_form_data(request: Request, guild: discord.Guild, form) -> 
     match_role_ids = list(dict.fromkeys(r for r in form.getlist("match_role_ids") if r in valid_role_ids))
     if not match_role_ids:
         return None, "Mindestens+eine+Bedingungs-Rolle+erforderlich"
-    action = form.get("action", "add")
-    if action not in ("add", "remove"):
-        return None, "Ungültige+Aktion"
-    action_guild_id = form.get("action_guild_id", "")
+    # One rule carries a LIST of action blocks ("gib Rolle A" UND "nimm Rolle B"), each with
+    # its own action, target server and roles - the form submits one hidden action_idx per
+    # block plus that block's own suffixed fields, so a block deleted in the browser simply
+    # stops submitting anything and needs no separate bookkeeping.
     allowed_targets = {g["id"] for g in await _role_rule_target_guilds(request, guild.id)}
-    if action_guild_id not in allowed_targets:
-        return None, "Ungültiger+Zielserver"
-    target_guild = bot.get_guild(int(action_guild_id))
-    if not target_guild:
-        return None, "Zielserver+nicht+gefunden"
-    valid_action_role_ids = {str(ro.id) for ro in target_guild.roles if not ro.is_default()}
-    action_role_ids = list(dict.fromkeys(r for r in form.getlist("action_role_ids") if r in valid_action_role_ids))
-    if not action_role_ids:
-        return None, "Mindestens+eine+Aktions-Rolle+erforderlich"
-    # Snapshot of what each picked role looks like RIGHT NOW, so cogs/role_rules.py can
-    # recreate it on the target guild if it gets deleted later (a bare id resolves to nothing
-    # once the role is gone - no name to recreate it under). Taken here rather than in the cog
-    # because this is the only moment the role is guaranteed to still exist: the ids above were
-    # just validated against target_guild.roles. Refreshed on every save, so renaming a role in
-    # Discord and re-saving the rule updates the snapshot too.
-    _t_roles = {str(ro.id): ro for ro in target_guild.roles}
-    action_role_meta = _djson.dumps({
-        rid: {
-            "name": _t_roles[rid].name,
-            "color": _t_roles[rid].colour.value,
-            "hoist": _t_roles[rid].hoist,
-            "mentionable": _t_roles[rid].mentionable,
-        }
-        for rid in action_role_ids if rid in _t_roles
-    })
+    block_indices = list(dict.fromkeys(form.getlist("action_idx")))[:MAX_RULE_ACTIONS]
+    if not block_indices:
+        return None, "Mindestens+eine+Aktion+erforderlich"
+    actions = []
+    for idx in block_indices:
+        action = form.get(f"action_{idx}", "add")
+        if action not in ("add", "remove"):
+            return None, "Ungültige+Aktion"
+        action_guild_id = form.get(f"action_guild_id_{idx}", "")
+        if action_guild_id not in allowed_targets:
+            return None, "Ungültiger+Zielserver"
+        target_guild = bot.get_guild(int(action_guild_id))
+        if not target_guild:
+            return None, "Zielserver+nicht+gefunden"
+        valid_action_role_ids = {str(ro.id) for ro in target_guild.roles if not ro.is_default()}
+        action_role_ids = list(dict.fromkeys(
+            r for r in form.getlist(f"action_role_ids_{idx}") if r in valid_action_role_ids))
+        if not action_role_ids:
+            return None, "Mindestens+eine+Aktions-Rolle+je+Aktion+erforderlich"
+        # Snapshot of what each picked role looks like RIGHT NOW, so cogs/role_rules.py can
+        # recreate it on the target guild if it gets deleted later (a bare id resolves to
+        # nothing once the role is gone - no name to recreate it under). Taken here rather than
+        # in the cog because this is the only moment the role is guaranteed to still exist: the
+        # ids above were just validated against target_guild.roles. Refreshed on every save, so
+        # renaming a role in Discord and re-saving the rule updates the snapshot too.
+        _t_roles = {str(ro.id): ro for ro in target_guild.roles}
+        actions.append({
+            "action": action,
+            "guild_id": action_guild_id,
+            "role_ids": action_role_ids,
+            "meta": {
+                rid: {
+                    "name": _t_roles[rid].name,
+                    "color": _t_roles[rid].colour.value,
+                    "hoist": _t_roles[rid].hoist,
+                    "mentionable": _t_roles[rid].mentionable,
+                }
+                for rid in action_role_ids if rid in _t_roles
+            },
+        })
+    # The legacy single-action columns mirror the FIRST block - see database.py's migration
+    # note for why they are kept written rather than retired.
+    _first = actions[0]
+    action, action_guild_id = _first["action"], _first["guild_id"]
+    action_role_ids = _first["role_ids"]
+    action_role_meta = _djson.dumps(_first["meta"])
     try:
         priority = int(form.get("priority", "100"))
         if not (1 <= priority <= 1000):
@@ -6951,7 +7004,7 @@ async def _role_rule_form_data(request: Request, guild: discord.Guild, form) -> 
         "name": name, "match_type": match_type, "match_role_ids": ",".join(match_role_ids),
         "action": action, "action_guild_id": action_guild_id,
         "action_role_ids": ",".join(action_role_ids), "action_role_meta": action_role_meta,
-        "priority": priority, "enabled": enabled,
+        "actions": _djson.dumps(actions), "priority": priority, "enabled": enabled,
     }, None
 
 
@@ -6968,11 +7021,11 @@ async def role_rule_add(request: Request, guild_id: int):
     if error:
         return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error={error}", status_code=302)
     await db_exec(
-        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,priority,enabled) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,actions,priority,enabled) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         (str(guild_id), data["name"], data["match_type"], data["match_role_ids"], data["action"],
          data["action_guild_id"], data["action_role_ids"], data["action_role_meta"],
-         data["priority"], data["enabled"]),
+         data["actions"], data["priority"], data["enabled"]),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Regel+hinzugefügt", status_code=303)
 
@@ -6991,10 +7044,10 @@ async def role_rule_edit(request: Request, guild_id: int, rule_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error={error}", status_code=302)
     await db_exec(
         "UPDATE role_rules SET name=?, match_type=?, match_role_ids=?, action=?, action_guild_id=?, "
-        "action_role_ids=?, action_role_meta=?, priority=?, enabled=? WHERE id=? AND guild_id=?",
+        "action_role_ids=?, action_role_meta=?, actions=?, priority=?, enabled=? WHERE id=? AND guild_id=?",
         (data["name"], data["match_type"], data["match_role_ids"], data["action"],
          data["action_guild_id"], data["action_role_ids"], data["action_role_meta"],
-         data["priority"], data["enabled"], rule_id, str(guild_id)),
+         data["actions"], data["priority"], data["enabled"], rule_id, str(guild_id)),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Regel+gespeichert", status_code=303)
 
