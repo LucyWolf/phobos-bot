@@ -22,6 +22,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 - [Temp Voice Channels](#temp-voice-channels)
 - [Spam Protection / Auto-Moderation](#spam-protection--auto-moderation)
 - [Auto-Delete](#auto-delete)
+- [Auto-Thread](#auto-thread)
 - [Scheduled Messages](#scheduled-messages)
 - [Discord Events](#discord-events)
 - [CrossVerification](#crossverification)
@@ -71,11 +72,12 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **Twitch Notifications** | Go-live alerts with embed (game, viewers, thumbnail) |
 | **Free Stuff & Deals** | Automatic free game alerts + configurable deal notifications + test button |
 | **Auto-Delete** | Automatically delete messages in selected channels after a configurable time, optionally including the bot's own messages (off by default) |
+| **Auto-Thread** | Automatically opens a thread on every message in selected channels — templated thread name (`{user}` / `{text}` / `{date}`), auto-archive duration, optional opening message inside the thread, optionally only for messages with an attachment |
 | **Temp Voice** | Join-to-Create temporary voice channels — auto-created on join, auto-deleted when empty |
 | **Scheduled Messages** | Schedule messages to be sent to any channel at a specific date and time |
 | **Birthday System** | `!geburtstag DD.MM` — daily congratulations at 8 AM, configurable channel and message |
 | **Discord Events** | Create/edit native Discord scheduled events (voice or external) from the dashboard, with optional reminders and start/end announcements posted to a channel; optionally recurring (daily/weekly/monthly), pausable/resumable |
-| **CrossVerification** | "IF a member has/lacks certain roles, THEN add/remove roles" rules — live or on a configurable interval, optionally targeting a different server, with a test sandbox |
+| **CrossVerification** | "IF a member has/lacks certain roles, THEN ..." rules with any number of AND-chained actions (give role A **and** take role B in one rule), live or on a configurable interval, optionally targeting a different server, recreates a deleted target role from a saved snapshot, with a test sandbox |
 | **Polls** | `/poll-create` `/poll-end` — single- or multiple-choice, per-option images/links, scheduled start, live ranking, fully editable after posting |
 | **Ratings** | `/bewerten` `/bewertungen` — a persistent 1–5-star list (maps, games, servers, anything) members can rate anytime, optionally posted to a channel with a star picker |
 | **Gameserver (AMP)** | `/gameserver-status` `/gameserver-start` `/gameserver-stop` `/gameserver-restart` — control [CubeCoders AMP](https://cubecoders.com/AMP)-hosted game servers, auto-detects every instance as its own tile, with optional per-instance custom slash commands |
@@ -88,7 +90,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 |---|---|
 | **Dashboard** | Bot status, connected servers, moderation statistics — personalized per user |
 | **👤 Profile** | Avatar, display name, own backup export, account deletion, and personal language + timezone preference that overrides the server-wide default just for this user |
-| **Per Server** | Config, Users (grant/revoke moderator access to this server), Welcome, Spam Protection, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Polls, Ratings, Streaming, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, CrossVerification, Birthdays, Auto-Delete, Gameserver, Auto-Kick, Embed Messages, Bot Design |
+| **Per Server** | Config, Users (grant/revoke moderator access to this server), Welcome, Spam Protection, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Polls, Ratings, Streaming, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, CrossVerification, Birthdays, Auto-Delete, Auto-Thread, Gameserver, Auto-Kick, Embed Messages, Bot Design |
 | **🧩 Displayed Features** *(Admin)* | Per-server checklist to hide unused feature tabs from that server's own sidebar — pure decluttering, doesn't restrict access and keeps saved settings of a hidden tab intact |
 | **Server List** | All connected servers, invite bot, re-invite a specific server (re-confirm permissions), remove bot from a server |
 | **🔑 Tokens** *(Admin)* | Manage multiple bot tokens — each token runs its own bot account, hot-reload without restart |
@@ -199,6 +201,21 @@ Under **Server → Auto-Delete** you can configure which channels should have th
 
 ---
 
+## Auto-Thread
+
+Under **Server → Auto-Thread** you pick the channels in which **every message automatically gets its own thread** — the usual case being introduction, application or showcase channels where each post should have its own discussion instead of everything running together in the main channel.
+
+Per channel you can set:
+
+- **Thread name** — a template with `{user}` (the author), `{text}` (the start of the message) and `{date}`. If a placeholder renders empty (an image-only post, for instance), the name falls back to the author's name instead of failing.
+- **Archive after** — 1 hour, 24 hours, 3 days or 7 days (Discord's four allowed values)
+- **Opening message** — optional first post inside the new thread, `{user}` mentions the author
+- **Skip bot messages** (on by default) and **only for messages with an attachment** (off by default)
+
+Requires the **Create Public Threads** permission in that channel. Deliberately skipped: messages that are already inside a thread (forum posts included, since those are technically threads), system notices such as joins or pins, and messages that already have a thread attached.
+
+---
+
 ## Scheduled Messages
 
 Under **Server → Scheduled Messages** you can schedule a message to be sent to any channel at a specific date and time. Useful for announcements, reminders or recurring events.
@@ -221,9 +238,13 @@ Optional extras when creating an event:
 Under **Server → CrossVerification** you can define "IF a member has/lacks certain roles, THEN add/remove roles" rules. By default they're evaluated **live**, the instant a member's roles change — an optional per-server interval switches this to a periodic full re-check of every member instead (0 minutes = live).
 
 - **Condition** — has **any** / **all** / **none** of a chosen set of roles
-- **Action** — add or remove a chosen set of roles, either on this server or on a **different one** (cross-server sync for a network of servers sharing the same bot token — only guilds reachable that way appear in the target dropdown)
-- **Priority** — rules run in order (lowest number first); if two rules affect the same role, the one applied last wins
+- **Actions** — a rule can carry **several actions chained with AND**: "assign role A" *and* "remove role B" in one rule, each action with its own set of roles and its own target server. Actions aimed at the same server become a single role change, so giving and taking happen at once instead of as two edits that can overtake each other.
+- **Target server** — each action can act on this server or on a **different one** (cross-server sync for a network of servers sharing the same bot token — only guilds reachable that way appear in the target dropdown)
+- **Recreate missing roles** — when a rule is saved, the bot records name, colour and settings of the chosen action roles. If such a role is deleted later, it is recreated from that snapshot and the rule is pointed at the new one, instead of the rule quietly going inert. A role of the same name that already exists is reused rather than duplicated. Switchable off per server; needs **Manage Roles** on the target server. Rules that *remove* a role never create anything.
+- **Priority** — rules run in order (lowest number first); if two rules affect the same role, the one applied last wins. The same holds inside a rule: the later action block wins.
+- **Evaluation interval** — 0 means live, the instant roles change. **1 minute is recommended**: the periodic full pass also catches what the live evaluation never sees, such as a brief outage or a role changed directly on the target server. Below 1 is not possible, the check loop itself ticks once a minute.
 - **Test sandbox** — simulate any role combination and see exactly what would happen, without touching a single real member
+- **Debug view** — the bot's own step-by-step trace for this server, right on the tab, instead of digging through container logs
 
 ---
 
@@ -269,10 +290,20 @@ Every user can export their own data (account, bot tokens, all server configurat
 
 - Download a backup for any individual user
 - Download a **full backup** of the entire system (all users, tokens, configs)
-- Download a **single server's backup** (its configuration only — no users, no tokens) from that server's own dashboard page, and restore it onto any server, including a completely different one — handy for copying a set-up config to a new server
+- Download a **single server's backup** (its configuration only — no users, no tokens) from that server's own dashboard page, and restore it onto any server, including a completely different one
 - **Restore** any backup via file upload — existing entries are updated, new ones are added, nothing is deleted
 
-Passwords of existing accounts are never overwritten during a restore. This makes it easy to migrate to a new server or hand off a bot setup to someone else.
+### Handing a server over to someone else
+
+The per-server backup is built for exactly that: it is tied to **no bot token and no user account**, so the file can be restored in a completely different Phobos installation, onto any server that admin chooses. Only admins can download or restore it.
+
+What it contains: this one server's settings across all 21 configuration areas — reaction roles, commands, tickets, level roles and rewards, auto-mod categories, scheduled messages, recurring events including their reminder templates, embed posts, CrossVerification rules, ratings, auto-delete, auto-thread, gameserver connection, birthdays and warnings.
+
+What it deliberately leaves out: dashboard users and their permissions, bot tokens, and all runtime/history data (level points, logs, open tickets, running giveaways and polls, counters).
+
+**The AMP gameserver credentials (panel username and password) are left empty by default**, since this file is meant to be handed to somebody else. A checkbox next to the download button includes them — only tick it when moving a server between your *own* installations.
+
+Passwords of existing accounts are never overwritten during a restore.
 
 ---
 
@@ -524,6 +555,7 @@ phobos-bot/
 │   │   ├── notifications.py  # Twitch live notifications
 │   │   ├── freestuff.py      # Free stuff & deals
 │   │   ├── auto_delete.py    # Auto-delete messages by channel
+│   │   ├── auto_thread.py    # A thread per message in selected channels
 │   │   ├── auto_kick.py      # Kick members still holding a "not verified" role
 │   │   ├── temp_voice.py     # Join-to-Create temp voice channels
 │   │   ├── scheduler.py      # Scheduled messages + recurring Discord events
@@ -587,6 +619,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 - [Temporäre Voice-Kanäle](#temporäre-voice-kanäle)
 - [Spam-Schutz / Auto-Moderation](#spam-schutz--auto-moderation)
 - [Auto-Delete](#auto-delete-1)
+- [Auto-Thread](#auto-thread-1)
 - [Geplante Nachrichten](#geplante-nachrichten)
 - [Discord-Events](#discord-events-1)
 - [CrossVerification](#crossverification-1)
@@ -636,11 +669,12 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **Twitch-Benachrichtigungen** | Go-Live-Alerts mit Embed (Spiel, Zuschauer, Thumbnail) |
 | **Free Stuff & Deals** | Automatische Meldung kostenloser Spiele + konfigurierbare Angebote + Test-Button |
 | **Auto-Delete** | Nachrichten in gewählten Kanälen automatisch nach konfigurierbarer Zeit löschen, optional auch bot-eigene Nachrichten (standardmäßig aus) |
+| **Auto-Thread** | Öffnet in gewählten Kanälen automatisch zu jeder Nachricht einen Thread — Thread-Name als Vorlage (`{user}` / `{text}` / `{date}`), Archivierungsdauer, optionale Startnachricht im Thread, optional nur bei Nachrichten mit Anhang |
 | **Temp Voice** | Join-to-Create temporäre Voice-Kanäle — automatisch erstellt beim Beitritt, automatisch gelöscht wenn leer |
 | **Geplante Nachrichten** | Nachrichten zu einem bestimmten Datum und Uhrzeit in jeden Kanal planen |
 | **Geburtstags-System** | `!geburtstag TT.MM` — tägliche Glückwünsche um 8 Uhr, konfigurierbarer Kanal und Text |
 | **Discord-Events** | Native Discord-Events (Voice oder extern) direkt im Dashboard erstellen/bearbeiten, mit optionalen Erinnerungen und Start-/Ende-Ankündigungen in einem Kanal; optional wiederkehrend (täglich/wöchentlich/monatlich), pausierbar/fortsetzbar |
-| **CrossVerification** | "Wenn Rollen X, dann Rollen Y hinzufügen/entfernen"-Regeln — live oder in einstellbarem Intervall, optional auf einem anderen Server, inkl. Test-Sandbox |
+| **CrossVerification** | "Wenn ein Mitglied Rollen hat/nicht hat, dann …"-Regeln mit beliebig vielen per UND verketteten Aktionen (Rolle A geben **und** Rolle B nehmen in einer Regel), live oder in einstellbarem Intervall, optional auf einem anderen Server, legt eine gelöschte Zielrolle aus einem gespeicherten Schnappschuss neu an, inkl. Test-Sandbox |
 | **Umfragen** | `/poll-create` `/poll-end` — Einzel- oder Mehrfachauswahl, Bild/Link pro Option, geplanter Start, Live-Rangliste, nachträglich vollständig bearbeitbar |
 | **Bewertungen** | `/bewerten` `/bewertungen` — eine dauerhafte 1-5-Sterne-Liste (Maps, Spiele, Server, alles), jederzeit bewertbar, optional mit Sternauswahl in einem Kanal gepostet |
 | **Gameserver (AMP)** | `/gameserver-status` `/gameserver-start` `/gameserver-stop` `/gameserver-restart` — steuert [CubeCoders AMP](https://cubecoders.com/AMP)-Gameserver, erkennt jede Instanz automatisch als eigene Kachel, mit optionalen eigenen Slash-Befehlen pro Instanz |
@@ -653,7 +687,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 |---|---|
 | **Dashboard** | Bot-Status, verbundene Server, Moderations-Statistiken — personalisiert pro Nutzer |
 | **👤 Profil** | Avatar, Anzeigename, eigenes Backup exportieren, Konto löschen, sowie persönliche Sprach- und Zeitzonen-Einstellung — überschreibt den serverweiten Standard nur für diesen einen Nutzer |
-| **Pro Server** | Konfiguration, Nutzer (Moderator-Zugriff auf diesen Server gewähren/entziehen), Willkommen, Spam-Schutz, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Umfragen, Bewertungen, Streaming, Free Stuff, Log, Temp Voice, Geplant, Events, CrossVerification, Geburtstage, Auto-Delete, Gameserver, Auto-Kick, Embed-Nachrichten, Bot-Design |
+| **Pro Server** | Konfiguration, Nutzer (Moderator-Zugriff auf diesen Server gewähren/entziehen), Willkommen, Spam-Schutz, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Umfragen, Bewertungen, Streaming, Free Stuff, Log, Temp Voice, Geplant, Events, CrossVerification, Geburtstage, Auto-Delete, Auto-Thread, Gameserver, Auto-Kick, Embed-Nachrichten, Bot-Design |
 | **🧩 Angezeigte Funktionen** *(Admin)* | Pro-Server-Checkliste, um ungenutzte Funktions-Reiter aus der Seitenleiste dieses Servers auszublenden — reines Aufräumen, kein Zugriffsschutz, bereits gespeicherte Einstellungen eines ausgeblendeten Reiters bleiben erhalten |
 | **Server-Übersicht** | Alle verbundenen Server, Bot einladen, einzelnen Server neu einladen (Berechtigungen erneut bestätigen), Bot von einem Server entfernen |
 | **🔑 Tokens** *(Admin)* | Mehrere Bot-Tokens verwalten – jeder Token startet einen eigenen Bot-Account, Hot-Reload ohne Neustart |
@@ -764,6 +798,21 @@ Unter **Server → Auto-Delete** kann festgelegt werden, in welchen Kanälen Nac
 
 ---
 
+## Auto-Thread
+
+Unter **Server → Auto-Thread** wählst du die Kanäle, in denen **zu jeder Nachricht automatisch ein eigener Thread** geöffnet wird — gedacht für Vorstellungs-, Bewerbungs- oder Showcase-Kanäle, in denen jeder Beitrag seine eigene Diskussion bekommen soll, statt dass alles im Hauptkanal durcheinanderläuft.
+
+Pro Kanal einstellbar:
+
+- **Thread-Name** — eine Vorlage mit `{user}` (die Person), `{text}` (Anfang der Nachricht) und `{date}`. Bleibt ein Platzhalter leer, etwa bei einem Beitrag aus reinem Bild, fällt der Name auf den Namen der Person zurück, statt fehlzuschlagen.
+- **Archivieren nach** — 1 Stunde, 24 Stunden, 3 Tage oder 7 Tage (Discords vier erlaubte Werte)
+- **Startnachricht** — optionale erste Nachricht im neuen Thread, `{user}` erwähnt die Person
+- **Bot-Nachrichten überspringen** (standardmäßig an) und **nur bei Nachrichten mit Anhang** (standardmäßig aus)
+
+Der Bot braucht im Kanal die Berechtigung **Öffentliche Threads erstellen**. Bewusst übersprungen werden: Nachrichten, die schon in einem Thread stehen (auch Forenbeiträge, die technisch Threads sind), System-Meldungen wie Beitritte oder Pins, und Nachrichten, an denen bereits ein Thread hängt.
+
+---
+
 ## Geplante Nachrichten
 
 Unter **Server → Geplant** können Nachrichten für einen beliebigen Kanal zu einem bestimmten Datum und einer Uhrzeit eingeplant werden. Ideal für Ankündigungen, Erinnerungen oder regelmäßige Ereignisse.
@@ -786,9 +835,13 @@ Optionale Extras beim Erstellen:
 Unter **Server → CrossVerification** lassen sich "Wenn ein Mitglied bestimmte Rollen hat/nicht hat, dann Rollen hinzufügen/entfernen"-Regeln definieren. Standardmäßig werden sie **live** ausgewertet, sofort bei jeder Rollenänderung eines Mitglieds — ein optionales, pro Server einstellbares Intervall schaltet stattdessen auf einen periodischen Voll-Durchlauf über alle Mitglieder um (0 Minuten = live).
 
 - **Bedingung** — hat **mindestens eine** / **alle** / **keine** der gewählten Rollen
-- **Aktion** — gewählte Rollen hinzufügen oder entfernen, entweder auf diesem Server oder auf einem **anderen** (Cross-Server-Sync für ein Netzwerk aus Servern, die denselben Bot-Token teilen — nur so erreichbare Server erscheinen im Zielserver-Dropdown)
-- **Priorität** — Regeln laufen in Reihenfolge (niedrigste Zahl zuerst); betreffen zwei Regeln dieselbe Rolle, gewinnt die zuletzt angewendete
+- **Aktionen** — eine Regel kann **mehrere per UND verkettete Aktionen** tragen: "Rolle A geben" *und* "Rolle B entfernen" in einer einzigen Regel, jede Aktion mit eigenem Rollen-Satz und eigenem Zielserver. Aktionen auf denselben Server werden zu einer einzigen Rollenänderung zusammengefasst — Geben und Nehmen passieren also gleichzeitig, statt als zwei Änderungen, die einander überholen können.
+- **Zielserver** — jede Aktion kann auf diesem Server wirken oder auf einem **anderen** (Cross-Server-Sync für ein Netzwerk aus Servern, die denselben Bot-Token teilen — nur so erreichbare Server erscheinen im Zielserver-Dropdown)
+- **Fehlende Rollen automatisch anlegen** — beim Speichern einer Regel merkt sich der Bot Name, Farbe und Einstellungen der gewählten Aktions-Rollen. Wird so eine Rolle später gelöscht, legt er sie aus diesem Schnappschuss neu an und verknüpft die Regel damit, statt die Regel stillschweigend wirkungslos werden zu lassen. Eine bereits vorhandene Rolle gleichen Namens wird übernommen, statt eine zweite anzulegen. Pro Server abschaltbar; der Bot braucht auf dem Zielserver **Rollen verwalten**. Regeln, die eine Rolle *entfernen*, legen nie etwas an.
+- **Priorität** — Regeln laufen in Reihenfolge (niedrigste Zahl zuerst); betreffen zwei Regeln dieselbe Rolle, gewinnt die zuletzt angewendete. Innerhalb einer Regel gilt dasselbe: der spätere Aktionsblock gewinnt.
+- **Auswertungs-Intervall** — 0 heißt live, sofort bei jeder Rollenänderung. **Empfohlen ist 1 Minute**: der periodische Voll-Durchlauf holt auch das nach, was die Live-Auswertung nie sieht — etwa einen kurzen Ausfall oder eine Rolle, die direkt auf dem Zielserver geändert wurde. Kleiner als 1 geht nicht, der Prüf-Durchlauf selbst tickt im Minutentakt.
 - **Test-Sandbox** — simuliert eine beliebige Rollen-Kombination und zeigt, was passieren würde, ohne ein echtes Mitglied anzufassen
+- **Debug-Ansicht** — die Schritt-für-Schritt-Spur des Bots für diesen Server direkt im Tab, statt in den Container-Logs zu wühlen
 
 ---
 
@@ -834,10 +887,20 @@ Jeder Nutzer kann seine eigenen Daten (Konto, Bot-Tokens, alle Server-Konfigurat
 
 - Backup eines einzelnen Nutzers herunterladen
 - **Komplett-Backup** des gesamten Systems (alle Nutzer, Tokens, Konfigurationen)
-- **Backup eines einzelnen Servers** (nur dessen Konfiguration — keine Nutzer, keine Tokens) direkt über die Dashboard-Seite dieses Servers herunterladen und auf einen beliebigen anderen Server wiederherstellen — praktisch um eine fertig eingerichtete Konfiguration auf einen neuen Server zu übertragen
+- **Backup eines einzelnen Servers** (nur dessen Konfiguration — keine Nutzer, keine Tokens) direkt über die Dashboard-Seite dieses Servers herunterladen und auf einen beliebigen anderen Server wiederherstellen
 - Beliebiges Backup per Datei-Upload **wiederherstellen** — bestehende Einträge werden aktualisiert, neue hinzugefügt, nichts wird gelöscht
 
-Passwörter bestehender Konten werden beim Einspielen nie überschrieben. So lässt sich ein Bot-Setup einfach auf einen neuen Server migrieren oder an jemand anderen weitergeben.
+### Einen Server an jemand anderen übergeben
+
+Genau dafür ist das Server-Backup gebaut: Es hängt an **keinem Bot-Token und an keinem Benutzerkonto**, die Datei lässt sich also in einer völlig fremden Phobos-Installation auf einen beliebigen Server einspielen. Herunterladen und Einspielen dürfen nur Admins.
+
+Enthalten sind die Einstellungen dieses einen Servers über alle 21 Konfigurationsbereiche: Reaction Roles, Commands, Tickets, Level-Rollen und -Belohnungen, Auto-Mod-Kategorien, geplante Nachrichten, wiederkehrende Events samt ihrer Erinnerungs-Vorlagen, Embed-Nachrichten, CrossVerification-Regeln, Bewertungen, Auto-Delete, Auto-Thread, Gameserver-Anbindung, Geburtstage und Verwarnungen.
+
+Bewusst nicht enthalten: Dashboard-Nutzer und deren Berechtigungen, Bot-Tokens, sowie sämtliche Laufzeit- und Verlaufsdaten (Level-Punkte, Logs, offene Tickets, laufende Giveaways und Umfragen, Zähler).
+
+**Die AMP-Zugangsdaten (Panel-Benutzer und -Passwort) bleiben standardmäßig leer**, weil diese Datei dafür gedacht ist, jemand anderem in die Hand gedrückt zu werden. Ein Haken neben dem Herunterladen-Knopf nimmt sie mit — setz ihn nur, wenn du einen Server zwischen deinen *eigenen* Installationen umziehst.
+
+Passwörter bestehender Konten werden beim Einspielen nie überschrieben.
 
 ---
 
@@ -1093,6 +1156,7 @@ phobos-bot/
 │   │   ├── notifications.py  # Twitch Live-Benachrichtigungen
 │   │   ├── freestuff.py      # Free Stuff & Deals
 │   │   ├── auto_delete.py    # Automatisches Löschen nach Zeit
+│   │   ├── auto_thread.py    # Ein Thread pro Nachricht in gewählten Kanälen
 │   │   ├── auto_kick.py      # Kickt Mitglieder mit "nicht verifiziert"-Rolle
 │   │   ├── temp_voice.py     # Join-to-Create Temp-Voice-Kanäle
 │   │   ├── scheduler.py      # Geplante Nachrichten + wiederkehrende Events
