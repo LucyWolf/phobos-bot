@@ -7434,20 +7434,33 @@ async def server_user_tabs_save(request: Request, guild_id: int, user_id: int):
 # ── Reaction Roles ────────────────────────────────────────────────────────────
 
 @web.post("/servers/{guild_id}/reaction_roles/add")
-async def rr_add(
-    request: Request, guild_id: int,
-    channel_id: str = Form(...), message_id: str = Form(...),
-    emoji: str = Form(...), role_id: str = Form(...),
-):
+async def rr_add(request: Request, guild_id: int):
+    """Adds ONE OR MORE emoji->role mappings to the same message in one go.
+
+    User-requested ("waere cool und einfacher wenn man mehrere reactionroles auf einmal
+    hinzufuegen kann anstatt immer nur eine.... das wird naemlich dann sehr schnell
+    unuebersichtlich") - a role-picker message typically carries a dozen mappings, and the
+    channel and message id are identical for every one of them. The form therefore asks for
+    those once and submits a parallel list of emoji/role pairs: the channel lookup, the role
+    validation and - the expensive part - the message fetch happen ONCE for the whole batch
+    instead of once per mapping.
+    """
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
-    emoji = emoji.strip()
+    form = await request.form()
+    channel_id = form.get("channel_id", "")
+    message_id = form.get("message_id", "")
+    # Parallel lists rather than indexed field names: a row always submits BOTH its text input
+    # and its select (an untouched one as empty strings), and a row deleted in the browser
+    # submits neither - so the two lists can only ever line up.
+    emojis = form.getlist("emoji")
+    role_ids = form.getlist("role_id")
     guild = bot.get_guild(guild_id)
     if not guild:
         return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Bot+nicht+verbunden", status_code=302)
     try:
-        channel_id_i, message_id_i, role_id_i = int(channel_id), int(message_id), int(role_id)
+        channel_id_i, message_id_i = int(channel_id), int(message_id)
     except (ValueError, TypeError):
         return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Ungültige+Eingabe", status_code=302)
     # Neither the target channel nor the role were ever checked against this guild's actual
@@ -7456,37 +7469,82 @@ async def rr_add(
     channel = guild.get_channel(channel_id_i)
     if not channel:
         return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Kanal+nicht+gefunden", status_code=302)
-    role = guild.get_role(role_id_i)
-    if not role:
-        return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Rolle+nicht+gefunden", status_code=302)
+
+    # Everything is validated BEFORE the first reaction is placed: a batch that turns out to be
+    # half-wrong would otherwise leave some reactions already sitting on the message in Discord
+    # with nothing in the database behind them, and no hint which ones.
+    pairs = []
+    seen_emojis = set()
+    for raw_emoji, raw_role in zip(emojis, role_ids):
+        one_emoji, one_role = raw_emoji.strip(), raw_role.strip()
+        if not one_emoji and not one_role:
+            continue  # an empty row the admin added and never filled in
+        if not one_emoji or not one_role:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=rr&error=Jede+Zeile+braucht+Emoji+UND+Rolle", status_code=302)
+        if one_emoji in seen_emojis:
+            # Discord allows one reaction per emoji per message, so two rows with the same
+            # emoji cannot both work - the second would just overwrite the first. Rejected
+            # instead of silently dropping one of the two roles the admin picked.
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=rr&error=Emoji+"
+                f"{urllib.parse.quote_plus(one_emoji)}+doppelt+vergeben", status_code=302)
+        seen_emojis.add(one_emoji)
+        try:
+            role_id_i = int(one_role)
+        except (ValueError, TypeError):
+            return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Ungültige+Eingabe", status_code=302)
+        if not guild.get_role(role_id_i):
+            return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Rolle+nicht+gefunden", status_code=302)
+        pairs.append((one_emoji, role_id_i))
+    if not pairs:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=rr&error=Mindestens+eine+Zuordnung+erforderlich", status_code=302)
     try:
         msg = await channel.fetch_message(message_id_i)
     except Exception:
         return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Nachricht+nicht+gefunden", status_code=302)
-    try:
-        # This route never actually placed the reaction on the message at all - it only wrote
-        # a DB row. /reactionrole-add in Discord does this already; without it, a reaction role
-        # configured via the dashboard has nothing for anyone to click in Discord at all, unless
-        # someone happens to react with that exact emoji themselves first.
-        await msg.add_reaction(emoji)
-    except (discord.HTTPException, discord.NotFound):
-        return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Ungültiger+Emoji", status_code=302)
-    # Same de-dup fix as the Discord command: without this, adding a second mapping for the
-    # same message+emoji (e.g. to change the granted role) would silently never take effect,
-    # since _handle_reaction only ever reads the first matching row.
-    existing = await db_one(
-        "SELECT id FROM reaction_roles WHERE guild_id=? AND message_id=? AND emoji=?",
-        (guild_id, message_id_i, emoji),
-    )
-    if existing:
-        await db_exec("UPDATE reaction_roles SET role_id=?, channel_id=? WHERE id=?",
-                       (role_id_i, channel_id_i, existing["id"]))
-    else:
-        await db_exec(
-            "INSERT INTO reaction_roles (guild_id,channel_id,message_id,emoji,role_id) VALUES (?,?,?,?,?)",
-            (guild_id, channel_id_i, message_id_i, emoji, role_id_i),
+
+    added, failed = 0, []
+    for one_emoji, role_id_i in pairs:
+        try:
+            # This route never actually placed the reaction on the message at all - it only
+            # wrote a DB row. /reactionrole-add in Discord does this already; without it, a
+            # reaction role configured via the dashboard has nothing for anyone to click in
+            # Discord at all, unless someone happens to react with that exact emoji first.
+            await msg.add_reaction(one_emoji)
+        except (discord.HTTPException, discord.NotFound):
+            # One unusable emoji must not discard the rest of the batch - collected and named
+            # in the result message instead, so the admin knows exactly which one to fix.
+            failed.append(one_emoji)
+            continue
+        # Same de-dup fix as the Discord command: without this, adding a second mapping for the
+        # same message+emoji (e.g. to change the granted role) would silently never take
+        # effect, since _handle_reaction only ever reads the first matching row.
+        existing = await db_one(
+            "SELECT id FROM reaction_roles WHERE guild_id=? AND message_id=? AND emoji=?",
+            (guild_id, message_id_i, one_emoji),
         )
-    return RedirectResponse(f"/servers/{guild_id}?tab=rr&success=Reaction+Role+hinzugefügt", status_code=302)
+        if existing:
+            await db_exec("UPDATE reaction_roles SET role_id=?, channel_id=? WHERE id=?",
+                           (role_id_i, channel_id_i, existing["id"]))
+        else:
+            await db_exec(
+                "INSERT INTO reaction_roles (guild_id,channel_id,message_id,emoji,role_id) VALUES (?,?,?,?,?)",
+                (guild_id, channel_id_i, message_id_i, one_emoji, role_id_i),
+            )
+        added += 1
+    if failed:
+        note = urllib.parse.quote_plus(" ".join(failed))
+        if not added:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=rr&error=Ungültiger+Emoji:+{note}", status_code=302)
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=rr&success={added}+hinzugefügt,+ungültiger+Emoji:+{note}",
+            status_code=302)
+    label = "Reaction+Role" if added == 1 else "Reaction+Roles"
+    return RedirectResponse(
+        f"/servers/{guild_id}?tab=rr&success={added}+{label}+hinzugefügt", status_code=302)
 
 
 @web.post("/servers/{guild_id}/reaction_roles/{rr_id}/delete")

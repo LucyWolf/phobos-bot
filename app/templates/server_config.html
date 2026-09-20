@@ -730,37 +730,44 @@ renderLvlChannelsList();
 <p class="hint" style="margin-bottom:1.5rem;">{{ tr.rr_empty }}</p>
 {% endif %}
 
+
+{# One emoji->role row of the "add reaction roles" form. Rendered once as a hidden prototype
+   and cloned per row, so the full role dropdown exists once in the markup instead of once per
+   row. No index in the field names: both fields of a row are always submitted together, so
+   the two parallel lists the route reads can never fall out of step. #}
+<div id="rr-pair-proto" style="display:none;">
+  <div class="rr-pair" style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem;">
+    <input type="text" name="emoji" placeholder="{{ tr.rr_emoji_placeholder }}" style="margin:0;width:150px;flex-shrink:0;">
+    <span style="color:var(--muted);flex-shrink:0;">→</span>
+    <select name="role_id" style="margin:0;flex:1;">
+      <option value="">{{ tr.rr_role_placeholder }}</option>
+      {% for r in roles %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
+    </select>
+    <button type="button" class="btn btn-danger" style="padding:0.3rem 0.6rem;font-size:0.78rem;flex-shrink:0;" onclick="removeRrPair(this)" title="{{ tr.rr_remove_pair }}">🗑</button>
+  </div>
+</div>
+
 <div class="card">
   <div class="feat-header">{{ tr.rr_create_heading }}</div>
   <form method="post" action="/servers/{{ guild.id }}/reaction_roles/add">
-    <div class="grid-2">
-      <div>
-        <label>{{ tr.label_channel }}</label>
-        <select name="channel_id" required>
-          <option value="">{{ tr.rr_channel_placeholder }}</option>
-          {% for ch in channels %}<option value="{{ ch.id }}">#{{ ch.name }}</option>{% endfor %}
-        </select>
-      </div>
-      <div>
-        <label>{{ tr.rr_label_role }}</label>
-        <select name="role_id" required>
-          <option value="">{{ tr.rr_role_placeholder }}</option>
-          {% for r in roles %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
-        </select>
-      </div>
+    <div>
+      <label>{{ tr.label_channel }}</label>
+      <select name="channel_id" required>
+        <option value="">{{ tr.rr_channel_placeholder }}</option>
+        {% for ch in channels %}<option value="{{ ch.id }}">#{{ ch.name }}</option>{% endfor %}
+      </select>
     </div>
-    <div class="grid-2">
-      <div>
-        <label>{{ tr.rr_label_message_id }} {{ rr_id_help_btn('add') }}</label>
-        <input type="text" name="message_id" placeholder="{{ tr.rr_message_id_placeholder }}" required pattern="[0-9]+">
-      </div>
-      <div>
-        <label>{{ tr.rr_label_emoji }}</label>
-        <input type="text" name="emoji" placeholder="{{ tr.rr_emoji_placeholder }}" required>
-      </div>
+    <div>
+      <label>{{ tr.rr_label_message_id }} {{ rr_id_help_btn('add') }}</label>
+      <input type="text" name="message_id" placeholder="{{ tr.rr_message_id_placeholder }}" required pattern="[0-9]+">
     </div>
     {{ rr_id_help_box('add') }}
-    <button type="submit" class="btn btn-primary">{{ tr.rr_btn_add }}</button>
+
+    <label style="margin-top:0.35rem;">{{ tr.rr_pairs_label }}</label>
+    <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.5rem;">{{ tr.rr_pairs_hint }}</div>
+    <div id="rr-pairs"></div>
+    <button type="button" class="btn btn-secondary" style="font-size:0.78rem;margin-bottom:0.9rem;" onclick="addRrPair()">{{ tr.rr_add_pair }}</button>
+    <div><button type="submit" class="btn btn-primary">{{ tr.rr_btn_add }}</button></div>
   </form>
   <p class="hint">{{ tr.rr_hint_steps }}</p>
 </div>
@@ -779,6 +786,37 @@ function toggleRrIdHelp(uid) {
   const box = document.getElementById('rr-idhelp-' + uid);
   if (box) box.style.display = box.style.display === 'none' ? '' : 'none';
 }
+function addRrPair() {
+  const list = document.getElementById('rr-pairs');
+  const proto = document.getElementById('rr-pair-proto');
+  if (!list || !proto) return;
+  const wrap = document.createElement('div');
+  wrap.innerHTML = proto.innerHTML;
+  list.appendChild(wrap.firstElementChild);
+  refreshRrPairs();
+}
+function removeRrPair(btn) {
+  const row = btn.closest('.rr-pair');
+  const list = row ? row.parentElement : null;
+  if (!list) return;
+  // Never remove the last row - the form would then submit no mapping at all, which the
+  // route rejects anyway, and an empty list reads like a broken page rather than a choice.
+  if (list.querySelectorAll('.rr-pair').length <= 1) return;
+  row.remove();
+  refreshRrPairs();
+}
+function refreshRrPairs() {
+  const list = document.getElementById('rr-pairs');
+  if (!list) return;
+  const rows = list.querySelectorAll('.rr-pair');
+  rows.forEach(function(row) {
+    const del = row.querySelector('.btn-danger');
+    if (del) del.style.visibility = rows.length === 1 ? 'hidden' : 'visible';
+  });
+}
+document.addEventListener('DOMContentLoaded', function() {
+  if (document.getElementById('rr-pairs')) addRrPair();
+});
 function toggleRrEdit(id) {
   const row = document.getElementById('rr-edit-' + id);
   if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
