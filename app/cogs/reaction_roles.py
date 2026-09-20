@@ -4,7 +4,7 @@ also actually places the reaction on the Discord message, not just a DB row."""
 import discord
 from discord import app_commands
 from discord.ext import commands
-from database import db_rows, db_exec, db_exec_rowcount, db_one
+from database import db_rows, db_exec, db_exec_rowcount, db_one, normalize_reaction_emoji
 
 
 class ReactionRoles(commands.Cog):
@@ -21,6 +21,10 @@ class ReactionRoles(commands.Cog):
         # every send_message() below would then raise "interaction expired" instead of ever
         # reaching the user.
         await interaction.response.defer(ephemeral=True)
+        # Same normalization as the dashboard - see normalize_reaction_emoji(). Without it a
+        # custom emoji typed as "name:id" here gets its reaction placed and then never matches
+        # the "<:name:id>" the gateway reports back, so the role is silently never granted.
+        emoji = normalize_reaction_emoji(emoji)
         msg = None
         for channel in interaction.guild.text_channels:
             try:
@@ -37,7 +41,9 @@ class ReactionRoles(commands.Cog):
         except (discord.HTTPException, discord.NotFound):
             await interaction.followup.send("Ungültiger Emoji.", ephemeral=True)
             return
-        # No UNIQUE constraint exists on (guild_id, message_id, emoji) - without this check, a
+        # Checked rather than relying on the UNIQUE index added later on (guild_id,
+        # message_id, emoji): a plain INSERT would now raise IntegrityError instead. Without
+        # this check, a
         # second /reactionrole-add for the same message+emoji (e.g. trying to change which role
         # it grants) would just insert a SECOND row instead of replacing the first. _handle_
         # reaction only ever reads the first matching row, so the "new" role would silently
@@ -59,6 +65,14 @@ class ReactionRoles(commands.Cog):
     @app_commands.command(name="reactionrole-remove", description="Reaction Role entfernen")
     @app_commands.default_permissions(manage_roles=True)
     async def rr_remove(self, interaction: discord.Interaction, message_id: str, emoji: str):
+        # Deferred for the same reason rr_add above defers: this command does a DB lookup, a
+        # DELETE, a fetch_message() and a remove_reaction() BEFORE it answers. Any one of those
+        # can outlast Discord's 3-second initial-response window on a slow link, and the user
+        # then sees a bare "This interaction failed" even though the reaction role was in fact
+        # removed - the worst possible combination, since it invites doing it again.
+        await interaction.response.defer(ephemeral=True)
+        # Normalized so a looser spelling still finds the row the dashboard stored canonically.
+        emoji = normalize_reaction_emoji(emoji)
         try:
             message_id_i = int(message_id)
         except ValueError:
@@ -68,7 +82,7 @@ class ReactionRoles(commands.Cog):
             # response ever sent, showing as a generic "This interaction failed" to the user
             # instead of an actual error message. Same fix pattern already applied elsewhere
             # for a bare int() on user-supplied Discord IDs (e.g. /unban, /giveaway-reroll).
-            await interaction.response.send_message("Ungültige Nachrichten-ID.", ephemeral=True)
+            await interaction.followup.send("Ungültige Nachrichten-ID.", ephemeral=True)
             return
         row = await db_one(
             "SELECT channel_id FROM reaction_roles WHERE guild_id=? AND message_id=? AND emoji=?",
@@ -81,7 +95,7 @@ class ReactionRoles(commands.Cog):
         if not deleted:
             # Previously said "entfernt" unconditionally, even for a message_id/emoji pair that
             # was never configured (0 rows affected) - misleading confirmation for a no-op.
-            await interaction.response.send_message("Diese Reaction Role existiert nicht.", ephemeral=True)
+            await interaction.followup.send("Diese Reaction Role existiert nicht.", ephemeral=True)
             return
         # Remove the bot's own reaction too - otherwise the emoji stays on the message looking
         # exactly as clickable as before, but silently does nothing once someone clicks it.
@@ -93,7 +107,7 @@ class ReactionRoles(commands.Cog):
                     await msg.remove_reaction(emoji, self.bot.user)
                 except Exception:
                     pass
-        await interaction.response.send_message(f"Reaction Role entfernt.", ephemeral=True)
+        await interaction.followup.send("Reaction Role entfernt.", ephemeral=True)
 
     @app_commands.command(name="reactionrole-list", description="Alle Reaction Roles anzeigen")
     @app_commands.default_permissions(manage_roles=True)
@@ -132,6 +146,10 @@ class ReactionRoles(commands.Cog):
         await self._handle_reaction(payload, add=False)
 
     async def _handle_reaction(self, payload: discord.RawReactionActionEvent, add: bool):
+        if payload.guild_id is None:
+            # A reaction in a DM. Nothing can ever match, but without this the lookup below
+            # still opens a fresh SQLite connection for every single one of them.
+            return
         emoji = str(payload.emoji)
         row = await db_rows(
             "SELECT role_id FROM reaction_roles WHERE guild_id=? AND message_id=? AND emoji=?",
@@ -142,9 +160,38 @@ class ReactionRoles(commands.Cog):
         guild = self.bot.get_guild(payload.guild_id)
         if not guild:
             return
-        member = guild.get_member(payload.user_id)
+        # payload.member is filled in by Discord for REACTION_ADD only, and is the one source
+        # that never needs the cache. For a REMOVE - and for an ADD on a guild whose member
+        # cache has evicted this user - get_member() can return None, and the whole feature
+        # then silently does nothing at all for that person: no role granted, no role taken
+        # away, not even a log line. Falling back to an API fetch costs one request in exactly
+        # that case and nothing at all in the normal cached one.
+        member = payload.member if add else None
+        if member is None:
+            member = guild.get_member(payload.user_id)
+        if member is None:
+            try:
+                member = await guild.fetch_member(payload.user_id)
+            except discord.NotFound:
+                return  # the person has left the server since reacting
+            except (discord.HTTPException, OSError) as e:
+                print(f"[ReactionRoles] could not resolve member {payload.user_id} "
+                      f"in guild {payload.guild_id}: {e}")
+                return
+        if member.bot:
+            # Only THIS bot's own reactions were skipped (by user id, in the two listeners
+            # above). In a multi-bot setup - which this project supports as a headline feature,
+            # several tokens each running their own bot in the same guild - the reaction bot A
+            # places on a reaction-role message is not bot B's user id, so bot B happily
+            # treated it as a member reacting and granted the role TO BOT A. Skipping every bot
+            # account covers that, and any other bot that reacts for reasons of its own.
+            return
         role = guild.get_role(row[0]["role_id"])
-        if not member or not role:
+        if not role:
+            # The configured role was deleted in Discord but the row is still here - silently
+            # doing nothing looked identical to "the bot is broken" from the outside.
+            print(f"[ReactionRoles] role {row[0]['role_id']} of a reaction role on message "
+                  f"{payload.message_id} no longer exists in guild {payload.guild_id}")
             return
         try:
             if add:

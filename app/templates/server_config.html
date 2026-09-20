@@ -678,13 +678,13 @@ renderLvlChannelsList();
       <tbody>
         {% for rr in rr_list %}
         <tr>
-          <td class="rr-emoji">{{ rr.emoji }}</td>
+          <td class="rr-emoji">{% if rr.emoji_image %}<img src="{{ rr.emoji_image }}" alt=":{{ rr.emoji_name }}:" title=":{{ rr.emoji_name }}:" style="width:22px;height:22px;vertical-align:middle;">{% else %}{{ rr.emoji }}{% endif %}</td>
           <td style="color:var(--muted)">{{ rr.channel_name }}</td>
           <td><code>{{ rr.message_id }}</code></td>
           <td><span class="badge badge-moderator">{{ rr.role_name }}</span></td>
           <td style="white-space:nowrap;">
             <button type="button" class="btn btn-secondary" onclick="toggleRrEdit({{ rr.id }})" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_settings }}">⚙</button>
-            <form method="post" action="/servers/{{ guild.id }}/reaction_roles/{{ rr.id }}/delete" style="display:inline" onsubmit="return confirm({{ tr.rr_confirm_delete.replace('{emoji}', rr.emoji).replace('{role}', rr.role_name) | js }})">
+            <form method="post" action="/servers/{{ guild.id }}/reaction_roles/{{ rr.id }}/delete" style="display:inline" onsubmit="return confirm({{ tr.rr_confirm_delete.replace('{emoji}', (':' ~ rr.emoji_name ~ ':') if rr.emoji_name else rr.emoji).replace('{role}', rr.role_name) | js }})">
               <button class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_delete }}">✕</button>
             </form>
           </td>
@@ -764,8 +764,23 @@ renderLvlChannelsList();
     {{ rr_id_help_box('add') }}
 
     <label style="margin-top:0.35rem;">{{ tr.rr_pairs_label }}</label>
-    <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.5rem;">{{ tr.rr_pairs_hint }}</div>
-    <div id="rr-pairs"></div>
+    <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.2rem;">{{ tr.rr_pairs_hint }}</div>
+    <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.5rem;">{{ tr.rr_emoji_hint }}</div>
+    {# The FIRST row is rendered server-side, not created by JS on DOMContentLoaded: with the
+       JS-only version the whole form had no emoji/role fields at all if that handler never ran
+       (a script error anywhere above it on the page is enough), leaving a submit button over an
+       empty form. Additional rows are clones of #rr-pair-proto. #}
+    <div id="rr-pairs">
+      <div class="rr-pair" style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem;">
+        <input type="text" name="emoji" placeholder="{{ tr.rr_emoji_placeholder }}" style="margin:0;width:150px;flex-shrink:0;">
+        <span style="color:var(--muted);flex-shrink:0;">→</span>
+        <select name="role_id" style="margin:0;flex:1;">
+          <option value="">{{ tr.rr_role_placeholder }}</option>
+          {% for r in roles %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
+        </select>
+        <button type="button" class="btn btn-danger" style="padding:0.3rem 0.6rem;font-size:0.78rem;flex-shrink:0;visibility:hidden;" onclick="removeRrPair(this)" title="{{ tr.rr_remove_pair }}">🗑</button>
+      </div>
+    </div>
     <button type="button" class="btn btn-secondary" style="font-size:0.78rem;margin-bottom:0.9rem;" onclick="addRrPair()">{{ tr.rr_add_pair }}</button>
     <div><button type="submit" class="btn btn-primary">{{ tr.rr_btn_add }}</button></div>
   </form>
@@ -815,7 +830,10 @@ function refreshRrPairs() {
   });
 }
 document.addEventListener('DOMContentLoaded', function() {
-  if (document.getElementById('rr-pairs')) addRrPair();
+  // Only tops up if the server-rendered first row is somehow missing - it normally is not,
+  // and adding a second empty row on every page load would be its own annoyance.
+  const list = document.getElementById('rr-pairs');
+  if (list && !list.querySelector('.rr-pair')) addRrPair();
 });
 function toggleRrEdit(id) {
   const row = document.getElementById('rr-edit-' + id);

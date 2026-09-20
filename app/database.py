@@ -20,6 +20,7 @@ Layout of this file, top to bottom:
 """
 import json
 import os
+import re
 
 import aiosqlite
 from pathlib import Path
@@ -942,6 +943,33 @@ async def init_db():
         except Exception:
             pass
         await db.commit()
+
+
+def normalize_reaction_emoji(raw: str) -> str:
+    """The canonical storage form of a reaction_roles.emoji value.
+
+    cogs/reaction_roles.py matches an incoming reaction by comparing str(payload.emoji) against
+    this column, and for a custom server emoji Discord always renders that as "<:name:id>"
+    (or "<a:name:id>" when animated). discord.py's add_reaction() is far more forgiving: it
+    accepts "name:id" and ":name:id" just as happily and places the reaction. Stored unchanged,
+    those looser spellings produce the worst kind of failure - the reaction sits on the message
+    looking exactly as clickable as a working one, and clicking it does nothing at all, with no
+    error anywhere, because the stored string can never equal what the gateway sends back.
+
+    Lives here, next to role_rule_actions(), for the same reason: main.py and the cog both
+    depend on agreeing about what is in that column, and a cog importing main.py is circular.
+
+    Anything that is not recognisably a custom-emoji spelling (a plain unicode emoji, above all)
+    is returned unchanged apart from surrounding whitespace.
+    """
+    text = (raw or "").strip()
+    # The leading colon is optional so the bare "name:id" spelling - the one the Discord API
+    # docs themselves use, and therefore the one people type - is recognised too.
+    m = re.fullmatch(r"<?(a?):?([A-Za-z0-9_]{2,32}):(\d{15,25})>?", text)
+    if not m:
+        return text
+    animated, name, emoji_id = m.groups()
+    return f"<{animated}:{name}:{emoji_id}>"
 
 
 def role_rule_actions(rule) -> list:

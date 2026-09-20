@@ -132,7 +132,7 @@ from database import (
     DB_PATH, init_db, get_config, set_config,
     get_guild_config, set_guild_config, get_all_guild_config,
     db_rows, db_one, db_exec, db_exec_rowcount, db_insert, log_mod_action,
-    role_rule_actions,
+    role_rule_actions, normalize_reaction_emoji,
 )
 import totp
 
@@ -5071,6 +5071,17 @@ async def server_config(
         ro = guild.get_role(rr["role_id"])
         rr["channel_name"] = f"#{ch.name}" if ch else "?"
         rr["role_name"] = ro.name if ro else "?"
+        # A custom server emoji is stored in its canonical "<:name:id>" form (see
+        # normalize_reaction_emoji) - printed as-is the Emoji column shows that raw markup
+        # instead of an emoji, which is unreadable exactly where the admin needs to tell one
+        # row from another. Resolved to the CDN image Discord serves for it; a plain unicode
+        # emoji has no id and keeps being printed as text.
+        _m = re.fullmatch(r"<(a?):([A-Za-z0-9_]+):(\d+)>", rr["emoji"] or "")
+        rr["emoji_image"] = (
+            f"https://cdn.discordapp.com/emojis/{_m.group(3)}.{'gif' if _m.group(1) else 'png'}"
+            if _m else None
+        )
+        rr["emoji_name"] = _m.group(2) if _m else None
 
     # Custom commands
     cmd_list = await db_rows(
@@ -7476,7 +7487,10 @@ async def rr_add(request: Request, guild_id: int):
     pairs = []
     seen_emojis = set()
     for raw_emoji, raw_role in zip(emojis, role_ids):
-        one_emoji, one_role = raw_emoji.strip(), raw_role.strip()
+        # Normalized before anything else looks at it - see normalize_reaction_emoji() for why
+        # a custom emoji stored in a looser spelling produces a reaction that is placed,
+        # looks clickable, and silently never grants a role.
+        one_emoji, one_role = normalize_reaction_emoji(raw_emoji), raw_role.strip()
         if not one_emoji and not one_role:
             continue  # an empty row the admin added and never filled in
         if not one_emoji or not one_role:
@@ -7505,7 +7519,15 @@ async def rr_add(request: Request, guild_id: int):
     except Exception:
         return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Nachricht+nicht+gefunden", status_code=302)
 
-    added, failed = 0, []
+    # Roles the bot provably cannot hand out: either it lacks "Manage Roles" entirely, or the
+    # role sits at or above its own top role in the hierarchy. Both fail only at CLICK time,
+    # deep inside the gateway handler, where the sole trace is a console line nobody watching
+    # the dashboard will ever see. Reported here instead - but the rows are still saved rather
+    # than rejected: fixing the role order in Discord afterwards makes them work as configured,
+    # and refusing the save would just mean typing everything in again later.
+    me = guild.me
+
+    added, failed, blocked = 0, [], []
     for one_emoji, role_id_i in pairs:
         try:
             # This route never actually placed the reaction on the message at all - it only
@@ -7534,17 +7556,28 @@ async def rr_add(request: Request, guild_id: int):
                 (guild_id, channel_id_i, message_id_i, one_emoji, role_id_i),
             )
         added += 1
+        # Only checked for mappings that actually made it in: warning about a role whose
+        # reaction Discord just rejected would point at the wrong problem entirely.
+        role_obj = guild.get_role(role_id_i)
+        if me is not None and role_obj is not None and (
+                not me.guild_permissions.manage_roles or role_obj >= me.top_role):
+            blocked.append(role_obj.name)
     if failed:
         note = urllib.parse.quote_plus(" ".join(failed))
         if not added:
             return RedirectResponse(
                 f"/servers/{guild_id}?tab=rr&error=Ungültiger+Emoji:+{note}", status_code=302)
-        return RedirectResponse(
-            f"/servers/{guild_id}?tab=rr&success={added}+hinzugefügt,+ungültiger+Emoji:+{note}",
-            status_code=302)
+        msg = f"{added}+hinzugefügt,+ungültiger+Emoji:+{note}"
+        if blocked:
+            msg += ("+—+ACHTUNG:+der+Bot+kann+diese+Rolle(n)+nicht+vergeben:+"
+                    + urllib.parse.quote_plus(", ".join(dict.fromkeys(blocked))))
+        return RedirectResponse(f"/servers/{guild_id}?tab=rr&success={msg}", status_code=302)
     label = "Reaction+Role" if added == 1 else "Reaction+Roles"
-    return RedirectResponse(
-        f"/servers/{guild_id}?tab=rr&success={added}+{label}+hinzugefügt", status_code=302)
+    msg = f"{added}+{label}+hinzugefügt"
+    if blocked:
+        names = urllib.parse.quote_plus(", ".join(dict.fromkeys(blocked)))
+        msg += f"+—+ACHTUNG:+der+Bot+kann+diese+Rolle(n)+nicht+vergeben:+{names}+(Rolle+in+Discord+über+die+Bot-Rolle+ziehen+bzw.+„Rollen+verwalten“+geben)"
+    return RedirectResponse(f"/servers/{guild_id}?tab=rr&success={msg}", status_code=302)
 
 
 @web.post("/servers/{guild_id}/reaction_roles/{rr_id}/delete")
@@ -7561,7 +7594,11 @@ async def rr_delete(request: Request, guild_id: int, rr_id: int):
         if channel:
             try:
                 msg = await channel.fetch_message(row["message_id"])
-                await msg.remove_reaction(row["emoji"], guild.me)
+                # guild.me can be None when the bot's own member object is not in the cache,
+                # and remove_reaction(emoji, None) then raises inside this best-effort block -
+                # the reaction silently stays on the message, still looking clickable. The
+                # per-guild bot's own user works just as well as the target here.
+                await msg.remove_reaction(row["emoji"], guild.me or bot._bot_for_guild(guild_id).user)
             except Exception:
                 pass
     await db_exec("DELETE FROM reaction_roles WHERE id=? AND guild_id=?", (rr_id, guild_id))
@@ -7580,7 +7617,7 @@ async def rr_edit(
     row = await db_one("SELECT * FROM reaction_roles WHERE id=? AND guild_id=?", (rr_id, guild_id))
     if not row:
         return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Nicht+gefunden", status_code=302)
-    emoji = emoji.strip()
+    emoji = normalize_reaction_emoji(emoji)
     guild = bot.get_guild(guild_id)
     if not guild:
         return RedirectResponse(f"/servers/{guild_id}?tab=rr&error=Bot+nicht+verbunden", status_code=302)
@@ -7620,7 +7657,8 @@ async def rr_edit(
         if old_channel:
             try:
                 old_msg = await old_channel.fetch_message(row["message_id"])
-                await old_msg.remove_reaction(row["emoji"], guild.me)
+                # Same guild.me fallback as in rr_delete.
+                await old_msg.remove_reaction(row["emoji"], guild.me or bot._bot_for_guild(guild_id).user)
             except Exception:
                 pass
 
