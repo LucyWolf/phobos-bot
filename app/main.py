@@ -221,6 +221,7 @@ COGS = [
     "cogs.notifications",
     "cogs.freestuff",
     "cogs.auto_delete",
+    "cogs.auto_thread",
     "cogs.temp_voice",
     "cogs.scheduler",
     "cogs.birthday",
@@ -1081,7 +1082,7 @@ async def profile_avatar_delete(request: Request):
 # ── Backup / Restore ───────────────────────────────────────────────────────────
 
 _BACKUP_FEATURE_TABLES = [
-    "reaction_roles", "custom_commands", "auto_delete_channels",
+    "reaction_roles", "custom_commands", "auto_delete_channels", "auto_thread_channels",
     "temp_voice_config", "notifications", "freestuff_channels",
     "birthdays", "warnings", "ticket_panels",
     # Added later than the others - level_roles/level_rewards/automod_word_presets predate
@@ -1156,6 +1157,12 @@ _BACKUP_TBL_INSERT = {
         "INSERT INTO custom_commands (guild_id,trigger,response) VALUES (:guild_id,:trigger,:response) ON CONFLICT(guild_id,trigger) DO UPDATE SET response=excluded.response",
     "auto_delete_channels":
         "INSERT INTO auto_delete_channels (guild_id,channel_id,delay_seconds) VALUES (:guild_id,:channel_id,:delay_seconds) ON CONFLICT(guild_id,channel_id) DO UPDATE SET delay_seconds=excluded.delay_seconds",
+    "auto_thread_channels":
+        "INSERT INTO auto_thread_channels (guild_id,channel_id,name_template,archive_minutes,skip_bots,require_attachment,starter_message) "
+        "VALUES (:guild_id,:channel_id,:name_template,:archive_minutes,:skip_bots,:require_attachment,:starter_message) "
+        "ON CONFLICT(guild_id,channel_id) DO UPDATE SET name_template=excluded.name_template, "
+        "archive_minutes=excluded.archive_minutes, skip_bots=excluded.skip_bots, "
+        "require_attachment=excluded.require_attachment, starter_message=excluded.starter_message",
     "temp_voice_config":
         "INSERT INTO temp_voice_config (guild_id,trigger_channel_id,category_id,name_template,user_limit) VALUES (:guild_id,:trigger_channel_id,:category_id,:name_template,:user_limit) ON CONFLICT(guild_id,trigger_channel_id) DO UPDATE SET category_id=excluded.category_id,name_template=excluded.name_template,user_limit=excluded.user_limit",
     "scheduled_messages":
@@ -1543,6 +1550,11 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
     # until the next bot reconnect (same reload the save/edit/delete routes already trigger).
     if "auto_delete_channels" in data:
         await _reload_auto_delete()
+    if "auto_thread_channels" in data:
+        # Same reason as the auto_delete reload right above: rows written straight into the
+        # table bypass the cog's in-memory config, which would otherwise only pick them up on
+        # the next bot restart.
+        await _reload_auto_thread()
 
     # Run after the restore transaction above has committed (set_guild_config opens its own
     # connection and commits independently - calling it from inside the still-open `db` block
@@ -1670,6 +1682,11 @@ async def server_backup_restore(request: Request, guild_id: int, backup_file: Up
 
     if "auto_delete_channels" in data:
         await _reload_auto_delete()
+    if "auto_thread_channels" in data:
+        # Same reason as the auto_delete reload right above: rows written straight into the
+        # table bypass the cog's in-memory config, which would otherwise only pick them up on
+        # the next bot restart.
+        await _reload_auto_thread()
     if restored_presets:
         # Same fix as the full-backup restore above - without it, this guild would get the 4
         # hardcoded starter presets seeded alongside these just-restored ones the first time
@@ -3398,6 +3415,107 @@ async def auto_delete_remove(request: Request, guild_id: str, entry_id: int):
     return RedirectResponse(f"/servers/{guild_id}?tab=autodelete&success=Gelöscht", status_code=302)
 
 
+# ── Auto-Thread ───────────────────────────────────────────────────────────────
+# One thread per message in the configured channels - see cogs/auto_thread.py.
+
+# Mirrors ALLOWED_ARCHIVE_MINUTES in cogs/auto_thread.py. Duplicated as a literal rather than
+# imported because main.py never imports from a cog at module level (the cogs are loaded as
+# extensions, and one of them importing main.py back would be circular) - the cog re-validates
+# the stored value anyway, so the two can't silently drift into accepting different things.
+_AUTO_THREAD_ARCHIVE_MINUTES = (60, 1440, 4320, 10080)
+
+
+async def _reload_auto_thread():
+    for b in bot._bots.values():
+        cog = b.cogs.get("AutoThread")
+        if cog:
+            await cog.reload()
+
+
+def _auto_thread_form(guild, channel_id: str, name_template: str, archive_minutes: str,
+                      starter_message: str) -> tuple[tuple | None, str | None]:
+    """Shared validation for auto-thread/save and .../edit - returns (values, None) or
+    (None, error), same convention as _role_rule_form_data."""
+    if not guild or channel_id not in {str(c.id) for c in guild.text_channels}:
+        return None, "Ungültiger+Kanal"
+    try:
+        archive = int(archive_minutes)
+    except (ValueError, TypeError):
+        return None, "Ungültige+Archivierungsdauer"
+    if archive not in _AUTO_THREAD_ARCHIVE_MINUTES:
+        return None, "Ungültige+Archivierungsdauer"
+    template = (name_template or "").strip()[:100] or "{user}"
+    return (template, archive, (starter_message or "").strip()[:1500]), None
+
+
+@web.post("/servers/{guild_id}/auto-thread/save")
+async def auto_thread_save(
+    request: Request, guild_id: str, channel_id: str = Form(""),
+    name_template: str = Form(""), archive_minutes: str = Form("1440"),
+    skip_bots: str = Form(""), require_attachment: str = Form(""),
+    starter_message: str = Form(""),
+):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(int(guild_id))
+    values, error = _auto_thread_form(guild, channel_id, name_template, archive_minutes, starter_message)
+    if error:
+        return RedirectResponse(f"/servers/{guild_id}?tab=autothread&error={error}", status_code=302)
+    template, archive, starter = values
+    await db_exec(
+        "INSERT INTO auto_thread_channels (guild_id, channel_id, name_template, archive_minutes, "
+        "skip_bots, require_attachment, starter_message) VALUES (?,?,?,?,?,?,?) "
+        "ON CONFLICT(guild_id, channel_id) DO UPDATE SET name_template=excluded.name_template, "
+        "archive_minutes=excluded.archive_minutes, skip_bots=excluded.skip_bots, "
+        "require_attachment=excluded.require_attachment, starter_message=excluded.starter_message",
+        (guild_id, channel_id, template, archive, 1 if skip_bots else 0,
+         1 if require_attachment else 0, starter),
+    )
+    await _reload_auto_thread()
+    return RedirectResponse(f"/servers/{guild_id}?tab=autothread&success=Gespeichert", status_code=303)
+
+
+@web.post("/servers/{guild_id}/auto-thread/edit/{entry_id}")
+async def auto_thread_edit(
+    request: Request, guild_id: str, entry_id: int, channel_id: str = Form(""),
+    name_template: str = Form(""), archive_minutes: str = Form("1440"),
+    skip_bots: str = Form(""), require_attachment: str = Form(""),
+    starter_message: str = Form(""),
+):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(int(guild_id))
+    values, error = _auto_thread_form(guild, channel_id, name_template, archive_minutes, starter_message)
+    if error:
+        return RedirectResponse(f"/servers/{guild_id}?tab=autothread&error={error}", status_code=302)
+    template, archive, starter = values
+    # Moving an entry onto a channel that already has one would hit the UNIQUE constraint -
+    # reported as its own message instead of a generic failure, same as auto_delete_edit.
+    try:
+        await db_exec(
+            "UPDATE auto_thread_channels SET channel_id=?, name_template=?, archive_minutes=?, "
+            "skip_bots=?, require_attachment=?, starter_message=? WHERE id=? AND guild_id=?",
+            (channel_id, template, archive, 1 if skip_bots else 0,
+             1 if require_attachment else 0, starter, entry_id, guild_id),
+        )
+    except Exception:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=autothread&error=Für+diesen+Kanal+existiert+schon+ein+Eintrag",
+            status_code=302,
+        )
+    await _reload_auto_thread()
+    return RedirectResponse(f"/servers/{guild_id}?tab=autothread&success=Gespeichert", status_code=303)
+
+
+@web.post("/servers/{guild_id}/auto-thread/delete/{entry_id}")
+async def auto_thread_remove(request: Request, guild_id: str, entry_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id): return RedirectResponse("/servers", status_code=302)
+    await db_exec("DELETE FROM auto_thread_channels WHERE id=? AND guild_id=?", (entry_id, guild_id))
+    await _reload_auto_thread()
+    return RedirectResponse(f"/servers/{guild_id}?tab=autothread&success=Gelöscht", status_code=303)
+
+
 # ── Scheduled Messages ────────────────────────────────────────────────────────
 
 @web.post("/servers/{guild_id}/scheduled/add")
@@ -4658,6 +4776,7 @@ _SERVER_CONFIG_TAB_LABELS = {
     "giveaways": "🎉 Giveaways", "warnings": "⚠️ Warnungen", "users": "👥 Nutzer",
     "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant", "events": "🗓️ Events",
     "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
+    "autothread": "🧵 Auto-Thread",
     "amp": "🎮 Gameserver", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
     "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen", "ratings": "⭐ Bewertungen",
 }
@@ -4679,6 +4798,7 @@ _TOGGLEABLE_FEATURES = {
     "commands": "📢 Commands", "tickets": "🎫 Tickets", "giveaways": "🎉 Giveaways",
     "warnings": "⚠️ Warnungen", "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant",
     "events": "🗓️ Events", "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
+    "autothread": "🧵 Auto-Thread",
     "amp": "🎮 Gameserver", "notifications": "🟣 Streaming", "freestuff": "🎁 Free Stuff",
     "log": "📋 Log", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
     "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen", "ratings": "⭐ Bewertungen",
@@ -5198,6 +5318,9 @@ async def server_config(
         "level_roles": level_roles,
         "level_rewards": level_rewards,
         "auto_kick_reminders": auto_kick_reminders,
+        "auto_thread_entries": await db_rows(
+            "SELECT * FROM auto_thread_channels WHERE guild_id=? ORDER BY id ASC", (str(guild_id),)
+        ),
         "auto_delete_entries": await db_rows(
             "SELECT * FROM auto_delete_channels WHERE guild_id=?", (str(guild_id),)
         ),

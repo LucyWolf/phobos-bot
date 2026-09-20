@@ -896,6 +896,24 @@ async def init_db():
             # retired: they keep older backups, a downgrade, and every existing row readable,
             # and role_rule_actions() below falls back to them whenever this column is empty.
             "ALTER TABLE role_rules ADD COLUMN actions TEXT NOT NULL DEFAULT ''",
+            # User-requested ("dass er in dem zugewiesenen channel automatisch threads zu allen
+            # nachrichten erstellt") - one row per channel that should get a thread on every
+            # message. Deliberately its OWN feature rather than part of Embed-Nachrichten: that
+            # one creates a forum POST on demand from the dashboard, this reacts to what members
+            # post. name_template is rendered per message ({user}/{text}/{date}), archive_minutes
+            # is one of Discord's four allowed auto-archive values, and starter_message is an
+            # optional first post inside the new thread (same idea as a ticket's opening text).
+            """CREATE TABLE IF NOT EXISTS auto_thread_channels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                name_template TEXT NOT NULL DEFAULT '{user}',
+                archive_minutes INTEGER NOT NULL DEFAULT 1440,
+                skip_bots INTEGER NOT NULL DEFAULT 1,
+                require_attachment INTEGER NOT NULL DEFAULT 0,
+                starter_message TEXT NOT NULL DEFAULT '',
+                UNIQUE(guild_id, channel_id)
+            )""",
         ]:
             try:
                 await db.execute(col)

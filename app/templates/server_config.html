@@ -6,7 +6,8 @@
    "<!-- TAB: ... -->" header to jump straight to it:
      Konfiguration, Willkommen, Spam-Schutz (Auto-Mod), Leveling, Reaction Roles, Custom Commands,
      Tickets, Giveaways, Warnungen, Benutzer (Admin only), Temp Voice, Geplante Nachrichten,
-     Discord-Events, Geburtstage, Auto-Kick, Auto-Delete, AMP Gameserver, Embed-Nachrichten
+     Discord-Events, Geburtstage, Auto-Kick, Auto-Delete, Auto-Thread, AMP Gameserver,
+     Embed-Nachrichten
    Which tabs actually show in the sidebar for a given guild is controlled by
    enabled_features (see _server_subnav.html) - a tab's HTML is always rendered here
    regardless, just not linked to. #}
@@ -2841,6 +2842,154 @@ document.addEventListener('click', function(e) {
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Auto-Thread                                                    -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-autothread">
+
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="toggleAtInfo()" title="{{ tr.autothread_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="at-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:300px;max-width:420px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.autothread_info_title }}</div>
+    <ul style="margin:0 0 0 1.1rem;padding:0;color:var(--muted);line-height:1.6;">
+      <li>{{ tr.autothread_info_item_what }}</li>
+      <li>{{ tr.autothread_info_item_perm }}</li>
+      <li>{{ tr.autothread_info_item_placeholders }}</li>
+      <li>{{ tr.autothread_info_item_skip }}</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card">
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.autothread_hint }}</p>
+
+  {% if auto_thread_entries %}
+  <table style="width:100%;border-collapse:collapse;margin-bottom:1.25rem;">
+    <thead>
+      <tr style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;">
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.autothread_col_channel }}</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.autothread_col_name }}</th>
+        <th style="text-align:left;padding:0.4rem 0.5rem;">{{ tr.autothread_col_archive }}</th>
+        <th style="padding:0.4rem 0.5rem;"></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% set arch_labels = {60: tr.autothread_arch_1h, 1440: tr.autothread_arch_1d,
+                          4320: tr.autothread_arch_3d, 10080: tr.autothread_arch_7d} %}
+    {% for e in auto_thread_entries %}
+    {% set ch_name = channels | selectattr('id','equalto',e.channel_id) | map(attribute='name') | first | default(e.channel_id) %}
+    <tr style="border-top:1px solid var(--border);font-size:0.85rem;">
+      <td style="padding:0.5rem;">#{{ ch_name }}</td>
+      <td style="padding:0.5rem;"><code style="font-size:0.78rem;">{{ e.name_template }}</code>
+        {% if e.require_attachment %}<div style="color:var(--muted);font-size:0.72rem;">{{ tr.autothread_only_attachment_short }}</div>{% endif %}
+      </td>
+      <td style="padding:0.5rem;">{{ arch_labels.get(e.archive_minutes, e.archive_minutes) }}</td>
+      <td style="padding:0.5rem;text-align:right;white-space:nowrap;">
+        <button type="button" class="btn btn-secondary" onclick="toggleAtEdit({{ e.id }})" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_settings }}">⚙</button>
+        <form method="post" action="/servers/{{ guild.id }}/auto-thread/delete/{{ e.id }}" style="margin:0;display:inline;">
+          <button type="submit" class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_delete }}">✕</button>
+        </form>
+      </td>
+    </tr>
+    <tr id="at-edit-{{ e.id }}" style="display:none;" class="panel-edit-row">
+      <td colspan="4" style="padding:1rem 1.25rem;">
+        <form method="post" action="/servers/{{ guild.id }}/auto-thread/edit/{{ e.id }}" style="margin:0;">
+          <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
+            <div>
+              <label style="font-size:0.78rem;">{{ tr.autothread_col_channel }}</label>
+              <select name="channel_id" style="margin-bottom:0;">
+                {% for c in channels %}<option value="{{ c.id }}" {% if c.id == e.channel_id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div>
+              <label style="font-size:0.78rem;">{{ tr.autothread_col_archive }}</label>
+              <select name="archive_minutes" style="margin-bottom:0;">
+              <option value="60" {% if e.archive_minutes == 60 %}selected{% endif %}>{{ tr.autothread_arch_1h }}</option>
+              <option value="1440" {% if e.archive_minutes == 1440 %}selected{% endif %}>{{ tr.autothread_arch_1d }}</option>
+              <option value="4320" {% if e.archive_minutes == 4320 %}selected{% endif %}>{{ tr.autothread_arch_3d }}</option>
+              <option value="10080" {% if e.archive_minutes == 10080 %}selected{% endif %}>{{ tr.autothread_arch_7d }}</option>
+              </select>
+            </div>
+          </div>
+          <label style="font-size:0.78rem;">{{ tr.autothread_col_name }}</label>
+          <input type="text" name="name_template" maxlength="100" value="{{ e.name_template }}" style="margin-bottom:0.2rem;">
+          <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.75rem;">{{ tr.autothread_name_hint }}</div>
+          <label style="font-size:0.78rem;">{{ tr.autothread_starter_label }}</label>
+          <textarea name="starter_message" rows="2" maxlength="1500" style="margin-bottom:0.2rem;">{{ e.starter_message }}</textarea>
+          <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.75rem;">{{ tr.autothread_starter_hint }}</div>
+          <label style="font-size:0.78rem;display:flex;align-items:center;gap:0.4rem;font-weight:400;margin-bottom:0.35rem;">
+            <input type="checkbox" name="skip_bots" value="1" style="margin:0;" {% if e.skip_bots %}checked{% endif %}> {{ tr.autothread_skip_bots_label }}
+          </label>
+          <label style="font-size:0.78rem;display:flex;align-items:center;gap:0.4rem;font-weight:400;margin-bottom:0.75rem;">
+            <input type="checkbox" name="require_attachment" value="1" style="margin:0;" {% if e.require_attachment %}checked{% endif %}> {{ tr.autothread_require_attachment_label }}
+          </label>
+          <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="hint" style="margin-bottom:1.25rem;">{{ tr.autothread_empty }}</p>
+  {% endif %}
+
+  <div class="feat-header">{{ tr.autothread_add_heading }}</div>
+  <form method="post" action="/servers/{{ guild.id }}/auto-thread/save">
+    <div class="grid-2" style="gap:0.75rem;">
+      <div>
+        <label>{{ tr.autothread_col_channel }}</label>
+        <select name="channel_id" required>
+          <option value="">{{ tr.autothread_channel_placeholder }}</option>
+          {% for c in channels %}<option value="{{ c.id }}">#{{ c.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>{{ tr.autothread_col_archive }}</label>
+        <select name="archive_minutes">
+        <option value="60">{{ tr.autothread_arch_1h }}</option>
+              <option value="1440">{{ tr.autothread_arch_1d }}</option>
+              <option value="4320">{{ tr.autothread_arch_3d }}</option>
+              <option value="10080">{{ tr.autothread_arch_7d }}</option>
+        </select>
+      </div>
+    </div>
+    <label>{{ tr.autothread_col_name }}</label>
+    <input type="text" name="name_template" maxlength="100" value="{user}" style="margin-bottom:0.2rem;">
+    <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.75rem;">{{ tr.autothread_name_hint }}</div>
+    <label>{{ tr.autothread_starter_label }}</label>
+    <textarea name="starter_message" rows="2" maxlength="1500" placeholder="{{ tr.autothread_starter_placeholder }}" style="margin-bottom:0.2rem;"></textarea>
+    <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.75rem;">{{ tr.autothread_starter_hint }}</div>
+    <label style="font-size:0.85rem;display:flex;align-items:center;gap:0.4rem;font-weight:400;margin-bottom:0.35rem;">
+      <input type="checkbox" name="skip_bots" value="1" style="margin:0;" checked> {{ tr.autothread_skip_bots_label }}
+    </label>
+    <label style="font-size:0.85rem;display:flex;align-items:center;gap:0.4rem;font-weight:400;margin-bottom:0.9rem;">
+      <input type="checkbox" name="require_attachment" value="1" style="margin:0;"> {{ tr.autothread_require_attachment_label }}
+    </label>
+    <button type="submit" class="btn btn-primary">{{ tr.autothread_btn_add }}</button>
+  </form>
+</div>
+<script>
+function toggleAtInfo() {
+  const box = document.getElementById('at-info-box');
+  if (box) box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('at-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleAtInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+function toggleAtEdit(id) {
+  const row = document.getElementById('at-edit-' + id);
+  if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+</script>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <!-- TAB: Auto-Delete                                                     -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-autodelete">
@@ -3980,7 +4129,7 @@ document.addEventListener('click', function(e) {
 </script>
 
 <script>
-const TABS = ['config','welcome','automod','leveling','rr','commands','tickets','giveaways','polls','ratings','warnings','users','tempvoice','scheduled','events','birthday','autodelete','amp','autokick','embeds','rolerules'];
+const TABS = ['config','welcome','automod','leveling','rr','commands','tickets','giveaways','polls','ratings','warnings','users','tempvoice','scheduled','events','birthday','autodelete','autothread','amp','autokick','embeds','rolerules'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {
