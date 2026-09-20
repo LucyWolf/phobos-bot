@@ -624,6 +624,24 @@ renderLvlChannelsList();
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-rr">
 
+{% macro rr_id_help_btn(uid) %}<button type="button" onclick="toggleRrIdHelp('{{ uid }}')" style="background:none;border:none;color:#a78bfa;font-size:0.72rem;font-weight:600;cursor:pointer;padding:0;text-decoration:underline;">{{ tr.rr_id_help_toggle }}</button>{% endmacro %}
+
+{% macro rr_id_help_box(uid) %}
+<div id="rr-idhelp-{{ uid }}" style="display:none;margin:0.5rem 0 0.25rem;background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.8rem 0.95rem;font-size:0.76rem;line-height:1.65;">
+  <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.rr_id_help_title }}</div>
+  <ol style="margin:0 0 0 1.1rem;padding:0;color:var(--muted);">
+    <li>{{ tr.rr_id_help_devmode }}</li>
+    <li>{{ tr.rr_id_help_desktop }}</li>
+    <li>{{ tr.rr_id_help_mobile }}</li>
+  </ol>
+  <div style="margin-top:0.6rem;color:var(--muted);">
+    {{ tr.rr_id_help_link }}<br>
+    <code style="display:inline-block;margin-top:0.3rem;word-break:break-all;">https://discord.com/channels/&hellip;/&hellip;/<strong style="color:#a78bfa;">1234567890123456789</strong></code>
+  </div>
+  <div style="margin-top:0.6rem;color:var(--muted);">{{ tr.rr_id_help_note }}</div>
+</div>
+{% endmacro %}
+
 <div style="position:relative;margin-bottom:1.25rem;">
   <button type="button" onclick="toggleRrInfo()" title="{{ tr.rr_info_tooltip }}"
     style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
@@ -683,7 +701,7 @@ renderLvlChannelsList();
               </div>
               <div class="grid-2">
                 <div>
-                  <label style="font-size:0.78rem;">{{ tr.rr_label_message_id }}</label>
+                  <label style="font-size:0.78rem;">{{ tr.rr_label_message_id }} {{ rr_id_help_btn(rr.id) }}</label>
                   <input type="text" name="message_id" value="{{ rr.message_id }}" required pattern="[0-9]+" style="margin-bottom:0;">
                 </div>
                 <div>
@@ -691,6 +709,7 @@ renderLvlChannelsList();
                   <input type="text" name="emoji" value="{{ rr.emoji }}" required style="margin-bottom:0;">
                 </div>
               </div>
+              {{ rr_id_help_box(rr.id) }}
               <button type="submit" class="btn btn-primary" style="font-size:0.8rem;margin-top:0.75rem;">{{ tr.btn_save }}</button>
             </form>
           </td>
@@ -725,7 +744,7 @@ renderLvlChannelsList();
     </div>
     <div class="grid-2">
       <div>
-        <label>{{ tr.rr_label_message_id }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.rr_hint_message_id }}</span></label>
+        <label>{{ tr.rr_label_message_id }} {{ rr_id_help_btn('add') }}</label>
         <input type="text" name="message_id" placeholder="{{ tr.rr_message_id_placeholder }}" required pattern="[0-9]+">
       </div>
       <div>
@@ -733,6 +752,7 @@ renderLvlChannelsList();
         <input type="text" name="emoji" placeholder="{{ tr.rr_emoji_placeholder }}" required>
       </div>
     </div>
+    {{ rr_id_help_box('add') }}
     <button type="submit" class="btn btn-primary">{{ tr.rr_btn_add }}</button>
   </form>
   <p class="hint">{{ tr.rr_hint_steps }}</p>
@@ -748,6 +768,10 @@ document.addEventListener('click', function(e) {
     box.style.display = 'none';
   }
 });
+function toggleRrIdHelp(uid) {
+  const box = document.getElementById('rr-idhelp-' + uid);
+  if (box) box.style.display = box.style.display === 'none' ? '' : 'none';
+}
 function toggleRrEdit(id) {
   const row = document.getElementById('rr-edit-' + id);
   if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
