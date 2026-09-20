@@ -1107,6 +1107,41 @@ _BACKUP_FEATURE_TABLES = [
 # Shared between the full-backup restore (/admin/backup/restore) and the per-server restore
 # (/servers/{guild_id}/backup/restore) - was previously defined inline inside backup_restore()
 # only, duplicating it for the new per-server path would have let the two drift out of sync.
+def _rehome_role_rule(row: dict, new_guild_id: str) -> dict:
+    """Point a restored CrossVerification rule's SELF-references at the guild it is being
+    restored onto.
+
+    The per-server restore replaces every row's guild_id with the target guild, but a role rule
+    also carries the guild its ACTIONS apply to - in action_guild_id and in each block of
+    `actions`. Those were restored verbatim, so a rule that acted on its own server ("wer hier
+    Rolle A hat, bekommt hier Rolle B") came back still naming the server it was exported FROM:
+    restoring a backup onto a second server then silently rewrote members' roles on the
+    ORIGINAL one. Anything that pointed at a genuinely DIFFERENT server stays untouched - that
+    is a deliberate cross-server link, not a self-reference, and rewriting it would destroy the
+    very thing the rule was built for.
+    """
+    original_guild_id = str(row.get("guild_id") or "")
+    if not original_guild_id or original_guild_id == new_guild_id:
+        return row
+    out = dict(row)
+    if str(out.get("action_guild_id") or "") == original_guild_id:
+        out["action_guild_id"] = new_guild_id
+    try:
+        blocks = _djson.loads(out.get("actions") or "[]")
+    except (ValueError, TypeError):
+        return out
+    if not isinstance(blocks, list):
+        return out
+    changed = False
+    for block in blocks:
+        if isinstance(block, dict) and str(block.get("guild_id") or "") == original_guild_id:
+            block["guild_id"] = new_guild_id
+            changed = True
+    if changed:
+        out["actions"] = _djson.dumps(blocks)
+    return out
+
+
 _BACKUP_TBL_INSERT = {
     # A plain "OR IGNORE" never actually triggered here - reaction_roles had no unique index
     # to ignore against, so restoring the same (or an overlapping) backup more than once
@@ -1617,6 +1652,10 @@ async def server_backup_restore(request: Request, guild_id: int, backup_file: Up
                     if tbl == "role_rules":
                         # Same fallback as the full-backup path for older backups.
                         merged = {"action_role_meta": "", "actions": "", **merged}
+                        # Self-references have to be rehomed BEFORE guild_id is lost - see
+                        # _rehome_role_rule(); `row` still carries the exported guild id.
+                        merged = _rehome_role_rule({**merged, "guild_id": row.get("guild_id")}, gid_str)
+                        merged["guild_id"] = gid_str
                     await db.execute(sql, merged)
                 except Exception:
                     pass
@@ -4955,7 +4994,14 @@ async def server_config(
     # the wrong problem.
     role_rules_cog_missing = _rr_cog is None
     if _rr_cog:
-        _rr_relevant_ids = {str(guild_id)} | {rr["action_guild_id"] for rr in role_rules}
+        # Built from every action BLOCK's target, not from the action_guild_id column: that
+        # column only mirrors the FIRST block, so for a rule like "gib Rolle A auf Server Z UND
+        # nimm Rolle B auf Server Y" the whole of Server Y's trace was filtered out of this
+        # view - exactly the lines an admin opens the debug box to read when the second action
+        # is the one not working.
+        _rr_relevant_ids = {str(guild_id)} | {
+            b["guild_id"] for rr in role_rules for b in rr["action_blocks"]
+        }
         role_rules_debug_log = [
             line for line in reversed(_rr_cog._debug_log)
             if any(gid in line for gid in _rr_relevant_ids)
@@ -6947,9 +6993,14 @@ async def _role_rule_form_data(request: Request, guild: discord.Guild, form) -> 
     # block plus that block's own suffixed fields, so a block deleted in the browser simply
     # stops submitting anything and needs no separate bookkeeping.
     allowed_targets = {g["id"] for g in await _role_rule_target_guilds(request, guild.id)}
-    block_indices = list(dict.fromkeys(form.getlist("action_idx")))[:MAX_RULE_ACTIONS]
+    block_indices = list(dict.fromkeys(form.getlist("action_idx")))
     if not block_indices:
         return None, "Mindestens+eine+Aktion+erforderlich"
+    if len(block_indices) > MAX_RULE_ACTIONS:
+        # Rejected, not silently truncated: quietly dropping the blocks past the limit would
+        # save a rule that does LESS than what the form showed, and the redirect would still
+        # say "saved" - the one outcome an admin has no way to notice.
+        return None, f"Höchstens+{MAX_RULE_ACTIONS}+Aktionen+pro+Regel"
     actions = []
     for idx in block_indices:
         action = form.get(f"action_{idx}", "add")

@@ -42,6 +42,15 @@ DEBUG_LOG_MAXLEN = 200
 # block, so fixing the permission in Discord heals itself without a bot restart.
 AUTOCREATE_RETRY_SECONDS = 300
 
+# How long a role this cog created itself stays usable from _created_roles. It exists purely to
+# bridge the sub-second gap until GUILD_ROLE_CREATE puts the role into guild._roles, so a short
+# life is plenty - and it MUST expire: the map is keyed by role name, and once an admin deletes
+# that role again, guild.get_role() starts failing, which is exactly when the map gets consulted
+# and would keep handing out a Role object for a role Discord no longer has. Every edit
+# containing it would then be rejected, forever, and the auto-create that should have stepped in
+# to recreate it would never run.
+CREATED_ROLE_CACHE_SECONDS = 60
+
 
 class RoleRules(commands.Cog):
     def __init__(self, bot):
@@ -56,14 +65,21 @@ class RoleRules(commands.Cog):
         # (guild_id, role_id) -> time.monotonic() of the last FAILED auto-create, see
         # AUTOCREATE_RETRY_SECONDS.
         self._autocreate_block: dict[tuple[int, int], float] = {}
-        # (guild_id, lowercased role name) -> the Role this cog created itself. Discord.py's
+        # (guild_id, role name) -> the Role this cog created itself. The name is kept
+        # case-sensitive on purpose: the by-name fallback right next to this lookup is
+        # discord.utils.get(guild.roles, name=...), which is case-SENSITIVE too. Lower-casing
+        # only here meant a cached "member" could be handed back for a snapshot naming
+        # "Member" - two roles Discord considers entirely different. Discord.py's
         # Guild.create_role() returns a Role WITHOUT putting it into guild._roles - only the
         # GUILD_ROLE_CREATE gateway event does that, and it may not have arrived yet. In
         # periodic mode the very next member is evaluated immediately afterwards, so without
         # this map neither guild.get_role(new_id) nor the by-name lookup would see the role
         # that was just created, and a second (third, fourth...) duplicate would be created
         # for every remaining member of the sweep.
-        self._created_roles: dict[tuple[int, str], discord.Role] = {}
+        self._created_roles: dict[tuple[int, str], tuple[discord.Role, float]] = {}
+        # (guild_id, role_id) -> when the "this role is missing and I am not creating it"
+        # line was last written. See _log_once().
+        self._skip_logged: dict[tuple[int, int], float] = {}
         self._periodic.start()
 
     def cog_unload(self):
@@ -75,6 +91,24 @@ class RoleRules(commands.Cog):
         stamped = f"{datetime.datetime.now().strftime('%H:%M:%S')} {msg}"
         print(f"[RoleRules] {stamped}")
         self._debug_log.append(stamped)
+
+    def _log_once(self, key: tuple, msg: str) -> None:
+        """_log(), but at most once per AUTOCREATE_RETRY_SECONDS per key.
+
+        For conditions that are per-MEMBER rather than per-event: in periodic mode
+        _evaluate_member runs once for every member of the guild, so a single missing role on a
+        1000-member server wrote 1000 identical lines per pass. _debug_log only keeps the last
+        200, so the dashboard's debug view - the one tool for troubleshooting this feature -
+        filled up with one repeated sentence and pushed out every other line, including the
+        ones naming what actually went wrong. The recommended 1-minute interval made that the
+        normal case rather than an edge case.
+        """
+        now = time.monotonic()
+        last = self._skip_logged.get(key)
+        if last is not None and now - last < AUTOCREATE_RETRY_SECONDS:
+            return
+        self._skip_logged[key] = now
+        self._log(msg)
 
     async def _get_rules(self, guild_id: int) -> list:
         return await db_rows(
@@ -132,20 +166,26 @@ class RoleRules(commands.Cog):
             info = meta.get(str(rid)) or {}
             name = str(info.get("name") or "").strip() if isinstance(info, dict) else ""
             if not name:
-                self._log(f"Rolle {rid} existiert auf Guild {guild.id} nicht (mehr) und es ist kein "
-                          f"Namens-Schnappschuss hinterlegt - übersprungen. Die Regel einmal im "
-                          f"Dashboard speichern legt den Schnappschuss an.")
+                self._log_once((guild.id, rid),
+                               f"Rolle {rid} existiert auf Guild {guild.id} nicht (mehr) und es ist kein "
+                               f"Namens-Schnappschuss hinterlegt - übersprungen. Die Regel einmal im "
+                               f"Dashboard speichern legt den Schnappschuss an.")
                 continue
             if not autocreate:
-                self._log(f"Rolle {rid} ('{name}') fehlt auf Guild {guild.id} - automatisches Anlegen "
-                          f"ist für diesen Server ausgeschaltet, übersprungen")
+                self._log_once((guild.id, rid),
+                               f"Rolle {rid} ('{name}') fehlt auf Guild {guild.id} - automatisches Anlegen "
+                               f"ist für diesen Server ausgeschaltet, übersprungen")
                 continue
             # Reuse before create, in this order: a role this cog created moments ago (may not
             # be in the guild cache yet), then any role of the same name that already exists
             # (the admin deleted and manually recreated it - same name, new id). Creating
             # blindly would leave the server with two identically named roles, and only one of
             # them wired up to anything.
-            existing = self._created_roles.get((guild.id, name.lower())) or discord.utils.get(guild.roles, name=name)
+            cached = self._created_roles.get((guild.id, name))
+            if cached and time.monotonic() - cached[1] >= CREATED_ROLE_CACHE_SECONDS:
+                del self._created_roles[(guild.id, name)]
+                cached = None
+            existing = (cached[0] if cached else None) or discord.utils.get(guild.roles, name=name)
             if existing:
                 if existing.id == rid:
                     # Same role, just not in guild._roles yet - this cog created it moments ago
@@ -191,7 +231,8 @@ class RoleRules(commands.Cog):
                 self._log(f"FEHLER: Rolle '{name}' konnte auf Guild {guild.id} nicht angelegt werden: {e}")
                 continue
             self._autocreate_block.pop((guild.id, rid), None)
-            self._created_roles[(guild.id, name.lower())] = created
+            self._skip_logged.pop((guild.id, rid), None)
+            self._created_roles[(guild.id, name)] = (created, time.monotonic())
             self._log(f"Fehlende Rolle '{name}' auf Guild {guild.id} automatisch angelegt (neue ID {created.id}). "
                       f"Sie sitzt zunächst ganz unten in der Rollenliste - Position und Rechte ggf. in Discord anpassen.")
             remap[str(rid)] = created.id
@@ -336,8 +377,13 @@ class RoleRules(commands.Cog):
                             bucket["add"] |= action_ids
                             bucket["remove"] -= action_ids
             except (ValueError, TypeError) as e:
+                # actions is printed alongside action_role_ids: since a rule can carry several
+                # action blocks, the legacy column shows only the FIRST one, so a rule whose
+                # SECOND block holds the bad data used to produce an error line in which
+                # everything printed looked perfectly fine.
                 self._log(f"FEHLER: Regel #{rule['id']} ({rule['name'] or '—'}) hat fehlerhafte Daten "
-                          f"(match_roles={rule['match_role_ids']!r}, action_roles={rule['action_role_ids']!r}) "
+                          f"(match_roles={rule['match_role_ids']!r}, "
+                          f"action_roles={rule['action_role_ids']!r}, actions={rule.get('actions')!r}) "
                           f"und wird übersprungen: {e}")
                 continue
         # Read once per pass, and only when there is actually something to apply - the periodic
@@ -431,6 +477,10 @@ class RoleRules(commands.Cog):
                     # edit we just made) for the recursion below, not the pre-edit target_member.
                     target_member = await target_member.edit(roles=t_new_roles, reason="CrossVerification (cross-server)") or target_member
                     self._log(f"member.edit() auf Guild {target_guild.id} erfolgreich gesendet")
+                except (discord.HTTPException, OSError) as e:
+                    self._log(f"FEHLER: Cross-Server-Anwenden auf {target_guild.id} fehlgeschlagen: {e}")
+                    continue
+                try:
                     # Recurse into the target guild so ITS OWN rules see the new role state too,
                     # bounded by hop_budget so two guilds whose rules reference each other can't
                     # loop forever - only when the edit above actually went through. Previously
@@ -446,7 +496,14 @@ class RoleRules(commands.Cog):
                     # exhaust MAX_HOP_BUDGET before reaching a hop that actually needs to fire.
                     await self._evaluate_member(target_guild, target_member, hop_budget - 1)
                 except (discord.HTTPException, OSError) as e:
-                    self._log(f"FEHLER: Cross-Server-Anwenden auf {target_guild.id} fehlgeschlagen: {e}")
+                    # Its OWN try/except, not the edit's: the recursion runs the target guild's
+                    # rules, which reach further guilds and their edits. Sharing the block above
+                    # meant a failure three guilds down was reported as "applying to <this
+                    # guild> failed" right after this very method had logged that same edit as
+                    # successfully sent - two contradicting lines about one edit, pointing at
+                    # the wrong server. Still caught rather than raised, so one broken link
+                    # doesn't abort the remaining target guilds of this pass.
+                    self._log(f"FEHLER: Folge-Auswertung auf Guild {target_guild.id} fehlgeschlagen: {e}")
         if changed:
             # Same-guild chained rules (rule 1 grants role B, rule 2 reacts to role B) - use the
             # Member returned by our own edit() above (see the comment there for why a fresh

@@ -3619,6 +3619,7 @@ function updateAmpCmdPreview(id, action, value) {
               {% if b.is_cross %}<span style="color:var(--muted);font-size:0.72rem;">→ {{ b.guild_name }}</span>{% endif %}
             </div>
             {% endfor %}
+            {% if not rr.action_blocks %}<div style="color:var(--danger);font-size:0.75rem;">{{ tr.rolerules_no_action }}</div>{% endif %}
           </td>
           <td style="text-align:center;">{{ rr.priority }}</td>
           <td>

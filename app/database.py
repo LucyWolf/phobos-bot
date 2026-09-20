@@ -956,22 +956,44 @@ def role_rule_actions(rule) -> list:
         for entry in parsed:
             if not isinstance(entry, dict):
                 continue
-            role_ids = [str(r) for r in entry.get("role_ids") or [] if str(r).strip()]
+            # isinstance(list) rather than a bare `or []`: a JSON value of "21" (a bare string
+            # instead of a list, easy to produce by hand-editing a backup) would otherwise be
+            # ITERATED - yielding the role ids "2" and "1" and silently granting two roles
+            # nobody configured - and an int would raise TypeError straight out of this
+            # function, taking down the whole evaluation pass rather than one bad rule.
+            raw_ids = entry.get("role_ids")
+            if not isinstance(raw_ids, list):
+                continue
+            # Digits only, because every consumer treats these as Discord snowflakes: the cog
+            # does int(x) on them and main.py resolves them against a guild's roles. A
+            # non-numeric id would raise inside the cog's per-rule try/except (survivable) but
+            # is never anything but corruption, so it is dropped here once instead of being
+            # re-discovered at every call site.
+            role_ids = [str(r).strip() for r in raw_ids if str(r).strip().isdigit()]
             if not role_ids:
+                continue
+            # Same reasoning for the target guild id - and this one is NOT survivable at the
+            # call site: cogs/role_rules.py resolves it with int(action_guild_id) in its
+            # cross-guild loop, which sits OUTSIDE the per-rule try/except, so an empty or
+            # non-numeric value there aborts the entire evaluation for that member instead of
+            # skipping one broken block.
+            guild_id = str(entry.get("guild_id") or "").strip()
+            if not guild_id.isdigit():
                 continue
             meta = entry.get("meta")
             blocks.append({
                 # Anything other than an explicit "remove" is treated as "add", the same
                 # defaulting the single-action column has always used.
                 "action": "remove" if entry.get("action") == "remove" else "add",
-                "guild_id": str(entry.get("guild_id") or ""),
+                "guild_id": guild_id,
                 "role_ids": role_ids,
                 "meta": meta if isinstance(meta, dict) else {},
             })
     if blocks:
         return blocks
-    role_ids = [r for r in str(col("action_role_ids")).split(",") if r]
-    if not role_ids:
+    role_ids = [r.strip() for r in str(col("action_role_ids")).split(",") if r.strip().isdigit()]
+    guild_id = str(col("action_guild_id")).strip()
+    if not role_ids or not guild_id.isdigit():
         return []
     try:
         meta = json.loads(col("action_role_meta") or "{}")
@@ -979,7 +1001,7 @@ def role_rule_actions(rule) -> list:
         meta = {}
     return [{
         "action": "remove" if col("action") == "remove" else "add",
-        "guild_id": str(col("action_guild_id")),
+        "guild_id": guild_id,
         "role_ids": role_ids,
         "meta": meta if isinstance(meta, dict) else {},
     }]
