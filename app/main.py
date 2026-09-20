@@ -1082,7 +1082,7 @@ async def profile_avatar_delete(request: Request):
 # ── Backup / Restore ───────────────────────────────────────────────────────────
 
 _BACKUP_FEATURE_TABLES = [
-    "reaction_roles", "custom_commands", "auto_delete_channels", "auto_thread_channels",
+    "reaction_roles", "custom_commands", "auto_delete_channels",
     "temp_voice_config", "notifications", "freestuff_channels",
     "birthdays", "warnings", "ticket_panels",
     # Added later than the others - level_roles/level_rewards/automod_word_presets predate
@@ -1103,7 +1103,22 @@ _BACKUP_FEATURE_TABLES = [
     # Role Rules, added at the same time the feature itself shipped this time (see the entries
     # above for what happens when this step gets forgotten).
     "role_rules",
+    # Same gap as level_roles/amp_configs/embed_posts before them, found by diffing this list
+    # against every table that actually carries a guild_id: the ⭐ Bewertungen items are pure
+    # configuration (what can be rated) and were silently dropped by every backup since the
+    # feature shipped. rating_votes stays out on purpose - those are members' answers, the
+    # same "live event, not reusable configuration" line drawn at giveaways and polls.
+    "rating_items",
+    # Auto-Thread, added with the feature itself.
+    "auto_thread_channels",
 ]
+
+# Recurring 🗓️ Events are NOT in the list above even though they are configuration: their
+# reminder templates (event_series_reminders) reference a series by its AUTOINCREMENT id, and a
+# restore assigns fresh ids - the generic insert loop would leave every reminder pointing at
+# whatever series happens to now hold its old id, on a different server. They get their own
+# parent-then-children restore further down instead, which is also the only place that can
+# clear last_discord_event_id (see there).
 
 # Shared between the full-backup restore (/admin/backup/restore) and the per-server restore
 # (/servers/{guild_id}/backup/restore) - was previously defined inline inside backup_restore()
@@ -1222,6 +1237,11 @@ _BACKUP_TBL_INSERT = {
     # still mean something once its role ids no longer resolve - cogs/role_rules.py recreates
     # (or re-links by name) the action roles from this snapshot. Dropping it here would make a
     # restore look successful while leaving every rule permanently inert.
+    # image_data (a base64 blob) rides along like it does for embed_posts - without it a
+    # restored item loses its picture and there is no way to get it back from the file.
+    "rating_items":
+        "INSERT INTO rating_items (guild_id,label,url,recommended,created_at,image_url,image_data,image_filename) "
+        "VALUES (:guild_id,:label,:url,:recommended,:created_at,:image_url,:image_data,:image_filename)",
     "role_rules":
         "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,actions,priority,enabled) "
         "VALUES (:guild_id,:name,:match_type,:match_role_ids,:action,:action_guild_id,:action_role_ids,:action_role_meta,:actions,:priority,:enabled)",
@@ -1263,6 +1283,61 @@ async def _build_user_backup(target_user_id: int, exported_by: str) -> dict:
     return data
 
 
+async def _event_series_for_backup(guild_id: str | None) -> list[dict]:
+    """Event series with their reminder templates nested inside each series.
+
+    Nested rather than exported as a second flat table because event_series_reminders links to
+    its series by AUTOINCREMENT id: a restore hands out fresh ids, so a flat list could only be
+    reattached by guessing. See _restore_event_series() for the other half.
+    """
+    where, params = ("WHERE guild_id=?", (guild_id,)) if guild_id else ("", ())
+    series = await db_rows(f"SELECT * FROM event_series {where}", params)
+    for row in series:
+        row["reminders"] = await db_rows(
+            "SELECT offset_minutes, message FROM event_series_reminders WHERE series_id=?",
+            (row["id"],),
+        )
+    return series
+
+
+async def _restore_event_series(db, series_rows, guild_id_override: str | None) -> bool:
+    """Insert each series, then its reminders under the id the insert just produced.
+
+    last_discord_event_id is deliberately NOT restored: it names the Discord event object the
+    SOURCE server created. Carried over verbatim, the scheduler would try to update an event
+    on a server this installation may not even serve - the same trap a restored role rule's
+    action_guild_id used to fall into (see _rehome_role_rule).
+    """
+    restored_any = False
+    for row in series_rows or []:
+        try:
+            reminders = row.get("reminders") or []
+            cur = await db.execute(
+                "INSERT INTO event_series (guild_id, name, description, entity_type, channel_id, "
+                "location, duration_minutes, announce_channel_id, notify_end, recurrence, "
+                "next_start_at, last_discord_event_id, active, paused) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,'',?,?)",
+                (guild_id_override or row.get("guild_id"), row.get("name"), row.get("description", ""),
+                 row.get("entity_type"), row.get("channel_id", ""), row.get("location", ""),
+                 row.get("duration_minutes"), row.get("announce_channel_id", ""),
+                 row.get("notify_end", 0), row.get("recurrence"), row.get("next_start_at"),
+                 row.get("active", 1), row.get("paused", 0)),
+            )
+            new_id = cur.lastrowid
+            for rem in reminders:
+                if not isinstance(rem, dict):
+                    continue
+                await db.execute(
+                    "INSERT INTO event_series_reminders (series_id, offset_minutes, message) VALUES (?,?,?)",
+                    (new_id, rem.get("offset_minutes"), rem.get("message", "")),
+                )
+            restored_any = True
+        except Exception:
+            # Per-row isolation, same as every other row in the restore loops.
+            continue
+    return restored_any
+
+
 async def _build_full_backup(exported_by: str) -> dict:
     scheduled = await db_rows("SELECT * FROM scheduled_messages WHERE sent=0")
     data: dict = {
@@ -1284,14 +1359,22 @@ async def _build_full_backup(exported_by: str) -> dict:
     }
     for tbl in _BACKUP_FEATURE_TABLES:
         data[tbl] = await db_rows(f"SELECT * FROM {tbl}")
+    data["event_series"] = await _event_series_for_backup(None)
     return data
 
 
-async def _build_guild_backup(guild_id: int, exported_by: str) -> dict:
+async def _build_guild_backup(guild_id: int, exported_by: str, include_secrets: bool = False) -> dict:
     """Exports just one Discord server's own configuration - no dashboard users, tokens, or
     other guilds' data. Meant to be portable: a restore can target ANY guild the admin
     chooses, not just the one this was exported from, so guild_id is deliberately NOT baked
-    into the export as anything other than informational metadata."""
+    into the export as anything other than informational metadata.
+
+    Nothing in here is tied to the bot token the source server runs on, so the file can be
+    restored into an entirely different installation - which is the point: handing one of
+    several Discord servers over to someone else means handing them its settings.
+
+    include_secrets=False (the default) blanks the AMP panel credentials - see below.
+    """
     guild = bot.get_guild(guild_id)
     gid_str = str(guild_id)
     data: dict = {
@@ -1312,6 +1395,16 @@ async def _build_guild_backup(guild_id: int, exported_by: str) -> dict:
     }
     for tbl in _BACKUP_FEATURE_TABLES:
         data[tbl] = await db_rows(f"SELECT * FROM {tbl} WHERE guild_id=?", (gid_str,))
+    data["event_series"] = await _event_series_for_backup(gid_str)
+    if not include_secrets:
+        # The AMP panel's username/password are the one genuinely secret thing a server config
+        # holds, and this export exists to be HANDED TO SOMEBODY ELSE. Blanked unless the admin
+        # explicitly ticks the box - moving your own server between your own installations is
+        # the only case where passing them along is what you want.
+        for row in data.get("amp_configs", []):
+            row["password"] = ""
+            row["username"] = ""
+    data["meta"]["includes_secrets"] = bool(include_secrets)
     return data
 
 
@@ -1543,6 +1636,12 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
             except Exception:
                 pass
 
+        # Same dedicated parent-then-children restore as the per-server path, but keeping each
+        # series' own guild_id - a full backup restores an entire installation, it does not
+        # move anything onto a different server.
+        if await _restore_event_series(db, data.get("event_series"), None):
+            restored.append("Events")
+
         await db.commit()
 
     # auto_delete_channels rows written above bypass the AutoDelete cog's in-memory
@@ -1581,10 +1680,10 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
 
 
 @web.get("/servers/{guild_id}/backup")
-async def server_backup_export(request: Request, guild_id: int):
+async def server_backup_export(request: Request, guild_id: int, include_secrets: str = ""):
     if r := admin_redirect(request): return r
     by = request.session.get("username", "admin")
-    data = await _build_guild_backup(guild_id, by)
+    data = await _build_guild_backup(guild_id, by, include_secrets == "1")
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
     guild = bot.get_guild(guild_id)
     # Sanitized for use in a filename - a guild name can contain characters (/, quotes, emoji)
@@ -1677,6 +1776,13 @@ async def server_backup_restore(request: Request, guild_id: int, backup_file: Up
                 restored_presets = True
             if tbl == "amp_instance_commands" and rows:
                 restored_amp_cmds = True
+
+        # Recurring events keep their own restore: their reminder templates hang off an
+        # autoincrement id that only exists once the series row has been inserted.
+        # gid_str, not the exported guild id: this restore path deliberately re-homes every
+        # row onto the guild in the URL, exactly like the generic loop above does.
+        if await _restore_event_series(db, data.get("event_series"), gid_str):
+            restored.append("Events")
 
         await db.commit()
 

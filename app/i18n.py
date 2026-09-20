@@ -40,6 +40,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # Server Backup
         "server_backup_title":   "🗄️ Server-Backup",
         "server_backup_hint":    "Sichert nur die Konfiguration DIESES Servers (Reaction Roles, Commands, Tickets, Level-Rollen, Auto-Mod-Presets, Geplante Nachrichten, u.v.m.) — keine Dashboard-Benutzer oder Tokens. Eine wiederhergestellte Datei kann auf einen beliebigen Server angewendet werden, nicht nur den, aus dem sie stammt.",
+        "server_backup_secrets_label": "AMP-Zugangsdaten mitsichern",
+        "server_backup_handover_hint": "Die Datei hängt an keinem Bot-Token und an keinem Benutzerkonto — sie lässt sich auch in einer fremden Phobos-Installation auf einen beliebigen Server einspielen. Genau dafür ist sie gedacht, wenn du einen deiner Server an jemand anderen übergibst. Die AMP-Zugangsdaten (Panel-Benutzer und -Passwort) bleiben dabei standardmäßig leer; setz den Haken nur, wenn du den Server zwischen deinen EIGENEN Installationen umziehst.",
         "server_backup_download": "💾 Herunterladen",
         "server_backup_file_label": "Backup-Datei (.json)",
         "server_backup_restore_btn": "📂 Wiederherstellen",
@@ -910,6 +912,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # Server Backup
         "server_backup_title":   "🗄️ Server Backup",
         "server_backup_hint":    "Backs up only THIS server's own configuration (reaction roles, commands, tickets, level roles, Auto-Mod presets, scheduled messages, and more) — no dashboard users or tokens. A restored file can be applied to any server, not just the one it came from.",
+        "server_backup_secrets_label": "Include AMP credentials",
+        "server_backup_handover_hint": "The file is tied to no bot token and no user account — it can be restored onto any server, even in someone else's Phobos installation. That is exactly what it is for when you hand one of your servers over to somebody else. The AMP credentials (panel username and password) are left empty by default; only tick the box when moving a server between your OWN installations.",
         "server_backup_download": "💾 Download",
         "server_backup_file_label": "Backup file (.json)",
         "server_backup_restore_btn": "📂 Restore",
