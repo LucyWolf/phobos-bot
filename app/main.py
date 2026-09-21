@@ -4089,9 +4089,21 @@ async def tempvoice_add(request: Request, guild_id: str):
         return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&error=Ungültiger+Kanal", status_code=302)
     if category and category not in {str(c.id) for c in guild.categories}:
         return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&error=Ungültige+Kategorie", status_code=302)
+    # INSERT OR REPLACE used to quietly overwrite an existing trigger: entering a channel that
+    # already had a configuration threw away its settings - a hand-written panel text included -
+    # and still answered "Gespeichert". The edit route has always refused the same collision
+    # with a clear message; this one now does too, and points at the entry that already exists.
+    existing = await db_one(
+        "SELECT id FROM temp_voice_config WHERE guild_id=? AND trigger_channel_id=?",
+        (guild_id, trigger),
+    )
+    if existing:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tempvoice&error=Für+diesen+Kanal+existiert+schon+ein+Trigger+"
+            f"—+bearbeite+ihn+über+das+Zahnrad", status_code=302)
     panel_enabled, panel_title, panel_text = _tempvoice_panel_fields(form)
     await db_exec(
-        "INSERT OR REPLACE INTO temp_voice_config (guild_id, trigger_channel_id, category_id, "
+        "INSERT INTO temp_voice_config (guild_id, trigger_channel_id, category_id, "
         "name_template, user_limit, panel_enabled, panel_title, panel_text) VALUES (?,?,?,?,?,?,?,?)",
         (guild_id, trigger, category, name_tpl, user_limit, panel_enabled, panel_title, panel_text),
     )

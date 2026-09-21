@@ -45,11 +45,28 @@ def _apply_template(tpl: str, member: discord.Member, channel_number: int) -> st
     )
 
 
-def _panel_text(raw: str, default: str, member, channel) -> str:
+# Discord's hard limits for the two embed fields the panel uses.
+MAX_EMBED_TITLE = 256
+MAX_EMBED_DESCRIPTION = 4096
+
+
+def _panel_text(raw: str, default: str, member, channel, *, as_title: bool = False) -> str:
+    """Render the panel heading or body from the server's template.
+
+    Clamped AFTER substitution, not before: the dashboard already caps the stored text at 4000
+    characters, but "{user}" is five characters and the mention it becomes is twenty-odd - a
+    text near that cap with a handful of placeholders comes out over Discord's 4096 limit, and
+    the whole embed is then rejected. The panel simply never appeared, with nothing but a line
+    in the bot log to say why.
+
+    A heading gets the plain display name rather than a mention: embed titles do not resolve
+    mentions, so "{user}" there would show the raw "<@123456>" to everyone.
+    """
     text = raw if (raw or "").strip() else default
-    return (text.replace("{user}", member.mention)
-                .replace("{channel}", channel.mention)
+    text = (text.replace("{user}", member.display_name if as_title else member.mention)
+                .replace("{channel}", channel.name if as_title else channel.mention)
                 .replace("{server}", member.guild.name))
+    return text[:MAX_EMBED_TITLE] if as_title else text[:MAX_EMBED_DESCRIPTION]
 
 
 async def _owner_id(channel_id: int):
@@ -78,9 +95,19 @@ class TempVoicePanelView(ui.View):
         """
         channel = interaction.channel
         if not isinstance(channel, discord.VoiceChannel):
-            await interaction.response.send_message(
-                "❌ Dieses Panel gehört zu keinem Sprachkanal mehr.", ephemeral=True)
-            return None
+            # Not necessarily "this is no voice channel" - it can just as well be "I do not
+            # know this channel yet". discord.py 2.3.2 builds Interaction.channel by resolving
+            # the id against the guild cache and leaves it None when that misses, falling back
+            # to an object assembled from the interaction payload's own partial channel data
+            # (checked in its source, not assumed). Taken at face value, a cold cache made
+            # every button on every panel answer with the error below, and the whole feature
+            # looked dead. Resolving through the guild ourselves gives the real object.
+            resolved = interaction.guild.get_channel(interaction.channel_id) if interaction.guild else None
+            if not isinstance(resolved, discord.VoiceChannel):
+                await interaction.response.send_message(
+                    "❌ Dieses Panel gehört zu keinem Sprachkanal mehr.", ephemeral=True)
+                return None
+            channel = resolved
         owner = await _owner_id(channel.id)
         if owner is None:
             await interaction.response.send_message(
@@ -92,8 +119,16 @@ class TempVoicePanelView(ui.View):
                 await interaction.response.send_message(
                     f"❌ Nur <@{owner}> kann diesen Kanal steuern.", ephemeral=True)
                 return None
-            # The owner has left but the channel still has people in it - anyone left inside
-            # may take it over, otherwise the channel is stuck uncontrollable until it empties.
+            # The owner has left but the channel still has people in it - whoever is left
+            # inside may take it over, otherwise the channel is stuck uncontrollable until it
+            # empties. Being CONNECTED is the condition, not merely being able to read the
+            # panel: a voice channel's text chat is readable by anyone who can see the channel,
+            # so without this check a passer-by could claim a room they are not even in and
+            # then lock the people inside out of their own conversation.
+            if interaction.user.id not in member_ids:
+                await interaction.response.send_message(
+                    "❌ Du musst im Kanal sein, um ihn zu übernehmen.", ephemeral=True)
+                return None
             await db_exec("UPDATE temp_voice_active SET owner_id=? WHERE channel_id=?",
                           (str(interaction.user.id), str(channel.id)))
         return channel
@@ -120,8 +155,19 @@ class TempVoicePanelView(ui.View):
         # None (inherited) counts as allowed, so the toggle has to treat it as "currently open".
         locked_now = overwrite.connect is False
         overwrite.connect = None if locked_now else False
-        await _edit(interaction, channel.set_permissions(everyone, overwrite=overwrite, reason="Temp Voice Panel"),
-                    "🔓 Kanal ist wieder offen." if locked_now else "🔒 Kanal gesperrt — nur zugelassene Leute kommen rein.")
+        # The owner needs an explicit allow, otherwise the @everyone deny locks THEM out of
+        # their own channel: step outside for a moment while somebody else keeps the channel
+        # alive, and there is no way back in - from the one person holding the unlock button.
+        mine = channel.overwrites_for(interaction.user)
+        mine.connect = None if locked_now else True
+
+        async def run():
+            await channel.set_permissions(everyone, overwrite=overwrite, reason="Temp Voice Panel")
+            await channel.set_permissions(interaction.user, overwrite=mine, reason="Temp Voice Panel")
+
+        await _edit(interaction, run,
+                    "🔓 Kanal ist wieder offen." if locked_now else "🔒 Kanal gesperrt — nur zugelassene Leute kommen rein.",
+                    needs="Rollen verwalten")
 
     @ui.button(label="Verstecken", emoji="👁️", style=discord.ButtonStyle.secondary, custom_id="tv:hide", row=0)
     async def hide(self, interaction: discord.Interaction, button: ui.Button):
@@ -132,8 +178,17 @@ class TempVoicePanelView(ui.View):
         overwrite = channel.overwrites_for(everyone)
         hidden_now = overwrite.view_channel is False
         overwrite.view_channel = None if hidden_now else False
-        await _edit(interaction, channel.set_permissions(everyone, overwrite=overwrite, reason="Temp Voice Panel"),
-                    "👁️ Kanal ist wieder sichtbar." if hidden_now else "🙈 Kanal versteckt.")
+        # Same reasoning as the lock button: without this the owner hides the channel from
+        # themselves too and loses the panel along with it.
+        mine = channel.overwrites_for(interaction.user)
+        mine.view_channel = None if hidden_now else True
+
+        async def run():
+            await channel.set_permissions(everyone, overwrite=overwrite, reason="Temp Voice Panel")
+            await channel.set_permissions(interaction.user, overwrite=mine, reason="Temp Voice Panel")
+
+        await _edit(interaction, run, "👁️ Kanal ist wieder sichtbar." if hidden_now else "🙈 Kanal versteckt.",
+                    needs="Rollen verwalten")
 
     @ui.button(label="Zulassen", emoji="➕", style=discord.ButtonStyle.success, custom_id="tv:permit", row=1)
     async def permit(self, interaction: discord.Interaction, button: ui.Button):
@@ -150,18 +205,28 @@ class TempVoicePanelView(ui.View):
                 "Wen möchtest du rauswerfen?", view=MemberPickView(channel, "kick"), ephemeral=True)
 
 
-async def _edit(interaction: discord.Interaction, coro, ok_text: str) -> None:
-    """Run a channel edit and answer the interaction, whatever happens.
+async def _edit(interaction: discord.Interaction, action, ok_text: str,
+                needs: str = "Kanäle verwalten") -> None:
+    """Run a channel change and answer the interaction, whatever happens.
+
+    `action` is an async callable, not a ready-made coroutine: some buttons need TWO API calls
+    (see lock/hide, which also have to keep the owner's own access intact), and pre-creating
+    both would leave the second one un-awaited - and warned about - whenever the first raises.
 
     Every button below would otherwise be able to leave the interaction unanswered - which
     Discord shows the member as a bare "This interaction failed", indistinguishable from the
     bot being down.
     """
     try:
-        await coro
+        await action()
     except discord.Forbidden:
+        # The needed permission differs per button and is passed in: renaming and the limit
+        # want "Manage Channels", lock/hide/permit go through set_permissions and want
+        # "Manage Roles", and kicking wants "Move Members". One generic message naming only
+        # the first of those sent admins looking in the wrong place for two thirds of the
+        # panel - verified against discord.py 2.3.2's own documented requirements.
         await interaction.response.send_message(
-            "❌ Dem Bot fehlt die Berechtigung dafür (Kanäle verwalten).", ephemeral=True)
+            f"❌ Dem Bot fehlt hier die Berechtigung „{needs}“.", ephemeral=True)
         return
     except (discord.HTTPException, OSError) as e:
         await interaction.response.send_message(f"❌ Hat nicht geklappt: {e}", ephemeral=True)
@@ -187,10 +252,16 @@ class RenameModal(ui.Modal, title="Kanal umbenennen"):
         if not new_name:
             await interaction.response.send_message("❌ Der Name darf nicht leer sein.", ephemeral=True)
             return
-        if cog is not None:
-            cog.note_rename(self.channel.id)
-        await _edit(interaction, self.channel.edit(name=new_name, reason="Temp Voice Panel"),
-                    f"✏️ Kanal heißt jetzt **{new_name}**.")
+        async def run():
+            await self.channel.edit(name=new_name, reason="Temp Voice Panel")
+            # Counted only once Discord has actually accepted it. Counting beforehand meant a
+            # rename that failed for an unrelated reason (missing permission, network hiccup)
+            # still burned one of the two slots per 10 minutes, so the next honest attempt was
+            # refused by our own guard for a rename that never happened.
+            if cog is not None:
+                cog.note_rename(self.channel.id)
+
+        await _edit(interaction, run, f"✏️ Kanal heißt jetzt **{new_name}**.")
 
 
 class LimitModal(ui.Modal, title="Teilnehmer-Limit"):
@@ -209,7 +280,7 @@ class LimitModal(ui.Modal, title="Teilnehmer-Limit"):
         if not 0 <= value <= 99:
             await interaction.response.send_message("❌ Bitte eine Zahl von 0 bis 99.", ephemeral=True)
             return
-        await _edit(interaction, self.channel.edit(user_limit=value, reason="Temp Voice Panel"),
+        await _edit(interaction, lambda: self.channel.edit(user_limit=value, reason="Temp Voice Panel"),
                     "👥 Limit aufgehoben." if value == 0 else f"👥 Limit steht jetzt bei **{value}**.")
 
 
@@ -233,18 +304,34 @@ class MemberPick(ui.UserSelect):
         self.mode = mode
 
     async def callback(self, interaction: discord.Interaction):
-        target = self.values[0]
-        member = self.channel.guild.get_member(target.id)
-        if member is None:
-            await interaction.response.send_message("❌ Person nicht gefunden.", ephemeral=True)
+        # Re-checked here, not just when the button was pressed: the ephemeral picker stays
+        # usable for two minutes, and ownership can change in between (the owner leaves, some-
+        # body still inside claims the channel). Without this, the previous owner could still
+        # kick people out of a room that is no longer theirs, from a dropdown left open.
+        owner = await _owner_id(self.channel.id)
+        if owner is not None and interaction.user.id != owner:
+            await interaction.response.send_message(
+                f"❌ Der Kanal gehört inzwischen <@{owner}>.", ephemeral=True)
             return
+        target = self.values[0]
+        # UserSelect hands back a Member for a guild interaction - use it directly. Going
+        # through guild.get_member() instead made the whole thing depend on the member cache,
+        # so on a large or freshly started guild the bot answered "Person nicht gefunden" for
+        # somebody it had just listed in its own picker.
+        member = target if isinstance(target, discord.Member) else self.channel.guild.get_member(target.id)
+        if member is None:
+            try:
+                member = await self.channel.guild.fetch_member(target.id)
+            except (discord.HTTPException, OSError):
+                await interaction.response.send_message("❌ Person nicht gefunden.", ephemeral=True)
+                return
         if self.mode == "permit":
             overwrite = self.channel.overwrites_for(member)
             overwrite.connect = True
             overwrite.view_channel = True
             await _edit(interaction,
-                        self.channel.set_permissions(member, overwrite=overwrite, reason="Temp Voice Panel"),
-                        f"➕ {member.display_name} darf jetzt rein.")
+                        lambda: self.channel.set_permissions(member, overwrite=overwrite, reason="Temp Voice Panel"),
+                        f"➕ {member.display_name} darf jetzt rein.", needs="Rollen verwalten")
             return
         if member.id == interaction.user.id:
             await interaction.response.send_message("❌ Dich selbst rauszuwerfen ergibt wenig Sinn.", ephemeral=True)
@@ -257,8 +344,8 @@ class MemberPick(ui.UserSelect):
         # back in unless the owner locks the channel, which is deliberate: a permanent ban from
         # a channel that disappears in five minutes would be a strange thing to hand out by
         # accident.
-        await _edit(interaction, member.move_to(None, reason="Temp Voice Panel"),
-                    f"👢 {member.display_name} wurde aus dem Kanal entfernt.")
+        await _edit(interaction, lambda: member.move_to(None, reason="Temp Voice Panel"),
+                    f"👢 {member.display_name} wurde aus dem Kanal entfernt.", needs="Mitglieder verschieben")
 
 
 class TempVoice(commands.Cog):
@@ -285,8 +372,17 @@ class TempVoice(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        rows = await db_rows("SELECT channel_id FROM temp_voice_active")
-        self._temp = {r["channel_id"] for r in rows}
+        rows = await db_rows("SELECT channel_id, guild_id FROM temp_voice_active")
+        # Only the rows belonging to guilds THIS bot instance actually serves. The project runs
+        # several bot tokens side by side, each loading this cog against the SAME database -
+        # and the cleanup below deletes every row whose channel it cannot see. Unfiltered, the
+        # first instance to become ready wiped every other token's tracked temp channels out
+        # of the table, purely because those channels live on servers it was never in. Those
+        # channels then existed in Discord with nothing tracking them, so nothing ever deleted
+        # them when they emptied - exactly the leak the tracking exists to prevent.
+        mine = {str(g.id) for g in self.bot.guilds}
+        own_rows = [r for r in rows if str(r["guild_id"]) in mine]
+        self._temp = {r["channel_id"] for r in own_rows}
         # Clean up channels that no longer exist after a restart
         for cid in list(self._temp):
             if not self.bot.get_channel(int(cid)):
@@ -346,7 +442,13 @@ class TempVoice(commands.Cog):
                     )
                     self._temp.add(str(ch.id))
                     await member.move_to(ch)
-                    if cfg["panel_enabled"]:
+                    # .get(), not [...]: this line sits OUTSIDE the inner try below, so a
+                    # missing key here does not land in the harmless panel-failed handler - it
+                    # falls through to the outer except, which deletes the channel the member
+                    # was just moved into. A database that never got the panel columns (a
+                    # half-applied migration, a restore into an older schema) would take the
+                    # whole feature down that way, not just the panel.
+                    if cfg.get("panel_enabled"):
                         # Deliberately after move_to and in its own try/except: a panel that
                         # fails to post (the bot may speak in voice-channel chat only if it has
                         # "Send Messages" there) must not undo a channel the member is already
@@ -354,7 +456,8 @@ class TempVoice(commands.Cog):
                         # under them.
                         try:
                             embed = discord.Embed(
-                                title=(cfg["panel_title"] or "").strip() or DEFAULT_TEMPVOICE_PANEL_TITLE,
+                                title=_panel_text(cfg["panel_title"], DEFAULT_TEMPVOICE_PANEL_TITLE,
+                                                  member, ch, as_title=True),
                                 description=_panel_text(cfg["panel_text"], DEFAULT_TEMPVOICE_PANEL_TEXT,
                                                         member, ch),
                                 color=0xff73fa,
