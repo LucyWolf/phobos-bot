@@ -2218,7 +2218,14 @@ document.addEventListener('click', function(e) {
         </form>
       </td>
     </tr>
-    <tr id="tempvoice-edit-{{ tv.id }}" style="display:none;" class="panel-edit-row">
+    {# background overrides .panel-edit-row's var(--bg) on purpose: that near-black sits two
+       steps darker than the card around it, and with the panel fields the block grew tall
+       enough to read as a separate window instead of part of the tab. var(--surface) is what
+       the "add trigger" form below already sits on, so both forms now look identical - only
+       the input fields keep var(--bg), which is exactly the contrast every other card uses.
+       Scoped to this one row rather than changing .panel-edit-row, which nine other tabs
+       share. The toggle only ever touches style.display, so this survives opening/closing. #}
+    <tr id="tempvoice-edit-{{ tv.id }}" style="display:none;background:var(--surface);" class="panel-edit-row">
       <td colspan="5" style="padding:1rem 1.25rem;">
         <form method="post" action="/servers/{{ guild.id }}/tempvoice/edit/{{ tv.id }}">
           <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
