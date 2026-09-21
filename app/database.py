@@ -914,6 +914,13 @@ async def init_db():
             "ALTER TABLE temp_voice_config ADD COLUMN panel_enabled INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE temp_voice_config ADD COLUMN panel_title TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE temp_voice_config ADD COLUMN panel_text TEXT NOT NULL DEFAULT ''",
+            # User-requested ("die buttons die will ich auch umbenenen koennen fuer freie
+            # auswahl und sprachen") - the six button captions as a JSON object keyed by
+            # button, so a server can run the panel in its own wording or language. One column
+            # rather than six: the set of buttons is the kind of thing that grows, and a new
+            # one then needs no migration. An absent or unusable key falls back to the German
+            # default, so a half-filled object is fine.
+            "ALTER TABLE temp_voice_config ADD COLUMN panel_labels TEXT NOT NULL DEFAULT ''",
             """CREATE TABLE IF NOT EXISTS auto_thread_channels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL,
@@ -985,6 +992,49 @@ DEFAULT_TEMPVOICE_PANEL_TEXT = (
     "ihn sperren oder verstecken und einzelne Leute zulassen oder rauswerfen.\n\n"
     "Sobald der Kanal leer ist, verschwindet er von selbst."
 )
+
+# The panel's six buttons, in the order they appear, with their default captions. The keys are
+# the stable part - they are what parse_panel_labels() and the dashboard form agree on, and
+# what the cog matches against each button's custom_id ("tv:<key>").
+DEFAULT_TEMPVOICE_LABELS = {
+    "rename": "Umbenennen",
+    "limit": "Limit",
+    "lock": "Sperren",
+    "hide": "Verstecken",
+    "permit": "Zulassen",
+    "kick": "Rauswerfen",
+}
+
+# Discord's hard limit for a button caption.
+MAX_BUTTON_LABEL = 80
+
+
+def parse_panel_labels(raw: str) -> dict:
+    """The six button captions, always complete.
+
+    Every key missing from the stored object - or holding something that is not a string -
+    falls back to its German default, so a partially filled form, an older row without the
+    column, and a corrupted backup all still produce a usable panel instead of a button with
+    no caption at all.
+
+    An empty string is honoured rather than replaced: every button also carries an emoji, so ""
+    is a valid icon-only caption. The dashboard form cannot produce one (it strips whitespace
+    and treats the result as "unset"), so this only ever comes from a hand-edited row or a
+    restored backup - worth keeping working, not worth advertising.
+    """
+    labels = dict(DEFAULT_TEMPVOICE_LABELS)
+    try:
+        stored = json.loads(raw or "{}")
+    except ValueError:
+        return labels
+    if not isinstance(stored, dict):
+        return labels
+    for key in DEFAULT_TEMPVOICE_LABELS:
+        value = stored.get(key)
+        if isinstance(value, str):
+            labels[key] = value[:MAX_BUTTON_LABEL]
+    return labels
+
 
 DEFAULT_BIRTHDAY_REPLY_ERROR = (
     "❌ Format: `{command} TT.MM` (z.B. `{command} 15.06`) · Löschen: `{command} {delete}`"

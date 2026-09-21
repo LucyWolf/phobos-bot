@@ -2271,6 +2271,34 @@ document.addEventListener('click', function(e) {
                         onblur="this.style.borderColor='var(--border)'">{{ tv.panel_text }}</textarea>
               <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.tempvoice_panel_placeholders }}</div>
             </div>
+            <div style="grid-column:1 / -1;">
+              <label style="font-size:0.82rem;">{{ tr.tempvoice_panel_labels_label }}</label>
+              <div style="font-size:0.72rem;color:var(--muted);">{{ tr.tempvoice_panel_labels_hint }}</div>
+            </div>
+            <div>
+              <label style="font-size:0.78rem;">{{ tr.tempvoice_label_btn_rename }}</label>
+              <input type="text" name="label_rename" value="{{ tv.labels.rename }}" maxlength="80" placeholder="{{ tempvoice_panel_defaults.labels.rename }}" style="margin-bottom:0;">
+            </div>
+            <div>
+              <label style="font-size:0.78rem;">{{ tr.tempvoice_label_btn_limit }}</label>
+              <input type="text" name="label_limit" value="{{ tv.labels.limit }}" maxlength="80" placeholder="{{ tempvoice_panel_defaults.labels.limit }}" style="margin-bottom:0;">
+            </div>
+            <div>
+              <label style="font-size:0.78rem;">{{ tr.tempvoice_label_btn_lock }}</label>
+              <input type="text" name="label_lock" value="{{ tv.labels.lock }}" maxlength="80" placeholder="{{ tempvoice_panel_defaults.labels.lock }}" style="margin-bottom:0;">
+            </div>
+            <div>
+              <label style="font-size:0.78rem;">{{ tr.tempvoice_label_btn_hide }}</label>
+              <input type="text" name="label_hide" value="{{ tv.labels.hide }}" maxlength="80" placeholder="{{ tempvoice_panel_defaults.labels.hide }}" style="margin-bottom:0;">
+            </div>
+            <div>
+              <label style="font-size:0.78rem;">{{ tr.tempvoice_label_btn_permit }}</label>
+              <input type="text" name="label_permit" value="{{ tv.labels.permit }}" maxlength="80" placeholder="{{ tempvoice_panel_defaults.labels.permit }}" style="margin-bottom:0;">
+            </div>
+            <div>
+              <label style="font-size:0.78rem;">{{ tr.tempvoice_label_btn_kick }}</label>
+              <input type="text" name="label_kick" value="{{ tv.labels.kick }}" maxlength="80" placeholder="{{ tempvoice_panel_defaults.labels.kick }}" style="margin-bottom:0;">
+            </div>
           </div>
           <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
         </form>
@@ -2327,6 +2355,34 @@ document.addEventListener('click', function(e) {
                   onfocus="this.style.borderColor='var(--accent)'"
                   onblur="this.style.borderColor='var(--border)'"></textarea>
         <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.tempvoice_panel_placeholders }}</div>
+      </div>
+      <div style="grid-column:1 / -1;">
+        <label style="font-size:0.82rem;">{{ tr.tempvoice_panel_labels_label }}</label>
+        <div style="font-size:0.72rem;color:var(--muted);">{{ tr.tempvoice_panel_labels_hint }}</div>
+      </div>
+      <div>
+        <label style="font-size:0.78rem;">{{ tr.tempvoice_label_btn_rename }}</label>
+        <input type="text" name="label_rename" value="" maxlength="80" placeholder="{{ tempvoice_panel_defaults.labels.rename }}" style="margin-bottom:0;">
+      </div>
+      <div>
+        <label style="font-size:0.78rem;">{{ tr.tempvoice_label_btn_limit }}</label>
+        <input type="text" name="label_limit" value="" maxlength="80" placeholder="{{ tempvoice_panel_defaults.labels.limit }}" style="margin-bottom:0;">
+      </div>
+      <div>
+        <label style="font-size:0.78rem;">{{ tr.tempvoice_label_btn_lock }}</label>
+        <input type="text" name="label_lock" value="" maxlength="80" placeholder="{{ tempvoice_panel_defaults.labels.lock }}" style="margin-bottom:0;">
+      </div>
+      <div>
+        <label style="font-size:0.78rem;">{{ tr.tempvoice_label_btn_hide }}</label>
+        <input type="text" name="label_hide" value="" maxlength="80" placeholder="{{ tempvoice_panel_defaults.labels.hide }}" style="margin-bottom:0;">
+      </div>
+      <div>
+        <label style="font-size:0.78rem;">{{ tr.tempvoice_label_btn_permit }}</label>
+        <input type="text" name="label_permit" value="" maxlength="80" placeholder="{{ tempvoice_panel_defaults.labels.permit }}" style="margin-bottom:0;">
+      </div>
+      <div>
+        <label style="font-size:0.78rem;">{{ tr.tempvoice_label_btn_kick }}</label>
+        <input type="text" name="label_kick" value="" maxlength="80" placeholder="{{ tempvoice_panel_defaults.labels.kick }}" style="margin-bottom:0;">
       </div>
     </div>
     <button type="submit" class="btn btn-primary">{{ tr.tempvoice_btn_add_trigger }}</button>

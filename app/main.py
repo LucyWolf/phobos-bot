@@ -136,7 +136,7 @@ from database import (
     DEFAULT_BIRTHDAY_TRIGGERS, DEFAULT_BIRTHDAY_DELETE_WORDS,
     DEFAULT_BIRTHDAY_REPLY_SAVED, DEFAULT_BIRTHDAY_REPLY_DELETED,
     DEFAULT_BIRTHDAY_REPLY_ERROR, DEFAULT_TEMPVOICE_PANEL_TITLE,
-    DEFAULT_TEMPVOICE_PANEL_TEXT,
+    DEFAULT_TEMPVOICE_PANEL_TEXT, DEFAULT_TEMPVOICE_LABELS, parse_panel_labels,
 )
 import totp
 
@@ -1183,7 +1183,7 @@ _BACKUP_TBL_INSERT = {
         "archive_minutes=excluded.archive_minutes, skip_bots=excluded.skip_bots, "
         "require_attachment=excluded.require_attachment, starter_message=excluded.starter_message",
     "temp_voice_config":
-        "INSERT INTO temp_voice_config (guild_id,trigger_channel_id,category_id,name_template,user_limit,panel_enabled,panel_title,panel_text) VALUES (:guild_id,:trigger_channel_id,:category_id,:name_template,:user_limit,:panel_enabled,:panel_title,:panel_text) ON CONFLICT(guild_id,trigger_channel_id) DO UPDATE SET category_id=excluded.category_id,name_template=excluded.name_template,user_limit=excluded.user_limit,panel_enabled=excluded.panel_enabled,panel_title=excluded.panel_title,panel_text=excluded.panel_text",
+        "INSERT INTO temp_voice_config (guild_id,trigger_channel_id,category_id,name_template,user_limit,panel_enabled,panel_title,panel_text,panel_labels) VALUES (:guild_id,:trigger_channel_id,:category_id,:name_template,:user_limit,:panel_enabled,:panel_title,:panel_text,:panel_labels) ON CONFLICT(guild_id,trigger_channel_id) DO UPDATE SET category_id=excluded.category_id,name_template=excluded.name_template,user_limit=excluded.user_limit,panel_enabled=excluded.panel_enabled,panel_title=excluded.panel_title,panel_text=excluded.panel_text,panel_labels=excluded.panel_labels",
     "scheduled_messages":
         "INSERT OR IGNORE INTO scheduled_messages (guild_id,channel_id,message,send_at,sent) VALUES (:guild_id,:channel_id,:message,:send_at,:sent)",
     "notifications":
@@ -1594,7 +1594,8 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
                         # Same trap for both columns a pre-existing backup cannot know about.
                         row = {"action_role_meta": "", "actions": "", **row}
                     if tbl == "temp_voice_config":
-                        row = {"panel_enabled": 0, "panel_title": "", "panel_text": "", **row}
+                        row = {"panel_enabled": 0, "panel_title": "", "panel_text": "",
+                               "panel_labels": "", **row}
                     await db.execute(sql, row)
                 except Exception:
                     pass
@@ -1770,7 +1771,8 @@ async def server_backup_restore(request: Request, guild_id: int, backup_file: Up
                         # Same fallback as the full-backup path for older backups.
                         merged = {"action_role_meta": "", "actions": "", **merged}
                     if tbl == "temp_voice_config":
-                        merged = {"panel_enabled": 0, "panel_title": "", "panel_text": "", **merged}
+                        merged = {"panel_enabled": 0, "panel_title": "", "panel_text": "",
+                                  "panel_labels": "", **merged}
                         # Self-references have to be rehomed BEFORE guild_id is lost - see
                         # _rehome_role_rule(); `row` still carries the exported guild id.
                         merged = _rehome_role_rule({**merged, "guild_id": row.get("guild_id")}, gid_str)
@@ -4062,11 +4064,20 @@ async def events_series_pause(request: Request, guild_id: int, series_id: int):
 # ── Temp Voice ────────────────────────────────────────────────────────────────
 
 def _tempvoice_panel_fields(form) -> tuple:
-    """The three panel fields, shared by tempvoice/add and .../edit so the two can't drift."""
+    """The panel fields, shared by tempvoice/add and .../edit so the two can't drift."""
+    # One JSON object rather than six columns - see database.py's migration note. A caption
+    # left exactly as the default is not stored at all, so a later change to the German
+    # wording still reaches every server that never touched its own.
+    labels = {}
+    for key, default in DEFAULT_TEMPVOICE_LABELS.items():
+        value = (form.get(f"label_{key}") or "").strip()[:80]
+        if value and value != default:
+            labels[key] = value
     return (
         1 if form.get("panel_enabled") else 0,
         (form.get("panel_title") or "").strip()[:256],   # Discord's embed title limit
         (form.get("panel_text") or "").strip()[:4000],   # Discord's embed description limit
+        _djson.dumps(labels) if labels else "",
     )
 
 
@@ -4101,11 +4112,13 @@ async def tempvoice_add(request: Request, guild_id: str):
         return RedirectResponse(
             f"/servers/{guild_id}?tab=tempvoice&error=Für+diesen+Kanal+existiert+schon+ein+Trigger+"
             f"—+bearbeite+ihn+über+das+Zahnrad", status_code=302)
-    panel_enabled, panel_title, panel_text = _tempvoice_panel_fields(form)
+    panel_enabled, panel_title, panel_text, panel_labels = _tempvoice_panel_fields(form)
     await db_exec(
         "INSERT INTO temp_voice_config (guild_id, trigger_channel_id, category_id, "
-        "name_template, user_limit, panel_enabled, panel_title, panel_text) VALUES (?,?,?,?,?,?,?,?)",
-        (guild_id, trigger, category, name_tpl, user_limit, panel_enabled, panel_title, panel_text),
+        "name_template, user_limit, panel_enabled, panel_title, panel_text, panel_labels) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (guild_id, trigger, category, name_tpl, user_limit, panel_enabled, panel_title,
+         panel_text, panel_labels),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&success=Gespeichert", status_code=302)
 
@@ -4129,12 +4142,13 @@ async def tempvoice_edit(request: Request, guild_id: str, config_id: int):
     if category and category not in {str(c.id) for c in guild.categories}:
         return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&error=Ungültige+Kategorie", status_code=302)
     try:
-        panel_enabled, panel_title, panel_text = _tempvoice_panel_fields(form)
+        panel_enabled, panel_title, panel_text, panel_labels = _tempvoice_panel_fields(form)
         await db_exec(
             "UPDATE temp_voice_config SET trigger_channel_id=?, category_id=?, name_template=?, "
-            "user_limit=?, panel_enabled=?, panel_title=?, panel_text=? WHERE id=? AND guild_id=?",
+            "user_limit=?, panel_enabled=?, panel_title=?, panel_text=?, panel_labels=? "
+            "WHERE id=? AND guild_id=?",
             (trigger, category, name_tpl, user_limit, panel_enabled, panel_title, panel_text,
-             config_id, guild_id),
+             panel_labels, config_id, guild_id),
         )
     except Exception:
         return RedirectResponse(
@@ -5190,6 +5204,15 @@ async def server_config(
         # straight out of this context.
         ep.pop("image_data", None)
 
+    # Temp Voice
+    _tempvoice_configs = await db_rows(
+        "SELECT * FROM temp_voice_config WHERE guild_id=?", (str(guild_id),)
+    )
+    for _tv in _tempvoice_configs:
+        # The captions that are actually in effect, not the raw JSON: an untouched field has
+        # nothing stored, and the form needs the German default to show in it.
+        _tv["labels"] = parse_panel_labels(_tv.get("panel_labels") or "")
+
     # Role Rules
     role_rules = await db_rows(
         "SELECT * FROM role_rules WHERE guild_id=? ORDER BY priority ASC, id ASC", (str(guild_id),)
@@ -5475,9 +5498,7 @@ async def server_config(
             "SELECT * FROM auto_delete_channels WHERE guild_id=?", (str(guild_id),)
         ),
         "voice_channels": voice_channels,
-        "tempvoice_configs": await db_rows(
-            "SELECT * FROM temp_voice_config WHERE guild_id=?", (str(guild_id),)
-        ),
+        "tempvoice_configs": _tempvoice_configs,
         "amp_cfg": amp_cfg, "amp_status": amp_status, "amp_instances": amp_instances,
         "amp_instances_error": amp_instances_error, "amp_connection_error": amp_connection_error,
         "amp_raw_debug": amp_raw_debug,
@@ -5500,6 +5521,7 @@ async def server_config(
         "tempvoice_panel_defaults": {
             "title": DEFAULT_TEMPVOICE_PANEL_TITLE,
             "text": DEFAULT_TEMPVOICE_PANEL_TEXT,
+            "labels": DEFAULT_TEMPVOICE_LABELS,
         },
         "birthday_reply_defaults": {
             "saved": DEFAULT_BIRTHDAY_REPLY_SAVED,

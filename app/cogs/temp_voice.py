@@ -12,7 +12,7 @@ import discord
 from discord import ui
 from discord.ext import commands
 from database import (db_rows, db_exec, db_one, DEFAULT_TEMPVOICE_PANEL_TITLE,
-                      DEFAULT_TEMPVOICE_PANEL_TEXT)
+                      DEFAULT_TEMPVOICE_PANEL_TEXT, parse_panel_labels)
 
 # Discord allows a channel to be renamed only TWICE per 10 minutes, and discord.py answers a
 # breach by sleeping until the bucket frees up - which would leave the owner staring at a
@@ -83,8 +83,17 @@ class TempVoicePanelView(ui.View):
     and keeps working after a restart (registered once in cog_load).
     """
 
-    def __init__(self):
+    def __init__(self, labels: dict | None = None):
         super().__init__(timeout=None)
+        # Only the POSTED message carries a server's own captions; the copy registered once in
+        # cog_load keeps the defaults. That is enough, because discord.py routes a component
+        # interaction by its custom_id and never looks at the caption - the same reason
+        # cogs/tickets.py can register one close-button view for every ticket panel there is.
+        if labels:
+            for child in self.children:
+                key = (getattr(child, "custom_id", "") or "").removeprefix("tv:")
+                if key in labels:
+                    child.label = labels[key]
 
     @staticmethod
     async def _guard(interaction: discord.Interaction):
@@ -462,7 +471,8 @@ class TempVoice(commands.Cog):
                                                         member, ch),
                                 color=0xff73fa,
                             )
-                            await ch.send(embed=embed, view=TempVoicePanelView())
+                            await ch.send(embed=embed, view=TempVoicePanelView(
+                                parse_panel_labels(cfg.get("panel_labels") or "")))
                         except Exception as e:
                             print(f"[TempVoice] panel could not be posted in channel {ch.id}: {e}")
                 except Exception:
