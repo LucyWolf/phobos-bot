@@ -13,6 +13,10 @@ class Logging(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    async def _disabled_categories(self, guild_id: int) -> set:
+        raw = await get_guild_config(guild_id, "log_events_disabled") or ""
+        return {c.strip() for c in raw.split(",") if c.strip()}
+
     async def _is_excluded(self, guild_id: int, channel_id: int) -> bool:
         raw = await get_guild_config(guild_id, "log_exclude_channels") or ""
         if not raw:
@@ -29,6 +33,15 @@ class Logging(commands.Cog):
         return False
 
     async def _log(self, guild_id: int, embed: discord.Embed, plain: str = "", category: str = ""):
+        # Categories this server has switched OFF. Stored as the disabled set, not the enabled
+        # one, so an empty value keeps meaning "everything on" - which is what every existing
+        # install has and what the feature did from the start. Before this check, the nine
+        # native event types had no switch at all: the Log page's only checkbox list for them
+        # is the per-USER display filter, which never touched what gets posted to Discord, so
+        # unticking there left the channel filling up exactly as before ("der pstet auch noch
+        # im chanel auch wen es aus ist").
+        if category and category in await self._disabled_categories(guild_id):
+            return
         embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
         title = embed.title or ""
         icon = title.split()[0] if title else "📋"

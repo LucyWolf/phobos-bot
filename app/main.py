@@ -4795,6 +4795,13 @@ async def server_log_page(request: Request, guild_id: str, success: str = "", er
         "active": f"server_{guild_id}",
         "guild_id": guild_id, "guild_name": guild.name,
         "channels": channels, "log_channel": log_channel,
+        "native_log_categories": NATIVE_LOG_CATEGORIES,
+        "enabled_native_categories": [
+            c for c in NATIVE_LOG_CATEGORIES
+            if c not in {x.strip() for x in
+                         (await get_guild_config(int(guild_id), "log_events_disabled") or "").split(",")
+                         if x.strip()}
+        ],
         "log_exclude_channels": log_exclude_channels,
         "logs": logs, "success": success, "error": error,
         "log_limit": limit, "log_limit_options": LOG_LIMIT_OPTIONS,
@@ -4821,11 +4828,17 @@ async def server_log_save(request: Request, guild_id: str):
         return RedirectResponse(f"/servers/{guild_id}/log?error=Ungültiger+Log-Kanal", status_code=302)
     exclude_channels = ",".join(c for c in form.getlist("log_exclude_channels") if c in valid_channel_ids)
     bot_events = ",".join(c for c in form.getlist("log_bot_events") if c in BOT_EVENT_CATEGORIES)
+    # Stored as what is switched OFF, not what is on: an empty value then still means "all
+    # nine native event types", which is what every server that never opened this setting has.
+    # Storing the enabled set instead would silence the whole log for all of them at once.
+    enabled_native = {c for c in form.getlist("log_events") if c in NATIVE_LOG_CATEGORIES}
+    events_disabled = ",".join(c for c in NATIVE_LOG_CATEGORIES if c not in enabled_native)
 
     from database import set_guild_config
     await set_guild_config(int(guild_id), "log_channel", log_channel)
     await set_guild_config(int(guild_id), "log_exclude_channels", exclude_channels)
     await set_guild_config(int(guild_id), "log_bot_events", bot_events)
+    await set_guild_config(int(guild_id), "log_events_disabled", events_disabled)
     return RedirectResponse(f"/servers/{guild_id}/log?success=1", status_code=302)
 
 

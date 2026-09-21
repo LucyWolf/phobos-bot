@@ -89,6 +89,19 @@
       </div>
     </div>
     <div style="margin-bottom:1rem;">
+      <label style="margin-bottom:0.15rem;">{{ tr.log_events_title }}</label>
+      <div style="color:var(--muted);font-size:0.72rem;margin-bottom:0.5rem;">{{ tr.log_events_hint }}</div>
+      <div class="log-filter-grid">
+        {% for cat in native_log_categories %}
+        <label class="log-filter-item">
+          <input type="checkbox" name="log_events" value="{{ cat }}"
+                 {% if cat in enabled_native_categories %}checked{% endif %}>
+          {{ tr['log_category_' ~ cat] }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <div style="margin-bottom:1rem;">
       <label style="margin-bottom:0.15rem;">{{ tr.log_bot_events_title }}</label>
       <div style="color:var(--muted);font-size:0.72rem;margin-bottom:0.5rem;">{{ tr.log_bot_events_hint }}</div>
       <div class="log-filter-grid">
