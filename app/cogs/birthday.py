@@ -7,7 +7,8 @@ import discord
 from discord.ext import commands, tasks
 from database import (db_rows, db_exec, db_exec_rowcount, get_guild_config,
                       parse_command_triggers, DEFAULT_BIRTHDAY_TRIGGERS,
-                      DEFAULT_BIRTHDAY_DELETE_WORDS)
+                      DEFAULT_BIRTHDAY_DELETE_WORDS, DEFAULT_BIRTHDAY_REPLY_SAVED,
+                      DEFAULT_BIRTHDAY_REPLY_DELETED, DEFAULT_BIRTHDAY_REPLY_ERROR)
 from cogs.log_utils import log_bot_event
 
 try:
@@ -125,12 +126,22 @@ class Birthday(commands.Cog):
         # successfully typed "!birthday" would be worse than saying nothing.
         used = f"!{word}"
 
+        async def answer(key: str, default: str, **extra) -> None:
+            tpl = await get_guild_config(message.guild.id, key)
+            text = (tpl if tpl and tpl.strip() else default)
+            text = (text.replace("{command}", used)
+                        .replace("{delete}", delete_words[0])
+                        .replace("{user}", message.author.mention))
+            for name, value in extra.items():
+                text = text.replace("{" + name + "}", value)
+            await self._reply(message, text)
+
         if datum.lower() in delete_words:
             await db_exec(
                 "DELETE FROM birthdays WHERE user_id=? AND guild_id=?",
                 (str(message.author.id), str(message.guild.id)),
             )
-            await self._reply(message, "✅ Geburtstag gelöscht.")
+            await answer("birthday_reply_deleted", DEFAULT_BIRTHDAY_REPLY_DELETED)
             return
 
         try:
@@ -141,11 +152,7 @@ class Birthday(commands.Cog):
             datetime.date(2000, month, day)  # prüft ob Datum wirklich existiert (z.B. kein 30.02)
             bday = f"{month:02d}-{day:02d}"
         except (ValueError, IndexError):
-            await self._reply(
-                message,
-                f"❌ Format: `{used} TT.MM` (z.B. `{used} 15.06`) · "
-                f"Löschen: `{used} {delete_words[0]}`",
-            )
+            await answer("birthday_reply_error", DEFAULT_BIRTHDAY_REPLY_ERROR)
             return
 
         await db_exec(
@@ -159,7 +166,8 @@ class Birthday(commands.Cog):
             "DELETE FROM birthday_sent WHERE user_id=? AND guild_id=? AND year=?",
             (str(message.author.id), str(message.guild.id), datetime.datetime.now().year),
         )
-        await self._reply(message, f"✅ Geburtstag gespeichert: **{day:02d}.{month:02d}**")
+        await answer("birthday_reply_saved", DEFAULT_BIRTHDAY_REPLY_SAVED,
+                     date=f"{day:02d}.{month:02d}")
 
     @staticmethod
     async def _reply(message: discord.Message, text: str) -> None:

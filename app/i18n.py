@@ -335,6 +335,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # Birthday
         "birthday_hint_pre":  "Mitglieder tragen ihren Geburtstag mit",
         "birthday_hint_post": "ein. Um 8:00 Uhr schickt der Bot automatisch eine Glückwunschnachricht.",
+        "birthday_replies_heading":  "💬 Antworten des Bots",
+        "birthday_replies_hint":     "Was der Bot antwortet, wenn jemand den Befehl benutzt. Leer lassen für den vorgeschlagenen Text (grau im Feld). Platzhalter: {date} = eingetragenes Datum, {user} = erwähnt die Person, {command} = das benutzte Befehlswort samt „!“, {delete} = erstes Löschwort.",
+        "birthday_reply_saved_label":   "Antwort beim Eintragen",
+        "birthday_reply_deleted_label": "Antwort beim Löschen",
+        "birthday_reply_error_label":   "Antwort bei falschem Format",
         "birthday_commands_label":   "Befehlswörter",
         "birthday_commands_placeholder": "geburtstag, birthday, bday",
         "birthday_commands_hint":    "Mit welchen Wörtern der Befehl erreichbar ist — mehrere durch Komma trennen, dann funktionieren sie alle nebeneinander (praktisch auf mehrsprachigen Servern). Das „!“ davor ist immer gesetzt. Leer lassen für „geburtstag“.",
@@ -1220,6 +1225,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # Birthday
         "birthday_hint_pre":  "Members can set their birthday with",
         "birthday_hint_post": "— at 8:00 the bot automatically sends a congratulations message.",
+        "birthday_replies_heading":  "💬 Bot replies",
+        "birthday_replies_hint":     "What the bot answers when someone uses the command. Leave empty for the suggested text (shown greyed out in the field). Placeholders: {date} = the stored date, {user} = mentions the member, {command} = the command word they used including its “!”, {delete} = the first clear word.",
+        "birthday_reply_saved_label":   "Reply when set",
+        "birthday_reply_deleted_label": "Reply when cleared",
+        "birthday_reply_error_label":   "Reply on wrong format",
         "birthday_commands_label":   "Command words",
         "birthday_commands_placeholder": "birthday, geburtstag, bday",
         "birthday_commands_hint":    "Which words reach the command — separate several with commas and they all work side by side (handy on a multilingual server). The leading “!” is always implied. Leave empty for “geburtstag”.",

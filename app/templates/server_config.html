@@ -2778,6 +2778,20 @@ document.addEventListener('click', function(e) {
       <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.birthday_delete_words_hint }}</div>
     </div>
   </div>
+  <div class="feat-header" style="margin-bottom:0.5rem;">{{ tr.birthday_replies_heading }}</div>
+  <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.6rem;">{{ tr.birthday_replies_hint }}</div>
+  <div>
+    <label>{{ tr.birthday_reply_saved_label }}</label>
+    <input type="text" name="birthday_reply_saved" value="{{ cfg.get('birthday_reply_saved', '') }}" placeholder="{{ birthday_reply_defaults.saved }}">
+  </div>
+  <div>
+    <label>{{ tr.birthday_reply_deleted_label }}</label>
+    <input type="text" name="birthday_reply_deleted" value="{{ cfg.get('birthday_reply_deleted', '') }}" placeholder="{{ birthday_reply_defaults.deleted }}">
+  </div>
+  <div>
+    <label>{{ tr.birthday_reply_error_label }}</label>
+    <input type="text" name="birthday_reply_error" value="{{ cfg.get('birthday_reply_error', '') }}" placeholder="{{ birthday_reply_defaults.error }}">
+  </div>
   <div style="background:var(--accent-light);border:1px solid var(--accent);border-radius:0.5rem;padding:0.6rem 0.75rem;font-size:0.76rem;line-height:1.6;margin-bottom:1rem;">
     {{ tr.birthday_active_commands }}
     {% for t in birthday_triggers %}<code>!{{ t }}</code>{% if not loop.last %} · {% endif %}{% endfor %}

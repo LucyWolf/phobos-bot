@@ -955,6 +955,20 @@ MAX_COMMAND_TRIGGERS = 10
 DEFAULT_BIRTHDAY_TRIGGERS = ["geburtstag"]
 DEFAULT_BIRTHDAY_DELETE_WORDS = ["löschen", "entfernen", "delete", "remove"]
 
+# What the bot answers to the birthday command when the server has not written its own texts.
+# Configurable for the same reason the command words are (guild_configs keys
+# birthday_reply_saved / _deleted / _error): a server that runs the command as "!birthday"
+# should not get a German confirmation back. Placeholders are substituted in the cog:
+#   {date}    the stored date as TT.MM  (saved reply only)
+#   {user}    the member, as a mention
+#   {command} the word the member actually typed, with its "!"
+#   {delete}  the server's first configured word for clearing a birthday
+DEFAULT_BIRTHDAY_REPLY_SAVED = "✅ Geburtstag gespeichert: **{date}**"
+DEFAULT_BIRTHDAY_REPLY_DELETED = "✅ Geburtstag gelöscht."
+DEFAULT_BIRTHDAY_REPLY_ERROR = (
+    "❌ Format: `{command} TT.MM` (z.B. `{command} 15.06`) · Löschen: `{command} {delete}`"
+)
+
 
 def parse_command_triggers(raw: str, default: list) -> list:
     """Turn a comma/whitespace separated list of prefix-command words into a clean list.

@@ -284,6 +284,8 @@ Under **Server → Birthdays** you can configure a birthday channel and a custom
 
 **The command words are yours to choose.** By default members register with `!geburtstag DD.MM`, but the *Command words* field takes a comma-separated list, and all of them work side by side — so `birthday, geburtstag, cumpleaños` lets everyone on a mixed-language server use the word they expect. The words that clear a stored birthday again (`löschen, entfernen, delete, remove` by default) are configurable the same way. The tab shows which words are currently in effect, and an error message always quotes back the word the member actually typed.
 
+**The bot's replies are yours too.** The three answers to the command — set, cleared, wrong format — are free text fields with placeholders: `{date}` for the stored date, `{user}` to mention the member, `{command}` for the word they actually typed, and `{delete}` for the first clear word. Left empty, each falls back to the suggested German text shown greyed out in the field. (The daily congratulation message has always been configurable and is separate from these.)
+
 A birthday command word can't be the same as one of this server's Custom Commands — both handlers would answer the same message — so that combination is rejected on save.
 
 ---
@@ -884,6 +886,8 @@ Unter **Server → 📨 Embed-Nachrichten**: komplett frei gestaltete, mehrteili
 Unter **Server → Geburtstage** können ein Geburtstags-Kanal und ein eigener Glückwunsch-Text konfiguriert werden. Jeden Tag um 8 Uhr morgens gratuliert der Bot automatisch — jede Person nur einmal pro Jahr.
 
 **Die Befehlswörter bestimmst du selbst.** Standardmäßig trägt man seinen Geburtstag mit `!geburtstag TT.MM` ein, aber das Feld *Befehlswörter* nimmt eine kommagetrennte Liste, und alle funktionieren nebeneinander — mit `geburtstag, birthday, cumpleaños` benutzt auf einem mehrsprachigen Server jede Person das Wort, das sie erwartet. Die Wörter zum Löschen (standardmäßig `löschen, entfernen, delete, remove`) sind genauso einstellbar. Der Tab zeigt an, welche Wörter gerade wirken, und eine Fehlermeldung nennt immer das Wort, das die Person tatsächlich getippt hat.
+
+**Die Antworten des Bots ebenfalls.** Die drei Antworten auf den Befehl — eingetragen, gelöscht, falsches Format — sind freie Textfelder mit Platzhaltern: `{date}` für das eingetragene Datum, `{user}` erwähnt die Person, `{command}` für das tatsächlich benutzte Befehlswort und `{delete}` für das erste Löschwort. Leer gelassen greift jeweils der vorgeschlagene Text, der grau im Feld steht. (Der tägliche Glückwunsch war schon immer einstellbar und ist davon getrennt.)
 
 Ein Geburtstags-Befehlswort darf nicht gleichzeitig ein Custom Command dieses Servers sein — beide würden auf dieselbe Nachricht antworten —, diese Kombination wird beim Speichern abgelehnt.
 
