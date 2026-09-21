@@ -904,6 +904,16 @@ async def init_db():
             # post. name_template is rendered per message ({user}/{text}/{date}), archive_minutes
             # is one of Discord's four allowed auto-archive values, and starter_message is an
             # optional first post inside the new thread (same idea as a ticket's opening text).
+            # User-requested with a screenshot of a competing bot's in-channel control panel
+            # ("ich will den auch umbennen koennen und so aber aktivier bar und den text wil
+            # ich selber erstellen koennen") - an embed posted into each freshly created temp
+            # channel that lets its OWNER rename it, set a user limit, lock/hide it and manage
+            # who may join, without ever opening the dashboard. Off by default: a server that
+            # just wants auto-created channels should not suddenly get a bot message in every
+            # one of them. panel_title/panel_text empty = the built-in German default text.
+            "ALTER TABLE temp_voice_config ADD COLUMN panel_enabled INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE temp_voice_config ADD COLUMN panel_title TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE temp_voice_config ADD COLUMN panel_text TEXT NOT NULL DEFAULT ''",
             """CREATE TABLE IF NOT EXISTS auto_thread_channels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL,
@@ -965,6 +975,17 @@ DEFAULT_BIRTHDAY_DELETE_WORDS = ["löschen", "entfernen", "delete", "remove"]
 #   {delete}  the server's first configured word for clearing a birthday
 DEFAULT_BIRTHDAY_REPLY_SAVED = "✅ Geburtstag gespeichert: **{date}**"
 DEFAULT_BIRTHDAY_REPLY_DELETED = "✅ Geburtstag gelöscht."
+# Default wording of the temp-voice control panel, used when a server leaves the fields empty.
+# Placeholders substituted in the cog: {user} (the owner, as a mention), {channel} (the channel
+# mention) and {server}.
+DEFAULT_TEMPVOICE_PANEL_TITLE = "🔊 Dein temporärer Sprachkanal"
+DEFAULT_TEMPVOICE_PANEL_TEXT = (
+    "{user}, dieser Kanal gehört dir, solange du drin bist.\n\n"
+    "Über die Knöpfe unten kannst du ihn umbenennen, ein Teilnehmer-Limit setzen, "
+    "ihn sperren oder verstecken und einzelne Leute zulassen oder rauswerfen.\n\n"
+    "Sobald der Kanal leer ist, verschwindet er von selbst."
+)
+
 DEFAULT_BIRTHDAY_REPLY_ERROR = (
     "❌ Format: `{command} TT.MM` (z.B. `{command} 15.06`) · Löschen: `{command} {delete}`"
 )

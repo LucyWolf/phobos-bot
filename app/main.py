@@ -135,7 +135,8 @@ from database import (
     role_rule_actions, normalize_reaction_emoji, parse_command_triggers,
     DEFAULT_BIRTHDAY_TRIGGERS, DEFAULT_BIRTHDAY_DELETE_WORDS,
     DEFAULT_BIRTHDAY_REPLY_SAVED, DEFAULT_BIRTHDAY_REPLY_DELETED,
-    DEFAULT_BIRTHDAY_REPLY_ERROR,
+    DEFAULT_BIRTHDAY_REPLY_ERROR, DEFAULT_TEMPVOICE_PANEL_TITLE,
+    DEFAULT_TEMPVOICE_PANEL_TEXT,
 )
 import totp
 
@@ -1182,7 +1183,7 @@ _BACKUP_TBL_INSERT = {
         "archive_minutes=excluded.archive_minutes, skip_bots=excluded.skip_bots, "
         "require_attachment=excluded.require_attachment, starter_message=excluded.starter_message",
     "temp_voice_config":
-        "INSERT INTO temp_voice_config (guild_id,trigger_channel_id,category_id,name_template,user_limit) VALUES (:guild_id,:trigger_channel_id,:category_id,:name_template,:user_limit) ON CONFLICT(guild_id,trigger_channel_id) DO UPDATE SET category_id=excluded.category_id,name_template=excluded.name_template,user_limit=excluded.user_limit",
+        "INSERT INTO temp_voice_config (guild_id,trigger_channel_id,category_id,name_template,user_limit,panel_enabled,panel_title,panel_text) VALUES (:guild_id,:trigger_channel_id,:category_id,:name_template,:user_limit,:panel_enabled,:panel_title,:panel_text) ON CONFLICT(guild_id,trigger_channel_id) DO UPDATE SET category_id=excluded.category_id,name_template=excluded.name_template,user_limit=excluded.user_limit,panel_enabled=excluded.panel_enabled,panel_title=excluded.panel_title,panel_text=excluded.panel_text",
     "scheduled_messages":
         "INSERT OR IGNORE INTO scheduled_messages (guild_id,channel_id,message,send_at,sent) VALUES (:guild_id,:channel_id,:message,:send_at,:sent)",
     "notifications":
@@ -1592,6 +1593,8 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
                     if tbl == "role_rules":
                         # Same trap for both columns a pre-existing backup cannot know about.
                         row = {"action_role_meta": "", "actions": "", **row}
+                    if tbl == "temp_voice_config":
+                        row = {"panel_enabled": 0, "panel_title": "", "panel_text": "", **row}
                     await db.execute(sql, row)
                 except Exception:
                     pass
@@ -1766,6 +1769,8 @@ async def server_backup_restore(request: Request, guild_id: int, backup_file: Up
                     if tbl == "role_rules":
                         # Same fallback as the full-backup path for older backups.
                         merged = {"action_role_meta": "", "actions": "", **merged}
+                    if tbl == "temp_voice_config":
+                        merged = {"panel_enabled": 0, "panel_title": "", "panel_text": "", **merged}
                         # Self-references have to be rehomed BEFORE guild_id is lost - see
                         # _rehome_role_rule(); `row` still carries the exported guild id.
                         merged = _rehome_role_rule({**merged, "guild_id": row.get("guild_id")}, gid_str)
@@ -4056,6 +4061,15 @@ async def events_series_pause(request: Request, guild_id: int, series_id: int):
 
 # ── Temp Voice ────────────────────────────────────────────────────────────────
 
+def _tempvoice_panel_fields(form) -> tuple:
+    """The three panel fields, shared by tempvoice/add and .../edit so the two can't drift."""
+    return (
+        1 if form.get("panel_enabled") else 0,
+        (form.get("panel_title") or "").strip()[:256],   # Discord's embed title limit
+        (form.get("panel_text") or "").strip()[:4000],   # Discord's embed description limit
+    )
+
+
 @web.post("/servers/{guild_id}/tempvoice/add")
 async def tempvoice_add(request: Request, guild_id: str):
     if r := auth_redirect(request): return r
@@ -4075,9 +4089,11 @@ async def tempvoice_add(request: Request, guild_id: str):
         return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&error=Ungültiger+Kanal", status_code=302)
     if category and category not in {str(c.id) for c in guild.categories}:
         return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&error=Ungültige+Kategorie", status_code=302)
+    panel_enabled, panel_title, panel_text = _tempvoice_panel_fields(form)
     await db_exec(
-        "INSERT OR REPLACE INTO temp_voice_config (guild_id, trigger_channel_id, category_id, name_template, user_limit) VALUES (?,?,?,?,?)",
-        (guild_id, trigger, category, name_tpl, user_limit),
+        "INSERT OR REPLACE INTO temp_voice_config (guild_id, trigger_channel_id, category_id, "
+        "name_template, user_limit, panel_enabled, panel_title, panel_text) VALUES (?,?,?,?,?,?,?,?)",
+        (guild_id, trigger, category, name_tpl, user_limit, panel_enabled, panel_title, panel_text),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&success=Gespeichert", status_code=302)
 
@@ -4101,10 +4117,12 @@ async def tempvoice_edit(request: Request, guild_id: str, config_id: int):
     if category and category not in {str(c.id) for c in guild.categories}:
         return RedirectResponse(f"/servers/{guild_id}?tab=tempvoice&error=Ungültige+Kategorie", status_code=302)
     try:
+        panel_enabled, panel_title, panel_text = _tempvoice_panel_fields(form)
         await db_exec(
-            "UPDATE temp_voice_config SET trigger_channel_id=?, category_id=?, name_template=?, user_limit=? "
-            "WHERE id=? AND guild_id=?",
-            (trigger, category, name_tpl, user_limit, config_id, guild_id),
+            "UPDATE temp_voice_config SET trigger_channel_id=?, category_id=?, name_template=?, "
+            "user_limit=?, panel_enabled=?, panel_title=?, panel_text=? WHERE id=? AND guild_id=?",
+            (trigger, category, name_tpl, user_limit, panel_enabled, panel_title, panel_text,
+             config_id, guild_id),
         )
     except Exception:
         return RedirectResponse(
@@ -5467,6 +5485,10 @@ async def server_config(
             cfg.get("birthday_delete_words") or "", DEFAULT_BIRTHDAY_DELETE_WORDS),
         # Defaults handed to the template so an empty field can show the text that is actually
         # being sent, rather than an empty box next to a bot that clearly answers something.
+        "tempvoice_panel_defaults": {
+            "title": DEFAULT_TEMPVOICE_PANEL_TITLE,
+            "text": DEFAULT_TEMPVOICE_PANEL_TEXT,
+        },
         "birthday_reply_defaults": {
             "saved": DEFAULT_BIRTHDAY_REPLY_SAVED,
             "deleted": DEFAULT_BIRTHDAY_REPLY_DELETED,
