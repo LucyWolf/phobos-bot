@@ -132,7 +132,8 @@ from database import (
     DB_PATH, init_db, get_config, set_config,
     get_guild_config, set_guild_config, get_all_guild_config,
     db_rows, db_one, db_exec, db_exec_rowcount, db_insert, log_mod_action,
-    role_rule_actions, normalize_reaction_emoji,
+    role_rule_actions, normalize_reaction_emoji, parse_command_triggers,
+    DEFAULT_BIRTHDAY_TRIGGERS, DEFAULT_BIRTHDAY_DELETE_WORDS,
 )
 import totp
 
@@ -5455,6 +5456,13 @@ async def server_config(
         "user_allowed_tabs": user_allowed_tabs,
         "scheduled_messages": _scheduled_messages,
         "birthdays": _birthdays,
+        # The words that ACTUALLY take effect after parsing, not the raw string - shown back
+        # on the tab so an admin can see at a glance what their input turned into (an empty
+        # setting falls back to the defaults, which would otherwise be invisible).
+        "birthday_triggers": parse_command_triggers(
+            cfg.get("birthday_commands") or "", DEFAULT_BIRTHDAY_TRIGGERS),
+        "birthday_delete_words": parse_command_triggers(
+            cfg.get("birthday_delete_words") or "", DEFAULT_BIRTHDAY_DELETE_WORDS),
         "events_list": sorted(guild.scheduled_events, key=lambda e: e.start_time),
         "event_reminders": await _event_reminders_by_event(guild_id),
         "event_series": await _event_series_list(guild_id),
@@ -5487,7 +5495,8 @@ _TAB_TEXT_KEYS = {
         "automod_spam_threshold", "automod_spam_window", "automod_timeout_minutes",
         "automod_banned_words", "automod_action", "automod_warn_message",
     ],
-    "birthday": ["birthday_channel", "birthday_message"],
+    "birthday": ["birthday_channel", "birthday_message", "birthday_commands",
+                 "birthday_delete_words"],
     # The reminder DMs themselves (offset + message, plural) are a separate list managed via
     # their own add/delete routes below, not a fixed set of form fields - only the required
     # role and the single final kick delay go through the generic per-tab save here.
@@ -7683,7 +7692,11 @@ async def cmd_add(
     if not trigger:
         return RedirectResponse(f"/servers/{guild_id}?tab=commands&error=Trigger+darf+nicht+leer+sein", status_code=302)
     b = bot._bot_for_guild(guild_id)
-    if b and trigger in {c.name for c in b.commands}:
+    # Same addition as in the /addcommand slash command: the birthday command left
+    # b.commands when it became per-guild configurable, so it has to be checked separately.
+    birthday_words = parse_command_triggers(
+        await get_guild_config(guild_id, "birthday_commands") or "", DEFAULT_BIRTHDAY_TRIGGERS)
+    if (b and trigger in {c.name for c in b.commands}) or trigger in birthday_words:
         # Same reasoning as the /addcommand slash command: this cog's on_message and
         # discord.py's own classic-command dispatcher (command_prefix="!") both run
         # independently for every message - a trigger matching a real command's name

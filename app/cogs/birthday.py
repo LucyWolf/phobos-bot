@@ -1,11 +1,13 @@
-"""Birthday reminders: "!geburtstag TT.MM" sets/clears a member's birthday, a daily check
+"""Birthday reminders: a configurable "!<wort> TT.MM" sets/clears a member's birthday, a daily check
 around 08:00 posts a congratulations message for anyone whose birthday matches today
 (birthday_sent tracks who's already been congratulated this year, cleared if the date is
 later corrected)."""
 import datetime
 import discord
 from discord.ext import commands, tasks
-from database import db_rows, db_exec, db_exec_rowcount, get_guild_config
+from database import (db_rows, db_exec, db_exec_rowcount, get_guild_config,
+                      parse_command_triggers, DEFAULT_BIRTHDAY_TRIGGERS,
+                      DEFAULT_BIRTHDAY_DELETE_WORDS)
 from cogs.log_utils import log_bot_event
 
 try:
@@ -85,47 +87,88 @@ class Birthday(commands.Cog):
     async def _before(self):
         await self.bot.wait_until_ready()
 
-    @commands.command(name="geburtstag")
-    async def birthday_set(self, ctx: commands.Context, datum: str = ""):
-        """Geburtstag eintragen: !geburtstag TT.MM  |  löschen: !geburtstag löschen"""
-        if not ctx.guild:
-            # This is the project's only classic prefix command (every other user command is
-            # a slash command, which is guild-scoped by nature) - unlike those, this one can
-            # actually be reached via a DM to the bot, where ctx.guild is None and every path
-            # below immediately crashes on ctx.guild.id.
-            await ctx.reply("❌ Dieser Befehl funktioniert nur auf einem Server, nicht per DM.", mention_author=False)
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """The birthday command, matched against words THIS server configured.
+
+        Was a plain @commands.command(name="geburtstag") before, which binds one hard-coded
+        German word for every guild the token serves. A server that doesn't speak German had
+        no way to reach the feature at all, and a mixed-language one no way to offer more than
+        one word - hence guild_configs key birthday_commands, and this listener. Modelled on
+        cogs/custom_commands.py, the project's other "!word" handler.
+
+        Never reached via DM: message.guild is None there, and the whole point of the command
+        is storing a birthday FOR a specific server.
+        """
+        if message.author.bot or not message.guild:
             return
-        if datum.lower() in ("löschen", "entfernen", "delete", "remove"):
+        content = (message.content or "").strip()
+        if not content.startswith("!"):
+            return
+        parts = content[1:].split()
+        if not parts:
+            return
+        triggers = parse_command_triggers(
+            await get_guild_config(message.guild.id, "birthday_commands") or "",
+            DEFAULT_BIRTHDAY_TRIGGERS,
+        )
+        word = parts[0].lower()
+        if word not in triggers:
+            return
+        datum = parts[1] if len(parts) > 1 else ""
+        delete_words = parse_command_triggers(
+            await get_guild_config(message.guild.id, "birthday_delete_words") or "",
+            DEFAULT_BIRTHDAY_DELETE_WORDS,
+        )
+        # Echoed back in every reply below instead of a hard-coded "!geburtstag": telling
+        # someone on an English server that the format is "!geburtstag TT.MM" right after they
+        # successfully typed "!birthday" would be worse than saying nothing.
+        used = f"!{word}"
+
+        if datum.lower() in delete_words:
             await db_exec(
                 "DELETE FROM birthdays WHERE user_id=? AND guild_id=?",
-                (str(ctx.author.id), str(ctx.guild.id)),
+                (str(message.author.id), str(message.guild.id)),
             )
-            await ctx.reply("✅ Geburtstag gelöscht.", mention_author=False)
+            await self._reply(message, "✅ Geburtstag gelöscht.")
             return
 
         try:
-            parts = datum.strip().split(".")
-            if len(parts) != 2:
+            date_parts = datum.strip().split(".")
+            if len(date_parts) != 2:
                 raise ValueError
-            day, month = int(parts[0]), int(parts[1])
+            day, month = int(date_parts[0]), int(date_parts[1])
             datetime.date(2000, month, day)  # prüft ob Datum wirklich existiert (z.B. kein 30.02)
             bday = f"{month:02d}-{day:02d}"
         except (ValueError, IndexError):
-            await ctx.reply("❌ Format: `!geburtstag TT.MM` (z.B. `!geburtstag 15.06`)", mention_author=False)
+            await self._reply(
+                message,
+                f"❌ Format: `{used} TT.MM` (z.B. `{used} 15.06`) · "
+                f"Löschen: `{used} {delete_words[0]}`",
+            )
             return
 
         await db_exec(
             "INSERT OR REPLACE INTO birthdays (user_id, guild_id, birthday) VALUES (?,?,?)",
-            (str(ctx.author.id), str(ctx.guild.id), bday),
+            (str(message.author.id), str(message.guild.id), bday),
         )
         # birthday_sent is only keyed by (user_id, guild_id, year), not the date itself -
         # if this user was already wished this year on their old (wrong) date, that row would
         # otherwise block them from getting wished again on the corrected date this same year.
         await db_exec(
             "DELETE FROM birthday_sent WHERE user_id=? AND guild_id=? AND year=?",
-            (str(ctx.author.id), str(ctx.guild.id), datetime.datetime.now().year),
+            (str(message.author.id), str(message.guild.id), datetime.datetime.now().year),
         )
-        await ctx.reply(f"✅ Geburtstag gespeichert: **{day:02d}.{month:02d}**", mention_author=False)
+        await self._reply(message, f"✅ Geburtstag gespeichert: **{day:02d}.{month:02d}**")
+
+    @staticmethod
+    async def _reply(message: discord.Message, text: str) -> None:
+        # A reply to a message that has since been deleted, or a channel the bot may read but
+        # not write in, would otherwise raise straight out of on_message.
+        try:
+            await message.reply(text, mention_author=False)
+        except (discord.HTTPException, OSError) as e:
+            print(f"[Birthday] reply in channel {message.channel.id} failed: {e}")
 
 
 async def setup(bot):

@@ -75,7 +75,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **Auto-Thread** | Automatically opens a thread on every message in selected channels — templated thread name (`{user}` / `{text}` / `{date}`), auto-archive duration, optional opening message inside the thread, optionally only for messages with an attachment |
 | **Temp Voice** | Join-to-Create temporary voice channels — auto-created on join, auto-deleted when empty |
 | **Scheduled Messages** | Schedule messages to be sent to any channel at a specific date and time |
-| **Birthday System** | `!geburtstag DD.MM` — daily congratulations at 8 AM, configurable channel and message |
+| **Birthday System** | `!<your word> DD.MM` — the command words are configurable **per server**, several at once for multilingual servers; daily congratulations at 8 AM, configurable channel and message |
 | **Discord Events** | Create/edit native Discord scheduled events (voice or external) from the dashboard, with optional reminders and start/end announcements posted to a channel; optionally recurring (daily/weekly/monthly), pausable/resumable |
 | **CrossVerification** | "IF a member has/lacks certain roles, THEN ..." rules with any number of AND-chained actions (give role A **and** take role B in one rule), live or on a configurable interval, optionally targeting a different server, recreates a deleted target role from a saved snapshot, with a test sandbox |
 | **Polls** | `/poll-create` `/poll-end` — single- or multiple-choice, per-option images/links, scheduled start, live ranking, fully editable after posting |
@@ -280,7 +280,11 @@ Under **Server → 📨 Embed Messages**: post fully custom, multi-block embed m
 
 ## Birthday System
 
-Under **Server → Birthdays** you can configure a birthday channel and a custom message. Members can register their birthday with `!geburtstag DD.MM` (or delete it with `!geburtstag löschen`). Every day at 8 AM the bot automatically congratulates members whose birthday it is — each person only once per year.
+Under **Server → Birthdays** you can configure a birthday channel and a custom message. Every day at 8 AM the bot automatically congratulates members whose birthday it is — each person only once per year.
+
+**The command words are yours to choose.** By default members register with `!geburtstag DD.MM`, but the *Command words* field takes a comma-separated list, and all of them work side by side — so `birthday, geburtstag, cumpleaños` lets everyone on a mixed-language server use the word they expect. The words that clear a stored birthday again (`löschen, entfernen, delete, remove` by default) are configurable the same way. The tab shows which words are currently in effect, and an error message always quotes back the word the member actually typed.
+
+A birthday command word can't be the same as one of this server's Custom Commands — both handlers would answer the same message — so that combination is rejected on save.
 
 ---
 
@@ -672,7 +676,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **Auto-Thread** | Öffnet in gewählten Kanälen automatisch zu jeder Nachricht einen Thread — Thread-Name als Vorlage (`{user}` / `{text}` / `{date}`), Archivierungsdauer, optionale Startnachricht im Thread, optional nur bei Nachrichten mit Anhang |
 | **Temp Voice** | Join-to-Create temporäre Voice-Kanäle — automatisch erstellt beim Beitritt, automatisch gelöscht wenn leer |
 | **Geplante Nachrichten** | Nachrichten zu einem bestimmten Datum und Uhrzeit in jeden Kanal planen |
-| **Geburtstags-System** | `!geburtstag TT.MM` — tägliche Glückwünsche um 8 Uhr, konfigurierbarer Kanal und Text |
+| **Geburtstags-System** | `!<eigenes Wort> TT.MM` — die Befehlswörter sind **pro Server** einstellbar, auch mehrere gleichzeitig für mehrsprachige Server; tägliche Glückwünsche um 8 Uhr, konfigurierbarer Kanal und Text |
 | **Discord-Events** | Native Discord-Events (Voice oder extern) direkt im Dashboard erstellen/bearbeiten, mit optionalen Erinnerungen und Start-/Ende-Ankündigungen in einem Kanal; optional wiederkehrend (täglich/wöchentlich/monatlich), pausierbar/fortsetzbar |
 | **CrossVerification** | "Wenn ein Mitglied Rollen hat/nicht hat, dann …"-Regeln mit beliebig vielen per UND verketteten Aktionen (Rolle A geben **und** Rolle B nehmen in einer Regel), live oder in einstellbarem Intervall, optional auf einem anderen Server, legt eine gelöschte Zielrolle aus einem gespeicherten Schnappschuss neu an, inkl. Test-Sandbox |
 | **Umfragen** | `/poll-create` `/poll-end` — Einzel- oder Mehrfachauswahl, Bild/Link pro Option, geplanter Start, Live-Rangliste, nachträglich vollständig bearbeitbar |
@@ -877,7 +881,11 @@ Unter **Server → 📨 Embed-Nachrichten**: komplett frei gestaltete, mehrteili
 
 ## Geburtstags-System
 
-Unter **Server → Geburtstage** können ein Geburtstags-Kanal und ein eigener Glückwunsch-Text konfiguriert werden. Mitglieder tragen ihren Geburtstag mit `!geburtstag TT.MM` ein (oder löschen ihn mit `!geburtstag löschen`). Jeden Tag um 8 Uhr morgens gratuliert der Bot automatisch — jede Person nur einmal pro Jahr.
+Unter **Server → Geburtstage** können ein Geburtstags-Kanal und ein eigener Glückwunsch-Text konfiguriert werden. Jeden Tag um 8 Uhr morgens gratuliert der Bot automatisch — jede Person nur einmal pro Jahr.
+
+**Die Befehlswörter bestimmst du selbst.** Standardmäßig trägt man seinen Geburtstag mit `!geburtstag TT.MM` ein, aber das Feld *Befehlswörter* nimmt eine kommagetrennte Liste, und alle funktionieren nebeneinander — mit `geburtstag, birthday, cumpleaños` benutzt auf einem mehrsprachigen Server jede Person das Wort, das sie erwartet. Die Wörter zum Löschen (standardmäßig `löschen, entfernen, delete, remove`) sind genauso einstellbar. Der Tab zeigt an, welche Wörter gerade wirken, und eine Fehlermeldung nennt immer das Wort, das die Person tatsächlich getippt hat.
+
+Ein Geburtstags-Befehlswort darf nicht gleichzeitig ein Custom Command dieses Servers sein — beide würden auf dieselbe Nachricht antworten —, diese Kombination wird beim Speichern abgelehnt.
 
 ---
 

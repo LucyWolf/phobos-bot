@@ -4,7 +4,8 @@ command (checked dynamically against self.bot.commands)."""
 import discord
 from discord import app_commands
 from discord.ext import commands
-from database import db_rows, db_exec, db_exec_rowcount, db_one
+from database import (db_rows, db_exec, db_exec_rowcount, db_one, get_guild_config,
+                      parse_command_triggers, DEFAULT_BIRTHDAY_TRIGGERS)
 
 
 class CustomCommands(commands.Cog):
@@ -44,14 +45,20 @@ class CustomCommands(commands.Cog):
         if not trigger:
             await interaction.response.send_message("Trigger darf nicht leer sein.", ephemeral=True)
             return
-        if trigger in {c.name for c in self.bot.commands}:
+        # The birthday command is no longer a registered bot command (it matches per-guild
+        # configured words through its own on_message now), so self.bot.commands alone stopped
+        # covering it - a custom command named like this server's birthday word would fire both
+        # handlers for one message again.
+        birthday_words = parse_command_triggers(
+            await get_guild_config(interaction.guild_id, "birthday_commands") or "",
+            DEFAULT_BIRTHDAY_TRIGGERS,
+        )
+        if trigger in {c.name for c in self.bot.commands} or trigger in birthday_words:
             # Both this cog's on_message AND discord.py's own classic-command dispatcher (the
-            # bot was built with command_prefix="!", see birthday.py's `!geburtstag`) run
-            # independently for every message - a custom trigger that happens to match a real
-            # registered command's name would fire BOTH on every use, sending two unrelated
-            # responses for one message. Checked dynamically against self.bot.commands rather
-            # than hardcoding "geburtstag" so this stays correct if more prefix commands are
-            # ever added.
+            # bot was built with command_prefix="!") run independently for every message - a
+            # custom trigger that happens to match a real registered command's name would fire
+            # BOTH on every use, sending two unrelated responses for one message. Checked
+            # dynamically rather than hardcoded so this stays correct as commands change.
             await interaction.response.send_message(
                 f"`!{trigger}` ist ein reservierter Befehlsname und kann nicht überschrieben werden.",
                 ephemeral=True,

@@ -945,6 +945,48 @@ async def init_db():
         await db.commit()
 
 
+# Upper bound on how many words may trigger one configurable prefix command. Far above any
+# realistic number of languages a single server runs, and keeps a pasted essay from turning
+# every message into a list scan.
+MAX_COMMAND_TRIGGERS = 10
+
+# What "!geburtstag" accepts as its "clear my birthday" argument when the server has not
+# configured its own words.
+DEFAULT_BIRTHDAY_TRIGGERS = ["geburtstag"]
+DEFAULT_BIRTHDAY_DELETE_WORDS = ["löschen", "entfernen", "delete", "remove"]
+
+
+def parse_command_triggers(raw: str, default: list) -> list:
+    """Turn a comma/whitespace separated list of prefix-command words into a clean list.
+
+    User-requested for the birthday command ("ich will den befehl selber machen koennen ...
+    was ist wenn man andere sprachen hat also das mann mehrsprachrige befehle geben kann") -
+    a server that isn't German has no use for "!geburtstag", and a mixed-language server wants
+    several words to work side by side.
+
+    Deliberately permissive about the characters themselves: the whole point is other
+    languages, so "cumpleanos", "anniversaire" and "生日" all have to survive. Only the things
+    that would actually break command matching are normalised away - a leading "!", surrounding
+    whitespace, and case. Returns `default` when nothing usable is left, so an empty setting can
+    never leave a server with no way to reach the command at all.
+
+    Lives here next to the other shared storage-format helpers: main.py validates what the
+    dashboard saves, the cog matches incoming messages against it, and the two must agree.
+    """
+    words = []
+    for chunk in re.split(r"[,\s]+", raw or ""):
+        word = chunk.strip().lstrip("!").strip().lower()
+        # A word containing whitespace could never match a first token anyway, and an empty one
+        # would match every message that is just "!".
+        if not word or any(c.isspace() for c in word):
+            continue
+        if word not in words:
+            words.append(word)
+        if len(words) >= MAX_COMMAND_TRIGGERS:
+            break
+    return words or list(default)
+
+
 def normalize_reaction_emoji(raw: str) -> str:
     """The canonical storage form of a reaction_roles.emoji value.
 
