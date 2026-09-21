@@ -5652,6 +5652,13 @@ async def server_config(
         "vrc_links": _vrc_links,
         "vrc_pending_count": sum(1 for v in _vrc_links if v["status"] != "approved"),
         "vrc_nickname_default": DEFAULT_VRC_NICKNAME_FORMAT,
+        # Names for the live example under the format field. A real linked pair if there is
+        # one - seeing the format applied to somebody who is actually on the server says more
+        # than a made-up name - otherwise a stand-in, so the example is never empty.
+        "vrc_example_vrchat": next((v["vrchat_name"] for v in _vrc_links if v["status"] == "approved"),
+                                   "AlexInVR"),
+        "vrc_example_discord": next((v["member_name"] for v in _vrc_links if v["status"] == "approved"),
+                                    "alex"),
         "amp_cfg": amp_cfg, "amp_status": amp_status, "amp_instances": amp_instances,
         "amp_instances_error": amp_instances_error, "amp_connection_error": amp_connection_error,
         "amp_raw_debug": amp_raw_debug,

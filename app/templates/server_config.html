@@ -3078,9 +3078,18 @@ document.addEventListener('click', function(e) {
     </div>
     <div>
       <label>{{ tr.vrc_nickname_format_label }}</label>
-      <input type="text" name="vrc_nickname_format" maxlength="64"
-             value="{{ cfg.get('vrc_nickname_format', '') }}" placeholder="{{ vrc_nickname_default }}">
+      <div style="display:flex;gap:0.5rem;align-items:flex-start;">
+        <input type="text" id="vrc-fmt" name="vrc_nickname_format" maxlength="64"
+               value="{{ cfg.get('vrc_nickname_format', '') }}" placeholder="{{ vrc_nickname_default }}"
+               oninput="vrcPreview()" style="flex:1;">
+        <button type="button" class="btn btn-secondary" style="font-size:0.78rem;white-space:nowrap;"
+                onclick="vrcUseDefault()">{{ tr.vrc_use_default }}</button>
+      </div>
       <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_nickname_format_hint }}</div>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem 0.7rem;font-size:0.82rem;">
+        <span style="color:var(--muted);">{{ tr.vrc_example_label }}</span>
+        <strong id="vrc-example" style="margin-left:0.4rem;"></strong>
+      </div>
     </div>
     <div style="grid-column:1 / -1;">
       <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-bottom:0.35rem;">
@@ -3155,6 +3164,27 @@ document.addEventListener('click', function(e) {
   {% endif %}
 </div>
 <script>
+const VRC_DEFAULT_FMT = {{ vrc_nickname_default | jsraw }};
+const VRC_EX_VRCHAT   = {{ vrc_example_vrchat | jsraw }};
+const VRC_EX_DISCORD  = {{ vrc_example_discord | jsraw }};
+function vrcPreview() {
+  const field = document.getElementById('vrc-fmt');
+  const out = document.getElementById('vrc-example');
+  if (!field || !out) return;
+  // Mirrors database.vrc_nickname(): same substitutions, same whitespace collapsing, same
+  // 32-character clamp - so what this shows is what the bot will actually set, not an
+  // approximation that drifts from it.
+  let text = (field.value.trim() || VRC_DEFAULT_FMT)
+    .split('{vrchatName}').join(VRC_EX_VRCHAT)
+    .split('{discordName}').join(VRC_EX_DISCORD);
+  text = text.split(/\s+/).filter(Boolean).join(' ').slice(0, 32);
+  out.textContent = text;
+}
+function vrcUseDefault() {
+  const field = document.getElementById('vrc-fmt');
+  if (field) { field.value = VRC_DEFAULT_FMT; vrcPreview(); }
+}
+document.addEventListener('DOMContentLoaded', vrcPreview);
 function toggleVrcInfo() {
   const box = document.getElementById('vrc-info-box');
   if (box) box.style.display = box.style.display === 'none' ? '' : 'none';

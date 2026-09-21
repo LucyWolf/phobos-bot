@@ -1051,7 +1051,11 @@ def vrc_nickname(fmt: str, vrchat_name: str, discord_name: str) -> str:
     whole change - so the nickname silently stayed wrong for exactly the members whose name
     made it worth setting.
     """
-    text = (fmt or DEFAULT_VRC_NICKNAME_FORMAT)
+    # Whitespace-only counts as unset, like an empty field: "   " is truthy in Python, so a
+    # plain `fmt or DEFAULT` took it as the format, rendered it down to nothing and set no
+    # nickname at all - while the dashboard's live example, which trims first, promised the
+    # default. Either behaviour alone is defensible; the two disagreeing is not.
+    text = fmt if (fmt or "").strip() else DEFAULT_VRC_NICKNAME_FORMAT
     text = text.replace("{vrchatName}", vrchat_name or "").replace("{discordName}", discord_name or "")
     text = " ".join(text.split()).strip()
     return text[:MAX_NICKNAME]
