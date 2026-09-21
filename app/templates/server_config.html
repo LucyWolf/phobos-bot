@@ -928,7 +928,12 @@ document.addEventListener('click', function(e) {
   .panel-status-pub  { background:rgba(34,197,94,.12); color:#22c55e; border:1px solid rgba(34,197,94,.3); }
   .panel-status-draft{ background:rgba(100,116,139,.12); color:#94a3b8; border:1px solid rgba(100,116,139,.3); }
   .panel-badge { display:inline-flex; align-items:center; gap:0.3rem; padding:0.18rem 0.6rem; border-radius:999px; font-size:0.7rem; font-weight:700; }
-  .panel-edit-row { background:var(--bg); }
+  /* var(--surface), nicht var(--bg): eine aufgeklappte Bearbeiten-Zeile sitzt IN einer
+     .card, und die ist var(--surface). Auf var(--bg) lag sie zwei Stufen dunkler als alles
+     um sie herum und las sich wie ein eigenes Fenster mitten im Tab - bei kurzen Zeilen
+     kaum zu merken, bei hohen sofort. Die Eingabefelder behalten ihr var(--bg) aus der
+     globalen input/select-Regel und heben sich damit ab wie in jeder anderen Karte auch. */
+  .panel-edit-row { background:var(--surface); }
 </style>
 
 <div style="position:relative;margin-bottom:1.25rem;">
@@ -2218,14 +2223,7 @@ document.addEventListener('click', function(e) {
         </form>
       </td>
     </tr>
-    {# background overrides .panel-edit-row's var(--bg) on purpose: that near-black sits two
-       steps darker than the card around it, and with the panel fields the block grew tall
-       enough to read as a separate window instead of part of the tab. var(--surface) is what
-       the "add trigger" form below already sits on, so both forms now look identical - only
-       the input fields keep var(--bg), which is exactly the contrast every other card uses.
-       Scoped to this one row rather than changing .panel-edit-row, which nine other tabs
-       share. The toggle only ever touches style.display, so this survives opening/closing. #}
-    <tr id="tempvoice-edit-{{ tv.id }}" style="display:none;background:var(--surface);" class="panel-edit-row">
+    <tr id="tempvoice-edit-{{ tv.id }}" style="display:none;" class="panel-edit-row">
       <td colspan="5" style="padding:1rem 1.25rem;">
         <form method="post" action="/servers/{{ guild.id }}/tempvoice/edit/{{ tv.id }}">
           <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
