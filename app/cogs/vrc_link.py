@@ -118,18 +118,30 @@ class VRCLink(commands.Cog):
         auto = (await get_guild_config(interaction.guild_id, "vrc_auto_approve") or "0") == "1"
         status = "approved" if auto else "pending"
         now = datetime.datetime.utcnow().isoformat()
-        if existing:
-            await db_exec(
-                "UPDATE vrc_links SET vrchat_name=?, status=?, requested_at=?, decided_at='', "
-                "decided_by='' WHERE id=?",
-                (name, status, now, existing["id"]),
-            )
-        else:
-            await db_exec(
-                "INSERT INTO vrc_links (guild_id, user_id, vrchat_name, status, requested_at) "
-                "VALUES (?,?,?,?,?)",
-                (str(interaction.guild_id), str(interaction.user.id), name, status, now),
-            )
+        # Both unique indexes on this table can still reject the write even though the checks
+        # above passed: two people can run /vrc-link with the same name in the same instant,
+        # and the database is the only place that can settle that. Unhandled, the exception
+        # would escape before any response is sent, which Discord shows as a bare "This
+        # interaction failed" - the one outcome that tells the member nothing at all.
+        try:
+            if existing:
+                await db_exec(
+                    "UPDATE vrc_links SET vrchat_name=?, status=?, requested_at=?, decided_at='', "
+                    "decided_by='' WHERE id=?",
+                    (name, status, now, existing["id"]),
+                )
+            else:
+                await db_exec(
+                    "INSERT INTO vrc_links (guild_id, user_id, vrchat_name, status, requested_at) "
+                    "VALUES (?,?,?,?,?)",
+                    (str(interaction.guild_id), str(interaction.user.id), name, status, now),
+                )
+        except Exception as e:
+            print(f"[vrc_link] storing link for {interaction.user.id} in {interaction.guild_id} failed: {e}")
+            await interaction.response.send_message(
+                f"❌ **{name}** konnte nicht gespeichert werden — der Name ist vermutlich gerade "
+                f"von jemand anderem eingetragen worden. Versuch es nochmal.", ephemeral=True)
+            return
 
         if not auto:
             await interaction.response.send_message(

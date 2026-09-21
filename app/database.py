@@ -943,6 +943,24 @@ async def init_db():
                 note TEXT NOT NULL DEFAULT '',
                 UNIQUE(guild_id, user_id)
             )""",
+            # The other direction of "one VRChat profile per Discord profile": one VRChat name
+            # can likewise belong to only one member per server. /vrc-link checks this in the
+            # application layer, but a backup restore writes straight into the table with an
+            # ON CONFLICT on (guild_id,user_id) only - two members carrying the same VRChat
+            # name would sail right through it, which is precisely the situation this rule
+            # exists to prevent. Exactly the gap reaction_roles had until its own unique index
+            # was added, and fixed the same way: deduplicate first (SQLite refuses to build a
+            # unique index over data that already violates it), keeping the highest id per
+            # group, then create the index.
+            #
+            # COLLATE NOCASE so "BobVR" and "bobvr" count as the same claim, matching the
+            # LOWER() comparison the command already uses. That folding is ASCII-only, so two
+            # names differing solely in the case of a non-ASCII letter still pass - the command
+            # catches those, this is the safety net underneath it.
+            """DELETE FROM vrc_links WHERE id NOT IN (
+                SELECT MAX(id) FROM vrc_links GROUP BY guild_id, LOWER(vrchat_name)
+            )""",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_vrc_links_name ON vrc_links(guild_id, vrchat_name COLLATE NOCASE)",
             """CREATE TABLE IF NOT EXISTS auto_thread_channels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL,
