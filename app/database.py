@@ -961,6 +961,27 @@ async def init_db():
                 SELECT MAX(id) FROM vrc_links GROUP BY guild_id, LOWER(vrchat_name)
             )""",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_vrc_links_name ON vrc_links(guild_id, vrchat_name COLLATE NOCASE)",
+            # The VRChat account the bot signs in as, one per Discord server. Deliberately NOT
+            # in _BACKUP_FEATURE_TABLES: these are login credentials for somebody's VRChat
+            # account, and a server backup exists to be handed to other people. They are also
+            # installation-specific - a restored server on a different bot would want its own
+            # account anyway, not the previous owner's.
+            #
+            # auth_cookie / two_factor_cookie are cached on purpose. VRChat rate-limits logins
+            # hard and repeated password logins get an account flagged, so the session is
+            # reused until it stops working and only then renewed.
+            """CREATE TABLE IF NOT EXISTS vrc_accounts (
+                guild_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL DEFAULT '',
+                password TEXT NOT NULL DEFAULT '',
+                totp_secret TEXT NOT NULL DEFAULT '',
+                auth_cookie TEXT NOT NULL DEFAULT '',
+                two_factor_cookie TEXT NOT NULL DEFAULT '',
+                vrc_user_id TEXT NOT NULL DEFAULT '',
+                vrc_display_name TEXT NOT NULL DEFAULT '',
+                last_check TEXT NOT NULL DEFAULT '',
+                last_error TEXT NOT NULL DEFAULT ''
+            )""",
             """CREATE TABLE IF NOT EXISTS auto_thread_channels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL,

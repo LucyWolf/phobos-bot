@@ -3567,6 +3567,92 @@ async def _vrc_apply(guild_id: int, user_id: str, vrchat_name: str, revoke: bool
         print(f"[vrc_link] dashboard apply failed for {user_id} in {guild_id}: {e}")
 
 
+@web.post("/servers/{guild_id}/vrc/account")
+async def vrc_account_save(request: Request, guild_id: int):
+    """Store the VRChat bot account and immediately try to sign in with it.
+
+    Testing right here rather than offering a separate button: credentials that are only
+    checked the first time something needs them fail hours later, in a background task, where
+    the person who typed them is no longer looking.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    username = (form.get("vrc_username") or "").strip()
+    password = (form.get("vrc_password") or "").strip()
+    totp = (form.get("vrc_totp") or "").strip().replace(" ", "")
+    existing = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (str(guild_id),))
+    # An empty password field means "leave it alone" - the form never renders the stored one
+    # back into the page, so clearing the box would otherwise wipe the password every time
+    # somebody corrects a typo in the username.
+    if not password and existing:
+        password = existing["password"]
+    if not totp and existing:
+        totp = existing["totp_secret"]
+    if not username or not password:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=vrclink&error=Benutzername+und+Passwort+erforderlich",
+            status_code=302)
+
+    from vrchat import login as vrc_login, VRChatError
+    # The cached session is only reusable while the username is unchanged; pointing the entry
+    # at a different account has to start a real login.
+    same_account = bool(existing and existing["username"] == username)
+    try:
+        result = await vrc_login(
+            username, password, totp,
+            auth_cookie=existing["auth_cookie"] if same_account else "",
+            two_factor_cookie=existing["two_factor_cookie"] if same_account else "",
+        )
+    except VRChatError as e:
+        await db_exec(
+            "INSERT INTO vrc_accounts (guild_id, username, password, totp_secret, last_check, last_error) "
+            "VALUES (?,?,?,?,?,?) ON CONFLICT(guild_id) DO UPDATE SET username=excluded.username, "
+            "password=excluded.password, totp_secret=excluded.totp_secret, "
+            "last_check=excluded.last_check, last_error=excluded.last_error",
+            (str(guild_id), username, password, totp,
+             datetime.datetime.utcnow().isoformat(), str(e)[:500]),
+        )
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=vrclink&error={urllib.parse.quote_plus(str(e))}",
+            status_code=302)
+    except Exception as e:
+        # A network failure, a DNS hiccup, VRChat handing back something unparseable - none of
+        # it should surface as a 500 on a page the admin is mid-way through filling in.
+        print(f"[vrchat] unexpected error during login for guild {guild_id}: {e!r}")
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=vrclink&error=VRChat+war+nicht+erreichbar",
+            status_code=302)
+
+    user = result["user"]
+    await db_exec(
+        "INSERT INTO vrc_accounts (guild_id, username, password, totp_secret, auth_cookie, "
+        "two_factor_cookie, vrc_user_id, vrc_display_name, last_check, last_error) "
+        "VALUES (?,?,?,?,?,?,?,?,?,'') ON CONFLICT(guild_id) DO UPDATE SET "
+        "username=excluded.username, password=excluded.password, totp_secret=excluded.totp_secret, "
+        "auth_cookie=excluded.auth_cookie, two_factor_cookie=excluded.two_factor_cookie, "
+        "vrc_user_id=excluded.vrc_user_id, vrc_display_name=excluded.vrc_display_name, "
+        "last_check=excluded.last_check, last_error=''",
+        (str(guild_id), username, password, totp, result["auth_cookie"],
+         result["two_factor_cookie"], str(user.get("id") or ""),
+         str(user.get("displayName") or ""), datetime.datetime.utcnow().isoformat()),
+    )
+    who = urllib.parse.quote_plus(str(user.get("displayName") or username))
+    return RedirectResponse(
+        f"/servers/{guild_id}?tab=vrclink&success=Verbunden+als+{who}", status_code=303)
+
+
+@web.post("/servers/{guild_id}/vrc/account/delete")
+async def vrc_account_delete(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    await db_exec("DELETE FROM vrc_accounts WHERE guild_id=?", (str(guild_id),))
+    return RedirectResponse(
+        f"/servers/{guild_id}?tab=vrclink&success=VRChat-Konto+entfernt", status_code=303)
+
+
 @web.post("/servers/{guild_id}/vrc/decide/{link_id}")
 async def vrc_decide(request: Request, guild_id: int, link_id: int):
     if r := auth_redirect(request): return r
@@ -5340,6 +5426,12 @@ async def server_config(
         ep.pop("image_data", None)
 
     # VRC-Link
+    _vrc_account = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (str(guild_id),))
+    if _vrc_account:
+        # The password and the session cookies never leave the server - the page only needs to
+        # know THAT an account is stored, plus whoever it turned out to be.
+        for _k in ("password", "totp_secret", "auth_cookie", "two_factor_cookie"):
+            _vrc_account[_k] = ""
     _vrc_links = await db_rows(
         "SELECT * FROM vrc_links WHERE guild_id=? ORDER BY status DESC, requested_at ASC",
         (str(guild_id),),
@@ -5651,6 +5743,7 @@ async def server_config(
         "tempvoice_configs": _tempvoice_configs,
         "vrc_links": _vrc_links,
         "vrc_pending_count": sum(1 for v in _vrc_links if v["status"] != "approved"),
+        "vrc_account": _vrc_account,
         "vrc_nickname_default": DEFAULT_VRC_NICKNAME_FORMAT,
         # Names for the live example under the format field. A real linked pair if there is
         # one - seeing the format applied to somebody who is actually on the server says more
