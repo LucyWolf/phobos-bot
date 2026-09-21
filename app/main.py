@@ -2596,6 +2596,10 @@ async def report_page(request: Request):
     return templates.TemplateResponse("settings_report.html", {
         **session(request), "request": request,
         "guilds": await _guild_list(request),
+        # Without this the sidebar's "no bot token yet" warning fired on this page: the
+        # template reads token_set, an absent one is undefined, and undefined is falsy - so
+        # opening "Melden" turned Einstellungen red on an installation that has a token.
+        "token_set": await _token_configured(),
         "active": "report",
         "github_repo_url": _GITHUB_REPO_URL,
         "github_signup_url": "https://github.com/signup",

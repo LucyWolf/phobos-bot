@@ -337,10 +337,14 @@
     </a>
 
     <div class="nav-group {% if active in ['settings','users','bot_update','bot_info','notif_settings','smtp','servers','tokens','report'] or nav_settings_open %}open{% endif %}" id="nav-group-settings">
-      <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if not token_set %}nav-warn-header{% endif %}"
+      <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if token_set is defined and not token_set %}nav-warn-header{% endif %}"
            onclick="toggleNavGroup('settings')" title="{{ tr.nav_settings }}">
         <span class="icon">⚙️</span>
-        <span class="label">{% if not token_set %}⚠ {{ tr.nav_settings }}{% else %}{{ tr.nav_settings }}{% endif %}</span>
+        <span class="label">{# "is defined" first: a page that forgets to pass token_set would otherwise render the
+           warning for a perfectly configured installation, and a false alarm sends someone
+           hunting for a problem that is not there. A genuinely missing token still shows up on
+           every other page. #}
+        {% if token_set is defined and not token_set %}⚠ {{ tr.nav_settings }}{% else %}{{ tr.nav_settings }}{% endif %}</span>
         <span class="nav-chevron">▼</span>
       </div>
       <div class="nav-group-items">
