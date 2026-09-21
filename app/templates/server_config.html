@@ -2243,24 +2243,30 @@ document.addEventListener('click', function(e) {
               <label style="font-size:0.82rem;">{{ tr.tempvoice_label_user_limit }} <span style="color:var(--muted)">{{ tr.tempvoice_user_limit_hint }}</span></label>
               <input type="number" name="user_limit" value="{{ tv.user_limit }}" min="0" max="99" style="margin-bottom:0;">
             </div>
+            <div style="grid-column:1 / -1;">
+              <label style="font-size:0.78rem;display:flex;align-items:center;gap:0.4rem;font-weight:400;">
+                <input type="checkbox" name="panel_enabled" value="1" style="margin:0;" {% if tv.panel_enabled %}checked{% endif %}>
+                {{ tr.tempvoice_panel_enabled_label }}
+              </label>
+              <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.tempvoice_panel_hint }}</div>
+            </div>
+            <div style="grid-column:1 / -1;">
+              <label style="font-size:0.82rem;">{{ tr.tempvoice_panel_title_label }}</label>
+              <input type="text" name="panel_title" value="{{ tv.panel_title }}" maxlength="256" placeholder="{{ tempvoice_panel_defaults.title }}" style="margin-bottom:0;">
+            </div>
+            <div style="grid-column:1 / -1;">
+              <label style="font-size:0.82rem;">{{ tr.tempvoice_panel_text_label }}</label>
+              <textarea name="panel_text" rows="4" maxlength="4000" placeholder="{{ tempvoice_panel_defaults.text }}"
+                        style="margin-bottom:0;width:100%;box-sizing:border-box;
+                               background:var(--bg);color:var(--text);border:1px solid var(--border);
+                               border-radius:0.5rem;padding:0.65rem 0.75rem;font-size:0.88rem;
+                               line-height:1.55;resize:vertical;font-family:inherit;
+                               transition:border-color 0.15s;outline:none;"
+                        onfocus="this.style.borderColor='var(--accent)'"
+                        onblur="this.style.borderColor='var(--border)'">{{ tv.panel_text }}</textarea>
+              <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.tempvoice_panel_placeholders }}</div>
+            </div>
           </div>
-          <div style="border-top:1px solid var(--border);margin:0.9rem 0 0.7rem;"></div>
-          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:600;margin-bottom:0.3rem;">
-            <input type="checkbox" name="panel_enabled" value="1" style="margin:0;" {% if tv.panel_enabled %}checked{% endif %}> {{ tr.tempvoice_panel_enabled_label }}
-          </label>
-          <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.7rem;">{{ tr.tempvoice_panel_hint }}</div>
-          <label style="font-size:0.82rem;">{{ tr.tempvoice_panel_title_label }}</label>
-          <input type="text" name="panel_title" value="{{ tv.panel_title }}" maxlength="256" placeholder="{{ tempvoice_panel_defaults.title }}" style="margin-bottom:0.6rem;">
-          <label style="font-size:0.82rem;">{{ tr.tempvoice_panel_text_label }}</label>
-          <textarea name="panel_text" rows="4" maxlength="4000" placeholder="{{ tempvoice_panel_defaults.text }}"
-                    style="margin-bottom:0.2rem;width:100%;box-sizing:border-box;
-                           background:var(--bg);color:var(--text);border:1px solid var(--border);
-                           border-radius:0.5rem;padding:0.65rem 0.75rem;font-size:0.88rem;
-                           line-height:1.55;resize:vertical;font-family:inherit;
-                           transition:border-color 0.15s;outline:none;"
-                    onfocus="this.style.borderColor='var(--accent)'"
-                    onblur="this.style.borderColor='var(--border)'">{{ tv.panel_text }}</textarea>
-          <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.8rem;">{{ tr.tempvoice_panel_placeholders }}</div>
           <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
         </form>
       </td>
@@ -2294,24 +2300,30 @@ document.addEventListener('click', function(e) {
         <label style="font-size:0.82rem;">{{ tr.tempvoice_label_user_limit }} <span style="color:var(--muted)">{{ tr.tempvoice_user_limit_hint }}</span></label>
         <input type="number" name="user_limit" value="0" min="0" max="99">
       </div>
+      <div style="grid-column:1 / -1;">
+        <label style="font-size:0.78rem;display:flex;align-items:center;gap:0.4rem;font-weight:400;">
+          <input type="checkbox" name="panel_enabled" value="1" style="margin:0;">
+          {{ tr.tempvoice_panel_enabled_label }}
+        </label>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.tempvoice_panel_hint }}</div>
+      </div>
+      <div style="grid-column:1 / -1;">
+        <label style="font-size:0.82rem;">{{ tr.tempvoice_panel_title_label }}</label>
+        <input type="text" name="panel_title" value="" maxlength="256" placeholder="{{ tempvoice_panel_defaults.title }}">
+      </div>
+      <div style="grid-column:1 / -1;">
+        <label style="font-size:0.82rem;">{{ tr.tempvoice_panel_text_label }}</label>
+        <textarea name="panel_text" rows="4" maxlength="4000" placeholder="{{ tempvoice_panel_defaults.text }}"
+                  style="margin-bottom:0;width:100%;box-sizing:border-box;
+                         background:var(--bg);color:var(--text);border:1px solid var(--border);
+                         border-radius:0.5rem;padding:0.65rem 0.75rem;font-size:0.88rem;
+                         line-height:1.55;resize:vertical;font-family:inherit;
+                         transition:border-color 0.15s;outline:none;"
+                  onfocus="this.style.borderColor='var(--accent)'"
+                  onblur="this.style.borderColor='var(--border)'"></textarea>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.tempvoice_panel_placeholders }}</div>
+      </div>
     </div>
-    <div style="border-top:1px solid var(--border);margin:0.9rem 0 0.7rem;"></div>
-    <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:600;margin-bottom:0.3rem;">
-      <input type="checkbox" name="panel_enabled" value="1" style="margin:0;" > {{ tr.tempvoice_panel_enabled_label }}
-    </label>
-    <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.7rem;">{{ tr.tempvoice_panel_hint }}</div>
-    <label style="font-size:0.82rem;">{{ tr.tempvoice_panel_title_label }}</label>
-    <input type="text" name="panel_title" value="" maxlength="256" placeholder="{{ tempvoice_panel_defaults.title }}" style="margin-bottom:0.6rem;">
-    <label style="font-size:0.82rem;">{{ tr.tempvoice_panel_text_label }}</label>
-    <textarea name="panel_text" rows="4" maxlength="4000" placeholder="{{ tempvoice_panel_defaults.text }}"
-              style="margin-bottom:0.2rem;width:100%;box-sizing:border-box;
-                     background:var(--bg);color:var(--text);border:1px solid var(--border);
-                     border-radius:0.5rem;padding:0.65rem 0.75rem;font-size:0.88rem;
-                     line-height:1.55;resize:vertical;font-family:inherit;
-                     transition:border-color 0.15s;outline:none;"
-              onfocus="this.style.borderColor='var(--accent)'"
-              onblur="this.style.borderColor='var(--border)'"></textarea>
-    <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.8rem;">{{ tr.tempvoice_panel_placeholders }}</div>
     <button type="submit" class="btn btn-primary">{{ tr.tempvoice_btn_add_trigger }}</button>
   </form>
 </div>
