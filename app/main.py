@@ -4726,6 +4726,19 @@ NATIVE_LOG_CATEGORIES = ("member", "roles", "bans", "delete", "bulk", "edit", "v
 # Discord-event categories AND the opt-in bot-action categories (cogs/log_utils.py) with the
 # exact same mechanism - a viewer doesn't need to care which of the two a category belongs to
 # when deciding what to look at.
+# The individual events inside a category, for the ones that log more than one thing. A
+# category not listed here logs exactly one kind of event, so splitting it would just be the
+# same checkbox twice. Keys match the `sub` that cogs/logging_cog.py passes to _log(), and the
+# stored form is "<category>.<sub>" - switching off a whole category still covers all of its
+# sub-entries, so the two levels never contradict each other.
+LOG_SUBCATEGORIES = {
+    "member":  ("join", "leave"),
+    "roles":   ("change", "nick", "timeout"),
+    "bans":    ("ban", "unban"),
+    "voice":   ("join", "leave", "move"),
+    "channel": ("create", "delete", "rename"),
+}
+
 LOG_CATEGORIES = NATIVE_LOG_CATEGORIES + BOT_EVENT_CATEGORIES
 
 
@@ -4769,6 +4782,10 @@ async def server_log_page(request: Request, guild_id: str, success: str = "", er
 
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
     log_channel = await get_guild_config(int(guild_id), "log_channel") or ""
+    _log_disabled = {
+        x.strip() for x in
+        (await get_guild_config(int(guild_id), "log_events_disabled") or "").split(",") if x.strip()
+    }
     exclude_raw = await get_guild_config(int(guild_id), "log_exclude_channels") or ""
     log_exclude_channels = [c.strip() for c in exclude_raw.split(",") if c.strip()]
     bot_events_raw = await get_guild_config(int(guild_id), "log_bot_events") or ""
@@ -4796,11 +4813,14 @@ async def server_log_page(request: Request, guild_id: str, success: str = "", er
         "guild_id": guild_id, "guild_name": guild.name,
         "channels": channels, "log_channel": log_channel,
         "native_log_categories": NATIVE_LOG_CATEGORIES,
-        "enabled_native_categories": [
-            c for c in NATIVE_LOG_CATEGORIES
-            if c not in {x.strip() for x in
-                         (await get_guild_config(int(guild_id), "log_events_disabled") or "").split(",")
-                         if x.strip()}
+        "log_subcategories": LOG_SUBCATEGORIES,
+        "enabled_native_categories": [c for c in NATIVE_LOG_CATEGORIES if c not in _log_disabled],
+        # Every sub-entry that is NOT in the disabled list. A category the server has never
+        # touched has nothing stored at all, so all of its sub-entries come back enabled -
+        # which is what "all on by default" has to mean here too.
+        "enabled_log_subcategories": [
+            f"{cat}.{sub}" for cat, subs in LOG_SUBCATEGORIES.items() for sub in subs
+            if f"{cat}.{sub}" not in _log_disabled
         ],
         "log_exclude_channels": log_exclude_channels,
         "logs": logs, "success": success, "error": error,
@@ -4832,7 +4852,16 @@ async def server_log_save(request: Request, guild_id: str):
     # nine native event types", which is what every server that never opened this setting has.
     # Storing the enabled set instead would silence the whole log for all of them at once.
     enabled_native = {c for c in form.getlist("log_events") if c in NATIVE_LOG_CATEGORIES}
-    events_disabled = ",".join(c for c in NATIVE_LOG_CATEGORIES if c not in enabled_native)
+    enabled_subs = set(form.getlist("log_events_sub"))
+    disabled = [c for c in NATIVE_LOG_CATEGORIES if c not in enabled_native]
+    # Sub-entries are only recorded for categories that are still ON: inside a switched-off
+    # category they would be redundant, and writing them anyway means silently re-enabling
+    # them later when the category is switched back on is no longer possible.
+    for cat, subs in LOG_SUBCATEGORIES.items():
+        if cat not in enabled_native:
+            continue
+        disabled += [f"{cat}.{sub}" for sub in subs if f"{cat}.{sub}" not in enabled_subs]
+    events_disabled = ",".join(disabled)
 
     from database import set_guild_config
     await set_guild_config(int(guild_id), "log_channel", log_channel)

@@ -91,13 +91,24 @@
     <div style="margin-bottom:1rem;">
       <label style="margin-bottom:0.15rem;">{{ tr.log_events_title }}</label>
       <div style="color:var(--muted);font-size:0.72rem;margin-bottom:0.5rem;">{{ tr.log_events_hint }}</div>
-      <div class="log-filter-grid">
+      {# Not the flat log-filter-grid the other two lists use: a category with sub-entries
+         needs its own block so the children can sit under their parent and stay readable. #}
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:0.5rem 1.25rem;">
         {% for cat in native_log_categories %}
-        <label class="log-filter-item">
-          <input type="checkbox" name="log_events" value="{{ cat }}"
-                 {% if cat in enabled_native_categories %}checked{% endif %}>
-          {{ tr['log_category_' ~ cat] }}
-        </label>
+        <div>
+          <label class="log-filter-item" style="font-weight:600;">
+            <input type="checkbox" name="log_events" value="{{ cat }}"
+                   {% if cat in enabled_native_categories %}checked{% endif %}>
+            {{ tr['log_category_' ~ cat] }}
+          </label>
+          {% for sub in log_subcategories.get(cat, []) %}
+          <label class="log-filter-item" style="margin-left:1.35rem;font-size:0.78rem;color:var(--muted);">
+            <input type="checkbox" name="log_events_sub" value="{{ cat }}.{{ sub }}"
+                   {% if cat ~ '.' ~ sub in enabled_log_subcategories %}checked{% endif %}>
+            {{ tr['log_sub_' ~ cat ~ '_' ~ sub] }}
+          </label>
+          {% endfor %}
+        </div>
         {% endfor %}
       </div>
     </div>
