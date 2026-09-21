@@ -357,7 +357,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "birthday_info_title": "🎂 Wie funktionieren Geburtstage?",
         "birthday_info_item_set": "Eintragen/ändern per !<Befehlswort> TT.MM im Chat — ein erneuter Aufruf überschreibt das alte Datum. Welche Wörter das sind, legst du unten fest; mehrere nebeneinander sind möglich, z.B. für mehrsprachige Server.",
         "birthday_info_item_delete": "Löschen per !<Befehlswort> <Löschwort> im Chat, z.B. !birthday delete. Auch die Löschwörter sind unten einstellbar.",
-        "birthday_info_item_placeholder": "In der Glückwunsch-Nachricht wird {user} durch eine Erwähnung des Mitglieds ersetzt.",
+        "birthday_info_item_placeholder": "Im täglichen Glückwunsch wird {user} durch eine Erwähnung des Mitglieds ersetzt. Dieser Text ist unabhängig von den Antworten auf den Befehl.",
+        "birthday_info_item_replies": "Auch was der Bot auf den Befehl antwortet, stellst du unten selbst ein — eingetragen, gelöscht und falsches Format getrennt. Platzhalter: {date}, {user}, {command} (das benutzte Befehlswort) und {delete}. Leer gelassen greift der graue Vorschlagstext im Feld.",
+        "birthday_info_item_schedule": "Der Bot gratuliert täglich in der Stunde ab 8:00 Uhr (Zeitzone Europe/Berlin, fest eingestellt) und jeder Person höchstens einmal pro Jahr. Ein am 29.02. eingetragener Geburtstag wird in Nicht-Schaltjahren am 28.02. gefeiert. Wird ein falsch eingetragenes Datum später im selben Jahr korrigiert, gratuliert der Bot am neuen Datum trotzdem noch.",
+        "birthday_info_item_collision": "Ein Befehlswort darf nicht gleichzeitig ein Custom Command dieses Servers sein — sonst würden beide auf dieselbe Nachricht antworten. Das wird beim Speichern abgelehnt.",
         "birthday_info_item_channel": "Ohne gesetzten Geburtstags-Kanal wird nichts verschickt, auch wenn Geburtstage eingetragen sind.",
         # Temp-Voice
         "tempvoice_hint":            "Wenn ein Nutzer den Trigger-Kanal betritt, erstellt der Bot automatisch einen neuen Voice-Kanal. Sobald alle den Kanal verlassen, wird er wieder gelöscht.",
@@ -1247,7 +1250,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "birthday_info_title": "🎂 How do birthdays work?",
         "birthday_info_item_set": "Set/change with !<command word> DD.MM in chat — calling it again overwrites the old date. You choose those words below; several can work side by side, e.g. for a multilingual server.",
         "birthday_info_item_delete": "Delete with !<command word> <clear word> in chat, e.g. !birthday delete. The clear words are configurable below too.",
-        "birthday_info_item_placeholder": "In the congratulations message, {user} is replaced with a mention of the member.",
+        "birthday_info_item_placeholder": "In the daily congratulations message, {user} is replaced with a mention of the member. That text is separate from the replies to the command.",
+        "birthday_info_item_replies": "What the bot answers to the command is yours to set as well — set, cleared and wrong format separately. Placeholders: {date}, {user}, {command} (the word they used) and {delete}. Left empty, the greyed-out suggestion in the field applies.",
+        "birthday_info_item_schedule": "The bot congratulates daily during the 08:00 hour (Europe/Berlin, fixed) and each person at most once a year. A birthday stored as Feb 29 is celebrated on Feb 28 in non-leap years. If a wrongly entered date is corrected later the same year, the bot still congratulates on the new date.",
+        "birthday_info_item_collision": "A command word can't also be a Custom Command on this server — both would answer the same message. That combination is rejected on save.",
         "birthday_info_item_channel": "Without a configured birthday channel, nothing gets sent, even if birthdays are on file.",
         # Temp-Voice
         "tempvoice_hint":            "When a user joins the trigger channel, the bot automatically creates a new voice channel. Once everyone leaves it, it's deleted again.",
