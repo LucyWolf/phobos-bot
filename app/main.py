@@ -137,6 +137,7 @@ from database import (
     DEFAULT_BIRTHDAY_REPLY_SAVED, DEFAULT_BIRTHDAY_REPLY_DELETED,
     DEFAULT_BIRTHDAY_REPLY_ERROR, DEFAULT_TEMPVOICE_PANEL_TITLE,
     DEFAULT_TEMPVOICE_PANEL_TEXT, DEFAULT_TEMPVOICE_LABELS, parse_panel_labels,
+    DEFAULT_VRC_NICKNAME_FORMAT, vrc_nickname,
 )
 import totp
 
@@ -226,6 +227,7 @@ COGS = [
     "cogs.freestuff",
     "cogs.auto_delete",
     "cogs.auto_thread",
+    "cogs.vrc_link",
     "cogs.temp_voice",
     "cogs.scheduler",
     "cogs.birthday",
@@ -1086,7 +1088,7 @@ async def profile_avatar_delete(request: Request):
 # ── Backup / Restore ───────────────────────────────────────────────────────────
 
 _BACKUP_FEATURE_TABLES = [
-    "reaction_roles", "custom_commands", "auto_delete_channels",
+    "reaction_roles", "custom_commands", "auto_delete_channels", "vrc_links",
     "temp_voice_config", "notifications", "freestuff_channels",
     "birthdays", "warnings", "ticket_panels",
     # Added later than the others - level_roles/level_rewards/automod_word_presets predate
@@ -1176,6 +1178,13 @@ _BACKUP_TBL_INSERT = {
         "INSERT INTO custom_commands (guild_id,trigger,response) VALUES (:guild_id,:trigger,:response) ON CONFLICT(guild_id,trigger) DO UPDATE SET response=excluded.response",
     "auto_delete_channels":
         "INSERT INTO auto_delete_channels (guild_id,channel_id,delay_seconds) VALUES (:guild_id,:channel_id,:delay_seconds) ON CONFLICT(guild_id,channel_id) DO UPDATE SET delay_seconds=excluded.delay_seconds",
+    # The links themselves travel with a server backup: they are configuration in every sense
+    # that matters here - a moderator approved each one by hand, and losing them means every
+    # member has to ask again.
+    "vrc_links":
+        "INSERT INTO vrc_links (guild_id,user_id,vrchat_name,status,requested_at,decided_at,decided_by,note) "
+        "VALUES (:guild_id,:user_id,:vrchat_name,:status,:requested_at,:decided_at,:decided_by,:note) "
+        "ON CONFLICT(guild_id,user_id) DO UPDATE SET vrchat_name=excluded.vrchat_name, status=excluded.status",
     "auto_thread_channels":
         "INSERT INTO auto_thread_channels (guild_id,channel_id,name_template,archive_minutes,skip_bots,require_attachment,starter_message) "
         "VALUES (:guild_id,:channel_id,:name_template,:archive_minutes,:skip_bots,:require_attachment,:starter_message) "
@@ -3535,6 +3544,86 @@ async def auto_delete_remove(request: Request, guild_id: str, entry_id: int):
     return RedirectResponse(f"/servers/{guild_id}?tab=autodelete&success=Gelöscht", status_code=302)
 
 
+# ── VRC-Link ──────────────────────────────────────────────────────────────────
+# Members state their VRChat name, a moderator decides. There is deliberately no automatic
+# verification against VRChat - see cogs/vrc_link.py's module docstring for why that cannot be
+# done without putting somebody's VRChat account at risk.
+
+async def _vrc_apply(guild_id: int, user_id: str, vrchat_name: str, revoke: bool = False) -> None:
+    """Run the cog's own apply/revoke against the bot instance that serves this guild, so the
+    dashboard and the slash commands can never end up doing two different things."""
+    try:
+        b = bot._bot_for_guild(guild_id)
+        guild = b.get_guild(guild_id) if b else None
+        member = guild.get_member(int(user_id)) if guild and str(user_id).isdigit() else None
+        if not member:
+            return
+        from cogs.vrc_link import apply_link, revoke_link
+        if revoke:
+            await revoke_link(b, guild, member)
+        else:
+            await apply_link(b, guild, member, vrchat_name)
+    except Exception as e:
+        print(f"[vrc_link] dashboard apply failed for {user_id} in {guild_id}: {e}")
+
+
+@web.post("/servers/{guild_id}/vrc/decide/{link_id}")
+async def vrc_decide(request: Request, guild_id: int, link_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    action = form.get("action", "")
+    row = await db_one("SELECT * FROM vrc_links WHERE id=? AND guild_id=?", (link_id, str(guild_id)))
+    if not row:
+        return RedirectResponse(f"/servers/{guild_id}?tab=vrclink&error=Nicht+gefunden", status_code=302)
+    who = request.session.get("username", "admin")
+    now = datetime.datetime.utcnow().isoformat()
+    if action == "approve":
+        await db_exec(
+            "UPDATE vrc_links SET status='approved', decided_at=?, decided_by=? WHERE id=?",
+            (now, who, link_id))
+        await _vrc_apply(guild_id, row["user_id"], row["vrchat_name"])
+        msg = "Freigegeben"
+    elif action == "revoke":
+        # Back to pending rather than deleted: the member keeps their entry and the moderator
+        # keeps the history of who asked for what, which a delete would throw away.
+        await db_exec(
+            "UPDATE vrc_links SET status='pending', decided_at=?, decided_by=? WHERE id=?",
+            (now, who, link_id))
+        await _vrc_apply(guild_id, row["user_id"], row["vrchat_name"], revoke=True)
+        msg = "Freigabe+zurückgenommen"
+    elif action == "delete":
+        await db_exec("DELETE FROM vrc_links WHERE id=?", (link_id,))
+        if row["status"] == "approved":
+            await _vrc_apply(guild_id, row["user_id"], row["vrchat_name"], revoke=True)
+        msg = "Eintrag+gelöscht"
+    else:
+        return RedirectResponse(f"/servers/{guild_id}?tab=vrclink&error=Unbekannte+Aktion", status_code=302)
+    return RedirectResponse(f"/servers/{guild_id}?tab=vrclink&success={msg}", status_code=303)
+
+
+@web.post("/servers/{guild_id}/vrc/refresh")
+async def vrc_refresh(request: Request, guild_id: int):
+    """Re-apply role and nickname to every approved link - the "Bulk actions" of the service
+    this was modelled on, for when the nickname format changed after people already linked."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    rows = await db_rows(
+        "SELECT * FROM vrc_links WHERE guild_id=? AND status='approved'", (str(guild_id),))
+    done = 0
+    for row in rows:
+        # Sequential on purpose: each iteration is one or two Discord edits, and firing a few
+        # hundred of them at once is how a bot earns a rate limit that stalls everything else
+        # it is doing. discord.py serialises per route anyway, so this only looks slower.
+        await _vrc_apply(guild_id, row["user_id"], row["vrchat_name"])
+        done += 1
+    return RedirectResponse(
+        f"/servers/{guild_id}?tab=vrclink&success={done}+Verknüpfung(en)+aufgefrischt",
+        status_code=303)
+
+
 # ── Auto-Thread ───────────────────────────────────────────────────────────────
 # One thread per message in the configured channels - see cogs/auto_thread.py.
 
@@ -4975,7 +5064,7 @@ _SERVER_CONFIG_TAB_LABELS = {
     "giveaways": "🎉 Giveaways", "warnings": "⚠️ Warnungen", "users": "👥 Nutzer",
     "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant", "events": "🗓️ Events",
     "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
-    "autothread": "🧵 Auto-Thread",
+    "autothread": "🧵 Auto-Thread", "vrclink": "🔗 VRC-Link",
     "amp": "🎮 Gameserver", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
     "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen", "ratings": "⭐ Bewertungen",
 }
@@ -4997,7 +5086,7 @@ _TOGGLEABLE_FEATURES = {
     "commands": "📢 Commands", "tickets": "🎫 Tickets", "giveaways": "🎉 Giveaways",
     "warnings": "⚠️ Warnungen", "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant",
     "events": "🗓️ Events", "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
-    "autothread": "🧵 Auto-Thread",
+    "autothread": "🧵 Auto-Thread", "vrclink": "🔗 VRC-Link",
     "amp": "🎮 Gameserver", "notifications": "🟣 Streaming", "freestuff": "🎁 Free Stuff",
     "log": "📋 Log", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
     "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen", "ratings": "⭐ Bewertungen",
@@ -5249,6 +5338,21 @@ async def server_config(
         # through its own dedicated /embeds/{id}/image route when previewing it, never
         # straight out of this context.
         ep.pop("image_data", None)
+
+    # VRC-Link
+    _vrc_links = await db_rows(
+        "SELECT * FROM vrc_links WHERE guild_id=? ORDER BY status DESC, requested_at ASC",
+        (str(guild_id),),
+    )
+    for _vl in _vrc_links:
+        _m = guild.get_member(int(_vl["user_id"])) if str(_vl["user_id"]).isdigit() else None
+        _vl["member_name"] = _m.display_name if _m else f"#{_vl['user_id']}"
+        _vl["in_guild"] = _m is not None
+        # What the nickname WOULD become, so an admin can see the effect of the format before
+        # queueing it onto 200 people.
+        _vl["preview"] = vrc_nickname(
+            cfg.get("vrc_nickname_format") or DEFAULT_VRC_NICKNAME_FORMAT,
+            _vl["vrchat_name"], _m.name if _m else "")
 
     # Temp Voice
     _tempvoice_configs = await db_rows(
@@ -5545,6 +5649,9 @@ async def server_config(
         ),
         "voice_channels": voice_channels,
         "tempvoice_configs": _tempvoice_configs,
+        "vrc_links": _vrc_links,
+        "vrc_pending_count": sum(1 for v in _vrc_links if v["status"] != "approved"),
+        "vrc_nickname_default": DEFAULT_VRC_NICKNAME_FORMAT,
         "amp_cfg": amp_cfg, "amp_status": amp_status, "amp_instances": amp_instances,
         "amp_instances_error": amp_instances_error, "amp_connection_error": amp_connection_error,
         "amp_raw_debug": amp_raw_debug,
@@ -5606,6 +5713,7 @@ _TAB_TEXT_KEYS = {
         "automod_spam_threshold", "automod_spam_window", "automod_timeout_minutes",
         "automod_banned_words", "automod_action", "automod_warn_message",
     ],
+    "vrclink": ["vrc_linked_role", "vrc_nickname_format"],
     "birthday": ["birthday_channel", "birthday_message", "birthday_commands",
                  "birthday_delete_words", "birthday_reply_saved",
                  "birthday_reply_deleted", "birthday_reply_error"],
@@ -5620,6 +5728,7 @@ _TAB_CHECKBOX_KEYS = {
     "leveling": ["leveling_enabled", "leveling_voice_enabled"],
     "automod": ["automod_enabled", "automod_links"],
     "birthday": [],
+    "vrclink": ["vrc_enabled", "vrc_nickname_enabled", "vrc_auto_approve"],
     # auto_kick_enabled deliberately NOT here - it needs the previous saved value to detect an
     # off→on transition (see the dedicated handling in server_config_save below), the generic
     # loop below has no way to express that.

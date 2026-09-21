@@ -3040,6 +3040,135 @@ document.addEventListener('click', function(e) {
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: VRC-Link                                                       -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="tab-pane" id="pane-vrclink">
+
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="toggleVrcInfo()" title="{{ tr.vrc_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="vrc-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:300px;max-width:460px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.vrc_info_title }}</div>
+    <ul style="margin:0 0 0 1.1rem;padding:0;color:var(--muted);line-height:1.6;">
+      <li>{{ tr.vrc_info_item_flow }}</li>
+      <li>{{ tr.vrc_info_item_effect }}</li>
+      <li>{{ tr.vrc_info_item_noapi }}</li>
+      <li>{{ tr.vrc_info_item_perms }}</li>
+    </ul>
+  </div>
+</div>
+
+<form method="post" action="/servers/{{ guild.id }}">
+<input type="hidden" name="tab" value="vrclink">
+<div class="card">
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.vrc_hint }}</p>
+  <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-bottom:0.9rem;">
+    <input type="checkbox" name="vrc_enabled" value="1" style="margin:0;" {% if cfg.get('vrc_enabled') == '1' %}checked{% endif %}>
+    {{ tr.vrc_enabled_label }}
+  </label>
+  <div class="grid-2" style="gap:1rem;">
+    <div>
+      <label>{{ tr.vrc_role_label }}</label>
+      <select name="vrc_linked_role">
+        <option value="">{{ tr.vrc_role_none }}</option>
+        {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('vrc_linked_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>{{ tr.vrc_nickname_format_label }}</label>
+      <input type="text" name="vrc_nickname_format" maxlength="64"
+             value="{{ cfg.get('vrc_nickname_format', '') }}" placeholder="{{ vrc_nickname_default }}">
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_nickname_format_hint }}</div>
+    </div>
+    <div style="grid-column:1 / -1;">
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-bottom:0.35rem;">
+        <input type="checkbox" name="vrc_nickname_enabled" value="1" style="margin:0;" {% if cfg.get('vrc_nickname_enabled') == '1' %}checked{% endif %}>
+        {{ tr.vrc_nickname_enabled_label }}
+      </label>
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;">
+        <input type="checkbox" name="vrc_auto_approve" value="1" style="margin:0;" {% if cfg.get('vrc_auto_approve') == '1' %}checked{% endif %}>
+        {{ tr.vrc_auto_approve_label }}
+      </label>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_auto_approve_hint }}</div>
+    </div>
+  </div>
+  <button type="submit" class="btn btn-primary" style="margin-top:0.9rem;">{{ tr.btn_save }}</button>
+</div>
+</form>
+
+<div class="card">
+  <div class="feat-header" style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
+    {{ tr.vrc_links_heading }}
+    <span style="font-weight:400;color:var(--muted);font-size:0.8rem;">
+      {{ vrc_links|length }} {{ tr.vrc_links_total }}{% if vrc_pending_count %} · {{ vrc_pending_count }} {{ tr.vrc_pending_total }}{% endif %}
+    </span>
+    <div style="flex:1;"></div>
+    <form method="post" action="/servers/{{ guild.id }}/vrc/refresh" style="margin:0;"
+          onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='⏳';">
+      <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;">{{ tr.vrc_refresh_btn }}</button>
+    </form>
+  </div>
+  <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.9rem;">{{ tr.vrc_refresh_hint }}</div>
+
+  {% if vrc_links %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>{{ tr.vrc_col_member }}</th><th>{{ tr.vrc_col_vrchat }}</th>
+        <th>{{ tr.vrc_col_preview }}</th><th>{{ tr.vrc_col_status }}</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for v in vrc_links %}
+        <tr>
+          <td>{{ v.member_name }}{% if not v.in_guild %} <span style="color:var(--muted);font-size:0.72rem;">({{ tr.vrc_left_server }})</span>{% endif %}</td>
+          <td><code>{{ v.vrchat_name }}</code></td>
+          <td style="color:var(--muted);font-size:0.82rem;">{{ v.preview }}</td>
+          <td>
+            {% if v.status == 'approved' %}
+            <span class="panel-badge panel-status-pub">{{ tr.vrc_status_approved }}</span>
+            {% else %}
+            <span class="panel-badge panel-status-draft">{{ tr.vrc_status_pending }}</span>
+            {% endif %}
+          </td>
+          <td style="text-align:right;white-space:nowrap;">
+            <form method="post" action="/servers/{{ guild.id }}/vrc/decide/{{ v.id }}" style="display:inline;margin:0;">
+              {% if v.status == 'approved' %}
+              <button type="submit" name="action" value="revoke" class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;">{{ tr.vrc_btn_revoke }}</button>
+              {% else %}
+              <button type="submit" name="action" value="approve" class="btn btn-primary" style="font-size:0.75rem;padding:0.22rem 0.6rem;">{{ tr.vrc_btn_approve }}</button>
+              {% endif %}
+            </form>
+            <form method="post" action="/servers/{{ guild.id }}/vrc/decide/{{ v.id }}" style="display:inline;margin:0;"
+                  onsubmit="return confirm({{ tr.vrc_confirm_delete.replace('{name}', v.vrchat_name) | js }})">
+              <button type="submit" name="action" value="delete" class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_delete }}">✕</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="hint">{{ tr.vrc_links_empty }}</p>
+  {% endif %}
+</div>
+<script>
+function toggleVrcInfo() {
+  const box = document.getElementById('vrc-info-box');
+  if (box) box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('vrc-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleVrcInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+</script>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <!-- TAB: Auto-Thread                                                    -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-autothread">
@@ -4341,7 +4470,7 @@ document.addEventListener('click', function(e) {
 </script>
 
 <script>
-const TABS = ['config','welcome','automod','leveling','rr','commands','tickets','giveaways','polls','ratings','warnings','users','tempvoice','scheduled','events','birthday','autodelete','autothread','amp','autokick','embeds','rolerules'];
+const TABS = ['config','welcome','automod','leveling','rr','commands','tickets','giveaways','polls','ratings','warnings','users','tempvoice','scheduled','events','birthday','autodelete','autothread','vrclink','amp','autokick','embeds','rolerules'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {

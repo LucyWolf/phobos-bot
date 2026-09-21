@@ -921,6 +921,28 @@ async def init_db():
             # one then needs no migration. An absent or unusable key falls back to the German
             # default, so a half-filled object is fine.
             "ALTER TABLE temp_voice_config ADD COLUMN panel_labels TEXT NOT NULL DEFAULT ''",
+            # User-requested ("mach ein neues funktion vrc link", with screenshots of a
+            # third-party VRChat-linking service) - members state their VRChat name, a
+            # moderator approves it, and the approved link then drives a role and the Discord
+            # nickname.
+            #
+            # Approval is a PERSON, not an API call, on purpose: VRChat has no open API. The
+            # community one needs real account credentials plus 2FA and using it for automation
+            # is a bannable offence for the account doing it, and profile pages are not
+            # readable without a login - so there is no way for this bot to verify ownership by
+            # itself, and no honest way to fill in "18+ verified" or a trust rank either.
+            """CREATE TABLE IF NOT EXISTS vrc_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                vrchat_name TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                requested_at TEXT NOT NULL DEFAULT '',
+                decided_at TEXT NOT NULL DEFAULT '',
+                decided_by TEXT NOT NULL DEFAULT '',
+                note TEXT NOT NULL DEFAULT '',
+                UNIQUE(guild_id, user_id)
+            )""",
             """CREATE TABLE IF NOT EXISTS auto_thread_channels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL,
@@ -996,6 +1018,27 @@ DEFAULT_TEMPVOICE_PANEL_TEXT = (
 # The panel's six buttons, in the order they appear, with their default captions. The keys are
 # the stable part - they are what parse_panel_labels() and the dashboard form agree on, and
 # what the cog matches against each button's custom_id ("tv:<key>").
+# Placeholders substituted into the nickname format: {vrchatName} and {discordName}.
+DEFAULT_VRC_NICKNAME_FORMAT = "{vrchatName}"
+
+# Discord's hard limit for a member nickname.
+MAX_NICKNAME = 32
+
+
+def vrc_nickname(fmt: str, vrchat_name: str, discord_name: str) -> str:
+    """Render a member's nickname from the server's format.
+
+    Clamped to Discord's 32 characters at the END, after substitution: a format well within the
+    limit still overshoots once a long VRChat name goes in, and member.edit() then rejects the
+    whole change - so the nickname silently stayed wrong for exactly the members whose name
+    made it worth setting.
+    """
+    text = (fmt or DEFAULT_VRC_NICKNAME_FORMAT)
+    text = text.replace("{vrchatName}", vrchat_name or "").replace("{discordName}", discord_name or "")
+    text = " ".join(text.split()).strip()
+    return text[:MAX_NICKNAME]
+
+
 DEFAULT_TEMPVOICE_LABELS = {
     "rename": "Umbenennen",
     "limit": "Limit",
