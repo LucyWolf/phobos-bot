@@ -961,6 +961,11 @@ async def init_db():
                 SELECT MAX(id) FROM vrc_links GROUP BY guild_id, LOWER(vrchat_name)
             )""",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_vrc_links_name ON vrc_links(guild_id, vrchat_name COLLATE NOCASE)",
+            # The VRChat account a link actually points at, once the bot has resolved the typed
+            # name against VRChat. Display names can be changed by their owner, so the id is the
+            # only stable handle - a link stored by name alone silently stops meaning anything
+            # the day somebody renames themselves.
+            "ALTER TABLE vrc_links ADD COLUMN vrc_user_id TEXT NOT NULL DEFAULT ''",
             # The VRChat account the bot signs in as, one per Discord server. Deliberately NOT
             # in _BACKUP_FEATURE_TABLES: these are login credentials for somebody's VRChat
             # account, and a server backup exists to be handed to other people. They are also

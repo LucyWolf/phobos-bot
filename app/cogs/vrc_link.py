@@ -19,11 +19,70 @@ from discord import app_commands
 from discord.ext import commands
 
 from database import (db_rows, db_one, db_exec, get_guild_config,
-                      vrc_nickname, DEFAULT_VRC_NICKNAME_FORMAT)
+                      vrc_nickname, DEFAULT_VRC_NICKNAME_FORMAT, VRC_ACCOUNT_KEY)
 
 # VRChat display names are at most 32 characters; anything longer is not a name, it is a paste
 # accident. Kept as its own limit rather than reusing the nickname one it happens to match.
 MAX_VRCHAT_NAME = 32
+
+
+async def vrc_session() -> dict | None:
+    """The installation's VRChat session, renewed if the cached one has gone stale.
+
+    Returns {"auth_cookie", "two_factor_cookie"} or None when no account is connected. Written
+    back to the row whenever the cookies changed, so the next caller starts from the fresh ones
+    instead of signing in again - see app/vrchat.py for why repeated password logins are
+    something to avoid rather than merely wasteful.
+
+    Everything is swallowed into a None: this runs behind a member's slash command, and a
+    VRChat outage should degrade the command, not break it.
+    """
+    row = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,))
+    if not row or not row["username"] or not row["password"]:
+        return None
+    try:
+        from vrchat import login as vrc_login
+        result = await vrc_login(
+            row["username"], row["password"], row["totp_secret"],
+            auth_cookie=row["auth_cookie"], two_factor_cookie=row["two_factor_cookie"],
+        )
+    except Exception as e:
+        print(f"[vrc_link] VRChat session unavailable: {e}")
+        return None
+    if not result["reused"]:
+        try:
+            await db_exec(
+                "UPDATE vrc_accounts SET auth_cookie=?, two_factor_cookie=?, last_error='' "
+                "WHERE guild_id=?",
+                (result["auth_cookie"], result["two_factor_cookie"], VRC_ACCOUNT_KEY),
+            )
+        except Exception as e:
+            print(f"[vrc_link] could not store refreshed VRChat session: {e}")
+    return {"auth_cookie": result["auth_cookie"],
+            "two_factor_cookie": result["two_factor_cookie"]}
+
+
+async def resolve_vrchat(name: str) -> tuple:
+    """Look a typed display name up at VRChat.
+
+    Returns (status, user) where status is one of:
+      "ok"          - found, `user` is the VRChat user object
+      "not_found"   - VRChat has no account by that exact name
+      "unavailable" - no account connected, or VRChat could not be reached
+
+    "unavailable" is deliberately distinct from "not_found": refusing somebody's link because
+    the BOT cannot reach VRChat would blame them for an outage they have nothing to do with.
+    """
+    session = await vrc_session()
+    if not session:
+        return "unavailable", None
+    try:
+        from vrchat import find_user
+        user = await find_user(name, session["auth_cookie"], session["two_factor_cookie"])
+    except Exception as e:
+        print(f"[vrc_link] lookup of {name!r} failed: {e}")
+        return "unavailable", None
+    return ("ok", user) if user else ("not_found", None)
 
 
 async def apply_link(bot, guild: discord.Guild, member: discord.Member, vrchat_name: str) -> list:
@@ -99,6 +158,25 @@ class VRCLink(commands.Cog):
                 "❌ Bitte gib deinen VRChat-Namen an.", ephemeral=True)
             return
 
+        # Looked up at VRChat before anything is stored, so the link points at an account that
+        # actually exists - and is stored under VRCHAT's spelling, not the member's. Somebody
+        # typing "alexinvr" gets the nickname "AlexInVR", which is the whole point of copying
+        # the name across in the first place.
+        await interaction.response.defer(ephemeral=True)
+        status, vrc_user = await resolve_vrchat(name)
+        vrc_id = ""
+        if status == "ok":
+            name = str(vrc_user.get("displayName") or name)[:MAX_VRCHAT_NAME]
+            vrc_id = str(vrc_user.get("id") or "")
+        elif status == "not_found":
+            await interaction.followup.send(
+                f"❌ VRChat kennt kein Konto mit dem Namen **{name}**. Achte auf die genaue "
+                f"Schreibweise deines Anzeigenamens.", ephemeral=True)
+            return
+        # "unavailable" falls through on purpose: the name is stored as typed and can be
+        # resolved later. Refusing the link because the BOT cannot reach VRChat would blame
+        # the member for an outage that is none of their doing.
+
         existing = await db_one(
             "SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
             (str(interaction.guild_id), str(interaction.user.id)),
@@ -110,13 +188,15 @@ class VRCLink(commands.Cog):
             (str(interaction.guild_id), name, str(interaction.user.id)),
         )
         if taken:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"❌ **{name}** ist auf diesem Server schon mit <@{taken['user_id']}> verknüpft. "
                 f"Wenn das ein Fehler ist, wende dich an die Moderation.", ephemeral=True)
             return
 
         auto = (await get_guild_config(interaction.guild_id, "vrc_auto_approve") or "0") == "1"
-        status = "approved" if auto else "pending"
+        # Not `status` - that name already holds the outcome of the VRChat lookup above, and
+        # reusing it here would overwrite it silently.
+        link_status = "approved" if auto else "pending"
         now = datetime.datetime.utcnow().isoformat()
         # Both unique indexes on this table can still reject the write even though the checks
         # above passed: two people can run /vrc-link with the same name in the same instant,
@@ -126,31 +206,32 @@ class VRCLink(commands.Cog):
         try:
             if existing:
                 await db_exec(
-                    "UPDATE vrc_links SET vrchat_name=?, status=?, requested_at=?, decided_at='', "
-                    "decided_by='' WHERE id=?",
-                    (name, status, now, existing["id"]),
+                    "UPDATE vrc_links SET vrchat_name=?, vrc_user_id=?, status=?, requested_at=?, "
+                    "decided_at='', decided_by='' WHERE id=?",
+                    (name, vrc_id, link_status, now, existing["id"]),
                 )
             else:
                 await db_exec(
-                    "INSERT INTO vrc_links (guild_id, user_id, vrchat_name, status, requested_at) "
-                    "VALUES (?,?,?,?,?)",
-                    (str(interaction.guild_id), str(interaction.user.id), name, status, now),
+                    "INSERT INTO vrc_links (guild_id, user_id, vrchat_name, vrc_user_id, "
+                    "status, requested_at) VALUES (?,?,?,?,?,?)",
+                    (str(interaction.guild_id), str(interaction.user.id), name, vrc_id,
+                     link_status, now),
                 )
         except Exception as e:
             print(f"[vrc_link] storing link for {interaction.user.id} in {interaction.guild_id} failed: {e}")
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"❌ **{name}** konnte nicht gespeichert werden — der Name ist vermutlich gerade "
                 f"von jemand anderem eingetragen worden. Versuch es nochmal.", ephemeral=True)
             return
 
         if not auto:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"✅ **{name}** eingetragen. Die Moderation schaut es sich an und gibt es frei.",
                 ephemeral=True)
             return
         changed = await apply_link(self.bot, interaction.guild, interaction.user, name)
         extra = (" · " + ", ".join(changed)) if changed else ""
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"✅ **{name}** verknüpft{extra}.", ephemeral=True)
 
     @app_commands.command(name="vrc-unlink", description="Eigene VRChat-Verknüpfung entfernen")

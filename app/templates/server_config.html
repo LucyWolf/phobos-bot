@@ -3140,7 +3140,14 @@ document.addEventListener('click', function(e) {
         {% for v in vrc_links %}
         <tr>
           <td>{{ v.member_name }}{% if not v.in_guild %} <span style="color:var(--muted);font-size:0.72rem;">({{ tr.vrc_left_server }})</span>{% endif %}</td>
-          <td><code>{{ v.vrchat_name }}</code></td>
+          <td>
+            <code>{{ v.vrchat_name }}</code>
+            {% if v.vrc_user_id %}
+            <div style="color:var(--muted);font-size:0.68rem;" title="{{ v.vrc_user_id }}">✓ {{ tr.vrc_verified_exists }}</div>
+            {% else %}
+            <div style="color:var(--muted);font-size:0.68rem;">{{ tr.vrc_unverified }}</div>
+            {% endif %}
+          </td>
           <td style="color:var(--muted);font-size:0.82rem;">{{ v.preview }}</td>
           <td>
             {% if v.status == 'approved' %}
