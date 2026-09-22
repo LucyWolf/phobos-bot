@@ -51,12 +51,23 @@ MAX_BUTTON_LABEL = 80
 async def link_base_url() -> str:
     """Where the member-facing pages live, without a trailing slash.
 
-    This is the same "base_url" the password-reset mails already use: the bot has no way of
-    knowing its own public address (it sits behind whatever reverse proxy the owner set up), so
-    an admin states it once in the settings. Empty means not configured, and every caller turns
-    that into an explanation rather than a broken half-link.
+    Two sources, in order. An explicitly configured "base_url" wins - that is the one an admin
+    typed on purpose. Otherwise "detected_base_url": the address the dashboard was last opened
+    at, recorded by main.py from logged-in requests.
+
+    The second one exists so nothing has to be configured at all, matching how the invite link
+    in the user administration behaves - it is simply built from the address the admin already
+    has open (window.location.origin). The bot cannot do that itself, because it builds its
+    links inside Discord where there is no browser to ask, so the web half remembers and the
+    bot reads it back.
+
+    Empty is still possible - a fresh install where nobody has logged in yet - and every caller
+    turns that into an explanation rather than a broken half-link.
     """
-    return (await get_config("base_url") or "").strip().rstrip("/")
+    base = (await get_config("base_url") or "").strip()
+    if not base:
+        base = (await get_config("detected_base_url") or "").strip()
+    return base.rstrip("/")
 
 
 async def create_link_token(guild_id, user_id) -> str:
@@ -296,9 +307,9 @@ async def send_personal_link(interaction: discord.Interaction) -> None:
         # Nothing the member can do about this one, so it says whose job it is instead of
         # leaving them to guess. Without a public address the bot cannot build a link at all.
         await interaction.followup.send(
-            "❌ Für diesen Bot ist noch keine öffentliche Adresse eingetragen, deshalb lässt "
-            "sich kein Link erzeugen. Ein Administrator trägt sie unter „Einstellungen → "
-            "E-Mail/SMTP“ als Basis-URL ein.", ephemeral=True)
+            "❌ Der Bot kennt seine eigene Web-Adresse noch nicht, deshalb lässt sich gerade "
+            "kein Link erzeugen. Sag der Serverleitung Bescheid — es reicht, das Dashboard "
+            "einmal zu öffnen.", ephemeral=True)
         return
 
     row = await db_one("SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",

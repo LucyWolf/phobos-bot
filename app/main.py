@@ -545,6 +545,60 @@ async def _current_session_epoch() -> str:
     return await get_config("session_epoch") or "0"
 
 
+# The public address the dashboard is actually being reached at, learned from logged-in
+# requests. The invite link in the user administration builds itself from
+# window.location.origin - whatever address the admin has open - and that is what people
+# expect here too. The bot cannot do the same directly: it builds its links inside Discord,
+# where there is no browser to ask. So the web half remembers the address and the bot reads
+# it back. An explicitly configured base_url always wins over this.
+#
+# Only recorded from requests that carry a valid dashboard session: Host and X-Forwarded-Host
+# are client-supplied, and a stranger hitting the public member page must not be able to
+# decide what address everybody else's links point at.
+_detected_base: str = ""
+
+
+def _request_origin(request: Request) -> str:
+    """scheme://host of THIS request, as the browser sees it - "" if it cannot be told.
+
+    X-Forwarded-Proto/Host come first because this normally runs behind a reverse proxy, where
+    the connection the app itself sees is plain http on an internal name. Only the first value
+    of a comma-separated chain is used; the rest were added by whatever sat further out.
+    """
+    headers = request.headers
+    proto = (headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower() \
+        or (request.url.scheme or "").lower()
+    host = (headers.get("x-forwarded-host") or headers.get("host") or "").split(",")[0].strip()
+    if proto not in ("http", "https") or not host or "/" in host or " " in host:
+        return ""
+    return f"{proto}://{host}"
+
+
+async def _remember_base_url(request: Request) -> None:
+    """Store the dashboard's address, but only when it actually changed."""
+    global _detected_base
+    origin = _request_origin(request)
+    if not origin or origin == _detected_base:
+        return
+    _detected_base = origin
+    try:
+        await set_config("detected_base_url", origin)
+    except Exception as e:
+        print(f"[base_url] konnte die erkannte Adresse nicht speichern: {e}")
+
+
+async def link_base_url() -> str:
+    """The address member-facing links are built on, without a trailing slash.
+
+    A configured base_url wins; otherwise the address the dashboard was last opened at. Empty
+    only before anybody has ever logged in on a fresh install.
+    """
+    base = (await get_config("base_url") or "").strip()
+    if not base:
+        base = (await get_config("detected_base_url") or "").strip()
+    return base.rstrip("/")
+
+
 class SessionValidityMiddleware(BaseHTTPMiddleware):
     """Re-checks role/active status from the DB on every request — otherwise a
     deactivated or demoted user keeps full access for the rest of their
@@ -566,6 +620,11 @@ class SessionValidityMiddleware(BaseHTTPMiddleware):
                 request.session.clear()
             elif row["role"] != request.session.get("role"):
                 request.session["role"] = row["role"]
+            if request.session.get("user_id"):
+                # Re-read rather than reusing `uid`: the branches above clear the session for a
+                # deactivated user or a stale epoch, and those requests must not count as a
+                # logged-in sighting of this address.
+                await _remember_base_url(request)
         return await call_next(request)
 
 
@@ -6194,8 +6253,9 @@ async def server_config(
         "vrc_nickname_default": DEFAULT_VRC_NICKNAME_FORMAT,
         # Without a public address the bot cannot build a member link at all, so the tab says
         # so plainly instead of letting an admin post a panel whose button answers with an
-        # error. Same setting the password-reset mails use.
-        "vrc_base_url_set": bool((await get_config("base_url") or "").strip()),
+        # error. Normally it is simply the address this dashboard is open at - see
+        # link_base_url() - so this is only ever empty on a brand-new install.
+        "vrc_link_base": await link_base_url(),
         "vrc_panel_title_default": DEFAULT_VRC_PANEL_TITLE,
         "vrc_panel_text_default": DEFAULT_VRC_PANEL_TEXT,
         "vrc_panel_button_default": DEFAULT_VRC_PANEL_BUTTON,

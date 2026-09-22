@@ -3130,7 +3130,17 @@ document.addEventListener('click', function(e) {
 <div class="card">
   <div class="feat-header">{{ tr.vrc_panel_heading }}</div>
   <p class="hint" style="margin-bottom:1rem;">{{ tr.vrc_panel_hint }}</p>
-  {% if not vrc_base_url_set %}
+  {# The address members' links are built on. Normally just the one this dashboard is open
+     at, exactly like the invite link in the user administration - shown rather than merely
+     assumed, so an admin behind a reverse proxy can see what people will actually receive. #}
+  {% if vrc_link_base %}
+  <div style="background:var(--bg);border:1px solid var(--border);border-radius:0.6rem;
+              padding:0.6rem 0.85rem;font-size:0.78rem;margin-bottom:1rem;">
+    <span style="color:var(--muted);">{{ tr.vrc_linkbase_label }}</span>
+    <code style="color:#a78bfa;word-break:break-all;">{{ vrc_link_base }}/vrc/…</code>
+    <div style="color:var(--muted);margin-top:0.3rem;">{{ tr.vrc_linkbase_hint }}</div>
+  </div>
+  {% else %}
   <div style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.4);border-radius:0.6rem;
               padding:0.7rem 0.9rem;font-size:0.8rem;color:#fca5a5;margin-bottom:1rem;">
     {{ tr.vrc_baseurl_missing }}

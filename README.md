@@ -242,7 +242,7 @@ The page **never asks for a VRChat password**. Anything that does is phishing, w
 
 Once linked, the page shows the account with its VRChat badges (ownership confirmed, 18+ verified, VRChat+, trust rank) and lets the member refresh or remove the link themselves. A background check once a minute puts back a role or nickname that went missing; it deliberately makes **no** VRChat requests, because re-reading every profile every minute is exactly what gets an account rate-limited and banned. A VRChat-side rename is picked up by the member's own "Refresh link" button or by "Refresh all" on the dashboard.
 
-Needs a **base URL** (Settings → Email/SMTP) so the bot can build links at all, plus **Manage Roles** and **Manage Nicknames** on Discord's side.
+The link address is taken from whatever address you have this dashboard open at — the same way the invite link in the user administration works, nothing to configure. A **base URL** under *Settings → Email/SMTP* overrides it if you need something else. On Discord's side the bot needs **Manage Roles** and **Manage Nicknames**.
 
 ---
 
@@ -875,7 +875,7 @@ Die Seite fragt **nie nach einem VRChat-Passwort**. Wer das tut, betreibt Phishi
 
 Nach der Verknüpfung zeigt die Seite das Konto mit seinen VRChat-Abzeichen (Eigentum bestätigt, 18+ verifiziert, VRChat+, Vertrauensstufe); das Mitglied kann die Verknüpfung dort selbst auffrischen oder lösen. Eine Prüfung im Minutentakt setzt eine verlorene Rolle oder einen geänderten Spitznamen zurück; sie stellt bewusst **keine** VRChat-Anfragen, denn jedes Profil jede Minute neu zu lesen ist genau das, wofür Konten gedrosselt und gesperrt werden. Eine Umbenennung auf VRChat-Seite holt das Mitglied mit „Verknüpfung auffrischen“ oder du mit „Alle auffrischen“ im Dashboard.
 
-Braucht eine **Basis-URL** (Einstellungen → E-Mail/SMTP), damit der Bot überhaupt Links bauen kann, sowie **Rollen verwalten** und **Nicknames verwalten** auf Discord-Seite.
+Die Adresse für die Links nimmt der Bot von dort, wo du dieses Dashboard gerade aufhast — genau wie der Einladungslink in der Benutzerverwaltung, einzustellen ist dafür nichts. Eine **Basis-URL** unter *Einstellungen → E-Mail/SMTP* geht vor, falls du eine andere brauchst. Auf Discord-Seite braucht der Bot **Rollen verwalten** und **Nicknames verwalten**.
 
 ---
 
