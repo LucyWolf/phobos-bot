@@ -3047,6 +3047,15 @@ document.addEventListener('click', function(e) {
 <div style="position:relative;margin-bottom:1.25rem;">
   <button type="button" onclick="toggleVrcInfo()" title="{{ tr.vrc_info_tooltip }}"
     style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  {# Same "not thoroughly tested yet" marker the other young features carry. Earned here:
+     the whole member-facing half was rebuilt in this version, and the VRChat side of it
+     cannot be exercised against a real account by tests alone. #}
+  <button type="button" class="untested-warn-trigger" onclick="toggleUntestedWarnBox(this)" data-warn-target="warn10-warn-box" title="{{ tr.untested_warning_tooltip }}"
+    style="background:rgba(245,158,11,0.15);border:1px solid #f59e0b;color:#f59e0b;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:0.35rem;">⚠</button>
+  <div id="warn10-warn-box" class="untested-warn-box" style="display:none;position:absolute;z-index:60;right:0;left:auto;top:100%;margin-top:0.4rem;background:var(--surface);border:1px solid #f59e0b;border-radius:0.6rem;padding:0.85rem 1rem;font-size:0.78rem;min-width:240px;max-width:360px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <strong style="color:#f59e0b;">⚠️ {{ tr.untested_warning_title }}</strong>
+    <p style="margin:0.4rem 0 0;">{{ tr.untested_warning_tooltip }}</p>
+  </div>
   <div id="vrc-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
        background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
        font-size:0.78rem;min-width:300px;max-width:460px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
