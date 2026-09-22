@@ -3060,6 +3060,14 @@ document.addEventListener('click', function(e) {
   </div>
 </div>
 
+{% if not vrc_connected %}
+<div class="card" style="text-align:center;padding:2rem 1.5rem;">
+  <div style="font-size:1.6rem;margin-bottom:0.5rem;">🔗</div>
+  <div style="font-weight:600;margin-bottom:0.35rem;">{{ tr.vrc_locked_title }}</div>
+  <div style="color:var(--muted);font-size:0.85rem;">{{ tr.vrc_locked_hint }}</div>
+  <a href="/settings/vrchat" class="btn btn-primary" style="margin-top:0.9rem;display:inline-block;">{{ tr.vrc_locked_link }}</a>
+</div>
+{% else %}
 <form method="post" action="/servers/{{ guild.id }}">
 <input type="hidden" name="tab" value="vrclink">
 <div class="card">
@@ -3106,70 +3114,6 @@ document.addEventListener('click', function(e) {
   <button type="submit" class="btn btn-primary" style="margin-top:0.9rem;">{{ tr.btn_save }}</button>
 </div>
 </form>
-
-<div class="card">
-  <div class="feat-header">{{ tr.vrc_account_heading }}</div>
-  <p class="hint" style="margin-bottom:0.5rem;">{{ tr.vrc_account_hint }}</p>
-  <div style="background:rgba(245,158,11,0.12);border:1px solid #f59e0b;border-radius:0.5rem;padding:0.6rem 0.75rem;font-size:0.76rem;line-height:1.6;margin-bottom:0.9rem;">
-    <strong style="color:#f59e0b;">{{ tr.vrc_account_warn_title }}</strong><br>{{ tr.vrc_account_warn }}
-  </div>
-
-  {% if vrc_account and vrc_account.vrc_user_id %}
-  <div style="display:flex;align-items:center;gap:0.7rem;flex-wrap:wrap;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;padding:0.6rem 0.75rem;margin-bottom:0.9rem;">
-    <span style="font-size:1.1rem;">✅</span>
-    <div style="flex:1;min-width:180px;">
-      <div style="font-weight:600;font-size:0.88rem;">{{ vrc_account.vrc_display_name }}</div>
-      <div style="color:var(--muted);font-size:0.72rem;"><code>{{ vrc_account.vrc_user_id }}</code></div>
-    </div>
-    <form method="post" action="/servers/{{ guild.id }}/vrc/account/delete" style="margin:0;"
-          onsubmit="return confirm({{ tr.vrc_account_confirm_delete | js }})">
-      <button type="submit" class="btn btn-danger" style="font-size:0.78rem;">{{ tr.vrc_account_remove }}</button>
-    </form>
-  </div>
-  {% elif vrc_account and vrc_account.last_error %}
-  <div style="background:rgba(239,68,68,0.12);border:1px solid var(--danger);border-radius:0.5rem;padding:0.6rem 0.75rem;font-size:0.78rem;margin-bottom:0.9rem;">
-    ❌ {{ vrc_account.last_error }}
-  </div>
-  {% endif %}
-
-  <form method="post" action="/servers/{{ guild.id }}/vrc/account"
-        onsubmit="this.querySelector('button[type=submit]').disabled=true;this.querySelector('button[type=submit]').textContent='⏳';">
-    <div class="grid-2" style="gap:1rem;">
-      <div>
-        <label>{{ tr.vrc_account_user_label }}</label>
-        <input type="text" name="vrc_username" autocomplete="off"
-               value="{{ vrc_account.username if vrc_account else '' }}">
-      </div>
-      <div>
-        <label>{{ tr.vrc_account_pass_label }}</label>
-        <div style="display:flex;gap:0.4rem;align-items:flex-start;">
-          <input type="password" name="vrc_password" autocomplete="new-password" style="flex:1;"
-                 placeholder="{% if vrc_account and vrc_account.username %}{{ tr.vrc_account_unchanged }}{% endif %}">
-          <button type="button" class="btn btn-secondary" style="padding:0.5rem 0.65rem;"
-                  onclick="vrcToggleSecret(this)" title="{{ tr.vrc_show_secret }}">👁</button>
-        </div>
-      </div>
-      <div>
-        <label>{{ tr.vrc_account_totp_label }}</label>
-        <div style="display:flex;gap:0.4rem;align-items:flex-start;">
-          <input type="password" name="vrc_totp" autocomplete="off" style="flex:1;"
-                 placeholder="{% if vrc_account and vrc_account.username %}{{ tr.vrc_account_unchanged }}{% endif %}">
-          <button type="button" class="btn btn-secondary" style="padding:0.5rem 0.65rem;"
-                  onclick="vrcToggleSecret(this)" title="{{ tr.vrc_show_secret }}">👁</button>
-        </div>
-        <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_account_totp_hint }}</div>
-      </div>
-      <div>
-        <label>{{ tr.vrc_account_code_label }}</label>
-        <input type="text" name="vrc_code" autocomplete="off" inputmode="numeric" maxlength="6"
-               pattern="[0-9]{6}" placeholder="123456">
-        <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_account_code_hint }}</div>
-      </div>
-      <div style="grid-column:1 / -1;font-size:0.72rem;color:var(--muted);">{{ tr.vrc_account_2fa_choice }}</div>
-    </div>
-    <button type="submit" class="btn btn-primary">{{ tr.vrc_account_connect }}</button>
-  </form>
-</div>
 
 <div class="card">
   <div class="feat-header" style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
@@ -3227,17 +3171,8 @@ document.addEventListener('click', function(e) {
   <p class="hint">{{ tr.vrc_links_empty }}</p>
   {% endif %}
 </div>
+{% endif %}
 <script>
-function vrcToggleSecret(btn) {
-  // Reveals what is CURRENTLY TYPED IN - the stored password and 2FA secret are never sent to
-  // the page at all, so there is nothing else here to show. That is deliberate: this button
-  // exists to check a paste, not to read back what the server keeps.
-  const field = btn.parentElement.querySelector('input');
-  if (!field) return;
-  const shown = field.type === 'text';
-  field.type = shown ? 'password' : 'text';
-  btn.textContent = shown ? '👁' : '🙈';
-}
 const VRC_DEFAULT_FMT = {{ vrc_nickname_default | jsraw }};
 const VRC_EX_VRCHAT   = {{ vrc_example_vrchat | jsraw }};
 const VRC_EX_DISCORD  = {{ vrc_example_discord | jsraw }};

@@ -137,7 +137,7 @@ from database import (
     DEFAULT_BIRTHDAY_REPLY_SAVED, DEFAULT_BIRTHDAY_REPLY_DELETED,
     DEFAULT_BIRTHDAY_REPLY_ERROR, DEFAULT_TEMPVOICE_PANEL_TITLE,
     DEFAULT_TEMPVOICE_PANEL_TEXT, DEFAULT_TEMPVOICE_LABELS, parse_panel_labels,
-    DEFAULT_VRC_NICKNAME_FORMAT, vrc_nickname,
+    DEFAULT_VRC_NICKNAME_FORMAT, vrc_nickname, VRC_ACCOUNT_KEY,
 )
 import totp
 
@@ -3567,35 +3567,67 @@ async def _vrc_apply(guild_id: int, user_id: str, vrchat_name: str, revoke: bool
         print(f"[vrc_link] dashboard apply failed for {user_id} in {guild_id}: {e}")
 
 
-@web.post("/servers/{guild_id}/vrc/account")
-async def vrc_account_save(request: Request, guild_id: int):
+@web.get("/settings/vrchat", response_class=HTMLResponse)
+async def vrchat_settings_page(request: Request, error: str = "", success: str = ""):
+    """The installation-wide VRChat bot account, alongside the other global settings.
+
+    Not in a server's own tab: the bot signs in as ONE account for everything it does, so
+    asking for it per server would mean typing the same credentials again and again - and
+    VRChat counting each one as another login. Same arrangement as the Streaming-API page,
+    which holds the Twitch apps that every server's settings then draw on.
+    """
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    account = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,))
+    if account:
+        # Password and session cookies stay on the server - the page only needs to know that
+        # an account is stored, plus whoever it turned out to be.
+        for _k in ("password", "totp_secret", "auth_cookie", "two_factor_cookie"):
+            account[_k] = ""
+    return templates.TemplateResponse("vrchat_settings.html", {
+        **session(request), "request": request,
+        "guilds": await _guild_list(request),
+        "token_set": await _token_configured(),
+        "active": "vrchat",
+        "vrc_account": account,
+        "error": error, "success": success,
+    })
+
+
+@web.post("/settings/vrchat/save")
+async def vrc_account_save(request: Request):
     """Store the VRChat bot account and immediately try to sign in with it.
 
     Testing right here rather than offering a separate button: credentials that are only
     checked the first time something needs them fail hours later, in a background task, where
     the person who typed them is no longer looking.
     """
-    if r := auth_redirect(request): return r
-    if not await _guild_access(request, guild_id):
-        return RedirectResponse("/servers", status_code=302)
+    # Admin-only rather than per-server: this one account serves the whole installation, so a
+    # moderator of a single server must not be able to point it somewhere else - or read the
+    # result of trying.
+    if r := admin_redirect(request): return r
     form = await request.form()
     username = (form.get("vrc_username") or "").strip()
     password = (form.get("vrc_password") or "").strip()
-    totp = (form.get("vrc_totp") or "").strip().replace(" ", "")
-    # Typed in for this one login instead of storing the secret. Never written to the database -
-    # it is valid for about thirty seconds, so keeping it would be storing nothing useful.
+    # The 2FA secret is deliberately not asked for any more - the form offers the one-time code
+    # only. Anything a previous version stored is left alone in the row but no longer used, so
+    # the behaviour here does not depend on what happens to be sitting in that column.
+    # Written into the row as-is, which also clears anything an older version stored there.
+    # Leaving a stale secret lying in the database when nothing reads it any more would be
+    # keeping a credential around for no reason at all.
+    totp = ""
+    # Typed in for this one login. Never written to the database - it is valid for about thirty
+    # seconds, so keeping it would be storing nothing useful.
     one_time = (form.get("vrc_code") or "").strip().replace(" ", "")
-    existing = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (str(guild_id),))
+    existing = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,))
     # An empty password field means "leave it alone" - the form never renders the stored one
     # back into the page, so clearing the box would otherwise wipe the password every time
     # somebody corrects a typo in the username.
     if not password and existing:
         password = existing["password"]
-    if not totp and existing:
-        totp = existing["totp_secret"]
     if not username or not password:
         return RedirectResponse(
-            f"/servers/{guild_id}?tab=vrclink&error=Benutzername+und+Passwort+erforderlich",
+            f"/settings/vrchat?error=Benutzername+und+Passwort+erforderlich",
             status_code=302)
 
     from vrchat import login as vrc_login, VRChatError
@@ -3615,18 +3647,18 @@ async def vrc_account_save(request: Request, guild_id: int):
             "VALUES (?,?,?,?,?,?) ON CONFLICT(guild_id) DO UPDATE SET username=excluded.username, "
             "password=excluded.password, totp_secret=excluded.totp_secret, "
             "last_check=excluded.last_check, last_error=excluded.last_error",
-            (str(guild_id), username, password, totp,
+            (VRC_ACCOUNT_KEY, username, password, totp,
              datetime.datetime.utcnow().isoformat(), str(e)[:500]),
         )
         return RedirectResponse(
-            f"/servers/{guild_id}?tab=vrclink&error={urllib.parse.quote_plus(str(e))}",
+            f"/settings/vrchat?error={urllib.parse.quote_plus(str(e))}",
             status_code=302)
     except Exception as e:
         # A network failure, a DNS hiccup, VRChat handing back something unparseable - none of
         # it should surface as a 500 on a page the admin is mid-way through filling in.
-        print(f"[vrchat] unexpected error during login for guild {guild_id}: {e!r}")
+        print(f"[vrchat] unexpected error during login as {username!r}: {e!r}")
         return RedirectResponse(
-            f"/servers/{guild_id}?tab=vrclink&error=VRChat+war+nicht+erreichbar",
+            f"/settings/vrchat?error=VRChat+war+nicht+erreichbar",
             status_code=302)
 
     user = result["user"]
@@ -3638,28 +3670,25 @@ async def vrc_account_save(request: Request, guild_id: int):
         "auth_cookie=excluded.auth_cookie, two_factor_cookie=excluded.two_factor_cookie, "
         "vrc_user_id=excluded.vrc_user_id, vrc_display_name=excluded.vrc_display_name, "
         "last_check=excluded.last_check, last_error=''",
-        (str(guild_id), username, password, totp, result["auth_cookie"],
+        (VRC_ACCOUNT_KEY, username, password, totp, result["auth_cookie"],
          result["two_factor_cookie"], str(user.get("id") or ""),
          str(user.get("displayName") or ""), datetime.datetime.utcnow().isoformat()),
     )
     who = urllib.parse.quote_plus(str(user.get("displayName") or username))
-    msg = f"Verbunden+als+{who}"
-    if not totp:
-        # Without the secret the session rests on VRChat's twoFactorAuth cookie, which expires
-        # after roughly a month. Saying so now beats a connection that quietly stops working
-        # in four weeks with nobody knowing why.
-        msg += ("+—+ohne+2FA-Geheimnis+muss+der+Code+in+etwa+einem+Monat+erneut+eingegeben+werden")
-    return RedirectResponse(f"/servers/{guild_id}?tab=vrclink&success={msg}", status_code=303)
+    # The session now always rests on VRChat's twoFactorAuth cookie, which expires after roughly
+    # a month. Said every time, because a connection that quietly stops working in four weeks
+    # with nobody knowing why is the worst way for this to end.
+    msg = (f"Verbunden+als+{who}"
+           "+—+in+etwa+einem+Monat+ist+erneut+ein+Code+nötig")
+    return RedirectResponse(f"/settings/vrchat?success={msg}", status_code=303)
 
 
-@web.post("/servers/{guild_id}/vrc/account/delete")
-async def vrc_account_delete(request: Request, guild_id: int):
-    if r := auth_redirect(request): return r
-    if not await _guild_access(request, guild_id):
-        return RedirectResponse("/servers", status_code=302)
-    await db_exec("DELETE FROM vrc_accounts WHERE guild_id=?", (str(guild_id),))
-    return RedirectResponse(
-        f"/servers/{guild_id}?tab=vrclink&success=VRChat-Konto+entfernt", status_code=303)
+@web.post("/settings/vrchat/delete")
+async def vrc_account_delete(request: Request):
+    # Admin-only for the same reason as saving it - see there.
+    if r := admin_redirect(request): return r
+    await db_exec("DELETE FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,))
+    return RedirectResponse("/settings/vrchat?success=VRChat-Konto+entfernt", status_code=303)
 
 
 @web.post("/servers/{guild_id}/vrc/decide/{link_id}")
@@ -5435,7 +5464,7 @@ async def server_config(
         ep.pop("image_data", None)
 
     # VRC-Link
-    _vrc_account = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (str(guild_id),))
+    _vrc_account = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,))
     if _vrc_account:
         # The password and the session cookies never leave the server - the page only needs to
         # know THAT an account is stored, plus whoever it turned out to be.
@@ -5753,6 +5782,9 @@ async def server_config(
         "vrc_links": _vrc_links,
         "vrc_pending_count": sum(1 for v in _vrc_links if v["status"] != "approved"),
         "vrc_account": _vrc_account,
+        # Everything else in the tab hangs off a working account, so the template only shows
+        # it once there is one - settings that provably cannot do anything yet are noise.
+        "vrc_connected": bool(_vrc_account and _vrc_account["vrc_user_id"]),
         "vrc_nickname_default": DEFAULT_VRC_NICKNAME_FORMAT,
         # Names for the live example under the format field. A real linked pair if there is
         # one - seeing the format applied to somebody who is actually on the server says more

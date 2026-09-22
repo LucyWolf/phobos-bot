@@ -982,6 +982,18 @@ async def init_db():
                 last_check TEXT NOT NULL DEFAULT '',
                 last_error TEXT NOT NULL DEFAULT ''
             )""",
+            # One VRChat bot account for the whole installation, not one per Discord server:
+            # the bot signs in as itself, and doing that once per server would mean the same
+            # credentials typed in again and again - and VRChat counting each as another login
+            # from the same machine. The row is kept under the sentinel guild_id below rather
+            # than in a new table, so nothing that already reads this table has to change.
+            #
+            # These two statements move an existing per-server entry over. UPDATE OR IGNORE
+            # lets the first row take the sentinel and leaves the rest where they are (the
+            # primary key refuses a second one), and the DELETE then clears those leftovers -
+            # they are duplicates of the same account by definition.
+            "UPDATE OR IGNORE vrc_accounts SET guild_id='0'",
+            "DELETE FROM vrc_accounts WHERE guild_id!='0'",
             """CREATE TABLE IF NOT EXISTS auto_thread_channels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL,
@@ -1183,6 +1195,11 @@ def normalize_reaction_emoji(raw: str) -> str:
         return text
     animated, name, emoji_id = m.groups()
     return f"<{animated}:{name}:{emoji_id}>"
+
+
+# The single row in vrc_accounts holding the installation-wide VRChat bot account. "0" can
+# never collide with a real Discord guild id, which are all far larger.
+VRC_ACCOUNT_KEY = "0"
 
 
 def role_rule_actions(rule) -> list:

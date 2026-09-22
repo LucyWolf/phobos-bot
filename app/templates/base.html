@@ -336,7 +336,7 @@
       <span class="label">{{ tr.nav_dashboard }}</span>
     </a>
 
-    <div class="nav-group {% if active in ['settings','users','bot_update','bot_info','notif_settings','smtp','servers','tokens','report'] or nav_settings_open %}open{% endif %}" id="nav-group-settings">
+    <div class="nav-group {% if active in ['settings','users','bot_update','bot_info','notif_settings','smtp','servers','tokens','report','vrchat'] or nav_settings_open %}open{% endif %}" id="nav-group-settings">
       <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if token_set is defined and not token_set %}nav-warn-header{% endif %}"
            onclick="toggleNavGroup('settings')" title="{{ tr.nav_settings }}">
         <span class="icon">⚙️</span>
@@ -378,6 +378,12 @@
         <a href="/settings/smtp" class="nav-item nav-sub {% if active == 'smtp' %}active{% endif %}">
           <span class="icon">📧</span>
           <span class="label">{{ tr.nav_smtp }}</span>
+        </a>
+        {% endif %}
+        {% if role == 'admin' %}
+        <a href="/settings/vrchat" class="nav-item nav-sub {% if active == 'vrchat' %}active{% endif %}">
+          <span class="icon">🔗</span>
+          <span class="label">{{ tr.nav_vrchat }}</span>
         </a>
         {% endif %}
         {% if role == 'admin' %}
