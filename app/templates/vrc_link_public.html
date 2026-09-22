@@ -1,0 +1,237 @@
+<!-- Rendered by main.py's /vrc/{token} routes. Standalone page, deliberately NOT extending
+     base.html: the people opening this are Discord members, not dashboard users - they have
+     no session, no navigation and nothing else here to look at. The token in the URL is the
+     whole credential, which is why nothing on this page takes a user or server id from the
+     request.
+
+     Every form posts back to a route that re-renders this same page, so an error keeps the
+     member on the step they were on instead of dropping them back at the start. -->
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ tr.vrcp_page_title }}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --bg: #0f1117; --surface: #1a1d27; --raised: #212533; --border: #2a2d3a;
+          --text: #e2e8f0; --muted: #64748b; --accent: #7c3aed; --accent-light: rgba(124,58,237,0.15);
+          --ok: #22c55e; --ok-bg: rgba(34,197,94,0.12); --danger: #ef4444; --danger-bg: rgba(239,68,68,0.12); }
+  body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text);
+         min-height: 100vh; padding: 1.5rem 1rem 3rem; font-size: 14px; line-height: 1.5; }
+  .wrap { max-width: 680px; margin: 0 auto; }
+  .topbar { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.5rem; }
+  .topbar img { width: 26px; height: 26px; border-radius: 50%; }
+  .topbar .name { font-weight: 600; font-size: 0.9rem; }
+  .spacer { flex: 1; }
+  .lang a { color: var(--muted); text-decoration: none; font-size: 0.75rem; padding: 0.15rem 0.35rem; border-radius: 0.3rem; }
+  .lang a.on { color: var(--text); background: var(--accent-light); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 0.9rem;
+          padding: 1.4rem; margin-bottom: 1rem; }
+  .eyebrow { font-size: 0.68rem; letter-spacing: 0.09em; color: #a78bfa; font-weight: 700; margin-bottom: 0.5rem; }
+  .who { display: flex; align-items: center; gap: 1rem; }
+  .who img { width: 60px; height: 60px; border-radius: 50%; }
+  .who h1 { font-size: 1.45rem; font-weight: 700; line-height: 1.2; }
+  .who .handle { color: var(--muted); font-size: 0.85rem; }
+  h2 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.9rem; }
+  .row { display: flex; align-items: center; gap: 0.75rem; padding: 0.65rem 0;
+         border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+  .row:last-of-type { border-bottom: none; }
+  .row .svc { color: var(--muted); width: 5.5rem; flex-shrink: 0; }
+  .row .val { font-weight: 600; word-break: break-word; }
+  .row .state { margin-left: auto; color: var(--muted); font-size: 0.78rem; white-space: nowrap; }
+  .badges { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.9rem; }
+  .badge { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.74rem; font-weight: 600;
+           border-radius: 0.45rem; padding: 0.28rem 0.6rem; border: 1px solid var(--border);
+           background: var(--raised); color: var(--muted); }
+  .badge.ok { border-color: rgba(34,197,94,0.4); background: var(--ok-bg); color: #4ade80; }
+  .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+  .actions form { margin: 0; }
+  .btn { display: inline-flex; align-items: center; gap: 0.35rem; font-family: inherit; font-size: 0.8rem;
+         font-weight: 600; border-radius: 0.5rem; padding: 0.5rem 0.85rem; cursor: pointer;
+         border: 1px solid var(--border); background: var(--raised); color: var(--text); }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.danger { color: #f87171; border-color: rgba(239,68,68,0.4); }
+  .btn.danger:hover { border-color: var(--danger); }
+  .msg { border-radius: 0.6rem; padding: 0.7rem 0.9rem; font-size: 0.83rem; margin-bottom: 1rem;
+         border: 1px solid var(--border); }
+  .msg.err { background: var(--danger-bg); border-color: rgba(239,68,68,0.4); color: #fca5a5; }
+  .msg.ok  { background: var(--ok-bg); border-color: rgba(34,197,94,0.4); color: #86efac; }
+  label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 0.35rem; }
+  input[type=text] { width: 100%; background: var(--bg); border: 1px solid var(--border);
+         border-radius: 0.5rem; padding: 0.65rem 0.85rem; color: var(--text); font-size: 0.9rem;
+         font-family: inherit; outline: none; }
+  input[type=text]:focus { border-color: var(--accent); }
+  p.lead { color: var(--muted); font-size: 0.85rem; margin-bottom: 1rem; }
+  .code { display: block; text-align: center; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          font-size: 1.5rem; font-weight: 700; letter-spacing: 0.08em; color: #c4b5fd;
+          background: var(--bg); border: 1px dashed var(--accent); border-radius: 0.7rem;
+          padding: 0.9rem 0.6rem; margin: 0.9rem 0; word-break: break-all; }
+  details { margin-top: 0.9rem; }
+  summary { cursor: pointer; color: var(--muted); font-size: 0.78rem; }
+  details .body { color: var(--muted); font-size: 0.78rem; margin-top: 0.5rem; line-height: 1.6; }
+  .kv { display: flex; gap: 0.6rem; font-size: 0.75rem; color: var(--muted); padding: 0.2rem 0; }
+  .kv span:first-child { width: 8rem; flex-shrink: 0; }
+  footer { color: var(--muted); font-size: 0.72rem; line-height: 1.6; margin-top: 1.5rem; text-align: center; }
+  @media (max-width: 460px) {
+    .row { flex-wrap: wrap; }
+    .row .state { margin-left: 0; width: 100%; }
+    .who img { width: 48px; height: 48px; }
+    .who h1 { font-size: 1.2rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+{% if expired %}
+  <div class="card" style="text-align:center;padding:2.5rem 1.5rem;">
+    <div style="font-size:2rem;margin-bottom:0.6rem;">⏳</div>
+    <h1 style="font-size:1.1rem;margin-bottom:0.5rem;">{{ tr.vrcp_expired_title }}</h1>
+    <p class="lead" style="margin:0;">{{ tr.vrcp_expired_text }}</p>
+  </div>
+{% else %}
+
+  <div class="topbar">
+    {% if guild_icon %}<img src="{{ guild_icon }}" alt="">{% endif %}
+    <span class="name">{{ guild_name }}</span>
+    <span class="spacer"></span>
+    <span class="lang">
+      <a href="/vrc/{{ token }}?lang=de" class="{% if lang == 'de' %}on{% endif %}">DE</a>
+      <a href="/vrc/{{ token }}?lang=en" class="{% if lang == 'en' %}on{% endif %}">EN</a>
+    </span>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">{{ tr.vrcp_your_profile }}</div>
+    <div class="who">
+      {% if member_avatar %}<img src="{{ member_avatar }}" alt="">{% endif %}
+      <div>
+        <h1>{{ member_name or tr.vrcp_discord }}</h1>
+        {% if member_handle %}<div class="handle">@{{ member_handle }}</div>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if error %}<div class="msg err">{{ error }}</div>{% endif %}
+  {% if success %}<div class="msg ok">{{ success }}</div>{% endif %}
+
+  <div class="card">
+    <h2>{{ tr.vrcp_accounts_heading }}</h2>
+    <div class="row">
+      <span class="svc">{{ tr.vrcp_discord }}</span>
+      <span class="val">{{ member_handle or member_name }}</span>
+      <span class="state">{{ tr.vrcp_signed_in }}</span>
+    </div>
+    <div class="row">
+      <span class="svc">{{ tr.vrcp_vrchat }}</span>
+      <span class="val">{% if link %}{{ link.vrchat_name }}{% else %}—{% endif %}</span>
+      <span class="state">
+        {%- if link and link.status == 'approved' %}{{ tr.vrcp_linked }}
+        {%- elif link and link.status == 'pending' %}{{ tr.vrc_status_pending }}
+        {%- elif link %}{{ tr.vrc_status_unverified }}
+        {%- else %}{{ tr.vrcp_not_linked }}{% endif %}
+      </span>
+    </div>
+
+    {% if link %}
+    <div class="badges">
+      {% if link.verified_at %}<span class="badge ok">✓ {{ tr.vrcp_badge_owner }}</span>{% endif %}
+      {% if link.vrc_age_verified %}<span class="badge ok">✓ {{ tr.vrcp_badge_age }}</span>{% endif %}
+      {% if link.vrc_supporter %}<span class="badge">★ {{ tr.vrcp_badge_supporter }}</span>{% endif %}
+      {% if link.vrc_trust %}<span class="badge">{{ tr['vrcp_trust_' ~ link.vrc_trust] }}</span>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if link and link.status == 'approved' %}
+    <div class="actions">
+      <form method="post" action="/vrc/{{ token }}/refresh?lang={{ lang }}">
+        <button type="submit" class="btn">↻ {{ tr.vrcp_btn_refresh }}</button>
+      </form>
+      <form method="post" action="/vrc/{{ token }}/unlink?lang={{ lang }}"
+            onsubmit="return confirm({{ tr.vrcp_confirm_unlink.replace('{name}', link.vrchat_name) | js }});">
+        <button type="submit" class="btn danger">✕ {{ tr.vrcp_btn_unlink }}</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ── Step 1: no claim yet, or the member wants a different account ────────── #}
+  {% if not link %}
+  <div class="card">
+    <h2>{{ tr.vrcp_step1_title }}</h2>
+    <p class="lead">{{ tr.vrcp_step1_text }}</p>
+    <form method="post" action="/vrc/{{ token }}/name?lang={{ lang }}">
+      <label for="vrcname">{{ tr.vrcp_name_label }}</label>
+      <input type="text" id="vrcname" name="vrchat_name" maxlength="32" autofocus
+             autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="actions">
+        <button type="submit" class="btn primary">{{ tr.vrcp_btn_search }}</button>
+      </div>
+    </form>
+  </div>
+
+  {# ── Step 2: account found, ownership still to prove ──────────────────────── #}
+  {% elif link.status == 'unverified' %}
+  <div class="card">
+    <h2>{{ tr.vrcp_step2_title }}</h2>
+    <p class="lead">{{ tr.vrcp_step2_text }}</p>
+    <label>{{ tr.vrcp_code_label }}</label>
+    <code class="code">{{ link.verify_code }}</code>
+    <div class="actions">
+      <form method="post" action="/vrc/{{ token }}/verify?lang={{ lang }}">
+        <button type="submit" class="btn primary">✓ {{ tr.vrcp_btn_check }}</button>
+      </form>
+      <form method="post" action="/vrc/{{ token }}/unlink?lang={{ lang }}">
+        <button type="submit" class="btn">{{ tr.vrcp_btn_restart }}</button>
+      </form>
+    </div>
+    <details>
+      <summary>{{ tr.vrcp_step2_where }}</summary>
+      <div class="body">{{ tr.vrcp_step2_how }}</div>
+    </details>
+  </div>
+
+  {# ── Step 3: proven, waiting for a moderator ──────────────────────────────── #}
+  {% elif link.status == 'pending' %}
+  <div class="card">
+    <h2>⏳ {{ tr.vrcp_pending_title }}</h2>
+    <p class="lead" style="margin:0;">{{ tr.vrcp_pending_text.replace('{server}', guild_name) }}</p>
+    <div class="actions">
+      <form method="post" action="/vrc/{{ token }}/unlink?lang={{ lang }}">
+        <button type="submit" class="btn">{{ tr.vrcp_btn_other }}</button>
+      </form>
+    </div>
+  </div>
+
+  {# ── Done ─────────────────────────────────────────────────────────────────── #}
+  {% else %}
+  <div class="card">
+    <h2>✅ {{ tr.vrcp_done_title }}</h2>
+    <p class="lead">{{ tr.vrcp_done_text.replace('{server}', guild_name) }}</p>
+    {% if role_name %}<div class="kv"><span>{{ tr.vrcp_role_note.replace('{role}', role_name) }}</span></div>{% endif %}
+    {% if nick_preview %}<div class="kv"><span>{{ tr.vrcp_nick_note.replace('{nick}', nick_preview) }}</span></div>{% endif %}
+    <details>
+      <summary>{{ tr.vrcp_details }}</summary>
+      <div class="body">
+        <div class="kv"><span>{{ tr.vrcp_detail_vrcid }}</span><span>{{ link.vrc_user_id or '—' }}</span></div>
+        <div class="kv"><span>{{ tr.vrcp_detail_since }}</span><span>{{ link.verified_at[:10] or link.requested_at[:10] or '—' }}</span></div>
+      </div>
+    </details>
+    <div class="actions">
+      <form method="post" action="/vrc/{{ token }}/unlink?lang={{ lang }}"
+            onsubmit="return confirm({{ tr.vrcp_confirm_unlink.replace('{name}', link.vrchat_name) | js }});">
+        <button type="submit" class="btn">{{ tr.vrcp_btn_other }}</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  <footer>{{ tr.vrcp_footer }}</footer>
+{% endif %}
+
+</div>
+</body>
+</html>

@@ -138,6 +138,9 @@ from database import (
     DEFAULT_BIRTHDAY_REPLY_ERROR, DEFAULT_TEMPVOICE_PANEL_TITLE,
     DEFAULT_TEMPVOICE_PANEL_TEXT, DEFAULT_TEMPVOICE_LABELS, parse_panel_labels,
     DEFAULT_VRC_NICKNAME_FORMAT, vrc_nickname, VRC_ACCOUNT_KEY,
+    DEFAULT_VRC_PANEL_TITLE, DEFAULT_VRC_PANEL_TEXT, DEFAULT_VRC_PANEL_BUTTON,
+    VRC_TOKEN_TTL_MINUTES, VRC_STATE_UNVERIFIED, VRC_STATE_PENDING, VRC_STATE_APPROVED,
+    vrc_verify_code,
 )
 import totp
 
@@ -320,10 +323,53 @@ async def _run_single_bot(token_id: int, token: str):
         intents = discord.Intents.all()
         instance = commands.Bot(command_prefix="!", intents=intents)
 
+        # Which guilds already got their copy of the global commands this process. on_ready
+        # fires again after every gateway reconnect, and re-syncing every guild each time
+        # would spend Discord's per-guild command budget on nothing.
+        synced_guilds: set[int] = set()
+
+        async def _sync_guild(guild: discord.Guild) -> None:
+            """Publish the global commands to one guild, so they are usable immediately.
+
+            A global sync alone is not enough in practice: Discord propagates global commands
+            lazily and a newly added one stays invisible for up to an hour - which is exactly
+            what a user hit here ("das klapt immernoch nicht", with /vrc-link missing from the
+            command list). A guild-scoped sync takes effect at once.
+
+            copy_global_to() MERGES into whatever guild commands the tree already holds, so
+            the per-instance AMP commands are kept rather than replaced (checked against
+            discord.py 2.3.2's own source, not assumed) - and cogs/amp.py copies the globals
+            back in after it clears a guild, so whichever of the two runs last is fine.
+
+            Failures are per guild on purpose: a server that invited the bot without the
+            applications.commands scope answers 403 here, and that must not cost every OTHER
+            server its commands.
+            """
+            if guild.id in synced_guilds:
+                return
+            try:
+                instance.tree.copy_global_to(guild=guild)
+                await instance.tree.sync(guild=guild)
+                synced_guilds.add(guild.id)
+            except discord.Forbidden:
+                print(f"[Token-ID {token_id}] Keine Befehls-Rechte auf {guild.name} "
+                      f"({guild.id}) - der Bot wurde ohne 'applications.commands' eingeladen.")
+            except Exception as e:
+                print(f"[Token-ID {token_id}] Befehls-Sync für Guild {guild.id} fehlgeschlagen: {e}")
+
         @instance.event
         async def on_ready():
             await instance.tree.sync()
+            for guild in list(instance.guilds):
+                await _sync_guild(guild)
             print(f"Phobos v{VERSION} online als {instance.user} [ID {token_id}]")
+
+        @instance.event
+        async def on_guild_join(guild: discord.Guild):
+            """A server added after startup gets the same treatment - on_ready has long since
+            run by then, so without this its members would wait out Discord's global
+            propagation before any command of this bot worked for them."""
+            await _sync_guild(guild)
 
         bot._bots[token_id] = instance
         login_failed = False
@@ -1181,10 +1227,15 @@ _BACKUP_TBL_INSERT = {
     # The links themselves travel with a server backup: they are configuration in every sense
     # that matters here - a moderator approved each one by hand, and losing them means every
     # member has to ask again.
+    # verified_at and the VRChat id travel along: the member proved ownership once, and a
+    # server changing hands is no reason to make everybody paste a code into their bio again.
     "vrc_links":
-        "INSERT INTO vrc_links (guild_id,user_id,vrchat_name,status,requested_at,decided_at,decided_by,note) "
-        "VALUES (:guild_id,:user_id,:vrchat_name,:status,:requested_at,:decided_at,:decided_by,:note) "
-        "ON CONFLICT(guild_id,user_id) DO UPDATE SET vrchat_name=excluded.vrchat_name, status=excluded.status",
+        "INSERT INTO vrc_links (guild_id,user_id,vrchat_name,vrc_user_id,status,requested_at,"
+        "decided_at,decided_by,note,verified_at) "
+        "VALUES (:guild_id,:user_id,:vrchat_name,:vrc_user_id,:status,:requested_at,"
+        ":decided_at,:decided_by,:note,:verified_at) "
+        "ON CONFLICT(guild_id,user_id) DO UPDATE SET vrchat_name=excluded.vrchat_name, "
+        "vrc_user_id=excluded.vrc_user_id, status=excluded.status, verified_at=excluded.verified_at",
     "auto_thread_channels":
         "INSERT INTO auto_thread_channels (guild_id,channel_id,name_template,archive_minutes,skip_bots,require_attachment,starter_message) "
         "VALUES (:guild_id,:channel_id,:name_template,:archive_minutes,:skip_bots,:require_attachment,:starter_message) "
@@ -1602,6 +1653,11 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
                     if tbl == "role_rules":
                         # Same trap for both columns a pre-existing backup cannot know about.
                         row = {"action_role_meta": "", "actions": "", **row}
+                    # Ditto for the VRC-Link columns: a backup taken before the ownership check
+                    # existed has neither key, and the named-parameter INSERT would drop the
+                    # whole link rather than just the missing field.
+                    if tbl == "vrc_links":
+                        row = {"vrc_user_id": "", "verified_at": "", **row}
                     if tbl == "temp_voice_config":
                         row = {"panel_enabled": 0, "panel_title": "", "panel_text": "",
                                "panel_labels": "", **row}
@@ -1779,13 +1835,25 @@ async def server_backup_restore(request: Request, guild_id: int, backup_file: Up
                     if tbl == "role_rules":
                         # Same fallback as the full-backup path for older backups.
                         merged = {"action_role_meta": "", "actions": "", **merged}
+                        # Self-references have to be rehomed BEFORE guild_id is lost - see
+                        # _rehome_role_rule(); `row` still carries the exported guild id.
+                        #
+                        # These three lines sat one block further down, under the
+                        # temp_voice_config branch, so they never ran for the table they were
+                        # written for: a per-server restore left every self-referencing rule
+                        # still naming the server it was exported FROM. Restoring a backup onto
+                        # a second server then rewrote members' roles on the ORIGINAL one -
+                        # precisely the failure _rehome_role_rule() exists to prevent, and
+                        # precisely the situation this backup feature was asked for ("wenn man
+                        # einen von 10 discord server einen anderen übergeben will").
+                        merged = _rehome_role_rule({**merged, "guild_id": row.get("guild_id")}, gid_str)
+                        merged["guild_id"] = gid_str
                     if tbl == "temp_voice_config":
                         merged = {"panel_enabled": 0, "panel_title": "", "panel_text": "",
                                   "panel_labels": "", **merged}
-                        # Self-references have to be rehomed BEFORE guild_id is lost - see
-                        # _rehome_role_rule(); `row` still carries the exported guild id.
-                        merged = _rehome_role_rule({**merged, "guild_id": row.get("guild_id")}, gid_str)
-                        merged["guild_id"] = gid_str
+                    if tbl == "vrc_links":
+                        # Same older-backup fallback as the full-backup path above.
+                        merged = {"vrc_user_id": "", "verified_at": "", **merged}
                     await db.execute(sql, merged)
                 except Exception:
                     pass
@@ -3545,9 +3613,12 @@ async def auto_delete_remove(request: Request, guild_id: str, entry_id: int):
 
 
 # ── VRC-Link ──────────────────────────────────────────────────────────────────
-# Members state their VRChat name, a moderator decides. There is deliberately no automatic
-# verification against VRChat - see cogs/vrc_link.py's module docstring for why that cannot be
-# done without putting somebody's VRChat account at risk.
+# A member gets a personal link, opens a page of their own, proves the VRChat account is
+# theirs by putting a short code into their VRChat bio, and a moderator (optionally) waves it
+# through. The member-facing pages below are the only ones in this file that are reachable
+# WITHOUT a dashboard login: the people using them are Discord members, not administrators.
+# The token in the URL is what stands in for a login, and it is scoped to exactly one member
+# on exactly one server and expires within the hour - see cogs/vrc_link.py for the rest.
 
 async def _vrc_apply(guild_id: int, user_id: str, vrchat_name: str, revoke: bool = False) -> None:
     """Run the cog's own apply/revoke against the bot instance that serves this guild, so the
@@ -3746,6 +3817,341 @@ async def vrc_refresh(request: Request, guild_id: int):
     return RedirectResponse(
         f"/servers/{guild_id}?tab=vrclink&success={done}+Verknüpfung(en)+aufgefrischt",
         status_code=303)
+
+
+@web.post("/servers/{guild_id}/vrc/panel")
+async def vrc_panel_post(request: Request, guild_id: int):
+    """Post the link panel into the configured channel.
+
+    A button on a message is what makes this feature reachable at all: a slash command only
+    appears once Discord has propagated it, which takes up to an hour globally and is exactly
+    what made the first version look broken. A posted message works the instant it exists.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    channel_id = await get_guild_config(guild_id, "vrc_panel_channel") or ""
+    b = bot._bot_for_guild(guild_id)
+    guild = b.get_guild(guild_id) if b else None
+    channel = guild.get_channel(int(channel_id)) if guild and str(channel_id).isdigit() else None
+    if not guild or not isinstance(channel, discord.TextChannel):
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=vrclink&error=Bitte+zuerst+einen+Textkanal+auswählen+und+speichern",
+            status_code=303)
+    try:
+        from cogs.vrc_link import post_panel
+        await post_panel(b, guild, channel)
+    except discord.Forbidden:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=vrclink&error=Dem+Bot+fehlt+die+Berechtigung+in+diesem+Kanal",
+            status_code=303)
+    except Exception as e:
+        print(f"[vrc_link] panel post failed in {guild_id}: {e}")
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=vrclink&error={urllib.parse.quote_plus(str(e)[:120])}",
+            status_code=303)
+    return RedirectResponse(
+        f"/servers/{guild_id}?tab=vrclink&success=Panel+gepostet", status_code=303)
+
+
+# ── VRC-Link: the member's own page ───────────────────────────────────────────
+# Everything below is reachable WITHOUT a dashboard login. That is the point: these pages are
+# for Discord members, who have no account here and never will. The token in the path is the
+# whole credential, which is why it names exactly one member on exactly one server, expires
+# within the hour, and is the only thing any of these routes will act on - none of them take a
+# user or guild id from the request.
+
+# How long to wait between two ownership checks for the same token. Each check is one request
+# to VRChat, and somebody clicking "check" impatiently could otherwise turn a single member
+# into a burst - against an interface that rate-limits hard and whose operator bans accounts
+# for exactly that. In memory rather than in the table on purpose: losing it on a restart
+# costs nothing, and this is a politeness brake, not a security boundary.
+_VRC_CHECK_COOLDOWN = 8.0
+_vrc_last_check: dict[str, float] = {}
+
+# VRChat display names are at most 32 characters; anything longer is not a name, it is a
+# paste accident. The cog states the same limit for its own use - written out here rather
+# than imported because every cog import in this file is deliberately done inside the
+# function that needs it, and a constant read at module scope would undo that.
+MAX_VRCHAT_NAME_WEB = 32
+
+
+async def _vrc_token_row(token: str):
+    """The token's row, or None when it is unknown or has expired."""
+    row = await db_one("SELECT * FROM vrc_link_tokens WHERE token=?", (token,))
+    if not row:
+        return None
+    try:
+        if datetime.datetime.fromisoformat(row["expires_at"]) < datetime.datetime.utcnow():
+            return None
+    except ValueError:
+        return None
+    return row
+
+
+def _vrc_public_lang(request: Request, lang: str = "") -> str:
+    """Which language the member's page speaks.
+
+    An explicit ?lang= wins, otherwise the browser's own preference decides. There is no
+    session here to remember a choice in - these pages have no login by design - so the page
+    carries the parameter through its own links instead.
+    """
+    if lang in ("de", "en"):
+        return lang
+    accept = (request.headers.get("accept-language") or "").lower()
+    # German is this project's default everywhere else, so only a browser that clearly asks
+    # for English before German gets English.
+    for part in accept.split(","):
+        code = part.split(";")[0].strip()[:2]
+        if code == "en":
+            return "en"
+        if code == "de":
+            return "de"
+    return "de"
+
+
+async def _vrc_page(request: Request, token: str, lang: str,
+                    error: str = "", success: str = "", status_code: int = 200):
+    """Render the member's page from scratch, whatever just happened to them.
+
+    Every route below ends here rather than redirecting, so an error keeps the member on the
+    step they were on with their own words still on screen - a redirect would throw away the
+    name they just typed and make them start over.
+    """
+    row = await _vrc_token_row(token)
+    tr = get_tr(lang)
+    if not row:
+        return templates.TemplateResponse("vrc_link_public.html", {
+            "request": request, "tr": tr, "lang": lang, "token": token,
+            "expired": True, "guild": None, "member": None, "link": None,
+            "error": "", "success": "",
+        }, status_code=410)
+
+    guild = bot.get_guild(int(row["guild_id"])) if str(row["guild_id"]).isdigit() else None
+    member = guild.get_member(int(row["user_id"])) if guild and str(row["user_id"]).isdigit() else None
+    link = await db_one("SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
+                        (row["guild_id"], row["user_id"]))
+    cfg = await get_all_guild_config(int(row["guild_id"])) if str(row["guild_id"]).isdigit() else {}
+    role = None
+    if guild and str(cfg.get("vrc_linked_role") or "").isdigit():
+        role = guild.get_role(int(cfg["vrc_linked_role"]))
+    nick_preview = ""
+    if link and member:
+        nick_preview = vrc_nickname(cfg.get("vrc_nickname_format") or DEFAULT_VRC_NICKNAME_FORMAT,
+                                    link["vrchat_name"], member.name)
+    return templates.TemplateResponse("vrc_link_public.html", {
+        "request": request, "tr": tr, "lang": lang, "token": token, "expired": False,
+        "guild": guild, "member": member, "link": link,
+        "guild_name": guild.name if guild else f"#{row['guild_id']}",
+        "guild_icon": guild.icon.url if guild and guild.icon else "",
+        "member_name": member.display_name if member else "",
+        "member_handle": member.name if member else "",
+        "member_avatar": member.display_avatar.url if member else "",
+        "role_name": role.name if role else "",
+        "nick_preview": nick_preview if cfg.get("vrc_nickname_enabled") == "1" else "",
+        "needs_approval": cfg.get("vrc_auto_approve") != "1",
+        "error": error, "success": success,
+    }, status_code=status_code)
+
+
+@web.get("/vrc/{token}", response_class=HTMLResponse)
+async def vrc_public_page(request: Request, token: str, lang: str = ""):
+    return await _vrc_page(request, token, _vrc_public_lang(request, lang))
+
+
+@web.post("/vrc/{token}/name", response_class=HTMLResponse)
+async def vrc_public_name(request: Request, token: str, lang: str = "",
+                          vrchat_name: str = Form("")):
+    """Step one: the member states a VRChat name, and it gets looked up for real."""
+    lang = _vrc_public_lang(request, lang)
+    tr = get_tr(lang)
+    row = await _vrc_token_row(token)
+    if not row:
+        return await _vrc_page(request, token, lang)
+
+    name = " ".join((vrchat_name or "").split())[:MAX_VRCHAT_NAME_WEB]
+    if not name:
+        return await _vrc_page(request, token, lang, error=tr["vrcp_err_empty"])
+
+    from cogs.vrc_link import resolve_vrchat, profile_fields
+    state, user = await resolve_vrchat(name)
+    if state == "not_found":
+        return await _vrc_page(request, token, lang,
+                               error=tr["vrcp_err_notfound"].replace("{name}", name))
+    if state != "ok":
+        return await _vrc_page(request, token, lang, error=tr["vrcp_err_unavailable"])
+
+    fields = profile_fields(user)
+    name = fields["vrchat_name"] or name
+
+    # One VRChat account per server, the other half of "one VRChat profile per Discord
+    # profile". Matched on the VRChat id as well as the name: somebody who renames themselves
+    # on VRChat must not be able to claim their own account a second time under the new name.
+    taken = await db_one(
+        "SELECT user_id FROM vrc_links WHERE guild_id=? AND user_id!=? "
+        "AND (LOWER(vrchat_name)=LOWER(?) OR (vrc_user_id!='' AND vrc_user_id=?))",
+        (row["guild_id"], row["user_id"], name, fields["vrc_user_id"]),
+    )
+    if taken:
+        return await _vrc_page(request, token, lang,
+                               error=tr["vrcp_err_taken"].replace("{name}", name))
+
+    existing = await db_one("SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
+                            (row["guild_id"], row["user_id"]))
+    # An unfinished claim for the SAME account keeps the code it was given. The member has
+    # likely already pasted it into VRChat by the time they land back here, and handing out a
+    # fresh one would silently invalidate what they just did.
+    code = ""
+    if existing and existing["status"] == VRC_STATE_UNVERIFIED \
+            and existing["vrc_user_id"] == fields["vrc_user_id"] and existing["verify_code"]:
+        code = existing["verify_code"]
+    else:
+        code = vrc_verify_code()
+
+    now = datetime.datetime.utcnow().isoformat()
+    try:
+        if existing:
+            await db_exec(
+                "UPDATE vrc_links SET vrchat_name=?, vrc_user_id=?, vrc_trust=?, "
+                "vrc_age_verified=?, vrc_supporter=?, vrc_avatar=?, status=?, verify_code=?, "
+                "verified_at='', requested_at=?, decided_at='', decided_by='' WHERE id=?",
+                (name, fields["vrc_user_id"], fields["vrc_trust"], fields["vrc_age_verified"],
+                 fields["vrc_supporter"], fields["vrc_avatar"], VRC_STATE_UNVERIFIED, code,
+                 now, existing["id"]),
+            )
+            if existing["status"] == VRC_STATE_APPROVED:
+                # They had a confirmed link and are now claiming a different account. Whatever
+                # the old one earned them has to go before the new one is even a candidate.
+                await _vrc_apply(int(row["guild_id"]), row["user_id"],
+                                 existing["vrchat_name"], revoke=True)
+        else:
+            await db_exec(
+                "INSERT INTO vrc_links (guild_id, user_id, vrchat_name, vrc_user_id, vrc_trust, "
+                "vrc_age_verified, vrc_supporter, vrc_avatar, status, verify_code, requested_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (row["guild_id"], row["user_id"], name, fields["vrc_user_id"],
+                 fields["vrc_trust"], fields["vrc_age_verified"], fields["vrc_supporter"],
+                 fields["vrc_avatar"], VRC_STATE_UNVERIFIED, code, now),
+            )
+    except Exception as e:
+        # Both unique indexes on this table can still reject the write even though the checks
+        # above passed: two people can claim the same name in the same instant, and the
+        # database is the only place that can settle that.
+        print(f"[vrc_link] storing claim for {row['user_id']} in {row['guild_id']} failed: {e}")
+        return await _vrc_page(request, token, lang,
+                               error=tr["vrcp_err_taken"].replace("{name}", name))
+    return await _vrc_page(request, token, lang)
+
+
+@web.post("/vrc/{token}/verify", response_class=HTMLResponse)
+async def vrc_public_verify(request: Request, token: str, lang: str = ""):
+    """Step two: read the VRChat profile back and look for the code the member was given."""
+    lang = _vrc_public_lang(request, lang)
+    tr = get_tr(lang)
+    row = await _vrc_token_row(token)
+    if not row:
+        return await _vrc_page(request, token, lang)
+    link = await db_one("SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
+                        (row["guild_id"], row["user_id"]))
+    if not link or link["status"] != VRC_STATE_UNVERIFIED:
+        return await _vrc_page(request, token, lang)
+
+    last = _vrc_last_check.get(token, 0.0)
+    now_mono = time.monotonic()
+    if now_mono - last < _VRC_CHECK_COOLDOWN:
+        return await _vrc_page(request, token, lang, error=tr["vrcp_err_toofast"])
+    _vrc_last_check[token] = now_mono
+
+    from cogs.vrc_link import fetch_profile, code_present, profile_fields
+    state, user = await fetch_profile(link["vrc_user_id"])
+    if state == "not_found":
+        return await _vrc_page(request, token, lang, error=tr["vrcp_err_gone"])
+    if state != "ok":
+        return await _vrc_page(request, token, lang, error=tr["vrcp_err_unavailable"])
+    if not code_present(user, link["verify_code"]):
+        return await _vrc_page(request, token, lang, error=tr["vrcp_err_nocode"])
+
+    fields = profile_fields(user)
+    approved = (await get_guild_config(int(row["guild_id"]), "vrc_auto_approve") or "0") == "1"
+    new_status = VRC_STATE_APPROVED if approved else VRC_STATE_PENDING
+    now = datetime.datetime.utcnow().isoformat()
+    await db_exec(
+        "UPDATE vrc_links SET vrchat_name=?, vrc_trust=?, vrc_age_verified=?, vrc_supporter=?, "
+        "vrc_avatar=?, status=?, verified_at=?, verify_code='', decided_at=?, decided_by=? "
+        "WHERE id=?",
+        (fields["vrchat_name"] or link["vrchat_name"], fields["vrc_trust"],
+         fields["vrc_age_verified"], fields["vrc_supporter"], fields["vrc_avatar"],
+         new_status, now, now if approved else "", "VRChat-Bestätigung" if approved else "",
+         link["id"]),
+    )
+    if approved:
+        await _vrc_apply(int(row["guild_id"]), row["user_id"],
+                         fields["vrchat_name"] or link["vrchat_name"])
+    return await _vrc_page(request, token, lang,
+                           success=tr["vrcp_ok_verified"] if approved else tr["vrcp_ok_pending"])
+
+
+@web.post("/vrc/{token}/refresh", response_class=HTMLResponse)
+async def vrc_public_refresh(request: Request, token: str, lang: str = ""):
+    """Re-read the VRChat profile of a confirmed link - picks up a rename and the badges."""
+    lang = _vrc_public_lang(request, lang)
+    tr = get_tr(lang)
+    row = await _vrc_token_row(token)
+    if not row:
+        return await _vrc_page(request, token, lang)
+    link = await db_one("SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
+                        (row["guild_id"], row["user_id"]))
+    if not link or not link["vrc_user_id"]:
+        return await _vrc_page(request, token, lang)
+
+    last = _vrc_last_check.get(token, 0.0)
+    now_mono = time.monotonic()
+    if now_mono - last < _VRC_CHECK_COOLDOWN:
+        return await _vrc_page(request, token, lang, error=tr["vrcp_err_toofast"])
+    _vrc_last_check[token] = now_mono
+
+    from cogs.vrc_link import fetch_profile, profile_fields
+    state, user = await fetch_profile(link["vrc_user_id"])
+    if state == "not_found":
+        return await _vrc_page(request, token, lang, error=tr["vrcp_err_gone"])
+    if state != "ok":
+        return await _vrc_page(request, token, lang, error=tr["vrcp_err_unavailable"])
+    fields = profile_fields(user)
+    name = fields["vrchat_name"] or link["vrchat_name"]
+    try:
+        await db_exec(
+            "UPDATE vrc_links SET vrchat_name=?, vrc_trust=?, vrc_age_verified=?, "
+            "vrc_supporter=?, vrc_avatar=? WHERE id=?",
+            (name, fields["vrc_trust"], fields["vrc_age_verified"], fields["vrc_supporter"],
+             fields["vrc_avatar"], link["id"]),
+        )
+    except Exception as e:
+        # The new name can collide with somebody else's link on this server - the unique index
+        # is what stops two members wearing the same linked nickname, and it has to win here
+        # too. Everything else about the link stays as it was.
+        print(f"[vrc_link] refresh of link {link['id']} failed: {e}")
+        return await _vrc_page(request, token, lang,
+                               error=tr["vrcp_err_taken"].replace("{name}", name))
+    if link["status"] == VRC_STATE_APPROVED:
+        await _vrc_apply(int(row["guild_id"]), row["user_id"], name)
+    return await _vrc_page(request, token, lang, success=tr["vrcp_ok_refreshed"])
+
+
+@web.post("/vrc/{token}/unlink", response_class=HTMLResponse)
+async def vrc_public_unlink(request: Request, token: str, lang: str = ""):
+    lang = _vrc_public_lang(request, lang)
+    tr = get_tr(lang)
+    row = await _vrc_token_row(token)
+    if not row:
+        return await _vrc_page(request, token, lang)
+    link = await db_one("SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
+                        (row["guild_id"], row["user_id"]))
+    if not link:
+        return await _vrc_page(request, token, lang)
+    await db_exec("DELETE FROM vrc_links WHERE id=?", (link["id"],))
+    if link["status"] == VRC_STATE_APPROVED:
+        await _vrc_apply(int(row["guild_id"]), row["user_id"], link["vrchat_name"], revoke=True)
+    return await _vrc_page(request, token, lang, success=tr["vrcp_ok_unlinked"])
 
 
 # ── Auto-Thread ───────────────────────────────────────────────────────────────
@@ -5786,6 +6192,13 @@ async def server_config(
         # it once there is one - settings that provably cannot do anything yet are noise.
         "vrc_connected": bool(_vrc_account and _vrc_account["vrc_user_id"]),
         "vrc_nickname_default": DEFAULT_VRC_NICKNAME_FORMAT,
+        # Without a public address the bot cannot build a member link at all, so the tab says
+        # so plainly instead of letting an admin post a panel whose button answers with an
+        # error. Same setting the password-reset mails use.
+        "vrc_base_url_set": bool((await get_config("base_url") or "").strip()),
+        "vrc_panel_title_default": DEFAULT_VRC_PANEL_TITLE,
+        "vrc_panel_text_default": DEFAULT_VRC_PANEL_TEXT,
+        "vrc_panel_button_default": DEFAULT_VRC_PANEL_BUTTON,
         # Names for the live example under the format field. A real linked pair if there is
         # one - seeing the format applied to somebody who is actually on the server says more
         # than a made-up name - otherwise a stand-in, so the example is never empty.
@@ -5854,7 +6267,8 @@ _TAB_TEXT_KEYS = {
         "automod_spam_threshold", "automod_spam_window", "automod_timeout_minutes",
         "automod_banned_words", "automod_action", "automod_warn_message",
     ],
-    "vrclink": ["vrc_linked_role", "vrc_nickname_format"],
+    "vrclink": ["vrc_linked_role", "vrc_nickname_format", "vrc_panel_channel",
+                "vrc_panel_title", "vrc_panel_text", "vrc_panel_button", "vrc_dm_text"],
     "birthday": ["birthday_channel", "birthday_message", "birthday_commands",
                  "birthday_delete_words", "birthday_reply_saved",
                  "birthday_reply_deleted", "birthday_reply_error"],
@@ -5869,7 +6283,7 @@ _TAB_CHECKBOX_KEYS = {
     "leveling": ["leveling_enabled", "leveling_voice_enabled"],
     "automod": ["automod_enabled", "automod_links"],
     "birthday": [],
-    "vrclink": ["vrc_enabled", "vrc_nickname_enabled", "vrc_auto_approve"],
+    "vrclink": ["vrc_enabled", "vrc_nickname_enabled", "vrc_auto_approve", "vrc_dm_on_join"],
     # auto_kick_enabled deliberately NOT here - it needs the previous saved value to detect an
     # off→on transition (see the dedicated handling in server_config_save below), the generic
     # loop below has no way to express that.
@@ -5913,7 +6327,8 @@ async def server_config_save(request: Request, guild_id: int):
     # some are resolved later via a global bot.get_channel() (not guild-scoped), so an
     # unvalidated ID here could otherwise make the bot post into a channel in a different
     # guild served by the same token.
-    channel_keys = ["welcome_channel", "leave_channel", "birthday_channel", "level_channel"]
+    channel_keys = ["welcome_channel", "leave_channel", "birthday_channel", "level_channel",
+                    "vrc_panel_channel"]
     valid_channel_ids = {str(c.id) for c in guild.text_channels}
     for key in channel_keys:
         value = str(form.get(key, ""))

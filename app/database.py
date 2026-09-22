@@ -1010,6 +1010,40 @@ async def init_db():
                 starter_message TEXT NOT NULL DEFAULT '',
                 UNIQUE(guild_id, channel_id)
             )""",
+            # Rethought after the member-facing half turned out not to work at all
+            # ("das klapt immernoch nicht ... ueberdenken wir das mal ein user geht auf den
+            # server wil sich an melden dann soll dann ein link erstelt werden"): instead of
+            # typing a VRChat name into a slash command, the member gets a personal LINK and
+            # does everything on a web page - which is also the only place a proper
+            # ownership check can happen (see vrc_links.verify_code below).
+            #
+            # One row per handed-out link. The token is the only credential the page has, so
+            # it is short-lived and single-purpose: it names exactly one member on exactly one
+            # server and can do nothing else. Old tokens for the same member are deleted when
+            # a new one is handed out rather than kept around.
+            """CREATE TABLE IF NOT EXISTS vrc_link_tokens (
+                token TEXT PRIMARY KEY,
+                guild_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT '',
+                expires_at TEXT NOT NULL DEFAULT ''
+            )""",
+            # Proof that the VRChat account is actually the member's: they put this code into
+            # their VRChat bio, the bot reads the profile back and compares. That is the whole
+            # reason the flow moved to a web page - a slash command cannot walk somebody
+            # through "paste this, then come back". Deliberately NOT a password prompt for
+            # their VRChat account: asking members to type third-party credentials into
+            # somebody's self-hosted bot is exactly the habit that makes phishing work.
+            "ALTER TABLE vrc_links ADD COLUMN verify_code TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE vrc_links ADD COLUMN verified_at TEXT NOT NULL DEFAULT ''",
+            # Read off the VRChat profile at verification time so the page can show the badges
+            # the member expects to see there. Stored rather than fetched per page view: every
+            # read is a request against an interface that rate-limits hard, and a trust rank
+            # that is a few days old is not worth a ban.
+            "ALTER TABLE vrc_links ADD COLUMN vrc_trust TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE vrc_links ADD COLUMN vrc_age_verified INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE vrc_links ADD COLUMN vrc_supporter INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE vrc_links ADD COLUMN vrc_avatar TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)
@@ -1205,6 +1239,49 @@ def normalize_reaction_emoji(raw: str) -> str:
 # The single row in vrc_accounts holding the installation-wide VRChat bot account. "0" can
 # never collide with a real Discord guild id, which are all far larger.
 VRC_ACCOUNT_KEY = "0"
+
+# How long a handed-out VRC-Link page stays usable. Long enough to fetch the code, alt-tab
+# into VRChat, edit the bio and come back; short enough that a link pasted somewhere public by
+# accident is worthless by the time anybody finds it. Getting a fresh one costs one command.
+VRC_TOKEN_TTL_MINUTES = 60
+
+# The three states a row in vrc_links can be in, in the order a member passes through them.
+#   unverified - a VRChat name is claimed, ownership not proven yet
+#   pending    - proven (or proof switched off), waiting for a moderator
+#   approved   - role and nickname are applied
+# "pending" keeps the exact spelling it had before this flow existed, so links made by the old
+# command keep their meaning and the dashboard's approve button still finds them.
+VRC_STATE_UNVERIFIED = "unverified"
+VRC_STATE_PENDING = "pending"
+VRC_STATE_APPROVED = "approved"
+
+# Characters the ownership code is built from: digits and uppercase letters minus the pairs
+# that look alike in most fonts (0/O, 1/I/L, 5/S, 8/B). The code gets typed by hand into a
+# VRChat bio and read back off a screenshot often enough that this matters - a code nobody can
+# transcribe is a support ticket, not a security measure.
+_VRC_CODE_ALPHABET = "234679ACDEFGHJKMNPQRTUVWXYZ"
+
+
+def vrc_verify_code() -> str:
+    """A fresh ownership code, e.g. "PHOBOS-K7M2QD".
+
+    The prefix is there so somebody who finds this string in a VRChat bio can tell what it is
+    and that it is safe to delete. Six random characters out of 27 is about 29 bits - far
+    beyond guessing for something that is valid for an hour and tied to one named account.
+    """
+    import secrets
+    return "PHOBOS-" + "".join(secrets.choice(_VRC_CODE_ALPHABET) for _ in range(6))
+
+
+# Default wording of the message the bot posts so members can start a link without knowing any
+# command. Placeholders substituted in the cog: {server}.
+DEFAULT_VRC_PANEL_TITLE = "🔗 VRChat-Konto verknüpfen"
+DEFAULT_VRC_PANEL_TEXT = (
+    "Verbinde dein VRChat-Konto mit deinem Discord-Konto auf **{server}**.\n\n"
+    "Klick auf den Knopf unten — du bekommst einen persönlichen Link, der nur für dich gilt. "
+    "Alles Weitere passiert auf der Seite."
+)
+DEFAULT_VRC_PANEL_BUTTON = "VRChat verknüpfen"
 
 
 def role_rule_actions(rule) -> list:

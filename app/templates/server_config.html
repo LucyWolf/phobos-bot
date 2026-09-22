@@ -3113,7 +3113,71 @@ document.addEventListener('click', function(e) {
   </div>
   <button type="submit" class="btn btn-primary" style="margin-top:0.9rem;">{{ tr.btn_save }}</button>
 </div>
+
+{# The button panel. This is the entry point members actually use: a posted message works the
+   instant it exists, while a newly added slash command stays invisible for up to an hour
+   while Discord propagates it globally - which is exactly what made the first version of
+   this feature look dead. #}
+<div class="card">
+  <div class="feat-header">{{ tr.vrc_panel_heading }}</div>
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.vrc_panel_hint }}</p>
+  {% if not vrc_base_url_set %}
+  <div style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.4);border-radius:0.6rem;
+              padding:0.7rem 0.9rem;font-size:0.8rem;color:#fca5a5;margin-bottom:1rem;">
+    {{ tr.vrc_baseurl_missing }}
+  </div>
+  {% endif %}
+  <div class="grid-2" style="gap:1rem;">
+    <div>
+      <label>{{ tr.vrc_panel_channel_label }}</label>
+      <select name="vrc_panel_channel">
+        <option value="">{{ tr.vrc_role_none }}</option>
+        {% for c in channels %}<option value="{{ c.id }}" {% if cfg.get('vrc_panel_channel') == c.id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>{{ tr.vrc_panel_button_label }}</label>
+      <input type="text" name="vrc_panel_button" maxlength="80"
+             value="{{ cfg.get('vrc_panel_button', '') }}" placeholder="{{ vrc_panel_button_default }}">
+    </div>
+    <div style="grid-column:1 / -1;">
+      <label>{{ tr.vrc_panel_title_label }}</label>
+      <input type="text" name="vrc_panel_title" maxlength="256"
+             value="{{ cfg.get('vrc_panel_title', '') }}" placeholder="{{ vrc_panel_title_default }}">
+    </div>
+    <div style="grid-column:1 / -1;">
+      <label>{{ tr.vrc_panel_text_label }}</label>
+      {# base.html styles input and select globally but NOT textarea - each one carries its
+         own matching style block, same as everywhere else in this project. #}
+      <textarea name="vrc_panel_text" rows="4" maxlength="2000" placeholder="{{ vrc_panel_text_default }}"
+        style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;
+               padding:0.6rem 0.8rem;color:var(--text);font-size:0.85rem;font-family:inherit;
+               line-height:1.5;resize:vertical;outline:none;">{{ cfg.get('vrc_panel_text', '') }}</textarea>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_panel_text_hint }}</div>
+    </div>
+    <div style="grid-column:1 / -1;">
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-bottom:0.35rem;">
+        <input type="checkbox" name="vrc_dm_on_join" value="1" style="margin:0;" {% if cfg.get('vrc_dm_on_join') == '1' %}checked{% endif %}>
+        {{ tr.vrc_dm_on_join_label }}
+      </label>
+      <label>{{ tr.vrc_dm_text_label }}</label>
+      <textarea name="vrc_dm_text" rows="3" maxlength="1900"
+        style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;
+               padding:0.6rem 0.8rem;color:var(--text);font-size:0.85rem;font-family:inherit;
+               line-height:1.5;resize:vertical;outline:none;">{{ cfg.get('vrc_dm_text', '') }}</textarea>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_dm_hint }}</div>
+    </div>
+  </div>
+  <button type="submit" class="btn btn-primary" style="margin-top:0.9rem;">{{ tr.btn_save }}</button>
+</div>
 </form>
+
+<div class="card" style="display:flex;align-items:center;gap:0.9rem;flex-wrap:wrap;">
+  <form method="post" action="/servers/{{ guild.id }}/vrc/panel" style="margin:0;">
+    <button type="submit" class="btn btn-secondary">{{ tr.vrc_panel_post_btn }}</button>
+  </form>
+  <div style="flex:1;min-width:220px;font-size:0.75rem;color:var(--muted);">{{ tr.vrc_panel_post_hint }}</div>
+</div>
 
 <div class="card">
   <div class="feat-header" style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
@@ -3134,6 +3198,7 @@ document.addEventListener('click', function(e) {
     <table>
       <thead><tr>
         <th>{{ tr.vrc_col_member }}</th><th>{{ tr.vrc_col_vrchat }}</th>
+        <th>{{ tr.vrc_col_owner }}</th>
         <th>{{ tr.vrc_col_preview }}</th><th>{{ tr.vrc_col_status }}</th><th></th>
       </tr></thead>
       <tbody>
@@ -3148,10 +3213,22 @@ document.addEventListener('click', function(e) {
             <div style="color:var(--muted);font-size:0.68rem;">{{ tr.vrc_unverified }}</div>
             {% endif %}
           </td>
+          {# Whether the member proved the VRChat account is theirs, by putting the bot's
+             code into their bio. A link made before that check existed simply has no
+             verified_at, which is honestly "not checked" rather than "failed". #}
+          <td style="white-space:nowrap;">
+            {% if v.verified_at %}
+            <span style="color:#4ade80;font-size:0.78rem;" title="{{ v.verified_at }}">✓ {{ tr.vrc_owner_yes }}</span>
+            {% else %}
+            <span style="color:var(--muted);font-size:0.78rem;">– {{ tr.vrc_owner_no }}</span>
+            {% endif %}
+          </td>
           <td style="color:var(--muted);font-size:0.82rem;">{{ v.preview }}</td>
           <td>
             {% if v.status == 'approved' %}
             <span class="panel-badge panel-status-pub">{{ tr.vrc_status_approved }}</span>
+            {% elif v.status == 'unverified' %}
+            <span class="panel-badge panel-status-draft">{{ tr.vrc_status_unverified }}</span>
             {% else %}
             <span class="panel-badge panel-status-draft">{{ tr.vrc_status_pending }}</span>
             {% endif %}

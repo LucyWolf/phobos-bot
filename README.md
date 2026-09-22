@@ -23,6 +23,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 - [Spam Protection / Auto-Moderation](#spam-protection--auto-moderation)
 - [Auto-Delete](#auto-delete)
 - [Auto-Thread](#auto-thread)
+- [VRC-Link (VRChat)](#vrc-link-vrchat)
 - [Scheduled Messages](#scheduled-messages)
 - [Discord Events](#discord-events)
 - [CrossVerification](#crossverification)
@@ -73,6 +74,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **Free Stuff & Deals** | Automatic free game alerts + configurable deal notifications + test button |
 | **Auto-Delete** | Automatically delete messages in selected channels after a configurable time, optionally including the bot's own messages (off by default) |
 | **Auto-Thread** | Automatically opens a thread on every message in selected channels — templated thread name (`{user}` / `{text}` / `{date}`), auto-archive duration, optional opening message inside the thread, optionally only for messages with an attachment |
+| **VRC-Link** | Links VRChat accounts to Discord accounts — members open a personal link, prove the account is theirs with a code in their VRChat bio, and get a role plus their VRChat name as their Discord nickname |
 | **Temp Voice** | Join-to-Create temporary voice channels — auto-created on join, auto-deleted when empty |
 | **Scheduled Messages** | Schedule messages to be sent to any channel at a specific date and time |
 | **Birthday System** | `!<your word> DD.MM` — the command words are configurable **per server**, several at once for multilingual servers; daily congratulations at 8 AM, configurable channel and message |
@@ -90,7 +92,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 |---|---|
 | **Dashboard** | Bot status, connected servers, moderation statistics — personalized per user |
 | **👤 Profile** | Avatar, display name, own backup export, account deletion, and personal language + timezone preference that overrides the server-wide default just for this user |
-| **Per Server** | Config, Users (grant/revoke moderator access to this server), Welcome, Spam Protection, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Polls, Ratings, Streaming, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, CrossVerification, Birthdays, Auto-Delete, Auto-Thread, Gameserver, Auto-Kick, Embed Messages, Bot Design |
+| **Per Server** | Config, Users (grant/revoke moderator access to this server), Welcome, Spam Protection, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnings, Polls, Ratings, Streaming, Free Stuff, Log, Temp Voice, Scheduled Messages, Events, CrossVerification, Birthdays, Auto-Delete, Auto-Thread, VRC-Link, Gameserver, Auto-Kick, Embed Messages, Bot Design |
 | **🧩 Displayed Features** *(Admin)* | Per-server checklist to hide unused feature tabs from that server's own sidebar — pure decluttering, doesn't restrict access and keeps saved settings of a hidden tab intact |
 | **Server List** | All connected servers, invite bot, re-invite a specific server (re-confirm permissions), remove bot from a server |
 | **🔑 Tokens** *(Admin)* | Manage multiple bot tokens — each token runs its own bot account, hot-reload without restart |
@@ -213,6 +215,34 @@ Per channel you can set:
 - **Skip bot messages** (on by default) and **only for messages with an attachment** (off by default)
 
 Requires the **Create Public Threads** permission in that channel. Deliberately skipped: messages that are already inside a thread (forum posts included, since those are technically threads), system notices such as joins or pins, and messages that already have a thread attached.
+
+---
+
+## VRC-Link (VRChat)
+
+Links a member's **VRChat account to their Discord account**: they get a role for it, and their Discord nickname is set to their VRChat name so the same person is recognisable in both places.
+
+**Setup, once for the whole bot:** under **Settings → VRC Account Link** you connect one VRChat account that the bot signs in as. Use a **separate account, not your main one** — VRChat has no open API, automated logins go against its terms of use, and the account doing it can be banned. The password is stored in this bot's database and is deliberately **not** part of a server backup.
+
+**Per server**, under **Server → 🔗 VRC-Link**:
+
+- **Role for linked members** and a **nickname template** (`{vrchatName}`, `{discordName}`) with a live preview
+- **Approve automatically** — off by default, so every link waits for a moderator
+- **Linking button** — the bot posts a message with a button in a channel of your choice; heading, text and button caption are yours to write. This is the entry point members actually use, and it works the moment the message exists
+- **DM on join** — optionally send new members their link directly
+
+**How a member links their account:**
+
+1. They click the button (or use `/vrc-link`) and get a **personal link**, valid for one hour and only for them.
+2. On that page they enter their VRChat display name; the bot looks it up and adopts VRChat's own spelling.
+3. They get a short code such as `PHOBOS-K7M2QD` to put into their **VRChat bio**, then press "Check now". The bot reads the profile back and compares — that is the ownership proof. The code can be deleted again straight afterwards.
+4. Role and nickname are applied, either at once or after a moderator approves.
+
+The page **never asks for a VRChat password**. Anything that does is phishing, whoever it claims to be.
+
+Once linked, the page shows the account with its VRChat badges (ownership confirmed, 18+ verified, VRChat+, trust rank) and lets the member refresh or remove the link themselves. A background check once a minute puts back a role or nickname that went missing; it deliberately makes **no** VRChat requests, because re-reading every profile every minute is exactly what gets an account rate-limited and banned. A VRChat-side rename is picked up by the member's own "Refresh link" button or by "Refresh all" on the dashboard.
+
+Needs a **base URL** (Settings → Email/SMTP) so the bot can build links at all, plus **Manage Roles** and **Manage Nicknames** on Discord's side.
 
 ---
 
@@ -626,6 +656,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 - [Spam-Schutz / Auto-Moderation](#spam-schutz--auto-moderation)
 - [Auto-Delete](#auto-delete-1)
 - [Auto-Thread](#auto-thread-1)
+- [VRC-Link (VRChat)](#vrc-link-vrchat-1)
 - [Geplante Nachrichten](#geplante-nachrichten)
 - [Discord-Events](#discord-events-1)
 - [CrossVerification](#crossverification-1)
@@ -676,6 +707,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **Free Stuff & Deals** | Automatische Meldung kostenloser Spiele + konfigurierbare Angebote + Test-Button |
 | **Auto-Delete** | Nachrichten in gewählten Kanälen automatisch nach konfigurierbarer Zeit löschen, optional auch bot-eigene Nachrichten (standardmäßig aus) |
 | **Auto-Thread** | Öffnet in gewählten Kanälen automatisch zu jeder Nachricht einen Thread — Thread-Name als Vorlage (`{user}` / `{text}` / `{date}`), Archivierungsdauer, optionale Startnachricht im Thread, optional nur bei Nachrichten mit Anhang |
+| **VRC-Link** | Verknüpft VRChat-Konten mit Discord-Konten — Mitglieder öffnen einen persönlichen Link, weisen über einen Code in ihrer VRChat-Bio nach, dass ihnen das Konto gehört, und bekommen eine Rolle plus ihren VRChat-Namen als Discord-Spitznamen |
 | **Temp Voice** | Join-to-Create temporäre Voice-Kanäle — automatisch erstellt beim Beitritt, automatisch gelöscht wenn leer |
 | **Geplante Nachrichten** | Nachrichten zu einem bestimmten Datum und Uhrzeit in jeden Kanal planen |
 | **Geburtstags-System** | `!<eigenes Wort> TT.MM` — die Befehlswörter sind **pro Server** einstellbar, auch mehrere gleichzeitig für mehrsprachige Server; tägliche Glückwünsche um 8 Uhr, konfigurierbarer Kanal und Text |
@@ -693,7 +725,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 |---|---|
 | **Dashboard** | Bot-Status, verbundene Server, Moderations-Statistiken — personalisiert pro Nutzer |
 | **👤 Profil** | Avatar, Anzeigename, eigenes Backup exportieren, Konto löschen, sowie persönliche Sprach- und Zeitzonen-Einstellung — überschreibt den serverweiten Standard nur für diesen einen Nutzer |
-| **Pro Server** | Konfiguration, Nutzer (Moderator-Zugriff auf diesen Server gewähren/entziehen), Willkommen, Spam-Schutz, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Umfragen, Bewertungen, Streaming, Free Stuff, Log, Temp Voice, Geplant, Events, CrossVerification, Geburtstage, Auto-Delete, Auto-Thread, Gameserver, Auto-Kick, Embed-Nachrichten, Bot-Design |
+| **Pro Server** | Konfiguration, Nutzer (Moderator-Zugriff auf diesen Server gewähren/entziehen), Willkommen, Spam-Schutz, Leveling, Reaction Roles, Commands, Tickets, Giveaways, Warnungen, Umfragen, Bewertungen, Streaming, Free Stuff, Log, Temp Voice, Geplant, Events, CrossVerification, Geburtstage, Auto-Delete, Auto-Thread, VRC-Link, Gameserver, Auto-Kick, Embed-Nachrichten, Bot-Design |
 | **🧩 Angezeigte Funktionen** *(Admin)* | Pro-Server-Checkliste, um ungenutzte Funktions-Reiter aus der Seitenleiste dieses Servers auszublenden — reines Aufräumen, kein Zugriffsschutz, bereits gespeicherte Einstellungen eines ausgeblendeten Reiters bleiben erhalten |
 | **Server-Übersicht** | Alle verbundenen Server, Bot einladen, einzelnen Server neu einladen (Berechtigungen erneut bestätigen), Bot von einem Server entfernen |
 | **🔑 Tokens** *(Admin)* | Mehrere Bot-Tokens verwalten – jeder Token startet einen eigenen Bot-Account, Hot-Reload ohne Neustart |
@@ -816,6 +848,34 @@ Pro Kanal einstellbar:
 - **Bot-Nachrichten überspringen** (standardmäßig an) und **nur bei Nachrichten mit Anhang** (standardmäßig aus)
 
 Der Bot braucht im Kanal die Berechtigung **Öffentliche Threads erstellen**. Bewusst übersprungen werden: Nachrichten, die schon in einem Thread stehen (auch Forenbeiträge, die technisch Threads sind), System-Meldungen wie Beitritte oder Pins, und Nachrichten, an denen bereits ein Thread hängt.
+
+---
+
+## VRC-Link (VRChat)
+
+Verknüpft das **VRChat-Konto eines Mitglieds mit seinem Discord-Konto**: Es bekommt dafür eine Rolle, und sein Discord-Spitzname wird auf den VRChat-Namen gesetzt, damit dieselbe Person an beiden Orten wiederzuerkennen ist.
+
+**Einmalig für den ganzen Bot:** Unter **Einstellungen → VRC Account Link** verbindest du ein VRChat-Konto, mit dem sich der Bot anmeldet. Nimm dafür ein **eigenes Konto, nicht dein Hauptkonto** — VRChat hat keine offene Schnittstelle, automatisierte Anmeldungen verstoßen gegen die Nutzungsbedingungen, und das Konto kann dafür gesperrt werden. Das Passwort liegt in der Datenbank dieses Bots und ist bewusst **nicht** Teil eines Server-Backups.
+
+**Pro Server**, unter **Server → 🔗 VRC-Link**:
+
+- **Rolle für verknüpfte Mitglieder** und eine **Spitznamen-Vorlage** (`{vrchatName}`, `{discordName}`) mit Live-Vorschau
+- **Automatisch freigeben** — standardmäßig aus, jede Verknüpfung wartet also auf die Moderation
+- **Knopf zum Verknüpfen** — der Bot postet in einem Kanal deiner Wahl eine Nachricht mit einem Knopf; Überschrift, Text und Beschriftung schreibst du selbst. Das ist der Weg, den Mitglieder tatsächlich nutzen, und er wirkt sofort
+- **DM beim Beitritt** — neuen Mitgliedern den Link optional direkt schicken
+
+**So verknüpft sich ein Mitglied:**
+
+1. Es klickt auf den Knopf (oder nutzt `/vrc-link`) und bekommt einen **persönlichen Link**, eine Stunde gültig und nur für es selbst.
+2. Auf der Seite trägt es seinen VRChat-Anzeigenamen ein; der Bot schlägt ihn nach und übernimmt VRChats eigene Schreibweise.
+3. Es bekommt einen kurzen Code wie `PHOBOS-K7M2QD`, trägt ihn in seine **VRChat-Bio** ein und klickt auf „Jetzt prüfen“. Der Bot liest das Profil zurück und vergleicht — das ist der Eigentumsnachweis. Danach kann der Code sofort wieder weg.
+4. Rolle und Spitzname werden vergeben, sofort oder nach der Freigabe durch die Moderation.
+
+Die Seite fragt **nie nach einem VRChat-Passwort**. Wer das tut, betreibt Phishing — egal, als wer er sich ausgibt.
+
+Nach der Verknüpfung zeigt die Seite das Konto mit seinen VRChat-Abzeichen (Eigentum bestätigt, 18+ verifiziert, VRChat+, Vertrauensstufe); das Mitglied kann die Verknüpfung dort selbst auffrischen oder lösen. Eine Prüfung im Minutentakt setzt eine verlorene Rolle oder einen geänderten Spitznamen zurück; sie stellt bewusst **keine** VRChat-Anfragen, denn jedes Profil jede Minute neu zu lesen ist genau das, wofür Konten gedrosselt und gesperrt werden. Eine Umbenennung auf VRChat-Seite holt das Mitglied mit „Verknüpfung auffrischen“ oder du mit „Alle auffrischen“ im Dashboard.
+
+Braucht eine **Basis-URL** (Einstellungen → E-Mail/SMTP), damit der Bot überhaupt Links bauen kann, sowie **Rollen verwalten** und **Nicknames verwalten** auf Discord-Seite.
 
 ---
 

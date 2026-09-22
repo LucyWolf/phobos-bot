@@ -824,6 +824,15 @@ class AMP(commands.Cog):
         restart, unlike the statically-decorated global ones above)."""
         guild_obj = discord.Object(id=guild_id)
         self.bot.tree.clear_commands(guild=guild_obj)
+        # main.py publishes every global command into each guild as well, so that a newly
+        # added slash command works at once instead of waiting out Discord's global
+        # propagation. clear_commands() above just threw those copies away for this guild, so
+        # they are put back before the sync below - otherwise a guild that happens to use AMP
+        # would be the only one where the rest of the bot's commands take an hour to appear.
+        try:
+            self.bot.tree.copy_global_to(guild=guild_obj)
+        except Exception as e:
+            print(f"[AMP] Globale Befehle für Guild {guild_id} nicht übernommen: {_err_text(e)}")
         cfg = await self._get_config(guild_id)
         if cfg:
             rows = await db_rows(
