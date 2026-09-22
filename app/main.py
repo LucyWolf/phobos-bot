@@ -4170,6 +4170,34 @@ def _vrc_harden(response, request: Request):
 # function that needs it, and a constant read at module scope would undo that.
 MAX_VRCHAT_NAME_WEB = 32
 
+# How long a sent group invite counts as "already on its way". Long enough that somebody who
+# wanders off and comes back does not trigger a second one, short enough that an invite which
+# genuinely went missing can be asked for again within the hour.
+VRC_INVITE_COOLDOWN = 30 * 60
+
+
+async def _vrc_fresh_code() -> str:
+    """An ownership code that no other open claim is currently using.
+
+    Two people must never be handed the same code ("jeder bekommt einen anderen code dann zum
+    eingeben der darf nicht der selbe sein"). Random already makes that vanishingly unlikely -
+    six characters out of twenty-seven is roughly 387 million - but "unlikely" is not the same
+    as "cannot", and the check costs one indexed lookup. Falls back to the last drawn code
+    after a few tries rather than looping forever: at that point the database is the problem,
+    and refusing the member their link would help nobody.
+    """
+    code = vrc_verify_code()
+    for _ in range(5):
+        try:
+            clash = await db_one("SELECT id FROM vrc_links WHERE verify_code=?", (code,))
+        except Exception as e:
+            print(f"[vrc_link] could not check the code for collisions: {e}")
+            return code
+        if not clash:
+            return code
+        code = vrc_verify_code()
+    return code
+
 
 async def _vrc_token_row(token: str):
     """The token's row, or None when it is unknown or has expired."""
@@ -4253,6 +4281,11 @@ async def _vrc_page(request: Request, row, lang: str,
         "member_handle": member.name if member else "",
         "member_avatar": member.display_avatar.url if member else "",
         "role_name": role.name if role else "",
+        # Gruppenzustand: nur zeigen, wenn der Server überhaupt eine Gruppe eingetragen hat.
+        "group_on": bool((cfg.get("vrc_group_id") or "").strip()),
+        "group_member": bool(link and link["vrc_group_member"]),
+        "group_invited": bool(link and link["vrc_group_invited"]),
+        "group_can_invite": cfg.get("vrc_group_invite") == "1",
         "nick_preview": nick_preview if cfg.get("vrc_nickname_enabled") == "1" else "",
         "needs_approval": cfg.get("vrc_auto_approve") != "1",
         "error": error, "success": success,
@@ -4352,7 +4385,7 @@ async def vrc_public_name(request: Request, lang: str = Form(""), t: str = Form(
                 and existing["vrc_user_id"] == fields["vrc_user_id"] and existing["verify_code"]:
             code = existing["verify_code"]
         else:
-            code = vrc_verify_code()
+            code = await _vrc_fresh_code()
         decided_at = decided_by = ""
     else:
         new_status = VRC_STATE_APPROVED if auto else VRC_STATE_PENDING
@@ -4452,6 +4485,9 @@ async def vrc_public_verify(request: Request, lang: str = Form(""), t: str = For
          new_status, now, now if approved else "", "VRChat-Bestätigung" if approved else "",
          link["id"]),
     )
+    # One more VRChat request while the member is already waiting - the only moment it is
+    # honest to spend one, and it saves them a second round trip to see their group state.
+    await _vrc_sync_group(int(row["guild_id"]), link)
     if approved:
         await _vrc_apply(int(row["guild_id"]), row["user_id"],
                          fields["vrchat_name"] or link["vrchat_name"])
@@ -4496,9 +4532,90 @@ async def vrc_public_refresh(request: Request, lang: str = Form(""), t: str = Fo
         print(f"[vrc_link] refresh of link {link['id']} failed: {e}")
         return await _vrc_page(request, row, lang,
                                error=tr["vrcp_err_taken"].replace("{name}", name))
+    await _vrc_sync_group(int(row["guild_id"]), link)
     if link["status"] == VRC_STATE_APPROVED:
         await _vrc_apply(int(row["guild_id"]), row["user_id"], name)
     return await _vrc_page(request, row, lang, success=tr["vrcp_ok_refreshed"])
+
+
+async def _vrc_sync_group(guild_id: int, link) -> None:
+    """Re-read whether this member is in the server's VRChat group and write it down.
+
+    Called only where a person is already waiting on a VRChat request anyway - confirming a
+    link, refreshing their own page - never on a timer. An unreachable group leaves the stored
+    flag exactly as it was: reading an outage as "not a member" would strip the group role off
+    everybody the first time VRChat hiccups.
+    """
+    group_id = (await get_guild_config(guild_id, "vrc_group_id") or "").strip()
+    if not group_id or not link or not link["vrc_user_id"]:
+        return
+    from cogs.vrc_link import group_membership
+    state, is_member = await group_membership(group_id, link["vrc_user_id"])
+    if state != "ok":
+        return
+    try:
+        await db_exec(
+            "UPDATE vrc_links SET vrc_group_member=?, vrc_group_checked=? WHERE id=?",
+            (1 if is_member else 0, datetime.datetime.utcnow().isoformat(), link["id"]),
+        )
+    except Exception as e:
+        print(f"[vrc_link] could not store group membership for link {link['id']}: {e}")
+
+
+@web.post("/vrc/invite", response_class=HTMLResponse)
+async def vrc_public_invite(request: Request, lang: str = Form(""), t: str = Form("")):
+    """Ask the bot to send this member a group invite.
+
+    Only offered once the link is confirmed: an invite is a real action on VRChat's side, and
+    handing one out on nothing but a typed name would let anybody pull a stranger's account
+    into the group.
+    """
+    lang = _vrc_public_lang(request, lang)
+    tr = get_tr(lang)
+    row = await _vrc_visitor(t)
+    if not row:
+        return await _vrc_page(request, None, lang)
+    link = await db_one("SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
+                        (row["guild_id"], row["user_id"]))
+    if not link or link["status"] != VRC_STATE_APPROVED or not link["vrc_user_id"]:
+        return await _vrc_page(request, row, lang, error=tr["vrcp_invite_not_yet"])
+    guild_id = int(row["guild_id"])
+    group_id = (await get_guild_config(guild_id, "vrc_group_id") or "").strip()
+    if not group_id or (await get_guild_config(guild_id, "vrc_group_invite") or "0") != "1":
+        return await _vrc_page(request, row, lang, error=tr["vrcp_invite_off"])
+    if link["vrc_group_member"]:
+        return await _vrc_page(request, row, lang, success=tr["vrcp_group_yes"])
+    # An invite already on its way is not a reason to send another one. The eight-second brake
+    # below only stops an impatient double-click; somebody coming back ten minutes later would
+    # otherwise fire a second, third and fourth invite at VRChat for the same person - and
+    # repeated writes are exactly the pattern that gets a bot account flagged.
+    if link["vrc_group_invited"]:
+        try:
+            sent_at = datetime.datetime.fromisoformat(link["vrc_group_invited"])
+            fresh = (datetime.datetime.utcnow() - sent_at).total_seconds() < VRC_INVITE_COOLDOWN
+        except ValueError:
+            fresh = False
+        if fresh:
+            return await _vrc_page(request, row, lang, success=tr["vrcp_group_invited"])
+    if _vrc_throttled(t):
+        return await _vrc_page(request, row, lang, error=tr["vrcp_err_toofast"])
+
+    from cogs.vrc_link import send_group_invite
+    state, detail = await send_group_invite(group_id, link["vrc_user_id"])
+    if state == "error":
+        # Passed through rather than flattened into "it failed": the two things that actually
+        # go wrong here - the bot account lacking the group's invite permission, and VRChat
+        # rate-limiting - need different responses from whoever reads it.
+        return await _vrc_page(request, row, lang,
+                               error=tr["vrcp_invite_failed"] + " " + detail)
+    try:
+        await db_exec("UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
+                      (datetime.datetime.utcnow().isoformat(), link["id"]))
+    except Exception as e:
+        print(f"[vrc_link] could not note the group invite for link {link['id']}: {e}")
+    return await _vrc_page(request, row, lang,
+                           success=tr["vrcp_invite_sent"] if state == "sent"
+                           else tr["vrcp_invite_already"])
 
 
 @web.post("/vrc/unlink", response_class=HTMLResponse)
@@ -6633,7 +6750,8 @@ _TAB_TEXT_KEYS = {
         "automod_banned_words", "automod_action", "automod_warn_message",
     ],
     "vrclink": ["vrc_linked_role", "vrc_nickname_format", "vrc_panel_channel",
-                "vrc_panel_title", "vrc_panel_text", "vrc_panel_button", "vrc_dm_text"],
+                "vrc_panel_title", "vrc_panel_text", "vrc_panel_button", "vrc_dm_text",
+                "vrc_group_id", "vrc_group_role", "vrc_link_minutes"],
     "birthday": ["birthday_channel", "birthday_message", "birthday_commands",
                  "birthday_delete_words", "birthday_reply_saved",
                  "birthday_reply_deleted", "birthday_reply_error"],
@@ -6651,7 +6769,7 @@ _TAB_CHECKBOX_KEYS = {
     # vrc_require_ownership defaults to ON when absent, so an existing server keeps the
     # proof it already had - see the read in vrc_public_name().
     "vrclink": ["vrc_enabled", "vrc_nickname_enabled", "vrc_auto_approve", "vrc_dm_on_join",
-                "vrc_require_ownership"],
+                "vrc_require_ownership", "vrc_group_invite"],
     # auto_kick_enabled deliberately NOT here - it needs the previous saved value to detect an
     # off→on transition (see the dedicated handling in server_config_save below), the generic
     # loop below has no way to express that.
@@ -6709,7 +6827,7 @@ async def server_config_save(request: Request, guild_id: int):
     # channel keys above, it isn't even guild-scoped-safe by construction (get_role() degrades
     # to a silent no-op for a wrong ID, but a non-numeric value saved via a raw POST would raise
     # an unhandled ValueError in welcome.py's on_member_join for every future join).
-    role_keys = ["autorole", "auto_kick_role_id", "vrc_linked_role"]
+    role_keys = ["autorole", "auto_kick_role_id", "vrc_linked_role", "vrc_group_role"]
     valid_role_ids = {str(ro.id) for ro in guild.roles if not ro.is_default()}
     for key in role_keys:
         value = str(form.get(key, ""))
@@ -6717,6 +6835,16 @@ async def server_config_save(request: Request, guild_id: int):
             return RedirectResponse(
                 f"/servers/{guild_id}?tab={tab}&error=Ungültige+Rolle+({key})", status_code=302
             )
+
+    # A VRChat group id is checked for shape before it is stored - a typo here would otherwise
+    # only surface later as "the bot cannot see this group", which points at the wrong thing.
+    _group_id = str(form.get("vrc_group_id", "")).strip()
+    if _group_id:
+        from vrchat import looks_like_group_id
+        if not looks_like_group_id(_group_id):
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab={tab}&error=Gruppen-ID+muss+mit+grp_+beginnen",
+                status_code=302)
 
     # (form key, min, max, error label)
     numeric_fields = [
@@ -6735,6 +6863,10 @@ async def server_config_save(request: Request, guild_id: int):
         # 720h = 30 days, same generous-but-bounded ceiling as automod_timeout_minutes above -
         # long enough for any realistic grace period, short enough to reject an obvious typo.
         ("auto_kick_kick_hours", 1, 720, "Kick-Frist (Auto-Kick)"),
+        # How long a member's personal VRC-Link page stays open. One minute is enough for
+        # somebody who is already standing at the keyboard; a day is the sensible ceiling for
+        # a link that is, after all, the whole credential.
+        ("vrc_link_minutes", 1, 1440, "Gültigkeit des VRC-Link-Links"),
     ]
     for field, lo, hi, label in numeric_fields:
         value = str(form.get(field, "")).strip()

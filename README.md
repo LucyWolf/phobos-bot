@@ -240,7 +240,11 @@ Links a member's **VRChat account to their Discord account**: they get a role fo
 
 The page **never asks for a VRChat password**. Anything that does is phishing, whoever it claims to be.
 
-Once linked, the page shows the account with its VRChat badges (ownership confirmed, 18+ verified, VRChat+, trust rank) and lets the member refresh or remove the link themselves. A background check once a minute puts back a role or nickname that went missing; it deliberately makes **no** VRChat requests, because re-reading every profile every minute is exactly what gets an account rate-limited and banned. A VRChat-side rename is picked up by the member's own "Refresh link" button or by "Refresh all" on the dashboard.
+Once linked, the page shows the account with its VRChat badges (ownership confirmed, 18+ verified, VRChat+, trust rank) and lets the member refresh or remove the link themselves.
+
+**VRChat group (optional).** Enter a **group ID** (`grp_…`) under *Server → 🔗 VRC-Link* and the bot checks, after every confirmation and every refresh, whether the linked VRChat account is in that group — optionally handing out a Discord role for it and taking it away again when somebody leaves. Members can also be given a button on their page that sends them a **group invite**. The bot account has to be in the group itself, and to invite it also needs the group's permission to send invites. Checked only when somebody is waiting anyway — never on a timer, which would be far too much load on VRChat.
+
+**Link validity** is set in the same tab, in minutes (1 to 1440, default 60). A background check once a minute puts back a role or nickname that went missing; it deliberately makes **no** VRChat requests, because re-reading every profile every minute is exactly what gets an account rate-limited and banned. A VRChat-side rename is picked up by the member's own "Refresh link" button or by "Refresh all" on the dashboard.
 
 The link address is taken from whatever address you have this dashboard open at — the same way the invite link in the user administration works, nothing to configure. A **base URL** under *Settings → Email/SMTP* overrides it if you need something else. On Discord's side the bot needs **Manage Roles** and **Manage Nicknames**.
 
@@ -873,7 +877,11 @@ Verknüpft das **VRChat-Konto eines Mitglieds mit seinem Discord-Konto**: Es bek
 
 Die Seite fragt **nie nach einem VRChat-Passwort**. Wer das tut, betreibt Phishing — egal, als wer er sich ausgibt.
 
-Nach der Verknüpfung zeigt die Seite das Konto mit seinen VRChat-Abzeichen (Eigentum bestätigt, 18+ verifiziert, VRChat+, Vertrauensstufe); das Mitglied kann die Verknüpfung dort selbst auffrischen oder lösen. Eine Prüfung im Minutentakt setzt eine verlorene Rolle oder einen geänderten Spitznamen zurück; sie stellt bewusst **keine** VRChat-Anfragen, denn jedes Profil jede Minute neu zu lesen ist genau das, wofür Konten gedrosselt und gesperrt werden. Eine Umbenennung auf VRChat-Seite holt das Mitglied mit „Verknüpfung auffrischen“ oder du mit „Alle auffrischen“ im Dashboard.
+Nach der Verknüpfung zeigt die Seite das Konto mit seinen VRChat-Abzeichen (Eigentum bestätigt, 18+ verifiziert, VRChat+, Vertrauensstufe); das Mitglied kann die Verknüpfung dort selbst auffrischen oder lösen.
+
+**VRChat-Gruppe (optional).** Trägst du unter *Server → 🔗 VRC-Link* eine **Gruppen-ID** ein (`grp_…`), prüft der Bot nach jeder Bestätigung und bei jedem Auffrischen, ob das verknüpfte VRChat-Konto in dieser Gruppe ist — und vergibt dafür wahlweise eine eigene Discord-Rolle, die er wieder entzieht, sobald jemand nicht mehr dabei ist. Optional bekommen Mitglieder auf ihrer Seite einen Knopf, mit dem sie sich eine **Gruppeneinladung** schicken lassen. Dafür muss das Bot-Konto selbst in der Gruppe sein, und zum Einladen braucht es dort zusätzlich das Recht, Einladungen zu verschicken. Geprüft wird nur, wenn ohnehin jemand wartet — nicht im Minutentakt, das wäre zu viel Last für VRChat.
+
+Die **Gültigkeit der Links** stellst du im selben Reiter in Minuten ein (1 bis 1440, Standard 60). Eine Prüfung im Minutentakt setzt eine verlorene Rolle oder einen geänderten Spitznamen zurück; sie stellt bewusst **keine** VRChat-Anfragen, denn jedes Profil jede Minute neu zu lesen ist genau das, wofür Konten gedrosselt und gesperrt werden. Eine Umbenennung auf VRChat-Seite holt das Mitglied mit „Verknüpfung auffrischen“ oder du mit „Alle auffrischen“ im Dashboard.
 
 Die Adresse für die Links nimmt der Bot von dort, wo du dieses Dashboard gerade aufhast — genau wie der Einladungslink in der Benutzerverwaltung, einzustellen ist dafür nichts. Eine **Basis-URL** unter *Einstellungen → E-Mail/SMTP* geht vor, falls du eine andere brauchst. Auf Discord-Seite braucht der Bot **Rollen verwalten** und **Nicknames verwalten**.
 

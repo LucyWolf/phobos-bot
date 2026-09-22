@@ -3125,6 +3125,37 @@ document.addEventListener('click', function(e) {
       </label>
       <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_require_ownership_hint }}</div>
     </div>
+    <div>
+      <label>{{ tr.vrc_link_minutes_label }}</label>
+      <input type="number" name="vrc_link_minutes" min="1" max="1440"
+             value="{{ cfg.get('vrc_link_minutes', '') }}" placeholder="60">
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_link_minutes_hint }}</div>
+    </div>
+    <div style="grid-column:1 / -1;border-top:1px solid var(--border);margin-top:0.9rem;padding-top:0.9rem;">
+      <div style="font-weight:600;font-size:0.88rem;margin-bottom:0.35rem;">{{ tr.vrc_group_heading }}</div>
+      <p class="hint" style="margin-bottom:0.9rem;">{{ tr.vrc_group_hint }}</p>
+      <div class="grid-2" style="gap:1rem;">
+        <div>
+          <label>{{ tr.vrc_group_id_label }}</label>
+          <input type="text" name="vrc_group_id" maxlength="64" spellcheck="false"
+                 value="{{ cfg.get('vrc_group_id', '') }}" placeholder="grp_00000000-0000-0000-0000-000000000000">
+          <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_group_id_hint }}</div>
+        </div>
+        <div>
+          <label>{{ tr.vrc_group_role_label }}</label>
+          <select name="vrc_group_role">
+            <option value="">{{ tr.vrc_role_none }}</option>
+            {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('vrc_group_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+          </select>
+          <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_group_role_hint }}</div>
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-top:0.6rem;">
+        <input type="checkbox" name="vrc_group_invite" value="1" style="margin:0;" {% if cfg.get('vrc_group_invite') == '1' %}checked{% endif %}>
+        {{ tr.vrc_group_invite_label }}
+      </label>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_group_invite_hint }}</div>
+    </div>
   </div>
   <button type="submit" class="btn btn-primary" style="margin-top:0.9rem;">{{ tr.btn_save }}</button>
 </div>

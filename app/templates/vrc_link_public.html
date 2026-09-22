@@ -156,6 +156,25 @@
     </div>
     {% endif %}
 
+    {% if group_on and link %}
+    <div class="row" style="border-top:1px solid var(--border);margin-top:0.6rem;padding-top:0.9rem;">
+      <span class="svc">{{ tr.vrcp_group_heading }}</span>
+      <span class="val">
+        {%- if group_member %}{{ tr.vrcp_group_yes }}
+        {%- elif group_invited %}{{ tr.vrcp_group_invited }}
+        {%- else %}{{ tr.vrcp_group_no }}{% endif %}
+      </span>
+    </div>
+    {% if group_can_invite and not group_member and link.status == 'approved' %}
+    <div class="actions">
+      <form method="post" action="/vrc/invite">
+        <input type="hidden" name="t" value="{{ token }}"><input type="hidden" name="lang" value="{{ lang }}">
+        <button type="submit" class="btn primary">✉ {{ tr.vrcp_invite_btn }}</button>
+      </form>
+    </div>
+    {% endif %}
+    {% endif %}
+
     {% if link and link.status == 'approved' %}
     <div class="actions">
       <form method="post" action="/vrc/refresh">

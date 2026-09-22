@@ -72,6 +72,21 @@ async def link_base_url() -> str:
     return base.rstrip("/")
 
 
+async def link_minutes(guild_id) -> int:
+    """How long a handed-out link stays valid, in minutes.
+
+    Set per server ("die dauer des links wann der verfelt sol mann selber einstelen können"),
+    falling back to VRC_TOKEN_TTL_MINUTES. Clamped rather than trusted: the value comes from a
+    text field, and a stray letter or a zero would otherwise hand out links that are dead on
+    arrival or never expire at all.
+    """
+    raw = (await get_guild_config(guild_id, "vrc_link_minutes") or "").strip()
+    try:
+        return max(1, min(1440, int(raw)))
+    except (TypeError, ValueError):
+        return VRC_TOKEN_TTL_MINUTES
+
+
 async def create_link_token(guild_id, user_id) -> str:
     """Hand out a fresh personal link token for this member on this server.
 
@@ -81,7 +96,7 @@ async def create_link_token(guild_id, user_id) -> str:
     """
     token = secrets.token_urlsafe(32)
     now = datetime.datetime.utcnow()
-    expires = now + datetime.timedelta(minutes=VRC_TOKEN_TTL_MINUTES)
+    expires = now + datetime.timedelta(minutes=await link_minutes(guild_id))
     await db_exec("DELETE FROM vrc_link_tokens WHERE guild_id=? AND user_id=?",
                   (str(guild_id), str(user_id)))
     await db_exec(
@@ -185,6 +200,53 @@ async def fetch_profile(vrc_user_id: str) -> tuple:
     return ("ok", user) if user else ("not_found", None)
 
 
+async def group_membership(group_id: str, vrc_user_id: str) -> tuple:
+    """Whether this VRChat account is in the configured group.
+
+    Returns (status, member) with status "ok" | "unavailable" and member a bool that only
+    means anything when the status is "ok". A group the bot cannot reach must never be read as
+    "not a member" - that would quietly strip everybody's group role the first time VRChat
+    hiccups.
+    """
+    if not group_id or not vrc_user_id:
+        return "unavailable", False
+    session = await vrc_session()
+    if not session:
+        return "unavailable", False
+    try:
+        from vrchat import group_member
+        row = await group_member(group_id, vrc_user_id, session["auth_cookie"],
+                                 session["two_factor_cookie"])
+    except Exception as e:
+        print(f"[vrc_link] group check for {vrc_user_id!r} in {group_id!r} failed: {e}")
+        return "unavailable", False
+    return "ok", bool(row)
+
+
+async def send_group_invite(group_id: str, vrc_user_id: str) -> tuple:
+    """Invite one VRChat account into the group.
+
+    Returns (status, detail): "sent", "already" (invited or a member already), or "error" with
+    the reason in `detail`. The reason is passed through rather than flattened, because the
+    two things that actually go wrong here - the bot account lacking the group's invite
+    permission, and VRChat rate-limiting - need completely different responses from whoever
+    reads it, and "it did not work" tells them neither.
+    """
+    if not group_id or not vrc_user_id:
+        return "error", "Keine Gruppe oder kein VRChat-Konto hinterlegt."
+    session = await vrc_session()
+    if not session:
+        return "error", "Es ist kein VRChat-Konto verbunden."
+    try:
+        from vrchat import group_invite
+        result = await group_invite(group_id, vrc_user_id, session["auth_cookie"],
+                                    session["two_factor_cookie"])
+    except Exception as e:
+        print(f"[vrc_link] group invite for {vrc_user_id!r} to {group_id!r} failed: {e}")
+        return "error", str(e)[:200]
+    return result, ""
+
+
 def profile_fields(user: dict) -> dict:
     """The handful of things from a VRChat profile this bot stores and shows."""
     from vrchat import trust_rank, is_age_verified, is_supporter
@@ -281,6 +343,28 @@ async def apply_link(bot, guild: discord.Guild, member: discord.Member, vrchat_n
             except (discord.HTTPException, OSError) as e:
                 print(f"[vrc_link] could not add role {role_id} to {member.id} in {guild.id}: {e}")
 
+    # The group role follows the STORED membership flag, never a fresh VRChat call: this runs
+    # once a minute for every linked member, and asking VRChat each time is exactly the traffic
+    # that gets a bot account banned. The flag is refreshed when the member's own page is used.
+    group_role_id = await get_guild_config(guild.id, "vrc_group_role")
+    if group_role_id and str(group_role_id).isdigit():
+        group_role = guild.get_role(int(group_role_id))
+        if group_role:
+            row = await db_one(
+                "SELECT vrc_group_member FROM vrc_links WHERE guild_id=? AND user_id=?",
+                (str(guild.id), str(member.id)),
+            )
+            in_group = bool(row and row["vrc_group_member"])
+            try:
+                if in_group and group_role not in member.roles:
+                    await member.add_roles(group_role, reason="VRChat-Gruppe")
+                    changed.append(f"Rolle {group_role.name}")
+                elif not in_group and group_role in member.roles:
+                    await member.remove_roles(group_role, reason="Nicht in der VRChat-Gruppe")
+                    changed.append(f"Rolle {group_role.name} entfernt")
+            except (discord.HTTPException, OSError) as e:
+                print(f"[vrc_link] group role {group_role_id} for {member.id} failed: {e}")
+
     if (await get_guild_config(guild.id, "vrc_nickname_enabled") or "0") == "1":
         fmt = await get_guild_config(guild.id, "vrc_nickname_format") or DEFAULT_VRC_NICKNAME_FORMAT
         nick = vrc_nickname(fmt, vrchat_name, member.name)
@@ -308,6 +392,14 @@ async def revoke_link(bot, guild: discord.Guild, member: discord.Member) -> None
                 await member.remove_roles(role, reason="VRC-Link entfernt")
             except (discord.HTTPException, OSError) as e:
                 print(f"[vrc_link] could not remove role {role_id} from {member.id}: {e}")
+    group_role_id = await get_guild_config(guild.id, "vrc_group_role")
+    if group_role_id and str(group_role_id).isdigit():
+        group_role = guild.get_role(int(group_role_id))
+        if group_role and group_role in member.roles:
+            try:
+                await member.remove_roles(group_role, reason="VRC-Link entfernt")
+            except (discord.HTTPException, OSError) as e:
+                print(f"[vrc_link] could not remove group role from {member.id}: {e}")
     if (await get_guild_config(guild.id, "vrc_nickname_enabled") or "0") == "1":
         try:
             # None clears the nickname, putting the member back to their own Discord name.
@@ -373,8 +465,9 @@ async def send_personal_link(interaction: discord.Interaction) -> None:
         text = (f"🔗 Du bist bereits mit **{row['vrchat_name']}** verknüpft.\n"
                 f"Auf deiner Seite kannst du die Verknüpfung ansehen, auffrischen oder lösen.")
     else:
+        minutes = await link_minutes(interaction.guild_id)
         text = ("🔗 Hier entlang — auf der Seite verknüpfst du dein VRChat-Konto.\n"
-                f"Der Link gilt nur für dich und läuft in {VRC_TOKEN_TTL_MINUTES} Minuten ab.")
+                f"Der Link gilt nur für dich und läuft in {minutes} Minuten ab.")
 
     view = discord.ui.View(timeout=None)
     view.add_item(discord.ui.Button(label="Meine Seite öffnen", emoji="↗️",

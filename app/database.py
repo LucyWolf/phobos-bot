@@ -1061,6 +1061,20 @@ async def init_db():
                 last_seen TEXT NOT NULL DEFAULT ''
             )""",
             "CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id)",
+            # VRChat group membership, requested next ("wenn der sol sich selber einladen
+            # können oder anfragen können wen das geüprüft hat ob der zur gruppe gehört").
+            #
+            # Stored rather than asked for on demand: every check is one request against an
+            # interface that rate-limits hard, so the answer is written down when it is
+            # actually fetched (after the link is confirmed, or when the member refreshes) and
+            # the per-minute loop then keeps the Discord role in step with THIS column without
+            # touching VRChat at all - the same arrangement the rest of the feature already
+            # uses, and for the same reason.
+            "ALTER TABLE vrc_links ADD COLUMN vrc_group_member INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE vrc_links ADD COLUMN vrc_group_checked TEXT NOT NULL DEFAULT ''",
+            # When the bot last sent this member a group invite, so the page can say "already
+            # on its way" instead of firing another one at VRChat on every impatient click.
+            "ALTER TABLE vrc_links ADD COLUMN vrc_group_invited TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

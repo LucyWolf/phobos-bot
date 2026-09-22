@@ -328,3 +328,125 @@ async def get_user(user_id: str, auth_cookie: str, two_factor_cookie: str = "") 
                 return await resp.json(content_type=None)
             except Exception:
                 return None
+
+
+# ── Gruppen ──────────────────────────────────────────────────────────────────
+# Group ids are "grp_" followed by a UUID. Everything below needs the signed-in bot account to
+# be a member of the group itself: VRChat answers 403 for a group it cannot see, which is a
+# permission problem rather than a bug, so the errors say so in those words.
+GROUP_ID_PREFIX = "grp_"
+
+
+def looks_like_group_id(value: str) -> bool:
+    """Whether this could be a VRChat group id at all - checked before any request is made, so
+    a typo costs nothing and an obviously wrong value is refused with a clear reason."""
+    value = (value or "").strip()
+    return value.startswith(GROUP_ID_PREFIX) and 10 < len(value) <= 64
+
+
+async def get_group(group_id: str, auth_cookie: str, two_factor_cookie: str = "") -> dict | None:
+    """The group's own record, or None if there is no such group."""
+    if not looks_like_group_id(group_id):
+        raise VRChatError("Das ist keine gültige VRChat-Gruppen-ID — sie beginnt mit „grp_“.")
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"{API_BASE}/groups/{urllib.parse.quote(group_id, safe='')}",
+                               headers=_headers(auth_cookie, two_factor_cookie),
+                               timeout=TIMEOUT) as resp:
+            if resp.status == 404:
+                return None
+            if resp.status == 403:
+                raise VRChatError("Das Bot-Konto darf diese Gruppe nicht sehen — es muss selbst "
+                                  "Mitglied der Gruppe sein.")
+            if resp.status == 401:
+                raise VRChatError("Die VRChat-Sitzung ist abgelaufen — bitte das Konto im "
+                                  "Dashboard neu verbinden.")
+            if resp.status == 429:
+                raise VRChatError("VRChat bremst gerade zu viele Anfragen aus.")
+            if resp.status != 200:
+                raise VRChatError(f"VRChat antwortete mit Status {resp.status}.")
+            try:
+                return await resp.json(content_type=None)
+            except Exception:
+                return None
+
+
+async def group_member(group_id: str, user_id: str, auth_cookie: str,
+                       two_factor_cookie: str = "") -> dict | None:
+    """The user's membership record in that group, or None if they are not a member.
+
+    404 is the normal "not a member" answer here, not an error - VRChat uses it for both "no
+    such membership" and "no such group", and the group itself was already established by
+    whoever configured it.
+    """
+    if not looks_like_group_id(group_id) or not user_id:
+        return None
+    url = (f"{API_BASE}/groups/{urllib.parse.quote(group_id, safe='')}"
+           f"/members/{urllib.parse.quote(user_id, safe='')}")
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=_headers(auth_cookie, two_factor_cookie),
+                               timeout=TIMEOUT) as resp:
+            if resp.status in (404, 400):
+                return None
+            if resp.status == 403:
+                raise VRChatError("Das Bot-Konto darf die Mitglieder dieser Gruppe nicht sehen.")
+            if resp.status == 401:
+                raise VRChatError("Die VRChat-Sitzung ist abgelaufen — bitte das Konto im "
+                                  "Dashboard neu verbinden.")
+            if resp.status == 429:
+                raise VRChatError("VRChat bremst gerade zu viele Anfragen aus.")
+            if resp.status != 200:
+                raise VRChatError(f"VRChat antwortete mit Status {resp.status}.")
+            try:
+                data = await resp.json(content_type=None)
+            except Exception:
+                return None
+            # An empty object is not a membership. VRChat has answered 200 with one rather than
+            # 404 in the past, and taking that at face value would report everybody as a member.
+            return data if isinstance(data, dict) and data.get("userId") else None
+
+
+async def group_invite(group_id: str, user_id: str, auth_cookie: str,
+                       two_factor_cookie: str = "") -> str:
+    """Send a group invite to one user. Returns "sent", "already" or raises VRChatError.
+
+    This is the one call in this module that CHANGES something on VRChat's side rather than
+    just reading. It needs the bot account to hold the group's invite permission; without it
+    VRChat answers 403, which is reported as the permission problem it is instead of a generic
+    failure - an operator can fix that in the group's settings, but only if they are told.
+    """
+    if not looks_like_group_id(group_id):
+        raise VRChatError("Das ist keine gültige VRChat-Gruppen-ID.")
+    if not user_id:
+        raise VRChatError("Kein VRChat-Konto zum Einladen.")
+    url = f"{API_BASE}/groups/{urllib.parse.quote(group_id, safe='')}/invites"
+    headers = _headers(auth_cookie, two_factor_cookie)
+    headers["Content-Type"] = "application/json"
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json={"userId": user_id}, headers=headers,
+                                timeout=TIMEOUT) as resp:
+            if resp.status in (200, 201, 204):
+                return "sent"
+            try:
+                body = await resp.json(content_type=None)
+            except Exception:
+                body = {}
+            message = ""
+            if isinstance(body, dict):
+                err = body.get("error")
+                message = (err.get("message") if isinstance(err, dict) else str(err or "")) or ""
+            lowered = message.lower()
+            # VRChat reports "already invited" and "already a member" as plain 400s. Neither is
+            # a failure from the member's point of view - both mean there is nothing to do.
+            if resp.status == 400 and ("already" in lowered or "bereits" in lowered):
+                return "already"
+            if resp.status == 403:
+                raise VRChatError("Das Bot-Konto darf in dieser Gruppe niemanden einladen — "
+                                  "dafür braucht es in den Gruppenrechten die Erlaubnis, "
+                                  "Einladungen zu verschicken.")
+            if resp.status == 401:
+                raise VRChatError("Die VRChat-Sitzung ist abgelaufen — bitte das Konto im "
+                                  "Dashboard neu verbinden.")
+            if resp.status == 429:
+                raise VRChatError("VRChat bremst gerade zu viele Anfragen aus. Versuch es "
+                                  "in ein paar Minuten nochmal.")
+            raise VRChatError(message[:200] or f"VRChat antwortete mit Status {resp.status}.")
