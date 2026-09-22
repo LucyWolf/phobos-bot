@@ -25,8 +25,9 @@
   .topbar img { width: 26px; height: 26px; border-radius: 50%; }
   .topbar .name { font-weight: 600; font-size: 0.9rem; }
   .spacer { flex: 1; }
-  .lang a { color: var(--muted); text-decoration: none; font-size: 0.75rem; padding: 0.15rem 0.35rem; border-radius: 0.3rem; }
-  .lang a.on { color: var(--text); background: var(--accent-light); }
+  .lang button { color: var(--muted); background: none; border: none; font-family: inherit;
+         font-size: 0.75rem; padding: 0.15rem 0.35rem; border-radius: 0.3rem; cursor: pointer; }
+  .lang button.on { color: var(--text); background: var(--accent-light); }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 0.9rem;
           padding: 1.4rem; margin-bottom: 1rem; }
   .eyebrow { font-size: 0.68rem; letter-spacing: 0.09em; color: #a78bfa; font-weight: 700; margin-bottom: 0.5rem; }
@@ -86,21 +87,31 @@
 <body>
 <div class="wrap">
 
-{% if expired %}
+{% macro expired_card() -%}
   <div class="card" style="text-align:center;padding:2.5rem 1.5rem;">
     <div style="font-size:2rem;margin-bottom:0.6rem;">⏳</div>
     <h1 style="font-size:1.1rem;margin-bottom:0.5rem;">{{ tr.vrcp_expired_title }}</h1>
     <p class="lead" style="margin:0;">{{ tr.vrcp_expired_text }}</p>
   </div>
+{%- endmacro %}
+
+{% if expired %}
+  {{ expired_card() }}
 {% else %}
 
   <div class="topbar">
     {% if guild_icon %}<img src="{{ guild_icon }}" alt="">{% endif %}
     <span class="name">{{ guild_name }}</span>
     <span class="spacer"></span>
+    {# Knoepfe statt Links: ein Link muesste den Token in die Adresse schreiben. #}
     <span class="lang">
-      <a href="/vrc?lang=de" class="{% if lang == 'de' %}on{% endif %}">DE</a>
-      <a href="/vrc?lang=en" class="{% if lang == 'en' %}on{% endif %}">EN</a>
+      {% for code, label in [('de', 'DE'), ('en', 'EN')] %}
+      <form method="post" action="/vrc/lang" style="display:inline;margin:0;">
+        <input type="hidden" name="t" value="{{ token }}">
+        <input type="hidden" name="lang" value="{{ code }}">
+        <button type="submit" class="{% if lang == code %}on{% endif %}">{{ label }}</button>
+      </form>
+      {% endfor %}
     </span>
   </div>
 
@@ -147,11 +158,13 @@
 
     {% if link and link.status == 'approved' %}
     <div class="actions">
-      <form method="post" action="/vrc/refresh?lang={{ lang }}">
+      <form method="post" action="/vrc/refresh">
+        <input type="hidden" name="t" value="{{ token }}"><input type="hidden" name="lang" value="{{ lang }}">
         <button type="submit" class="btn">↻ {{ tr.vrcp_btn_refresh }}</button>
       </form>
-      <form method="post" action="/vrc/unlink?lang={{ lang }}"
+      <form method="post" action="/vrc/unlink"
             onsubmit="return confirm({{ tr.vrcp_confirm_unlink.replace('{name}', link.vrchat_name) | js }});">
+        <input type="hidden" name="t" value="{{ token }}"><input type="hidden" name="lang" value="{{ lang }}">
         <button type="submit" class="btn danger">✕ {{ tr.vrcp_btn_unlink }}</button>
       </form>
     </div>
@@ -163,7 +176,8 @@
   <div class="card">
     <h2>{{ tr.vrcp_step1_title }}</h2>
     <p class="lead">{{ tr.vrcp_step1_text }}</p>
-    <form method="post" action="/vrc/name?lang={{ lang }}">
+    <form method="post" action="/vrc/name">
+        <input type="hidden" name="t" value="{{ token }}"><input type="hidden" name="lang" value="{{ lang }}">
       <label for="vrcname">{{ tr.vrcp_name_label }}</label>
       <input type="text" id="vrcname" name="vrchat_name" maxlength="32" autofocus
              autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -181,10 +195,12 @@
     <label>{{ tr.vrcp_code_label }}</label>
     <code class="code">{{ link.verify_code }}</code>
     <div class="actions">
-      <form method="post" action="/vrc/verify?lang={{ lang }}">
+      <form method="post" action="/vrc/verify">
+        <input type="hidden" name="t" value="{{ token }}"><input type="hidden" name="lang" value="{{ lang }}">
         <button type="submit" class="btn primary">✓ {{ tr.vrcp_btn_check }}</button>
       </form>
-      <form method="post" action="/vrc/unlink?lang={{ lang }}">
+      <form method="post" action="/vrc/unlink">
+        <input type="hidden" name="t" value="{{ token }}"><input type="hidden" name="lang" value="{{ lang }}">
         <button type="submit" class="btn">{{ tr.vrcp_btn_restart }}</button>
       </form>
     </div>
@@ -200,7 +216,8 @@
     <h2>⏳ {{ tr.vrcp_pending_title }}</h2>
     <p class="lead" style="margin:0;">{{ tr.vrcp_pending_text.replace('{server}', guild_name) }}</p>
     <div class="actions">
-      <form method="post" action="/vrc/unlink?lang={{ lang }}">
+      <form method="post" action="/vrc/unlink">
+        <input type="hidden" name="t" value="{{ token }}"><input type="hidden" name="lang" value="{{ lang }}">
         <button type="submit" class="btn">{{ tr.vrcp_btn_other }}</button>
       </form>
     </div>
@@ -221,15 +238,51 @@
       </div>
     </details>
     <div class="actions">
-      <form method="post" action="/vrc/unlink?lang={{ lang }}"
+      <form method="post" action="/vrc/unlink"
             onsubmit="return confirm({{ tr.vrcp_confirm_unlink.replace('{name}', link.vrchat_name) | js }});">
+        <input type="hidden" name="t" value="{{ token }}"><input type="hidden" name="lang" value="{{ lang }}">
         <button type="submit" class="btn">{{ tr.vrcp_btn_other }}</button>
       </form>
     </div>
   </div>
   {% endif %}
 
+  {# Wie lange diese Tuer noch offen steht. Der Zaehler laeuft im Browser, entschieden wird
+     aber weiterhin auf dem Server: laeuft die Zeit ab, weist jede Eingabe ohnehin zurueck -
+     das hier erspart dem Mitglied nur, das erst nach dem Abschicken zu merken. #}
+  <div id="vrc-clock" style="text-align:center;color:var(--muted);font-size:0.72rem;margin-top:1.25rem;"></div>
   <footer>{{ tr.vrcp_footer }}</footer>
+
+  <div id="vrc-expired" hidden>{{ expired_card() }}</div>
+  <script>
+  (function () {
+    var endsAt = Date.parse({{ expires_at | jsraw }} + "Z");
+    var clock  = document.getElementById("vrc-clock");
+    var closed = document.getElementById("vrc-expired");
+    if (!endsAt || !clock || !closed) return;
+    var running  = {{ tr.vrcp_closes_in | jsraw }};
+    var finished = {{ tr.vrcp_closed_now | jsraw }};
+    function tick() {
+      var left = Math.floor((endsAt - Date.now()) / 1000);
+      if (left <= 0) {
+        clock.textContent = finished;
+        // Alles ausser der Abgelaufen-Karte verschwindet - stehenbleibende Formulare
+        // wuerden nur noch Fehler produzieren.
+        var wrap = document.querySelector(".wrap");
+        Array.prototype.forEach.call(wrap.children, function (el) {
+          if (el !== closed) el.hidden = true;
+        });
+        closed.hidden = false;
+        clearInterval(timer);
+        return;
+      }
+      var m = Math.floor(left / 60), sec = left % 60;
+      clock.textContent = running.replace("{time}", m + ":" + (sec < 10 ? "0" : "") + sec);
+    }
+    tick();
+    var timer = setInterval(tick, 1000);
+  })();
+  </script>
 {% endif %}
 
 </div>

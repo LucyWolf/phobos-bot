@@ -3920,18 +3920,20 @@ async def vrc_panel_post(request: Request, guild_id: int):
 # the hour, and is the only thing any of these routes will act on - none of them take a user
 # or guild id from the request.
 #
-# The token lives in a COOKIE, not in the address. An address is written down everywhere: the
-# browser's history, the reverse proxy's access log, and every screenshot somebody pastes into
-# a chat. The link handed out in Discord still carries one, because a link has to - so that
-# one is spent the moment it is opened: /vrc/{token} swaps it for a fresh token that only ever
-# exists in the cookie, and redirects to the plain /vrc. A stale link from a log or a
-# screenshot is then worth nothing, and getting a new one is one click in Discord.
+# The token is carried in the FORM, not in the address - and these pages set no cookie of any
+# kind, by request ("ich wil keine cookies"). That leaves exactly one place where it is visible:
+# the link handed out in Discord, because a link cannot carry anything else. From the first
+# page onwards every action is a POST with the token in the body, where no proxy log, no
+# browser history, no Referer header and no screenshot of an address bar ever sees it. Even the
+# language switch is a POST for that reason.
 #
-# The cookie is HttpOnly (no script can read it), scoped to /vrc (the rest of the dashboard
-# never sees it), Secure whenever the request arrived over HTTPS, and SameSite=Lax - which is
-# also what stands in for CSRF protection here: a form on someone else's site cannot make the
-# browser send this cookie, so it cannot act as the member.
-VRC_COOKIE = "phobos_vrc"
+# Worth being plain about what that does NOT achieve: the entry link itself still appears once
+# in the access log and the history, for as long as it is valid. Without a cookie there is no
+# way around that - a reload is a GET, and a GET can only carry state in its address. Exactly
+# the same exposure the invite link and the password-reset link in this project already have.
+#
+# CSRF: a form on someone else's site cannot supply the token, since there is no cookie the
+# browser would attach on its own. The token IS the proof, and only the member has it.
 
 # How long to wait between two VRChat lookups for the same visitor. Every one of them is a
 # request to an interface that rate-limits hard and whose operator bans accounts for hammering
@@ -3958,13 +3960,6 @@ def _vrc_throttled(token: str) -> bool:
     return False
 
 
-def _request_is_https(request: Request) -> bool:
-    """Whether the BROWSER reached this over HTTPS - the proxy header first, since the
-    connection this app sees is normally plain http on an internal name."""
-    fwd = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
-    return (fwd or (request.url.scheme or "").lower()) == "https"
-
-
 def _vrc_harden(response, request: Request):
     """Headers every member-facing page carries.
 
@@ -3976,10 +3971,6 @@ def _vrc_harden(response, request: Request):
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["X-Frame-Options"] = "DENY"
     return response
-
-
-def _vrc_cookie_token(request: Request) -> str:
-    return request.cookies.get(VRC_COOKIE) or ""
 
 # VRChat display names are at most 32 characters; anything longer is not a name, it is a
 # paste accident. The cog states the same limit for its own use - written out here rather
@@ -4056,6 +4047,13 @@ async def _vrc_page(request: Request, row, lang: str,
                                     link["vrchat_name"], member.name)
     return _vrc_harden(templates.TemplateResponse("vrc_link_public.html", {
         "request": request, "tr": tr, "lang": lang, "expired": False,
+        # Handed to the page so every form can carry it in its BODY. Never built into a link:
+        # that would put it back into the address bar, the proxy log and the browser history,
+        # which is the whole point of doing it this way.
+        "token": row["token"],
+        # So the page can show how long this door stays open, and close itself when the time
+        # is up instead of letting somebody type into a form that will be refused.
+        "expires_at": row["expires_at"],
         "guild": guild, "member": member, "link": link,
         "guild_name": guild.name if guild else f"#{row['guild_id']}",
         "guild_icon": guild.icon.url if guild and guild.icon else "",
@@ -4069,69 +4067,43 @@ async def _vrc_page(request: Request, row, lang: str,
     }, status_code=status_code), request)
 
 
-async def _vrc_visitor(request: Request):
-    """The token row this visitor holds via their cookie, or None."""
-    token = _vrc_cookie_token(request)
+async def _vrc_visitor(token: str):
+    """The token row this visitor supplied in their form, or None.
+
+    Every POST below carries it in the body rather than the address - see the note above the
+    route block for why, and for what that does and does not buy.
+    """
     return await _vrc_token_row(token) if token else None
 
 
 @web.get("/vrc/{token}", response_class=HTMLResponse)
 async def vrc_public_open(request: Request, token: str, lang: str = ""):
-    """The link handed out in Discord. Spends the token and moves the member to /vrc.
+    """The link handed out in Discord, and the only place the token is ever visible.
 
-    The token is not merely hidden after this, it is REPLACED: the one that travelled through
-    the address bar stops working, and the one that takes over never appears in any address.
-    So a link recovered from a proxy log, a browser history or a screenshot is already dead by
-    the time anybody finds it.
-
-    Re-opening an old link therefore fails. That is the intended trade: pressing the button in
-    Discord again costs one click and always hands out a working link, and the button is where
-    members come from anyway.
+    Rendered directly rather than redirected: with no cookie there is nothing to carry the
+    member across a redirect, so the page is served here and every form on it takes the token
+    along in its body from then on. Reloading this address keeps working for the hour the link
+    is valid, which is the whole reason it is not spent on first sight.
     """
     lang = _vrc_public_lang(request, lang)
-    row = await _vrc_token_row(token)
-    if not row:
-        return await _vrc_page(request, None, lang)
-
-    fresh = secrets.token_urlsafe(32)
-    try:
-        # Rotate in place so the row keeps its own expiry - the clock started when the member
-        # asked for the link, and walking through a door must not restart it.
-        await db_exec("UPDATE vrc_link_tokens SET token=? WHERE token=?", (fresh, token))
-    except Exception as e:
-        print(f"[vrc_link] could not rotate a link token: {e}")
-        return await _vrc_page(request, None, lang)
-    _vrc_last_check.pop(token, None)
-
-    try:
-        remaining = int((datetime.datetime.fromisoformat(row["expires_at"])
-                         - datetime.datetime.utcnow()).total_seconds())
-    except ValueError:
-        remaining = 0
-    resp = RedirectResponse(f"/vrc?lang={lang}", status_code=303)
-    resp.set_cookie(
-        VRC_COOKIE, fresh,
-        max_age=max(remaining, 60),
-        httponly=True,               # no script can read it, on this page or any other
-        samesite="lax",              # a form on somebody else's site cannot send it: CSRF
-        secure=_request_is_https(request),  # forced on plain HTTP the browser would drop it
-        path="/vrc",                 # the rest of the dashboard never receives it
-    )
-    return _vrc_harden(resp, request)
+    return await _vrc_page(request, await _vrc_token_row(token), lang)
 
 
-@web.get("/vrc", response_class=HTMLResponse)
-async def vrc_public_page(request: Request, lang: str = ""):
+@web.post("/vrc/lang", response_class=HTMLResponse)
+async def vrc_public_lang_switch(request: Request, t: str = Form(""), lang: str = Form("")):
+    """Switching language is a POST for one reason only: a link would put the token back into
+    the address bar, which is exactly what this arrangement exists to avoid."""
     lang = _vrc_public_lang(request, lang)
-    return await _vrc_page(request, await _vrc_visitor(request), lang)
+    return await _vrc_page(request, await _vrc_visitor(t), lang)
 
 
 @web.post("/vrc/name", response_class=HTMLResponse)
-async def vrc_public_name(request: Request, lang: str = "", vrchat_name: str = Form("")):
+async def vrc_public_name(request: Request, lang: str = Form(""), t: str = Form(""),
+                          vrchat_name: str = Form("")):
     """Step one: the member states a VRChat name, and it gets looked up for real."""
     lang = _vrc_public_lang(request, lang)
     tr = get_tr(lang)
-    row = await _vrc_visitor(request)
+    row = await _vrc_visitor(t)
     if not row:
         return await _vrc_page(request, None, lang)
 
@@ -4141,7 +4113,7 @@ async def vrc_public_name(request: Request, lang: str = "", vrchat_name: str = F
     # Behind the same brake as the other two: this route is the one that costs TWO VRChat
     # requests per press, so leaving it unthrottled while guarding the cheaper ones would have
     # been protecting the wrong door.
-    if _vrc_throttled(_vrc_cookie_token(request)):
+    if _vrc_throttled(t):
         return await _vrc_page(request, row, lang, error=tr["vrcp_err_toofast"])
 
     from cogs.vrc_link import resolve_vrchat, profile_fields
@@ -4214,18 +4186,18 @@ async def vrc_public_name(request: Request, lang: str = "", vrchat_name: str = F
 
 
 @web.post("/vrc/verify", response_class=HTMLResponse)
-async def vrc_public_verify(request: Request, lang: str = ""):
+async def vrc_public_verify(request: Request, lang: str = Form(""), t: str = Form("")):
     """Step two: read the VRChat profile back and look for the code the member was given."""
     lang = _vrc_public_lang(request, lang)
     tr = get_tr(lang)
-    row = await _vrc_visitor(request)
+    row = await _vrc_visitor(t)
     if not row:
         return await _vrc_page(request, None, lang)
     link = await db_one("SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
                         (row["guild_id"], row["user_id"]))
     if not link or link["status"] != VRC_STATE_UNVERIFIED:
         return await _vrc_page(request, row, lang)
-    if _vrc_throttled(_vrc_cookie_token(request)):
+    if _vrc_throttled(t):
         return await _vrc_page(request, row, lang, error=tr["vrcp_err_toofast"])
 
     from cogs.vrc_link import fetch_profile, code_present, profile_fields
@@ -4258,18 +4230,18 @@ async def vrc_public_verify(request: Request, lang: str = ""):
 
 
 @web.post("/vrc/refresh", response_class=HTMLResponse)
-async def vrc_public_refresh(request: Request, lang: str = ""):
+async def vrc_public_refresh(request: Request, lang: str = Form(""), t: str = Form("")):
     """Re-read the VRChat profile of a confirmed link - picks up a rename and the badges."""
     lang = _vrc_public_lang(request, lang)
     tr = get_tr(lang)
-    row = await _vrc_visitor(request)
+    row = await _vrc_visitor(t)
     if not row:
         return await _vrc_page(request, None, lang)
     link = await db_one("SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
                         (row["guild_id"], row["user_id"]))
     if not link or not link["vrc_user_id"]:
         return await _vrc_page(request, row, lang)
-    if _vrc_throttled(_vrc_cookie_token(request)):
+    if _vrc_throttled(t):
         return await _vrc_page(request, row, lang, error=tr["vrcp_err_toofast"])
 
     from cogs.vrc_link import fetch_profile, profile_fields
@@ -4300,10 +4272,10 @@ async def vrc_public_refresh(request: Request, lang: str = ""):
 
 
 @web.post("/vrc/unlink", response_class=HTMLResponse)
-async def vrc_public_unlink(request: Request, lang: str = ""):
+async def vrc_public_unlink(request: Request, lang: str = Form(""), t: str = Form("")):
     lang = _vrc_public_lang(request, lang)
     tr = get_tr(lang)
-    row = await _vrc_visitor(request)
+    row = await _vrc_visitor(t)
     if not row:
         return await _vrc_page(request, None, lang)
     link = await db_one("SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
