@@ -74,7 +74,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **Free Stuff & Deals** | Automatic free game alerts + configurable deal notifications + test button |
 | **Auto-Delete** | Automatically delete messages in selected channels after a configurable time, optionally including the bot's own messages (off by default) |
 | **Auto-Thread** | Automatically opens a thread on every message in selected channels — templated thread name (`{user}` / `{text}` / `{date}`), auto-archive duration, optional opening message inside the thread, optionally only for messages with an attachment |
-| **VRC-Link** | Links VRChat accounts to Discord accounts — members open a personal link, prove the account is theirs with a code in their VRChat bio, and get a role plus their VRChat name as their Discord nickname |
+| **VRC-Link** | Links VRChat accounts to Discord accounts — members open a personal link, prove the account is theirs with a code in their VRChat status message, and get a role plus their VRChat name as their Discord nickname |
 | **Temp Voice** | Join-to-Create temporary voice channels — auto-created on join, auto-deleted when empty |
 | **Scheduled Messages** | Schedule messages to be sent to any channel at a specific date and time |
 | **Birthday System** | `!<your word> DD.MM` — the command words are configurable **per server**, several at once for multilingual servers; daily congratulations at 8 AM, configurable channel and message |
@@ -235,7 +235,7 @@ Links a member's **VRChat account to their Discord account**: they get a role fo
 
 1. They click the button (or use `/vrc-link`) and get a **personal link**, valid for one hour and only for them. The page **sets no cookies**: from the first screen on, the key travels inside the forms, so it never reaches a proxy log, a browser history or a `Referer` header again. A countdown shows how long the door stays open; once the hour is up the page closes itself and a new link is one click away in Discord.
 2. On that page they enter their VRChat display name; the bot looks it up and adopts VRChat's own spelling.
-3. They get a short code such as `PHOBOS-K7M2QD` to put into their **VRChat bio**, then press "Check now". The bot reads the profile back and compares — that is the ownership proof. The code can be deleted again straight afterwards.
+3. They get a short code such as `PHOBOS-K7M2QD` to put into their **VRChat status message**, then press "Check now". The bot reads the profile back and compares — that is the ownership proof. The code can be deleted again straight afterwards.
 4. Role and nickname are applied, either at once or after a moderator approves.
 
 The page **never asks for a VRChat password**. Anything that does is phishing, whoever it claims to be.
@@ -707,7 +707,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **Free Stuff & Deals** | Automatische Meldung kostenloser Spiele + konfigurierbare Angebote + Test-Button |
 | **Auto-Delete** | Nachrichten in gewählten Kanälen automatisch nach konfigurierbarer Zeit löschen, optional auch bot-eigene Nachrichten (standardmäßig aus) |
 | **Auto-Thread** | Öffnet in gewählten Kanälen automatisch zu jeder Nachricht einen Thread — Thread-Name als Vorlage (`{user}` / `{text}` / `{date}`), Archivierungsdauer, optionale Startnachricht im Thread, optional nur bei Nachrichten mit Anhang |
-| **VRC-Link** | Verknüpft VRChat-Konten mit Discord-Konten — Mitglieder öffnen einen persönlichen Link, weisen über einen Code in ihrer VRChat-Bio nach, dass ihnen das Konto gehört, und bekommen eine Rolle plus ihren VRChat-Namen als Discord-Spitznamen |
+| **VRC-Link** | Verknüpft VRChat-Konten mit Discord-Konten — Mitglieder öffnen einen persönlichen Link, weisen über einen Code in ihrer VRChat-Statusmeldung nach, dass ihnen das Konto gehört, und bekommen eine Rolle plus ihren VRChat-Namen als Discord-Spitznamen |
 | **Temp Voice** | Join-to-Create temporäre Voice-Kanäle — automatisch erstellt beim Beitritt, automatisch gelöscht wenn leer |
 | **Geplante Nachrichten** | Nachrichten zu einem bestimmten Datum und Uhrzeit in jeden Kanal planen |
 | **Geburtstags-System** | `!<eigenes Wort> TT.MM` — die Befehlswörter sind **pro Server** einstellbar, auch mehrere gleichzeitig für mehrsprachige Server; tägliche Glückwünsche um 8 Uhr, konfigurierbarer Kanal und Text |
@@ -868,7 +868,7 @@ Verknüpft das **VRChat-Konto eines Mitglieds mit seinem Discord-Konto**: Es bek
 
 1. Es klickt auf den Knopf (oder nutzt `/vrc-link`) und bekommt einen **persönlichen Link**, eine Stunde gültig und nur für es selbst. Die Seite setzt **keine Cookies**: ab dem ersten Bildschirm reist der Schlüssel in den Formularen mit und taucht in keinem Proxy-Protokoll, keinem Verlauf und keinem `Referer` mehr auf. Ein Countdown zeigt, wie lange die Tür noch offen steht; nach der Stunde macht die Seite sich selbst zu, und einen neuen Link gibt es mit einem Klick in Discord.
 2. Auf der Seite trägt es seinen VRChat-Anzeigenamen ein; der Bot schlägt ihn nach und übernimmt VRChats eigene Schreibweise.
-3. Es bekommt einen kurzen Code wie `PHOBOS-K7M2QD`, trägt ihn in seine **VRChat-Bio** ein und klickt auf „Jetzt prüfen“. Der Bot liest das Profil zurück und vergleicht — das ist der Eigentumsnachweis. Danach kann der Code sofort wieder weg.
+3. Es bekommt einen kurzen Code wie `PHOBOS-K7M2QD`, trägt ihn in seine **VRChat-Statusmeldung** ein und klickt auf „Jetzt prüfen“. Der Bot liest das Profil zurück und vergleicht — das ist der Eigentumsnachweis. Danach kann der Code sofort wieder weg.
 4. Rolle und Spitzname werden vergeben, sofort oder nach der Freigabe durch die Moderation.
 
 Die Seite fragt **nie nach einem VRChat-Passwort**. Wer das tut, betreibt Phishing — egal, als wer er sich ausgibt.

@@ -1429,7 +1429,7 @@ _BACKUP_TBL_INSERT = {
     # that matters here - a moderator approved each one by hand, and losing them means every
     # member has to ask again.
     # verified_at and the VRChat id travel along: the member proved ownership once, and a
-    # server changing hands is no reason to make everybody paste a code into their bio again.
+    # server changing hands is no reason to make everybody paste a code onto their profile again.
     "vrc_links":
         "INSERT INTO vrc_links (guild_id,user_id,vrchat_name,vrc_user_id,status,requested_at,"
         "decided_at,decided_by,note,verified_at) "
@@ -3815,7 +3815,7 @@ async def auto_delete_remove(request: Request, guild_id: str, entry_id: int):
 
 # ── VRC-Link ──────────────────────────────────────────────────────────────────
 # A member gets a personal link, opens a page of their own, proves the VRChat account is
-# theirs by putting a short code into their VRChat bio, and a moderator (optionally) waves it
+# theirs by putting a short code into their VRChat status message, and a moderator (optionally) waves it
 # through. The member-facing pages below are the only ones in this file that are reachable
 # WITHOUT a dashboard login: the people using them are Discord members, not administrators.
 # The token in the URL is what stands in for a login, and it is scoped to exactly one member
@@ -4059,13 +4059,13 @@ async def vrc_panel_post(request: Request, guild_id: int):
 async def vrc_probe(request: Request, guild_id: int, vrchat_name: str = Form("")):
     """Show an admin exactly what VRChat hands back for one name.
 
-    Built because the ownership check kept reporting "code not in the bio" while the code was
+    Built because the ownership check kept reporting the code as missing while it was
     plainly visible on the profile, and there was no way to tell the two possible causes apart
     from the outside: the text has not reached VRChat's API yet, or the bot never receives that
     field at all. The same question applies to the 18+ badge, which VRChat has shipped under
     more than one name and may not expose for other people's accounts.
 
-    So this answers it with facts instead of guesses: which fields came back, how long the bio
+    So this answers it with facts instead of guesses: which fields came back, how long the text
     is, whether the age flag is there. Admin-level and read-only - it stores nothing.
     """
     if r := auth_redirect(request): return r
@@ -4334,7 +4334,7 @@ async def vrc_public_name(request: Request, lang: str = Form(""), t: str = Form(
     existing = await db_one("SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
                             (row["guild_id"], row["user_id"]))
 
-    # Whether the member has to prove the account is theirs with a code in their VRChat bio.
+    # Whether the member has to prove the account is theirs with a code in their VRChat status.
     # A switch rather than a law, and on by default: without it "linking" means nothing more
     # than that somebody typed a name, and a member could wear the nickname and role of
     # anybody they can spell. A server that only wants the plain job - read the VRChat name

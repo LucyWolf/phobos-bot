@@ -13,11 +13,12 @@ Two things fall out of that change, and both are improvements rather than cosmet
     invisible for up to an hour while Discord propagates it globally, which is exactly what
     went wrong here.
 
-  - Ownership can finally be checked. The member puts a short code into their VRChat bio, the
+  - Ownership can finally be checked. The member puts a short code into their VRChat status
     bot reads the profile back and compares. That is a real proof and it needs a page to walk
     somebody through it, which a slash command cannot do. It deliberately does NOT ask members
     for their VRChat password: teaching people to type third-party credentials into somebody's
-    self-hosted bot is how phishing gets its foothold, and a bio code proves the same thing.
+    self-hosted bot is how phishing gets its foothold, and a code on the profile proves the
+    same thing.
 
 The moderator step is still there and still optional (vrc_auto_approve), it just no longer
 carries the whole weight of deciding whether somebody owns an account.
@@ -149,7 +150,7 @@ async def resolve_vrchat(name: str) -> tuple:
 
     The search result is re-fetched by id before it is returned. /users?search= answers with a
     trimmed-down record, and which fields survive that trim is not something VRChat documents
-    or keeps still - the bio is the one this flow depends on, so it is read from the endpoint
+    or keeps still - the profile text is what this flow depends on, so it is read from the endpoint
     that is actually defined to carry it rather than hoped for on the search hit.
     """
     session = await vrc_session()
@@ -198,14 +199,23 @@ def profile_fields(user: dict) -> dict:
     }
 
 
-# Every field on a VRChat profile the MEMBER can type free text into. Bio and status because
-# both are one edit away in the client and people reach for whichever they find first; the
-# bio links because a link field is still a text box and somebody will use it.
+# Every field on a VRChat profile the MEMBER can type free text into, status message first.
+#
+# The bio was the wrong place to send people ("ändere das nicht bio sondern status das war
+# falch"), and the reason showed up in testing: a code pasted into the bio was never found,
+# the same code in the STATUS was found immediately ("wo ich dan den code in den status
+# abgegeben habe hat er den auch gefunden"). So whatever VRChat does or does not hand out for
+# somebody else's bio, the status is the field that reliably arrives - and that is the one the
+# instructions now point at.
+#
+# The bio stays accepted anyway: it costs nothing, and a member who put it there, or was told
+# to earlier, should not be sent back to do it again. Same for the bio links - a link field is
+# still a text box and somebody will use it.
 #
 # Deliberately NOT "note": that one holds the private note the SIGNED-IN account keeps about
 # the user, so it is written by the bot's own account rather than by the member. Accepting it
 # would mean a proof the member never gave could pass.
-PROFILE_TEXT_FIELDS = ("bio", "statusDescription")
+PROFILE_TEXT_FIELDS = ("statusDescription", "bio")
 
 # Characters that a copy-paste picks up but a human does not see. Zero-width spaces and joiners
 # come along from web pages constantly; NFKC below already folds non-breaking spaces and
