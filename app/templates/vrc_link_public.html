@@ -99,8 +99,8 @@
     <span class="name">{{ guild_name }}</span>
     <span class="spacer"></span>
     <span class="lang">
-      <a href="/vrc/{{ token }}?lang=de" class="{% if lang == 'de' %}on{% endif %}">DE</a>
-      <a href="/vrc/{{ token }}?lang=en" class="{% if lang == 'en' %}on{% endif %}">EN</a>
+      <a href="/vrc?lang=de" class="{% if lang == 'de' %}on{% endif %}">DE</a>
+      <a href="/vrc?lang=en" class="{% if lang == 'en' %}on{% endif %}">EN</a>
     </span>
   </div>
 
@@ -147,10 +147,10 @@
 
     {% if link and link.status == 'approved' %}
     <div class="actions">
-      <form method="post" action="/vrc/{{ token }}/refresh?lang={{ lang }}">
+      <form method="post" action="/vrc/refresh?lang={{ lang }}">
         <button type="submit" class="btn">↻ {{ tr.vrcp_btn_refresh }}</button>
       </form>
-      <form method="post" action="/vrc/{{ token }}/unlink?lang={{ lang }}"
+      <form method="post" action="/vrc/unlink?lang={{ lang }}"
             onsubmit="return confirm({{ tr.vrcp_confirm_unlink.replace('{name}', link.vrchat_name) | js }});">
         <button type="submit" class="btn danger">✕ {{ tr.vrcp_btn_unlink }}</button>
       </form>
@@ -163,7 +163,7 @@
   <div class="card">
     <h2>{{ tr.vrcp_step1_title }}</h2>
     <p class="lead">{{ tr.vrcp_step1_text }}</p>
-    <form method="post" action="/vrc/{{ token }}/name?lang={{ lang }}">
+    <form method="post" action="/vrc/name?lang={{ lang }}">
       <label for="vrcname">{{ tr.vrcp_name_label }}</label>
       <input type="text" id="vrcname" name="vrchat_name" maxlength="32" autofocus
              autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -181,10 +181,10 @@
     <label>{{ tr.vrcp_code_label }}</label>
     <code class="code">{{ link.verify_code }}</code>
     <div class="actions">
-      <form method="post" action="/vrc/{{ token }}/verify?lang={{ lang }}">
+      <form method="post" action="/vrc/verify?lang={{ lang }}">
         <button type="submit" class="btn primary">✓ {{ tr.vrcp_btn_check }}</button>
       </form>
-      <form method="post" action="/vrc/{{ token }}/unlink?lang={{ lang }}">
+      <form method="post" action="/vrc/unlink?lang={{ lang }}">
         <button type="submit" class="btn">{{ tr.vrcp_btn_restart }}</button>
       </form>
     </div>
@@ -200,7 +200,7 @@
     <h2>⏳ {{ tr.vrcp_pending_title }}</h2>
     <p class="lead" style="margin:0;">{{ tr.vrcp_pending_text.replace('{server}', guild_name) }}</p>
     <div class="actions">
-      <form method="post" action="/vrc/{{ token }}/unlink?lang={{ lang }}">
+      <form method="post" action="/vrc/unlink?lang={{ lang }}">
         <button type="submit" class="btn">{{ tr.vrcp_btn_other }}</button>
       </form>
     </div>
@@ -221,7 +221,7 @@
       </div>
     </details>
     <div class="actions">
-      <form method="post" action="/vrc/{{ token }}/unlink?lang={{ lang }}"
+      <form method="post" action="/vrc/unlink?lang={{ lang }}"
             onsubmit="return confirm({{ tr.vrcp_confirm_unlink.replace('{name}', link.vrchat_name) | js }});">
         <button type="submit" class="btn">{{ tr.vrcp_btn_other }}</button>
       </form>

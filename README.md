@@ -233,7 +233,7 @@ Links a member's **VRChat account to their Discord account**: they get a role fo
 
 **How a member links their account:**
 
-1. They click the button (or use `/vrc-link`) and get a **personal link**, valid for one hour and only for them.
+1. They click the button (or use `/vrc-link`) and get a **personal link**, valid for one hour and only for them. Opening it **spends** it: the key moves into an `HttpOnly` cookie and the address bar is left clean, so a link recovered from a proxy log, a browser history or a screenshot is already dead. A fresh one is one click away in Discord.
 2. On that page they enter their VRChat display name; the bot looks it up and adopts VRChat's own spelling.
 3. They get a short code such as `PHOBOS-K7M2QD` to put into their **VRChat bio**, then press "Check now". The bot reads the profile back and compares — that is the ownership proof. The code can be deleted again straight afterwards.
 4. Role and nickname are applied, either at once or after a moderator approves.
@@ -866,7 +866,7 @@ Verknüpft das **VRChat-Konto eines Mitglieds mit seinem Discord-Konto**: Es bek
 
 **So verknüpft sich ein Mitglied:**
 
-1. Es klickt auf den Knopf (oder nutzt `/vrc-link`) und bekommt einen **persönlichen Link**, eine Stunde gültig und nur für es selbst.
+1. Es klickt auf den Knopf (oder nutzt `/vrc-link`) und bekommt einen **persönlichen Link**, eine Stunde gültig und nur für es selbst. Ihn zu öffnen **verbraucht** ihn: der Schlüssel wandert in ein `HttpOnly`-Cookie, die Adresszeile bleibt sauber. Ein Link aus einem Proxy-Protokoll, dem Verlauf oder einem Screenshot ist damit schon tot — einen neuen gibt es mit einem Klick in Discord.
 2. Auf der Seite trägt es seinen VRChat-Anzeigenamen ein; der Bot schlägt ihn nach und übernimmt VRChats eigene Schreibweise.
 3. Es bekommt einen kurzen Code wie `PHOBOS-K7M2QD`, trägt ihn in seine **VRChat-Bio** ein und klickt auf „Jetzt prüfen“. Der Bot liest das Profil zurück und vergleicht — das ist der Eigentumsnachweis. Danach kann der Code sofort wieder weg.
 4. Rolle und Spitzname werden vergeben, sofort oder nach der Freigabe durch die Moderation.
