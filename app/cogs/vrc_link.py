@@ -16,7 +16,7 @@ import datetime
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from database import (db_rows, db_one, db_exec, get_guild_config,
                       vrc_nickname, DEFAULT_VRC_NICKNAME_FORMAT, VRC_ACCOUNT_KEY)
@@ -138,6 +138,46 @@ async def revoke_link(bot, guild: discord.Guild, member: discord.Member) -> None
 class VRCLink(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self._check.start()
+
+    def cog_unload(self):
+        self._check.cancel()
+
+    @tasks.loop(minutes=1)
+    async def _check(self):
+        """Keeps Discord in step with the approved links, once a minute.
+
+        Deliberately does NOT talk to VRChat. Re-resolving every linked name every minute would
+        be one API call per member per minute - with a few dozen links that is thousands of
+        requests an hour against an interface that rate-limits hard and whose operator bans
+        accounts for exactly this. What it does instead is cheap and needs no network at all in
+        the normal case: apply_link() only calls Discord when something actually differs, so a
+        member who still has their role and the right nickname costs nothing.
+
+        That covers what drifts in practice - a role removed by hand, a nickname changed by the
+        member, someone who was offline when their link was approved. A VRChat-side rename is
+        picked up by "Alle auffrischen" on the dashboard, which is a deliberate button press
+        rather than a thousand background requests.
+        """
+        for guild in list(self.bot.guilds):
+            try:
+                if not await self._enabled(guild.id):
+                    continue
+                rows = await db_rows(
+                    "SELECT * FROM vrc_links WHERE guild_id=? AND status='approved'",
+                    (str(guild.id),),
+                )
+                for row in rows:
+                    member = guild.get_member(int(row["user_id"])) if str(row["user_id"]).isdigit() else None
+                    if member is None:
+                        continue  # gone from the server - on_member_join restores them if they return
+                    await apply_link(self.bot, guild, member, row["vrchat_name"])
+            except Exception as e:
+                print(f"[vrc_link] periodic check failed for guild {guild.id}: {e}")
+
+    @_check.before_loop
+    async def _before_check(self):
+        await self.bot.wait_until_ready()
 
     async def _enabled(self, guild_id: int) -> bool:
         return (await get_guild_config(guild_id, "vrc_enabled") or "0") == "1"

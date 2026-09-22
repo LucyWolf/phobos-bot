@@ -5926,7 +5926,7 @@ async def server_config_save(request: Request, guild_id: int):
     # channel keys above, it isn't even guild-scoped-safe by construction (get_role() degrades
     # to a silent no-op for a wrong ID, but a non-numeric value saved via a raw POST would raise
     # an unhandled ValueError in welcome.py's on_member_join for every future join).
-    role_keys = ["autorole", "auto_kick_role_id"]
+    role_keys = ["autorole", "auto_kick_role_id", "vrc_linked_role"]
     valid_role_ids = {str(ro.id) for ro in guild.roles if not ro.is_default()}
     for key in role_keys:
         value = str(form.get(key, ""))
