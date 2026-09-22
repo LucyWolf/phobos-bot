@@ -93,11 +93,24 @@ async def _get_user(session: aiohttp.ClientSession, headers: dict) -> tuple:
 
 
 async def login(username: str, password: str, totp_secret: str = "",
-                auth_cookie: str = "", two_factor_cookie: str = "") -> dict:
+                auth_cookie: str = "", two_factor_cookie: str = "",
+                one_time_code: str = "") -> dict:
     """Sign in and return {"user", "auth_cookie", "two_factor_cookie", "reused"}.
 
     Tries the cached session first. Only if that is refused does it fall back to a password
     login - see the module docstring for why that order matters rather than being a nicety.
+
+    Three kinds of account all have to work here:
+
+    * No two-factor at all - VRChat simply does not ask, and the login is done after one call.
+    * Two-factor with a stored secret - the bot generates the code itself and can renew the
+      session unattended, forever.
+    * Two-factor without a stored secret - `one_time_code` carries a code typed in by hand.
+      VRChat answers a successful verification with a twoFactorAuth cookie that stays valid for
+      about a month, so this gets a working session without the secret ever being written down;
+      once that cookie expires somebody has to type a fresh code. The caller is responsible for
+      saying so, because a session that silently stops working in a month is worse than one
+      that never worked.
     """
     if not username or not password:
         raise VRChatError("Benutzername und Passwort fehlen.")
@@ -139,16 +152,22 @@ async def login(username: str, password: str, totp_secret: str = "",
                     "Dieses Konto verlangt einen Code per E-Mail. Der Bot kann nur "
                     "Authenticator-Codes (TOTP) erzeugen — stell die Zwei-Faktor-Anmeldung "
                     "des VRChat-Kontos auf eine Authenticator-App um.")
-            if not totp_secret:
+            code = (one_time_code or "").strip().replace(" ", "")
+            if code:
+                if not code.isdigit() or len(code) != 6:
+                    raise VRChatError("Der eingegebene Code muss aus sechs Ziffern bestehen.")
+            elif totp_secret:
+                import pyotp
+                try:
+                    code = pyotp.TOTP(totp_secret.replace(" ", "")).now()
+                except Exception:
+                    raise VRChatError("Das 2FA-Geheimnis ist unbrauchbar — erwartet wird die "
+                                      "Zeichenfolge, die beim Einrichten neben dem QR-Code steht.")
+            else:
                 raise VRChatError(
-                    "Das Konto verlangt Zwei-Faktor-Anmeldung, aber es ist kein 2FA-Geheimnis "
-                    "hinterlegt.")
-            import pyotp
-            try:
-                code = pyotp.TOTP(totp_secret.replace(" ", "")).now()
-            except Exception:
-                raise VRChatError("Das 2FA-Geheimnis ist unbrauchbar — erwartet wird die "
-                                  "Zeichenfolge, die beim Einrichten neben dem QR-Code steht.")
+                    "Das Konto verlangt Zwei-Faktor-Anmeldung. Trag entweder das 2FA-Geheimnis "
+                    "ein (dann erneuert der Bot die Anmeldung selbst) oder einmalig den "
+                    "sechsstelligen Code aus deiner Authenticator-App.")
             verify_headers = _headers(new_auth, two_factor_cookie)
             verify_headers["Content-Type"] = "application/json"
             async with session.post(f"{API_BASE}/auth/twofactorauth/totp/verify",
@@ -175,3 +194,113 @@ async def login(username: str, password: str, totp_secret: str = "",
             raise VRChatError("VRChat hat keine Kontodaten zurückgegeben.")
         return {"user": payload, "auth_cookie": new_auth,
                 "two_factor_cookie": two_factor_cookie, "reused": False}
+
+
+# ── Nutzerdaten lesen ────────────────────────────────────────────────────────
+# VRChat's trust tags are named one step above what they mean in the UI - "system_trust_veteran"
+# is the rank the client shows as "Trusted User", not a separate veteran rank. Mapping them by
+# their literal names is the single most common way to get this wrong, so the order here is
+# written out rather than derived, and the UI label sits next to the tag it really belongs to.
+TRUST_TAGS = (
+    ("system_trust_veteran", "trusted"),   # UI: Trusted User
+    ("system_trust_trusted", "known"),     # UI: Known User
+    ("system_trust_known",   "user"),      # UI: User
+    ("system_trust_basic",   "new"),       # UI: New User
+)
+# No trust tag at all is a Visitor - an account that has not been in VRChat long enough to earn
+# one. That is a real rank, not missing data, so it gets a value of its own.
+TRUST_VISITOR = "visitor"
+
+TRUST_ORDER = ("visitor", "new", "user", "known", "trusted")
+
+
+def trust_rank(user: dict) -> str:
+    """The member's trust rank, as one of TRUST_ORDER.
+
+    A user carries every tag up to their rank, not just the top one, so this takes the highest
+    match rather than the first - reading them in any other order silently reports everybody as
+    a New User.
+    """
+    tags = set(user.get("tags") or [])
+    for tag, rank in TRUST_TAGS:
+        if tag in tags:
+            return rank
+    return TRUST_VISITOR
+
+
+def is_supporter(user: dict) -> bool:
+    """VRChat+ subscriber."""
+    return "system_supporter" in set(user.get("tags") or [])
+
+
+def is_age_verified(user: dict) -> bool:
+    """18+ verified.
+
+    Read from several fields on purpose: VRChat introduced age verification well after the rest
+    of the user object and has shipped it under more than one name, so a client that only knows
+    one of them reports "not verified" for people who are.
+    """
+    if user.get("ageVerified") is True:
+        return True
+    status = str(user.get("ageVerificationStatus") or "").lower()
+    if status in ("verified", "18+", "age_verified"):
+        return True
+    return "system_age_verified" in set(user.get("tags") or [])
+
+
+async def find_user(display_name: str, auth_cookie: str, two_factor_cookie: str = "") -> dict | None:
+    """Resolve a VRChat display name to its user object, or None if there is no such account.
+
+    Display names are unique in VRChat, but /users?search= is a SEARCH, not a lookup: it also
+    returns partial matches, so "Alex" would happily come back with "AlexInVR" first. Only an
+    exact, case-insensitive match counts here - anything looser would quietly link members to
+    somebody else's account.
+    """
+    name = (display_name or "").strip()
+    if not name:
+        return None
+    params = {"search": name, "n": "20"}
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"{API_BASE}/users", params=params,
+                               headers=_headers(auth_cookie, two_factor_cookie),
+                               timeout=TIMEOUT) as resp:
+            if resp.status == 401:
+                raise VRChatError("Die VRChat-Sitzung ist abgelaufen — bitte das Konto im "
+                                  "Dashboard neu verbinden.")
+            if resp.status == 429:
+                raise VRChatError("VRChat bremst gerade zu viele Anfragen aus.")
+            if resp.status != 200:
+                raise VRChatError(f"VRChat antwortete mit Status {resp.status}.")
+            try:
+                results = await resp.json(content_type=None)
+            except Exception:
+                results = []
+    if not isinstance(results, list):
+        return None
+    for entry in results:
+        if isinstance(entry, dict) and str(entry.get("displayName") or "").lower() == name.lower():
+            return entry
+    return None
+
+
+async def get_user(user_id: str, auth_cookie: str, two_factor_cookie: str = "") -> dict | None:
+    """The full user object for a known id. Returns None if the account is gone."""
+    if not user_id:
+        return None
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"{API_BASE}/users/{urllib.parse.quote(user_id, safe='')}",
+                               headers=_headers(auth_cookie, two_factor_cookie),
+                               timeout=TIMEOUT) as resp:
+            if resp.status == 404:
+                return None
+            if resp.status == 401:
+                raise VRChatError("Die VRChat-Sitzung ist abgelaufen — bitte das Konto im "
+                                  "Dashboard neu verbinden.")
+            if resp.status == 429:
+                raise VRChatError("VRChat bremst gerade zu viele Anfragen aus.")
+            if resp.status != 200:
+                raise VRChatError(f"VRChat antwortete mit Status {resp.status}.")
+            try:
+                return await resp.json(content_type=None)
+            except Exception:
+                return None

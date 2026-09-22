@@ -3145,12 +3145,19 @@ document.addEventListener('click', function(e) {
         <input type="password" name="vrc_password" autocomplete="new-password"
                placeholder="{% if vrc_account and vrc_account.username %}{{ tr.vrc_account_unchanged }}{% endif %}">
       </div>
-      <div style="grid-column:1 / -1;">
+      <div>
         <label>{{ tr.vrc_account_totp_label }}</label>
         <input type="password" name="vrc_totp" autocomplete="off"
                placeholder="{% if vrc_account and vrc_account.username %}{{ tr.vrc_account_unchanged }}{% endif %}">
         <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_account_totp_hint }}</div>
       </div>
+      <div>
+        <label>{{ tr.vrc_account_code_label }}</label>
+        <input type="text" name="vrc_code" autocomplete="off" inputmode="numeric" maxlength="6"
+               pattern="[0-9]{6}" placeholder="123456">
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_account_code_hint }}</div>
+      </div>
+      <div style="grid-column:1 / -1;font-size:0.72rem;color:var(--muted);">{{ tr.vrc_account_2fa_choice }}</div>
     </div>
     <button type="submit" class="btn btn-primary">{{ tr.vrc_account_connect }}</button>
   </form>

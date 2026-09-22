@@ -3582,6 +3582,9 @@ async def vrc_account_save(request: Request, guild_id: int):
     username = (form.get("vrc_username") or "").strip()
     password = (form.get("vrc_password") or "").strip()
     totp = (form.get("vrc_totp") or "").strip().replace(" ", "")
+    # Typed in for this one login instead of storing the secret. Never written to the database -
+    # it is valid for about thirty seconds, so keeping it would be storing nothing useful.
+    one_time = (form.get("vrc_code") or "").strip().replace(" ", "")
     existing = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (str(guild_id),))
     # An empty password field means "leave it alone" - the form never renders the stored one
     # back into the page, so clearing the box would otherwise wipe the password every time
@@ -3604,6 +3607,7 @@ async def vrc_account_save(request: Request, guild_id: int):
             username, password, totp,
             auth_cookie=existing["auth_cookie"] if same_account else "",
             two_factor_cookie=existing["two_factor_cookie"] if same_account else "",
+            one_time_code=one_time,
         )
     except VRChatError as e:
         await db_exec(
@@ -3639,8 +3643,13 @@ async def vrc_account_save(request: Request, guild_id: int):
          str(user.get("displayName") or ""), datetime.datetime.utcnow().isoformat()),
     )
     who = urllib.parse.quote_plus(str(user.get("displayName") or username))
-    return RedirectResponse(
-        f"/servers/{guild_id}?tab=vrclink&success=Verbunden+als+{who}", status_code=303)
+    msg = f"Verbunden+als+{who}"
+    if not totp:
+        # Without the secret the session rests on VRChat's twoFactorAuth cookie, which expires
+        # after roughly a month. Saying so now beats a connection that quietly stops working
+        # in four weeks with nobody knowing why.
+        msg += ("+—+ohne+2FA-Geheimnis+muss+der+Code+in+etwa+einem+Monat+erneut+eingegeben+werden")
+    return RedirectResponse(f"/servers/{guild_id}?tab=vrclink&success={msg}", status_code=303)
 
 
 @web.post("/servers/{guild_id}/vrc/account/delete")
