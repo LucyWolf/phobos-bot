@@ -1044,6 +1044,23 @@ async def init_db():
             "ALTER TABLE vrc_links ADD COLUMN vrc_age_verified INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE vrc_links ADD COLUMN vrc_supporter INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE vrc_links ADD COLUMN vrc_avatar TEXT NOT NULL DEFAULT ''",
+            # One row per active dashboard login, so that signing out can actually END a
+            # session. Until now the session lived entirely inside the signed cookie: clearing
+            # it told THAT browser to forget it, while a copy taken from anywhere else kept
+            # working for the full two weeks of the cookie's life. Reported from an external
+            # test as "Logout invalidiert die Session nicht" - correct, and confirmed here.
+            #
+            # The session cookie now also carries an "sid" that must be present in this table.
+            # Signing out deletes exactly that row, so the device that signed out is the only
+            # one affected - a stolen copy of ITS cookie dies with it, and a login on another
+            # device is left alone.
+            """CREATE TABLE IF NOT EXISTS user_sessions (
+                sid TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT '',
+                last_seen TEXT NOT NULL DEFAULT ''
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id)",
         ]:
             try:
                 await db.execute(col)

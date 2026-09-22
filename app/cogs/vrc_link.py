@@ -27,6 +27,7 @@ the pages themselves live in main.py under /vrc/{token}.
 """
 import datetime
 import secrets
+import unicodedata
 
 import discord
 from discord import app_commands
@@ -197,18 +198,62 @@ def profile_fields(user: dict) -> dict:
     }
 
 
+# Every field on a VRChat profile the MEMBER can type free text into. Bio and status because
+# both are one edit away in the client and people reach for whichever they find first; the
+# bio links because a link field is still a text box and somebody will use it.
+#
+# Deliberately NOT "note": that one holds the private note the SIGNED-IN account keeps about
+# the user, so it is written by the bot's own account rather than by the member. Accepting it
+# would mean a proof the member never gave could pass.
+PROFILE_TEXT_FIELDS = ("bio", "statusDescription")
+
+# Characters that a copy-paste picks up but a human does not see. Zero-width spaces and joiners
+# come along from web pages constantly; NFKC below already folds non-breaking spaces and
+# full-width characters into their plain forms, but these are not whitespace to anyone.
+_INVISIBLE = "".join(("\u200b", "\u200c", "\u200d", "\ufeff"))
+# Every dash Unicode offers. The code carries a hyphen, and an editor that "helpfully" turns it
+# into an en dash must not be the reason somebody's proof is rejected.
+_DASHES = "-" + "".join(("\u2010", "\u2011", "\u2012", "\u2013", "\u2014", "\u2015", "\u2212"))
+
+
+def profile_text(user: dict) -> str:
+    """Everything the member could have typed on their profile, as one string.
+
+    Also used to tell them what the bot actually read when the code is not found - "it is not
+    there" without saying what WAS there is the kind of answer that costs an evening.
+    """
+    parts = []
+    for key in PROFILE_TEXT_FIELDS:
+        value = user.get(key)
+        if isinstance(value, str):
+            parts.append(value)
+    links = user.get("bioLinks")
+    if isinstance(links, list):
+        parts.extend(str(x) for x in links if isinstance(x, str))
+    return "\n".join(p for p in parts if p)
+
+
+def _squash(text: str) -> str:
+    """Strip everything that can differ between what was pasted and what VRChat stored."""
+    text = unicodedata.normalize("NFKC", text or "")
+    text = "".join(ch for ch in text if ch not in _INVISIBLE)
+    text = "".join(ch for ch in text if not ch.isspace())
+    for dash in _DASHES:
+        text = text.replace(dash, "")
+    return text.upper()
+
+
 def code_present(user: dict, code: str) -> bool:
     """Whether the ownership code shows up anywhere the member can put text on their profile.
 
-    Bio and status message are both accepted because both are one edit away in the client and
-    people reach for whichever they find first. Matched case-insensitively on a whitespace-free
-    copy of the text: the code contains a hyphen, and VRChat's bio field happily wraps or
-    reformats around one, which would otherwise fail a perfectly correct paste.
+    Compared on a squashed copy of both sides - no whitespace of any kind, no invisible
+    characters, no dash, upper case. A correctly pasted code that merely wrapped across a line,
+    picked up a zero-width space from a web page, or had its hyphen prettified into an en dash
+    still counts, because all three are the member doing exactly what they were told.
     """
     if not code:
         return False
-    haystack = " ".join(str(user.get(k) or "") for k in ("bio", "statusDescription"))
-    return code.replace("-", "").upper() in haystack.replace(" ", "").replace("-", "").upper()
+    return _squash(code) in _squash(profile_text(user))
 
 
 async def apply_link(bot, guild: discord.Guild, member: discord.Member, vrchat_name: str) -> list:

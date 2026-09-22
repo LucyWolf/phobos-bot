@@ -157,6 +157,12 @@ SECRET_KEY_PATH = DATA_DIR / "secret.key"
 AVATARS_DIR = DATA_DIR / "avatars"
 
 
+# How long a dashboard session cookie may live. Starlette's own default, stated here because
+# the session table's cleanup has to agree with it - a row kept shorter than the cookie would
+# sign people out early, longer would keep dead handles around forever.
+SESSION_MAX_AGE = 14 * 24 * 60 * 60
+
+
 def load_secret_key() -> str:
     if SECRET_KEY_PATH.exists():
         return SECRET_KEY_PATH.read_text().strip()
@@ -621,6 +627,26 @@ class SessionValidityMiddleware(BaseHTTPMiddleware):
             elif row["role"] != request.session.get("role"):
                 request.session["role"] = row["role"]
             if request.session.get("user_id"):
+                # The handle issued at login has to still exist, or this cookie belongs to a
+                # session somebody signed out of. Sessions from before this existed carry no
+                # sid at all - those are accepted once and then quietly given one, so an
+                # update does not throw everybody out; from their next login on they are
+                # revocable like any other.
+                sid = request.session.get("sid")
+                if sid:
+                    if not await db_one("SELECT sid FROM user_sessions WHERE sid=?", (sid,)):
+                        request.session.clear()
+                else:
+                    try:
+                        sid = secrets.token_urlsafe(24)
+                        now = datetime.datetime.utcnow().isoformat()
+                        await db_exec(
+                            "INSERT INTO user_sessions (sid, user_id, created_at, last_seen) "
+                            "VALUES (?,?,?,?)", (sid, uid, now, now))
+                        request.session["sid"] = sid
+                    except Exception as e:
+                        print(f"[session] Nachrüsten einer Altsitzung fehlgeschlagen: {e}")
+            if request.session.get("user_id"):
                 # Re-read rather than reusing `uid`: the branches above clear the session for a
                 # deactivated user or a stale epoch, and those requests must not count as a
                 # logged-in sighting of this address.
@@ -649,7 +675,8 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
 # TZMiddleware/SessionValidityMiddleware added first → inner (run after SessionMiddleware populates session)
 web.add_middleware(TZMiddleware)
 web.add_middleware(SessionValidityMiddleware)
-web.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="phobos_session")
+web.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="phobos_session",
+                   max_age=SESSION_MAX_AGE)
 web.add_middleware(NoCacheMiddleware)
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 def _js_attr(value) -> str:
@@ -818,6 +845,22 @@ async def _complete_login(request: Request, user: dict) -> None:
     request.session["sidebar_collapsed"] = bool(user.get("sidebar_collapsed"))
     request.session["nav_settings_open"] = bool(user.get("nav_settings_open"))
     request.session["session_epoch"] = await _current_session_epoch()
+    # A handle for THIS login, checked against user_sessions on every request. It is what
+    # makes signing out mean something: the cookie alone cannot be taken back once it exists,
+    # the row can. See the migration in database.py for the full reasoning.
+    sid = secrets.token_urlsafe(24)
+    now = datetime.datetime.utcnow().isoformat()
+    request.session["sid"] = sid
+    await db_exec("INSERT INTO user_sessions (sid, user_id, created_at, last_seen) "
+                  "VALUES (?,?,?,?)", (sid, user["id"], now, now))
+    # Sessions older than the cookie can possibly live are dead weight; clearing them here
+    # costs one statement per login instead of a background task.
+    try:
+        cutoff = (datetime.datetime.utcnow()
+                  - datetime.timedelta(seconds=SESSION_MAX_AGE)).isoformat()
+        await db_exec("DELETE FROM user_sessions WHERE created_at < ?", (cutoff,))
+    except Exception as e:
+        print(f"[session] Aufräumen alter Sitzungen fehlgeschlagen: {e}")
 
 
 def _totp_lock_remaining_minutes(user: dict) -> int:
@@ -835,13 +878,99 @@ def _totp_lock_remaining_minutes(user: dict) -> int:
     return math.ceil(remaining_seconds / 60)
 
 
+# ── Bremse für Anmeldeversuche ───────────────────────────────────────────────
+# Until now a password could be guessed as often as anybody liked; an external test walked
+# through a wordlist at nine tries in two and a half seconds and was never once refused. The
+# lockout that already existed applied only to the SECOND step (the 2FA code), which never
+# comes into play while the password itself is still wrong.
+#
+# Counted per (address, username) pair rather than per username alone, on purpose: a lockout
+# keyed on the username would hand anybody on the internet a way to lock the admin out of
+# their own dashboard. A second, looser count per address stops one host from spraying many
+# usernames instead.
+#
+# Honest about its limits: the address comes from X-Forwarded-For, which the client can put
+# anything into. Somebody willing to rotate that header gets around this. It stops the attack
+# that was actually demonstrated - and a proxy-level limit or fail2ban is the answer to the
+# determined version, not application code.
+_LOGIN_MAX_PER_USER = 5          # Fehlversuche je Adresse UND Benutzername
+_LOGIN_MAX_PER_IP = 20           # Fehlversuche je Adresse über alle Benutzernamen
+_LOGIN_LOCK_SECONDS = 15 * 60
+_LOGIN_WINDOW_SECONDS = 15 * 60  # so lange zählt ein Fehlversuch mit
+_LOGIN_TRACK_MAX = 5000          # darüber fliegt die älteste Hälfte raus
+# key -> [Anzahl, erster Fehlversuch (monotonic), gesperrt bis (monotonic)]
+_login_fails: dict[str, list] = {}
+
+
+def _login_client(request: Request) -> str:
+    """The address this attempt comes from, as far as it can be told behind a proxy."""
+    fwd = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    if fwd:
+        return fwd[:64]
+    return (request.client.host if request.client else "?")[:64]
+
+
+def _login_keys(request: Request, username: str) -> list:
+    ip = _login_client(request)
+    return [f"ip:{ip}", f"user:{ip}|{(username or '').strip().lower()[:64]}"]
+
+
+def _login_locked_seconds(request: Request, username: str) -> int:
+    """Seconds left on an active lockout for this attempt, or 0."""
+    now = time.monotonic()
+    worst = 0
+    for key in _login_keys(request, username):
+        entry = _login_fails.get(key)
+        if entry and entry[2] > now:
+            worst = max(worst, int(entry[2] - now))
+    return worst
+
+
+def _login_note_failure(request: Request, username: str) -> None:
+    now = time.monotonic()
+    if len(_login_fails) >= _LOGIN_TRACK_MAX:
+        for stale, _ in sorted(_login_fails.items(), key=lambda kv: kv[1][1])[:_LOGIN_TRACK_MAX // 2]:
+            _login_fails.pop(stale, None)
+    for key, limit in zip(_login_keys(request, username),
+                          (_LOGIN_MAX_PER_IP, _LOGIN_MAX_PER_USER)):
+        entry = _login_fails.get(key)
+        # A run of failures that has gone quiet for the whole window starts over - otherwise a
+        # forgotten password months ago would still count against somebody today.
+        if not entry or now - entry[1] > _LOGIN_WINDOW_SECONDS:
+            entry = [0, now, 0.0]
+        entry[0] += 1
+        if entry[0] >= limit:
+            entry[2] = now + _LOGIN_LOCK_SECONDS
+            entry[0] = 0
+            entry[1] = now
+        _login_fails[key] = entry
+
+
+def _login_note_success(request: Request, username: str) -> None:
+    """A correct password clears that pair's count - but NOT the per-address one, so one
+    working account cannot be used to keep guessing at the others from the same host."""
+    _login_fails.pop(_login_keys(request, username)[1], None)
+
+
 @web.post("/login")
 async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
+    locked = _login_locked_seconds(request, username)
+    if locked:
+        minutes = max(1, math.ceil(locked / 60))
+        return RedirectResponse(
+            f"/login?error=Zu+viele+Fehlversuche+–+bitte+in+{minutes}+Minute(n)+erneut+versuchen",
+            status_code=302,
+        )
     user = await db_one("SELECT * FROM users WHERE username=?", (username.strip(),))
     if not user or not verify_pw(password, user["password_hash"]):
+        _login_note_failure(request, username)
         return RedirectResponse("/login?error=Ungültige+Zugangsdaten", status_code=302)
     if not user.get("active", 1):
+        # Counted too: a deactivated account is still a valid username, and leaving this path
+        # free would keep a working oracle for "does this name exist" wide open.
+        _login_note_failure(request, username)
         return RedirectResponse("/login?error=Dein+Konto+ist+deaktiviert", status_code=302)
+    _login_note_success(request, username)
     if user.get("totp_enabled"):
         remaining = _totp_lock_remaining_minutes(user)
         if remaining:
@@ -921,6 +1050,19 @@ async def login_2fa_submit(request: Request, code: str = Form(...)):
 
 @web.get("/logout")
 async def logout(request: Request):
+    """Signing out ends this login for good, not just in this browser.
+
+    Clearing the session only rewrites the cookie of whoever is asking. Deleting the row is
+    what makes a copy of that same cookie - taken from a shared machine, a backup, a proxy
+    log - stop working at the same moment. Other devices of the same user keep their own
+    sessions; each login has its own handle.
+    """
+    sid = request.session.get("sid")
+    if sid:
+        try:
+            await db_exec("DELETE FROM user_sessions WHERE sid=?", (sid,))
+        except Exception as e:
+            print(f"[session] Abmelden konnte die Sitzung nicht löschen: {e}")
     request.session.clear()
     return RedirectResponse("/login", status_code=302)
 
@@ -4200,14 +4342,28 @@ async def vrc_public_verify(request: Request, lang: str = Form(""), t: str = For
     if _vrc_throttled(t):
         return await _vrc_page(request, row, lang, error=tr["vrcp_err_toofast"])
 
-    from cogs.vrc_link import fetch_profile, code_present, profile_fields
+    from cogs.vrc_link import fetch_profile, code_present, profile_fields, profile_text
     state, user = await fetch_profile(link["vrc_user_id"])
     if state == "not_found":
         return await _vrc_page(request, row, lang, error=tr["vrcp_err_gone"])
     if state != "ok":
         return await _vrc_page(request, row, lang, error=tr["vrcp_err_unavailable"])
     if not code_present(user, link["verify_code"]):
-        return await _vrc_page(request, row, lang, error=tr["vrcp_err_nocode"])
+        # "It is not there" without saying what WAS there is the kind of answer that costs an
+        # evening - reported as exactly that ("der sagt immer nur dass der code nicht drin
+        # ist", with a screenshot showing the code plainly in the profile). So the member is
+        # shown what the bot actually read back, which separates the two causes that look
+        # identical from the outside: the text has not reached VRChat's API yet, or the bot
+        # cannot see that field at all.
+        seen = profile_text(user).strip()
+        if seen:
+            extra = tr["vrcp_err_nocode_saw"].replace("{seen}", seen[:300])
+        else:
+            extra = tr["vrcp_err_nocode_empty"]
+        print(f"[vrc_link] code {link['verify_code']} not found for {link['vrc_user_id']} - "
+              f"profile text was {seen[:300]!r}")
+        return await _vrc_page(request, row, lang,
+                               error=tr["vrcp_err_nocode"] + " " + extra)
 
     fields = profile_fields(user)
     approved = (await get_guild_config(int(row["guild_id"]), "vrc_auto_approve") or "0") == "1"
