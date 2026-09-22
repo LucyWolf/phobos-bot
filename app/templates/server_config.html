@@ -3142,13 +3142,21 @@ document.addEventListener('click', function(e) {
       </div>
       <div>
         <label>{{ tr.vrc_account_pass_label }}</label>
-        <input type="password" name="vrc_password" autocomplete="new-password"
-               placeholder="{% if vrc_account and vrc_account.username %}{{ tr.vrc_account_unchanged }}{% endif %}">
+        <div style="display:flex;gap:0.4rem;align-items:flex-start;">
+          <input type="password" name="vrc_password" autocomplete="new-password" style="flex:1;"
+                 placeholder="{% if vrc_account and vrc_account.username %}{{ tr.vrc_account_unchanged }}{% endif %}">
+          <button type="button" class="btn btn-secondary" style="padding:0.5rem 0.65rem;"
+                  onclick="vrcToggleSecret(this)" title="{{ tr.vrc_show_secret }}">👁</button>
+        </div>
       </div>
       <div>
         <label>{{ tr.vrc_account_totp_label }}</label>
-        <input type="password" name="vrc_totp" autocomplete="off"
-               placeholder="{% if vrc_account and vrc_account.username %}{{ tr.vrc_account_unchanged }}{% endif %}">
+        <div style="display:flex;gap:0.4rem;align-items:flex-start;">
+          <input type="password" name="vrc_totp" autocomplete="off" style="flex:1;"
+                 placeholder="{% if vrc_account and vrc_account.username %}{{ tr.vrc_account_unchanged }}{% endif %}">
+          <button type="button" class="btn btn-secondary" style="padding:0.5rem 0.65rem;"
+                  onclick="vrcToggleSecret(this)" title="{{ tr.vrc_show_secret }}">👁</button>
+        </div>
         <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_account_totp_hint }}</div>
       </div>
       <div>
@@ -3220,6 +3228,16 @@ document.addEventListener('click', function(e) {
   {% endif %}
 </div>
 <script>
+function vrcToggleSecret(btn) {
+  // Reveals what is CURRENTLY TYPED IN - the stored password and 2FA secret are never sent to
+  // the page at all, so there is nothing else here to show. That is deliberate: this button
+  // exists to check a paste, not to read back what the server keeps.
+  const field = btn.parentElement.querySelector('input');
+  if (!field) return;
+  const shown = field.type === 'text';
+  field.type = shown ? 'password' : 'text';
+  btn.textContent = shown ? '👁' : '🙈';
+}
 const VRC_DEFAULT_FMT = {{ vrc_nickname_default | jsraw }};
 const VRC_EX_VRCHAT   = {{ vrc_example_vrchat | jsraw }};
 const VRC_EX_DISCORD  = {{ vrc_example_discord | jsraw }};

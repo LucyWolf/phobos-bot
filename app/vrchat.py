@@ -127,7 +127,12 @@ async def login(username: str, password: str, totp_secret: str = "",
         headers = _headers(two_factor_cookie=two_factor_cookie)
         headers["Authorization"] = _basic_auth(username, password)
         payload, resp = await _get_user(session, headers)
-        if resp.status == 401:
+        # The two-factor challenge has to be read BEFORE the status is judged: VRChat answers
+        # it with a 401 as often as with a 200, and the body is the only thing that tells the
+        # two apart. Taking the 401 at face value reported a perfectly correct password as
+        # rejected, and sent people re-typing something that was never wrong.
+        needed = [str(x) for x in (payload.get("requiresTwoFactorAuth") or [])]
+        if resp.status == 401 and not needed:
             raise VRChatError("Benutzername oder Passwort wurde von VRChat abgelehnt.")
         if resp.status == 429:
             raise VRChatError("VRChat bremst gerade zu viele Anmeldeversuche aus. "
@@ -135,42 +140,56 @@ async def login(username: str, password: str, totp_secret: str = "",
         if resp.status == 403:
             raise VRChatError("VRChat hat die Anfrage abgelehnt (403). Das passiert auch, wenn "
                               "das Konto gesperrt ist oder eine Bestätigung im Browser aussteht.")
-        if resp.status != 200:
+        if resp.status not in (200, 401):
             raise VRChatError(f"VRChat antwortete mit Status {resp.status}.")
 
         new_auth = _cookie_from(resp, "auth") or auth_cookie
-        needed = payload.get("requiresTwoFactorAuth") or []
 
         # ── 3. Two-factor, if this login needs it ────────────────────────────
         if needed:
-            if "totp" not in needed and "otp" not in needed:
-                # emailOtp: the code goes to the account's mailbox, so there is nothing this
-                # bot could fill in unattended. Saying which kind is missing beats a generic
-                # failure, because the fix ("switch that account to an authenticator app") is
-                # not something anyone would guess.
-                raise VRChatError(
-                    "Dieses Konto verlangt einen Code per E-Mail. Der Bot kann nur "
-                    "Authenticator-Codes (TOTP) erzeugen — stell die Zwei-Faktor-Anmeldung "
-                    "des VRChat-Kontos auf eine Authenticator-App um.")
+            lowered = {x.lower() for x in needed}
             code = (one_time_code or "").strip().replace(" ", "")
-            if code:
-                if not code.isdigit() or len(code) != 6:
-                    raise VRChatError("Der eingegebene Code muss aus sechs Ziffern bestehen.")
-            elif totp_secret:
-                import pyotp
-                try:
-                    code = pyotp.TOTP(totp_secret.replace(" ", "")).now()
-                except Exception:
-                    raise VRChatError("Das 2FA-Geheimnis ist unbrauchbar — erwartet wird die "
-                                      "Zeichenfolge, die beim Einrichten neben dem QR-Code steht.")
+            if code and (not code.isdigit() or len(code) != 6):
+                raise VRChatError("Der eingegebene Code muss aus sechs Ziffern bestehen.")
+
+            if "totp" in lowered or "otp" in lowered:
+                method = "totp"
+                if not code:
+                    if not totp_secret:
+                        raise VRChatError(
+                            "Das Konto verlangt Zwei-Faktor-Anmeldung. Trag entweder das "
+                            "2FA-Geheimnis ein (dann erneuert der Bot die Anmeldung selbst) "
+                            "oder einmalig den sechsstelligen Code aus deiner "
+                            "Authenticator-App.")
+                    import pyotp
+                    try:
+                        code = pyotp.TOTP(totp_secret.replace(" ", "")).now()
+                    except Exception:
+                        raise VRChatError(
+                            "Das 2FA-Geheimnis ist unbrauchbar — erwartet wird die "
+                            "Zeichenfolge, die beim Einrichten neben dem QR-Code steht.")
+            elif "emailotp" in lowered:
+                # VRChat sends a code to the account's mailbox whenever a login comes from an
+                # address it has not seen before - and it does that even for accounts that have
+                # an authenticator app set up. A server signing in for the first time therefore
+                # lands here almost every time. The previous version refused outright and told
+                # people to switch their account to an authenticator app, which cannot help:
+                # this is about the location of the login, not the account's 2FA method.
+                method = "emailotp"
+                if not code:
+                    raise VRChatError(
+                        "VRChat hat einen Code an die E-Mail-Adresse des Kontos geschickt, weil "
+                        "die Anmeldung von einem neuen Ort kommt. Trag ihn unten im Code-Feld "
+                        "ein und speichere nochmal. Das ist einmalig nötig; danach merkt sich "
+                        "VRChat diesen Server.")
             else:
                 raise VRChatError(
-                    "Das Konto verlangt Zwei-Faktor-Anmeldung. Trag entweder das 2FA-Geheimnis "
-                    "ein (dann erneuert der Bot die Anmeldung selbst) oder einmalig den "
-                    "sechsstelligen Code aus deiner Authenticator-App.")
+                    f"VRChat verlangt eine Bestätigungsart, die der Bot nicht kennt: "
+                    f"{', '.join(needed)}.")
+
             verify_headers = _headers(new_auth, two_factor_cookie)
             verify_headers["Content-Type"] = "application/json"
-            async with session.post(f"{API_BASE}/auth/twofactorauth/totp/verify",
+            async with session.post(f"{API_BASE}/auth/twofactorauth/{method}/verify",
                                     json={"code": code}, headers=verify_headers,
                                     timeout=TIMEOUT) as vresp:
                 try:
@@ -178,6 +197,11 @@ async def login(username: str, password: str, totp_secret: str = "",
                 except Exception:
                     vdata = {}
                 if vresp.status != 200 or not vdata.get("verified"):
+                    if method == "emailotp":
+                        raise VRChatError(
+                            "Der Code aus der E-Mail wurde abgelehnt. Solche Codes laufen "
+                            "schnell ab — fordere einen neuen an, indem du nochmal speicherst, "
+                            "und trag dann den neuesten ein.")
                     raise VRChatError(
                         "Der Zwei-Faktor-Code wurde abgelehnt. Meist stimmt das hinterlegte "
                         "Geheimnis nicht, oder die Uhr des Servers geht zu weit falsch.")
