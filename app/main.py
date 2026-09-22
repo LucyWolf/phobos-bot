@@ -4055,6 +4055,56 @@ async def vrc_panel_post(request: Request, guild_id: int):
         f"/servers/{guild_id}?tab=vrclink&success=Panel+gepostet", status_code=303)
 
 
+@web.post("/servers/{guild_id}/vrc/probe")
+async def vrc_probe(request: Request, guild_id: int, vrchat_name: str = Form("")):
+    """Show an admin exactly what VRChat hands back for one name.
+
+    Built because the ownership check kept reporting "code not in the bio" while the code was
+    plainly visible on the profile, and there was no way to tell the two possible causes apart
+    from the outside: the text has not reached VRChat's API yet, or the bot never receives that
+    field at all. The same question applies to the 18+ badge, which VRChat has shipped under
+    more than one name and may not expose for other people's accounts.
+
+    So this answers it with facts instead of guesses: which fields came back, how long the bio
+    is, whether the age flag is there. Admin-level and read-only - it stores nothing.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return JSONResponse({"error": "Kein Zugriff"}, status_code=403)
+    name = " ".join((vrchat_name or "").split())[:MAX_VRCHAT_NAME_WEB]
+    if not name:
+        return JSONResponse({"error": "Bitte einen VRChat-Namen eingeben."})
+    from cogs.vrc_link import resolve_vrchat, profile_text, PROFILE_TEXT_FIELDS
+    try:
+        state, user = await resolve_vrchat(name)
+    except Exception as e:
+        return JSONResponse({"error": f"Abfrage fehlgeschlagen: {str(e)[:200]}"})
+    if state == "not_found":
+        return JSONResponse({"error": f"VRChat kennt kein Konto namens „{name}“."})
+    if state != "ok":
+        return JSONResponse({"error": "VRChat ist nicht erreichbar oder kein Konto verbunden."})
+    from vrchat import trust_rank, is_age_verified, is_supporter
+    text = profile_text(user)
+    return JSONResponse({
+        "name": str(user.get("displayName") or ""),
+        "id": str(user.get("id") or ""),
+        "trust": trust_rank(user),
+        "age": bool(is_age_verified(user)),
+        # The three spellings is_age_verified() looks at, reported separately - "no 18+" means
+        # something very different when NONE of them came back than when one came back false.
+        "age_fields": {k: user.get(k) for k in ("ageVerified", "ageVerificationStatus")
+                       if k in user},
+        "age_tag": "system_age_verified" in set(user.get("tags") or []),
+        "supporter": bool(is_supporter(user)),
+        # Which of the fields the ownership check reads actually arrived, and what is in them.
+        "text_fields": {k: (user.get(k) if isinstance(user.get(k), str) else None)
+                        for k in PROFILE_TEXT_FIELDS},
+        "text": text[:600],
+        "text_len": len(text),
+        "fields": sorted(user.keys())[:80],
+    })
+
+
 # ── VRC-Link: the member's own page ───────────────────────────────────────────
 # Everything below is reachable WITHOUT a dashboard login. That is the point: these pages are
 # for Discord members, who have no account here and never will. A token is the whole
@@ -4283,14 +4333,32 @@ async def vrc_public_name(request: Request, lang: str = Form(""), t: str = Form(
 
     existing = await db_one("SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
                             (row["guild_id"], row["user_id"]))
-    # An unfinished claim for the SAME account keeps the code it was given. The member has
-    # likely already pasted it into VRChat by the time they land back here, and handing out a
-    # fresh one would silently invalidate what they just did.
-    if existing and existing["status"] == VRC_STATE_UNVERIFIED \
-            and existing["vrc_user_id"] == fields["vrc_user_id"] and existing["verify_code"]:
-        code = existing["verify_code"]
+
+    # Whether the member has to prove the account is theirs with a code in their VRChat bio.
+    # A switch rather than a law, and on by default: without it "linking" means nothing more
+    # than that somebody typed a name, and a member could wear the nickname and role of
+    # anybody they can spell. A server that only wants the plain job - read the VRChat name
+    # and the 18+ badge, carry the name over to Discord - can turn it off and have exactly
+    # that, and the moderator approval below is then what stands between a claim and a role.
+    require_proof = (await get_guild_config(int(row["guild_id"]), "vrc_require_ownership")
+                     or "1") != "0"
+    auto = (await get_guild_config(int(row["guild_id"]), "vrc_auto_approve") or "0") == "1"
+    if require_proof:
+        new_status = VRC_STATE_UNVERIFIED
+        # An unfinished claim for the SAME account keeps the code it was given. The member has
+        # likely already pasted it into VRChat by the time they land back here, and handing out
+        # a fresh one would silently invalidate what they just did.
+        if existing and existing["status"] == VRC_STATE_UNVERIFIED \
+                and existing["vrc_user_id"] == fields["vrc_user_id"] and existing["verify_code"]:
+            code = existing["verify_code"]
+        else:
+            code = vrc_verify_code()
+        decided_at = decided_by = ""
     else:
-        code = vrc_verify_code()
+        new_status = VRC_STATE_APPROVED if auto else VRC_STATE_PENDING
+        code = ""
+        decided_at = datetime.datetime.utcnow().isoformat() if auto else ""
+        decided_by = "Ohne Eigentumsnachweis" if auto else ""
 
     now = datetime.datetime.utcnow().isoformat()
     try:
@@ -4298,10 +4366,10 @@ async def vrc_public_name(request: Request, lang: str = Form(""), t: str = Form(
             await db_exec(
                 "UPDATE vrc_links SET vrchat_name=?, vrc_user_id=?, vrc_trust=?, "
                 "vrc_age_verified=?, vrc_supporter=?, vrc_avatar=?, status=?, verify_code=?, "
-                "verified_at='', requested_at=?, decided_at='', decided_by='' WHERE id=?",
+                "verified_at='', requested_at=?, decided_at=?, decided_by=? WHERE id=?",
                 (name, fields["vrc_user_id"], fields["vrc_trust"], fields["vrc_age_verified"],
-                 fields["vrc_supporter"], fields["vrc_avatar"], VRC_STATE_UNVERIFIED, code,
-                 now, existing["id"]),
+                 fields["vrc_supporter"], fields["vrc_avatar"], new_status, code,
+                 now, decided_at, decided_by, existing["id"]),
             )
             if existing["status"] == VRC_STATE_APPROVED:
                 # They had a confirmed link and are now claiming a different account. Whatever
@@ -4311,11 +4379,11 @@ async def vrc_public_name(request: Request, lang: str = Form(""), t: str = Form(
         else:
             await db_exec(
                 "INSERT INTO vrc_links (guild_id, user_id, vrchat_name, vrc_user_id, vrc_trust, "
-                "vrc_age_verified, vrc_supporter, vrc_avatar, status, verify_code, requested_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "vrc_age_verified, vrc_supporter, vrc_avatar, status, verify_code, requested_at, "
+                "decided_at, decided_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (row["guild_id"], row["user_id"], name, fields["vrc_user_id"],
                  fields["vrc_trust"], fields["vrc_age_verified"], fields["vrc_supporter"],
-                 fields["vrc_avatar"], VRC_STATE_UNVERIFIED, code, now),
+                 fields["vrc_avatar"], new_status, code, now, decided_at, decided_by),
             )
     except Exception as e:
         # Both unique indexes on this table can still reject the write even though the checks
@@ -4324,6 +4392,12 @@ async def vrc_public_name(request: Request, lang: str = Form(""), t: str = Form(
         print(f"[vrc_link] storing claim for {row['user_id']} in {row['guild_id']} failed: {e}")
         return await _vrc_page(request, row, lang,
                                error=tr["vrcp_err_taken"].replace("{name}", name))
+    if new_status == VRC_STATE_APPROVED:
+        # Nothing left to confirm - the role and the nickname are due right now.
+        await _vrc_apply(int(row["guild_id"]), row["user_id"], name)
+        return await _vrc_page(request, row, lang, success=tr["vrcp_ok_verified"])
+    if new_status == VRC_STATE_PENDING:
+        return await _vrc_page(request, row, lang, success=tr["vrcp_ok_pending"])
     return await _vrc_page(request, row, lang)
 
 
@@ -6574,7 +6648,10 @@ _TAB_CHECKBOX_KEYS = {
     "leveling": ["leveling_enabled", "leveling_voice_enabled"],
     "automod": ["automod_enabled", "automod_links"],
     "birthday": [],
-    "vrclink": ["vrc_enabled", "vrc_nickname_enabled", "vrc_auto_approve", "vrc_dm_on_join"],
+    # vrc_require_ownership defaults to ON when absent, so an existing server keeps the
+    # proof it already had - see the read in vrc_public_name().
+    "vrclink": ["vrc_enabled", "vrc_nickname_enabled", "vrc_auto_approve", "vrc_dm_on_join",
+                "vrc_require_ownership"],
     # auto_kick_enabled deliberately NOT here - it needs the previous saved value to detect an
     # off→on transition (see the dedicated handling in server_config_save below), the generic
     # loop below has no way to express that.

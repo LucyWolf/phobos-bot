@@ -3118,6 +3118,12 @@ document.addEventListener('click', function(e) {
         {{ tr.vrc_auto_approve_label }}
       </label>
       <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_auto_approve_hint }}</div>
+      {# Fehlt der Wert, ist der Nachweis AN - siehe vrc_public_name(). #}
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-top:0.6rem;">
+        <input type="checkbox" name="vrc_require_ownership" value="1" style="margin:0;" {% if cfg.get('vrc_require_ownership', '1') != '0' %}checked{% endif %}>
+        {{ tr.vrc_require_ownership_label }}
+      </label>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_require_ownership_hint }}</div>
     </div>
   </div>
   <button type="submit" class="btn btn-primary" style="margin-top:0.9rem;">{{ tr.btn_save }}</button>
@@ -3197,6 +3203,65 @@ document.addEventListener('click', function(e) {
   </form>
   <div style="flex:1;min-width:220px;font-size:0.75rem;color:var(--muted);">{{ tr.vrc_panel_post_hint }}</div>
 </div>
+
+{# Zeigt, was VRChat fuer einen Namen wirklich herausgibt. Gebaut, weil "Code nicht in der
+   Bio" und "der Bot bekommt die Bio gar nicht" von aussen gleich aussehen. #}
+<div class="card">
+  <div class="feat-header">{{ tr.vrc_probe_heading }}</div>
+  <p class="hint" style="margin-bottom:0.9rem;">{{ tr.vrc_probe_hint }}</p>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+    <input type="text" id="vrc-probe-name" maxlength="32" placeholder="{{ tr.vrcp_name_label }}"
+           style="flex:1;min-width:200px;margin:0;">
+    <button type="button" class="btn btn-secondary" id="vrc-probe-btn"
+            onclick="vrcProbe()">{{ tr.vrc_probe_btn }}</button>
+  </div>
+  <div id="vrc-probe-out" style="display:none;margin-top:0.9rem;background:var(--bg);
+       border:1px solid var(--border);border-radius:0.5rem;padding:0.7rem 0.9rem;
+       font-size:0.78rem;line-height:1.7;word-break:break-word;"></div>
+</div>
+
+<script>
+async function vrcProbe() {
+  const name = document.getElementById('vrc-probe-name').value.trim();
+  const out  = document.getElementById('vrc-probe-out');
+  const btn  = document.getElementById('vrc-probe-btn');
+  if (!name) return;
+  btn.disabled = true;
+  out.style.display = '';
+  out.textContent = '…';
+  try {
+    const body = new FormData();
+    body.append('vrchat_name', name);
+    const r = await fetch('/servers/{{ guild.id }}/vrc/probe', {method: 'POST', body: body});
+    const d = await r.json();
+    // textContent, nie innerHTML: hier landen fremde Profiltexte im Dashboard.
+    if (d.error) { out.textContent = '❌ ' + d.error; btn.disabled = false; return; }
+    const lines = [
+      'Name: ' + d.name,
+      'ID: ' + d.id,
+      'Vertrauensstufe: ' + d.trust,
+      '18+: ' + (d.age ? 'ja' : 'nein'),
+      '  gelieferte 18+-Felder: ' + (Object.keys(d.age_fields).length
+          ? JSON.stringify(d.age_fields) : '— keine —'),
+      '  18+-Merkmal in tags: ' + (d.age_tag ? 'ja' : 'nein'),
+      'VRChat+: ' + (d.supporter ? 'ja' : 'nein'),
+      'Textfelder fuer den Nachweis:'
+    ];
+    Object.keys(d.text_fields).forEach(function (k) {
+      const v = d.text_fields[k];
+      lines.push('  ' + k + ': ' + (v === null ? '— kommt nicht zurueck —'
+                                   : (v === '' ? '— leer —' : v)));
+    });
+    lines.push('Gesamtlaenge des Profiltexts: ' + d.text_len + ' Zeichen');
+    lines.push('Gelieferte Felder: ' + d.fields.join(', '));
+    out.textContent = lines.join('\n');
+    out.style.whiteSpace = 'pre-wrap';
+  } catch (e) {
+    out.textContent = '❌ ' + e;
+  }
+  btn.disabled = false;
+}
+</script>
 
 <div class="card">
   <div class="feat-header" style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
