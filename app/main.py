@@ -164,6 +164,27 @@ AVATARS_DIR = DATA_DIR / "avatars"
 SESSION_MAX_AGE = 14 * 24 * 60 * 60
 
 
+def _cookie_secure() -> bool:
+    """Whether the session cookie gets the Secure flag (and HSTS gets sent).
+
+    Off unless PHOBOS_COOKIE_SECURE says otherwise, and deliberately NOT guessed from the
+    configured address. A Secure cookie is simply dropped by the browser over plain HTTP: guess
+    this wrong in the "on" direction and every already-running installation locks its own
+    admins out at the next restart, with nothing in the interface to explain why. An existing
+    server must not need re-doing because of a security patch, so this one waits to be asked.
+
+    Turn it on with one line in docker-compose once the dashboard is reached over HTTPS:
+        environment:
+          - PHOBOS_COOKIE_SECURE=1
+
+    Decided once at startup, because Starlette's session middleware takes it at construction.
+    """
+    return os.environ.get("PHOBOS_COOKIE_SECURE", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+COOKIE_SECURE = _cookie_secure()
+
+
 def load_secret_key() -> str:
     if SECRET_KEY_PATH.exists():
         return SECRET_KEY_PATH.read_text().strip()
@@ -606,6 +627,36 @@ async def link_base_url() -> str:
     return base.rstrip("/")
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Die Kopfzeilen, die jede Antwort tragen sollte.
+
+    Absichtlich KEINE vollstaendige Content-Security-Policy: das Dashboard lebt von inline
+    geschriebenem JavaScript und inline Styles, und eine Richtlinie ohne 'unsafe-inline' wuerde
+    jede Seite auf einen Schlag funktionsunfaehig machen. Was hier steht, ist der Teil, der
+    sofort wirkt und nichts kaputt macht - frame-ancestors deckt dasselbe ab wie
+    X-Frame-Options und wird von neueren Browsern bevorzugt gelesen.
+
+    HSTS nur bei gesicherten Cookies, also wenn die Installation ueber HTTPS laeuft: ueber
+    einfaches HTTP ignorieren Browser die Zeile ohnehin, und sie versehentlich zu setzen waere
+    die eine Kopfzeile, die man nicht mehr zurueknehmen kann.
+    """
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        headers = response.headers
+        # SAMEORIGIN, nicht DENY: das blockiert das Einbetten durch eine fremde Seite - also
+        # den Clickjacking-Weg - laesst aber eine eigene Startseite auf demselben Host in
+        # Ruhe. DENY haette so einen Aufbau ohne Vorwarnung kaputtgemacht, und eine
+        # Sicherheitsverbesserung darf keinen laufenden Server zerlegen. Die
+        # Mitglieder-Seiten setzen fuer sich weiterhin DENY; setdefault laesst das stehen.
+        headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        headers.setdefault("Content-Security-Policy", "frame-ancestors 'self'")
+        headers.setdefault("X-Content-Type-Options", "nosniff")
+        headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        if COOKIE_SECURE:
+            headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+        return response
+
+
 class SessionValidityMiddleware(BaseHTTPMiddleware):
     """Re-checks role/active status from the DB on every request — otherwise a
     deactivated or demoted user keeps full access for the rest of their
@@ -677,7 +728,8 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
 web.add_middleware(TZMiddleware)
 web.add_middleware(SessionValidityMiddleware)
 web.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="phobos_session",
-                   max_age=SESSION_MAX_AGE)
+                   max_age=SESSION_MAX_AGE, https_only=COOKIE_SECURE, same_site="lax")
+web.add_middleware(SecurityHeadersMiddleware)
 web.add_middleware(NoCacheMiddleware)
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 def _js_attr(value) -> str:
@@ -902,6 +954,12 @@ _LOGIN_TRACK_MAX = 5000          # darüber fliegt die älteste Hälfte raus
 # key -> [Anzahl, erster Fehlversuch (monotonic), gesperrt bis (monotonic)]
 _login_fails: dict[str, list] = {}
 
+# Ein echter bcrypt-Hash, gegen den bei unbekanntem Benutzernamen geprueft wird, damit die
+# Antwort genauso lange braucht. Einmal beim Start erzeugt statt fest eingetragen: ein
+# eingebauter Hash waere in jeder Kopie dieses Projekts derselbe und damit ein verlaesslicher
+# Anhaltspunkt, dass hier genau diese Software laeuft.
+_DUMMY_PW_HASH = bcrypt.hashpw(secrets.token_bytes(16), bcrypt.gensalt()).decode()
+
 
 def _login_client(request: Request) -> str:
     """The address this attempt comes from, as far as it can be told behind a proxy."""
@@ -963,7 +1021,15 @@ async def login_submit(request: Request, username: str = Form(...), password: st
             status_code=302,
         )
     user = await db_one("SELECT * FROM users WHERE username=?", (username.strip(),))
-    if not user or not verify_pw(password, user["password_hash"]):
+    if not user:
+        # Gegen ein unbekanntes Konto wird trotzdem geprueft. Ohne das lief bcrypt nur bei
+        # existierenden Namen, und der Unterschied war messbar - ein externer Test las daraus
+        # 227 ms gegen 14 ms ab und konnte so Benutzernamen erraten, ohne angemeldet zu sein.
+        # Dieselbe Arbeit in beiden Faellen macht die Antwortzeit nichtssagend.
+        verify_pw(password, _DUMMY_PW_HASH)
+        _login_note_failure(request, username)
+        return RedirectResponse("/login?error=Ungültige+Zugangsdaten", status_code=302)
+    if not verify_pw(password, user["password_hash"]):
         _login_note_failure(request, username)
         return RedirectResponse("/login?error=Ungültige+Zugangsdaten", status_code=302)
     if not user.get("active", 1):
@@ -1068,6 +1134,37 @@ async def logout(request: Request):
     return RedirectResponse("/login", status_code=302)
 
 
+def _safe_back(request: Request, default: str = "/") -> str:
+    """Where to send somebody back to, taken from the Referer but never off this site.
+
+    The Referer is whatever the browser was told to send, so an attacker can put their own
+    address in it. Handing that straight to a redirect turned this route into an open
+    redirect - and one that needs no login at all, which makes it a ready-made first hop for
+    a phishing link that starts on a domain the victim trusts. Reported by an external test
+    and confirmed here.
+
+    Only a path on this same site survives: no scheme, no host, and no "//evil.example" - a
+    leading double slash is a protocol-relative URL and leaves the site just as thoroughly as
+    "https://" does.
+    """
+    ref = request.headers.get("referer", "") or ""
+    try:
+        parsed = urllib.parse.urlparse(ref)
+    except ValueError:
+        return default
+    if parsed.scheme or parsed.netloc:
+        # Absolute address: only allowed when it points back at the host this request came in
+        # on, so a normal browser Referer keeps working behind a reverse proxy.
+        host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "")
+        host = host.split(",")[0].strip()
+        if not host or parsed.netloc != host:
+            return default
+    path = parsed.path or "/"
+    if not path.startswith("/") or path.startswith("//"):
+        return default
+    return path + (f"?{parsed.query}" if parsed.query else "")
+
+
 @web.post("/settings/language")
 async def set_language(request: Request, lang: str = Form("de")):
     if lang not in ("de", "en"):
@@ -1076,8 +1173,7 @@ async def set_language(request: Request, lang: str = Form("de")):
     uid = request.session.get("user_id")
     if uid:
         await db_exec("UPDATE users SET language=? WHERE id=?", (lang, uid))
-    referer = request.headers.get("referer", "/")
-    return RedirectResponse(referer, status_code=302)
+    return RedirectResponse(_safe_back(request), status_code=302)
 
 
 # ── Profile ───────────────────────────────────────────────────────────────────
@@ -7030,9 +7126,28 @@ async def server_config_save(request: Request, guild_id: int):
     if not guild:
         return RedirectResponse("/servers", status_code=302)
     form = await request.form()
-    tab = str(form.get("tab", "config"))
-    if tab not in _TAB_TEXT_KEYS:
-        tab = "config"
+    raw_tab = str(form.get("tab", "config"))
+    tab = raw_tab if raw_tab in _TAB_TEXT_KEYS else "config"
+
+    # Dieselbe Sperre wie beim ANZEIGEN des Reiters, mit derselben Liste, damit die Namen
+    # nicht auseinanderlaufen koennen. Bisher galt sie nur fuer GET: ein eingeschraenkter
+    # Moderator konnte den Reiter nicht sehen, aber sehr wohl hineinschreiben, indem er das
+    # Formular selbst abschickte.
+    #
+    # Geprueft werden BEIDE Namen: der abgeschickte - das ist der eigentliche Weg vorbei - und
+    # der, unter dem am Ende wirklich geschrieben wird. Nur sieben Reiter haben ueberhaupt
+    # eigene Textfelder, alle anderen fallen hier auf "config" zurueck; ohne den zweiten Blick
+    # schriebe ein auf "Umfragen" beschraenkter Moderator ueber genau diesen Rueckfall die
+    # Grundeinstellungen des Servers, die ihm verwehrt sind.
+    #
+    # Wer nie eingeschraenkt wurde - jeder Admin und jeder normale Moderator - laeuft komplett
+    # daran vorbei: _viewer_allowed_tabs() liefert dann None, und nichts an diesem Verhalten
+    # aendert sich fuer bestehende Installationen.
+    user_allowed_tabs = await _viewer_allowed_tabs(request, guild_id)
+    if user_allowed_tabs is not None:
+        for _name in (raw_tab, tab):
+            if _name in _MODERATOR_RESTRICTABLE_TABS and _name not in user_allowed_tabs:
+                return _redirect_no_access(guild_id, user_allowed_tabs)
 
     # Channel-valued keys are validated against the guild's own channels before saving -
     # some are resolved later via a global bot.get_channel() (not guild-scoped), so an
@@ -7916,11 +8031,55 @@ def _extract_image_candidates(html: str, base_url: str) -> list:
     return candidates
 
 
+def _is_public_http_url(url: str) -> bool:
+    """Whether this address is safe for the server itself to fetch.
+
+    The poll preview lets anyone with a dashboard login hand the server a URL to open. Without
+    this, that URL could just as well be http://127.0.0.1:8080 or a cloud provider's metadata
+    service - the server sits inside the network, so it can reach things the person asking
+    never could. Reported by an external test, and correct.
+
+    Only http(s) to a name that resolves entirely to public addresses passes. Every name the
+    host resolves to is checked, not just the first: a name that answers with one public and
+    one loopback address would otherwise slip through on the public one.
+    """
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False
+    import ipaddress
+    import socket as _sock
+    try:
+        infos = _sock.getaddrinfo(parsed.hostname, parsed.port or
+                                  (443 if parsed.scheme == "https" else 80),
+                                  proto=_sock.IPPROTO_TCP)
+    except Exception:
+        # Unresolvable is not reachable either, so refusing costs nothing and keeps this from
+        # becoming a way to ask the server what does and does not resolve inside the network.
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+                or ip.is_multicast or ip.is_unspecified):
+            return False
+    return True
+
+
 async def _fetch_html_for_og(url: str) -> str:
     """Shared HTTP fetch behind both the single-best-guess auto-save lookup and the live
     preview button's multi-candidate list - one network call either way, never raises, returns
     "" on ANY failure (timeout, connection error, non-HTML response) so a flaky/slow site never
     breaks saving the poll or the preview button, only leaves that option's image empty."""
+    # Checked here rather than at each caller, so no future caller can forget it.
+    if not await asyncio.get_running_loop().run_in_executor(None, _is_public_http_url, url):
+        return ""
     try:
         async with aiohttp.ClientSession(timeout=_OG_FETCH_TIMEOUT) as session:
             headers = {"User-Agent": "Mozilla/5.0 (compatible; PhobosBot/1.0; +poll-preview)"}
