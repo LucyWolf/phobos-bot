@@ -624,8 +624,15 @@ async def get_group_instances(group_id: str, auth_cookie: str,
 
 async def _fetch_group_instances(group_id: str, auth_cookie: str,
                                  two_factor_cookie: str = "") -> list:
-    """Die rohe Antwort von VRChat. Geteilt von der ausgewerteten und der rohen Ansicht,
-    damit beide garantiert dieselbe Abfrage sehen."""
+    """Die ROHE Antwort von VRChat, unveraendert. Geteilt von der ausgewerteten und der rohen
+    Ansicht, damit beide garantiert dieselbe Abfrage sehen.
+
+    Hier darf NICHT ausgewertet werden. Stand hier einmal ein _parse_group_instances(), lief
+    alles doppelt durch die Auswertung: der zweite Durchgang sucht "world" und "memberCount",
+    findet aber nur noch die Felder, die der erste daraus gemacht hat - Ergebnis war ein
+    Weltname "" und eine Zahl 0, waehrend die Rohdaten-Anzeige gleichzeitig 9 Leute zeigte.
+    Genau so gemeldet, und genau daran erkannt.
+    """
     if not looks_like_group_id(group_id):
         raise VRChatError("Das ist keine gültige VRChat-Gruppen-ID.")
     url = f"{API_BASE}/groups/{urllib.parse.quote(group_id, safe='')}/instances"
@@ -649,7 +656,7 @@ async def _fetch_group_instances(group_id: str, auth_cookie: str,
                 data = await resp.json(content_type=None)
             except Exception:
                 return []
-    return _parse_group_instances(data)
+    return data if isinstance(data, list) else []
 
 
 async def get_group_instances_raw(group_id: str, auth_cookie: str,
