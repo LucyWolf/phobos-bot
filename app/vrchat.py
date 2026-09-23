@@ -692,6 +692,27 @@ async def get_instance(location: str, auth_cookie: str, two_factor_cookie: str =
     return data if isinstance(data, dict) else None
 
 
+# Wie VRChat die Zahl der Anwesenden nennt. Mehrere Schreibweisen, weil die Gruppenliste und
+# die Einzelansicht sich uneinig sind und beides schon gesehen wurde - steht keine davon drin,
+# bleibt es bei 0, und die Rohdaten-Anzeige im Dashboard sagt, wie das Feld hier wirklich
+# heisst.
+COUNT_FIELDS = ("memberCount", "userCount", "nUsers", "n_users", "users", "playerCount")
+
+
+def _zahl_drin(entry: dict) -> int:
+    for key in COUNT_FIELDS:
+        wert = entry.get(key)
+        if isinstance(wert, bool):
+            continue
+        if isinstance(wert, int):
+            return wert
+        if isinstance(wert, list):
+            return len(wert)
+        if isinstance(wert, str) and wert.isdigit():
+            return int(wert)
+    return 0
+
+
 def _parse_group_instances(data) -> list:
     if not isinstance(data, list):
         return []
@@ -720,7 +741,7 @@ def _parse_group_instances(data) -> list:
             "world_id": world_id,
             "world_name": str(world.get("name") or ""),
             "world_image": str(world.get("thumbnailImageUrl") or world.get("imageUrl") or ""),
-            "count": entry.get("memberCount") or entry.get("userCount") or 0,
+            "count": _zahl_drin(entry),
         })
     return out
 

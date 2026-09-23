@@ -4508,17 +4508,23 @@ async def vrc_instances_check(request: Request, guild_id: int):
     session = await vrc_session()
     if not session:
         return JSONResponse({"error": "Die VRChat-Anmeldung des Bot-Kontos funktioniert gerade nicht."})
-    from vrchat import get_group_instances
+    from vrchat import get_group_instances_raw, _parse_group_instances
     try:
-        instances = await get_group_instances(group_id, session["auth_cookie"],
-                                              session["two_factor_cookie"])
+        # Roh holen und selbst auswerten, damit die Antwort BEIDE Zahlen kennt: was VRChat
+        # geschickt hat und was davon lesbar war. "Er sieht die Instanz nicht" und "er sieht
+        # die Leute nicht" sehen sonst gleich aus, sind aber zwei verschiedene Probleme.
+        roh = await get_group_instances_raw(group_id, session["auth_cookie"],
+                                            session["two_factor_cookie"])
     except Exception as e:
         return JSONResponse({"error": str(e)[:200]})
+    instances = _parse_group_instances(roh)
     posted = 0
     if (await get_guild_config(guild_id, "vrc_instance_channel") or "").strip().isdigit():
         posted = await announce_instances(b, guild)
     return JSONResponse({
-        "open": [{"world": i["world_name"], "count": i["count"]} for i in instances],
+        "geliefert": len(roh) if isinstance(roh, list) else 0,
+        "open": [{"world": i["world_name"] or "(ohne Namen)", "count": i["count"]}
+                 for i in instances],
         "posted": posted,
     })
 

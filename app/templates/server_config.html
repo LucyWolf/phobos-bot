@@ -3455,12 +3455,16 @@ async function vrcInstCheck() {
     const d = await r.json();
     if (d.error) { out.textContent = '❌ ' + d.error; return; }
     const lines = [];
+    // Beide Zahlen nennen: geliefert und davon lesbar. Sind sie verschieden, liegt es an
+    // Feldern, die anders heissen als erwartet - dann hilft "Rohdaten anzeigen" weiter.
+    lines.push({{ tr.vrc_inst_delivered | jsraw }}.replace('{n}', d.geliefert));
     if (!d.open.length) {
       lines.push({{ tr.vrc_inst_none | jsraw }});
     } else {
       // textContent, nie innerHTML: Weltnamen kommen aus VRChat.
-      d.open.forEach(function (i) { lines.push('• ' + i.world + ' (' + i.count + ')'); });
+      d.open.forEach(function (i) { lines.push('• ' + i.world + ' — ' + i.count + ' drin'); });
     }
+    if (d.geliefert && !d.open.length) lines.push({{ tr.vrc_inst_unreadable | jsraw }});
     if (d.posted) lines.push({{ tr.vrc_inst_posted | jsraw }}.replace('{n}', d.posted));
     out.textContent = lines.join('\n');
   } catch (e) {
@@ -3720,11 +3724,6 @@ async function vrcProbe() {
       <input type="text" name="vrc_instance_footer" form="vrc-main-form" maxlength="200"
              value="{{ cfg.get('vrc_instance_footer', '') }}" placeholder="{{ vrc_instance_footer_default }}">
     </div>
-    <div>
-      <label>{{ tr.vrc_inst_closed_title_label }}</label>
-      <input type="text" name="vrc_instance_closed_title" form="vrc-main-form" maxlength="200"
-             value="{{ cfg.get('vrc_instance_closed_title', '') }}" placeholder="{{ vrc_instance_closed_title_default }}">
-    </div>
     <div style="grid-column:1 / -1;">
       <label>{{ tr.vrc_inst_message_label }}</label>
       <textarea name="vrc_instance_message" form="vrc-main-form" rows="4" maxlength="1800"
@@ -3735,7 +3734,39 @@ async function vrcProbe() {
       <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_message_hint }}</div>
     </div>
   </div>
-  <div class="grid-2" style="gap:1rem;margin-top:0.9rem;">
+
+  <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-top:0.9rem;">
+    <input type="checkbox" name="vrc_instance_live_count" form="vrc-main-form" value="1" style="margin:0;"
+           {% if cfg.get('vrc_instance_live_count') == '1' %}checked{% endif %}>
+    {{ tr.vrc_inst_live_label }}
+  </label>
+  <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_live_hint }}</div>
+
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.9rem;align-items:center;">
+    <button type="submit" form="vrc-main-form" class="btn btn-primary">{{ tr.btn_save }}</button>
+    <button type="button" class="btn btn-secondary" onclick="vrcInstCheck()">{{ tr.vrc_inst_check_btn }}</button>
+    <button type="button" class="btn btn-secondary" onclick="vrcInstRaw()">{{ tr.vrc_inst_raw_btn }}</button>
+  </div>
+  <div id="vrc-inst-out" style="display:none;margin-top:0.7rem;font-size:0.78rem;white-space:pre-wrap;"></div>
+</div>
+
+{# Eigener Block fuer den Zustand danach - auf Wunsch getrennt von den Einstellungen fuer die
+   offene Instanz, weil es zwei verschiedene Momente sind und die Karte sonst zu lang wird. #}
+<div class="card" data-sub="instances">
+  <div class="feat-header">{{ tr.vrc_inst_closed_heading }}</div>
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.vrc_inst_closed_heading_hint }}</p>
+  <div class="grid-2" style="gap:1rem;">
+    <div>
+      <label>{{ tr.vrc_inst_closed_title_label }}</label>
+      <input type="text" name="vrc_instance_closed_title" form="vrc-main-form" maxlength="200"
+             value="{{ cfg.get('vrc_instance_closed_title', '') }}" placeholder="{{ vrc_instance_closed_title_default }}">
+    </div>
+    <div>
+      <label>{{ tr.vrc_inst_delete_after_label }}</label>
+      <input type="number" name="vrc_instance_delete_after" form="vrc-main-form" min="0" max="1440"
+             value="{{ cfg.get('vrc_instance_delete_after', '') }}" placeholder="0">
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_inst_delete_after_hint }}</div>
+    </div>
     <div style="grid-column:1 / -1;">
       <label>{{ tr.vrc_inst_closed_label }}</label>
       <textarea name="vrc_instance_closed_message" form="vrc-main-form" rows="3" maxlength="1800"
@@ -3746,32 +3777,13 @@ async function vrcProbe() {
       <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_closed_hint }}</div>
     </div>
   </div>
-
-  <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-top:0.9rem;">
-    <input type="checkbox" name="vrc_instance_live_count" form="vrc-main-form" value="1" style="margin:0;"
-           {% if cfg.get('vrc_instance_live_count') == '1' %}checked{% endif %}>
-    {{ tr.vrc_inst_live_label }}
-  </label>
-  <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_live_hint }}</div>
-
   <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-top:0.9rem;">
     <input type="checkbox" name="vrc_instance_cleanup" form="vrc-main-form" value="1" style="margin:0;"
            {% if cfg.get('vrc_instance_cleanup') == '1' %}checked{% endif %}>
     {{ tr.vrc_inst_cleanup_label }}
   </label>
   <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_cleanup_hint }}</div>
-  <div style="max-width:260px;margin-top:0.6rem;">
-    <label>{{ tr.vrc_inst_delete_after_label }}</label>
-    <input type="number" name="vrc_instance_delete_after" form="vrc-main-form" min="0" max="1440"
-           value="{{ cfg.get('vrc_instance_delete_after', '') }}" placeholder="0">
-    <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_inst_delete_after_hint }}</div>
-  </div>
-  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.9rem;align-items:center;">
-    <button type="submit" form="vrc-main-form" class="btn btn-primary">{{ tr.btn_save }}</button>
-    <button type="button" class="btn btn-secondary" onclick="vrcInstCheck()">{{ tr.vrc_inst_check_btn }}</button>
-    <button type="button" class="btn btn-secondary" onclick="vrcInstRaw()">{{ tr.vrc_inst_raw_btn }}</button>
-  </div>
-  <div id="vrc-inst-out" style="display:none;margin-top:0.7rem;font-size:0.78rem;white-space:pre-wrap;"></div>
+  <button type="submit" form="vrc-main-form" class="btn btn-primary" style="margin-top:0.9rem;">{{ tr.btn_save }}</button>
 </div>
 {% endif %}
 <script>
