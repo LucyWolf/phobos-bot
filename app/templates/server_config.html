@@ -3172,6 +3172,13 @@ document.addEventListener('click', function(e) {
              white-space:pre-wrap;word-break:break-word;"></div>
         <div style="font-size:0.7rem;color:var(--muted);margin-top:0.5rem;">{{ tr.vrc_group_join_note }}</div>
       </div>
+
+      <div style="margin-top:0.9rem;max-width:260px;">
+        <label>{{ tr.vrc_role_sync_label }}</label>
+        <input type="number" name="vrc_role_sync_minutes" min="0" max="1440"
+               value="{{ cfg.get('vrc_role_sync_minutes', '') }}" placeholder="0">
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_role_sync_hint }}</div>
+      </div>
     </div>
   </div>
   <button type="submit" class="btn btn-primary" style="margin-top:0.9rem;">{{ tr.btn_save }}</button>
@@ -3245,6 +3252,64 @@ document.addEventListener('click', function(e) {
 </div>
 </form>
 
+{% if vrc_group_on %}
+<div class="card">
+      {# Discord-Rolle -> VRChat-Gruppenrolle. Eigenes Formular, weil Zuordnungen einzeln
+         hinzugefuegt und entfernt werden - der Rest des Reiters ist ein Sammel-Speichern. #}
+        <div style="font-weight:600;font-size:0.82rem;margin-bottom:0.3rem;">{{ tr.vrc_rolemap_heading }}</div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.7rem;">{{ tr.vrc_rolemap_hint }}</div>
+
+        {% if vrc_role_map %}
+        <div class="table-wrap" style="margin-bottom:0.7rem;">
+          <table>
+            <thead><tr>
+              <th>{{ tr.vrc_rolemap_discord }}</th><th>{{ tr.vrc_rolemap_vrchat }}</th><th></th>
+            </tr></thead>
+            <tbody>
+              {% for m in vrc_role_map %}
+              <tr>
+                <td>{% if m.discord_role_name %}@{{ m.discord_role_name }}{% else %}<code>{{ m.discord_role_id }}</code> <span style="color:var(--muted);font-size:0.72rem;">({{ tr.vrc_rolemap_gone }})</span>{% endif %}</td>
+                <td>{% if m.vrc_role_name %}{{ m.vrc_role_name }}{% else %}<code>{{ m.vrc_role_id }}</code>{% endif %}</td>
+                <td style="text-align:right;">
+                  <form method="post" action="/servers/{{ guild.id }}/vrc/rolemap/delete/{{ m.id }}" style="display:inline;margin:0;">
+                    <button type="submit" class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.6rem;">✕</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;">
+          <div style="flex:1;min-width:160px;">
+            <label style="font-size:0.72rem;">{{ tr.vrc_rolemap_discord }}</label>
+            <select id="vrc-map-dc" style="margin:0;">
+              {% for r in roles %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div style="flex:1;min-width:160px;">
+            <label style="font-size:0.72rem;">{{ tr.vrc_rolemap_vrchat }}</label>
+            <select id="vrc-map-vrc" style="margin:0;">
+              <option value="">{{ tr.vrc_rolemap_load_first }}</option>
+            </select>
+          </div>
+          <button type="button" class="btn btn-secondary" onclick="vrcLoadGroupRoles()">{{ tr.vrc_rolemap_load }}</button>
+          <button type="button" class="btn btn-primary" onclick="vrcAddRoleMap()">{{ tr.vrc_rolemap_add }}</button>
+        </div>
+        <div id="vrc-map-out" style="display:none;margin-top:0.5rem;font-size:0.78rem;"></div>
+
+      </div>
+
+      <form id="vrc-map-form" method="post" action="/servers/{{ guild.id }}/vrc/rolemap/add" style="display:none;">
+        <input type="hidden" name="discord_role_id" id="vrc-map-dc-h">
+        <input type="hidden" name="vrc_role_id" id="vrc-map-vrc-h">
+        <input type="hidden" name="vrc_role_name" id="vrc-map-vrcname-h">
+      </form>
+</div>
+{% endif %}
+
 <div class="card" style="display:flex;align-items:center;gap:0.9rem;flex-wrap:wrap;">
   <form method="post" action="/servers/{{ guild.id }}/vrc/panel" style="margin:0;">
     <button type="submit" class="btn btn-secondary">{{ tr.vrc_panel_post_btn }}</button>
@@ -3269,6 +3334,44 @@ document.addEventListener('click', function(e) {
 </div>
 
 <script>
+async function vrcLoadGroupRoles() {
+  const sel = document.getElementById('vrc-map-vrc');
+  const out = document.getElementById('vrc-map-out');
+  out.style.display = '';
+  out.textContent = '…';
+  try {
+    const r = await fetch('/servers/{{ guild.id }}/vrc/group/roles', {method: 'POST'});
+    const d = await r.json();
+    if (d.error) { out.textContent = '❌ ' + d.error; return; }
+    sel.textContent = '';
+    (d.roles || []).forEach(function (role) {
+      // textContent ueber option.text: Rollennamen kommen aus VRChat, nicht von uns.
+      const o = document.createElement('option');
+      o.value = role.id;
+      o.textContent = role.name + (role.management ? ' (Verwaltung)' : '');
+      sel.appendChild(o);
+    });
+    out.textContent = (d.roles || []).length + ' Rollen geladen.';
+  } catch (e) {
+    out.textContent = '❌ ' + e;
+  }
+}
+function vrcAddRoleMap() {
+  const dc = document.getElementById('vrc-map-dc');
+  const vrc = document.getElementById('vrc-map-vrc');
+  const out = document.getElementById('vrc-map-out');
+  if (!vrc.value) {
+    out.style.display = '';
+    out.textContent = {{ tr.vrc_rolemap_load_first | jsraw }};
+    return;
+  }
+  document.getElementById('vrc-map-dc-h').value = dc.value;
+  document.getElementById('vrc-map-vrc-h').value = vrc.value;
+  document.getElementById('vrc-map-vrcname-h').value =
+    vrc.options[vrc.selectedIndex] ? vrc.options[vrc.selectedIndex].textContent : '';
+  document.getElementById('vrc-map-form').submit();
+}
+
 async function vrcGroupCall(what) {
   const out = document.getElementById('vrc-grp-out');
   const a = document.getElementById('vrc-grp-check');

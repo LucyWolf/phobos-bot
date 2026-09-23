@@ -515,3 +515,89 @@ async def join_group(group_id: str, auth_cookie: str, two_factor_cookie: str = "
             if resp.status == 429:
                 raise VRChatError("VRChat bremst gerade zu viele Anfragen aus.")
             raise VRChatError(message[:200] or f"VRChat antwortete mit Status {resp.status}.")
+
+
+async def get_group_roles(group_id: str, auth_cookie: str,
+                          two_factor_cookie: str = "") -> list:
+    """The roles a group defines, as [{"id", "name", "order", "isManagementRole"}, ...]."""
+    if not looks_like_group_id(group_id):
+        raise VRChatError("Das ist keine gültige VRChat-Gruppen-ID.")
+    url = f"{API_BASE}/groups/{urllib.parse.quote(group_id, safe='')}/roles"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=_headers(auth_cookie, two_factor_cookie),
+                               timeout=TIMEOUT) as resp:
+            if resp.status == 403:
+                raise VRChatError("Das Bot-Konto darf die Rollen dieser Gruppe nicht sehen — "
+                                  "dafür braucht es in der Gruppe das Recht, Rollen zu "
+                                  "verwalten.")
+            if resp.status == 404:
+                raise VRChatError("Diese Gruppe gibt es nicht.")
+            if resp.status == 401:
+                raise VRChatError("Die VRChat-Sitzung ist abgelaufen — bitte das Konto im "
+                                  "Dashboard neu verbinden.")
+            if resp.status == 429:
+                raise VRChatError("VRChat bremst gerade zu viele Anfragen aus.")
+            if resp.status != 200:
+                raise VRChatError(f"VRChat antwortete mit Status {resp.status}.")
+            try:
+                data = await resp.json(content_type=None)
+            except Exception:
+                return []
+    if not isinstance(data, list):
+        return []
+    return [
+        {"id": str(r.get("id") or ""), "name": str(r.get("name") or ""),
+         "order": r.get("order"), "management": bool(r.get("isManagementRole"))}
+        for r in data if isinstance(r, dict) and r.get("id")
+    ]
+
+
+async def _member_role(method: str, group_id: str, user_id: str, role_id: str,
+                       auth_cookie: str, two_factor_cookie: str = "") -> None:
+    """Add (PUT) or take away (DELETE) one group role for one member.
+
+    Both directions answer the same handful of ways, so they share this. A 404 on DELETE means
+    the member did not have the role - the desired end state, so it is not an error; on PUT it
+    means the role or the member is gone, which is.
+    """
+    url = (f"{API_BASE}/groups/{urllib.parse.quote(group_id, safe='')}"
+           f"/members/{urllib.parse.quote(user_id, safe='')}"
+           f"/roles/{urllib.parse.quote(role_id, safe='')}")
+    async with aiohttp.ClientSession() as session:
+        async with session.request(method, url,
+                                   headers=_headers(auth_cookie, two_factor_cookie),
+                                   timeout=TIMEOUT) as resp:
+            if resp.status in (200, 201, 204):
+                return
+            if resp.status == 404 and method == "DELETE":
+                return
+            if resp.status == 403:
+                raise VRChatError("Das Bot-Konto darf in dieser Gruppe keine Rollen vergeben — "
+                                  "dafür braucht es dort das Recht, Rollen zu verwalten, und "
+                                  "die eigene Rolle muss über der vergebenen stehen.")
+            if resp.status == 404:
+                raise VRChatError("Die Gruppenrolle oder das Mitglied gibt es nicht (mehr).")
+            if resp.status == 401:
+                raise VRChatError("Die VRChat-Sitzung ist abgelaufen — bitte das Konto im "
+                                  "Dashboard neu verbinden.")
+            if resp.status == 429:
+                raise VRChatError("VRChat bremst gerade zu viele Anfragen aus.")
+            try:
+                data = await resp.json(content_type=None)
+            except Exception:
+                data = {}
+            message = ""
+            if isinstance(data, dict):
+                err = data.get("error")
+                message = (err.get("message") if isinstance(err, dict) else str(err or "")) or ""
+            raise VRChatError(message[:200] or f"VRChat antwortete mit Status {resp.status}.")
+
+
+async def add_member_role(group_id: str, user_id: str, role_id: str, auth_cookie: str,
+                          two_factor_cookie: str = "") -> None:
+    await _member_role("PUT", group_id, user_id, role_id, auth_cookie, two_factor_cookie)
+
+
+async def remove_member_role(group_id: str, user_id: str, role_id: str, auth_cookie: str,
+                             two_factor_cookie: str = "") -> None:
+    await _member_role("DELETE", group_id, user_id, role_id, auth_cookie, two_factor_cookie)

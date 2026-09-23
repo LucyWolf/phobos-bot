@@ -3830,11 +3830,18 @@ async def _vrc_apply(guild_id: int, user_id: str, vrchat_name: str, revoke: bool
         member = guild.get_member(int(user_id)) if guild and str(user_id).isdigit() else None
         if not member:
             return
-        from cogs.vrc_link import apply_link, revoke_link
+        from cogs.vrc_link import apply_link, revoke_link, sync_vrc_roles
         if revoke:
             await revoke_link(b, guild, member)
-        else:
-            await apply_link(b, guild, member, vrchat_name)
+            return
+        await apply_link(b, guild, member, vrchat_name)
+        # "sobald der account verlinkt wurde": the VRChat roles this member's Discord roles
+        # earn them are pushed the moment the link takes effect, not only on the next
+        # interval - and an interval is optional on top of this, not a replacement for it.
+        link = await db_one("SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
+                            (str(guild_id), str(user_id)))
+        if link:
+            await sync_vrc_roles(guild, member, link)
     except Exception as e:
         print(f"[vrc_link] dashboard apply failed for {user_id} in {guild_id}: {e}")
 
@@ -4164,6 +4171,74 @@ async def vrc_group_check(request: Request, guild_id: int):
     except Exception as e:
         print(f"[vrc_link] group check for guild {guild_id} failed: {e}")
         return JSONResponse({"error": str(e)[:200]})
+
+
+@web.post("/servers/{guild_id}/vrc/group/roles")
+async def vrc_group_roles(request: Request, guild_id: int):
+    """The group's own roles, for the mapping dropdown. Read-only."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return JSONResponse({"error": "Kein Zugriff"}, status_code=403)
+    group_id = (await get_guild_config(guild_id, "vrc_group_id") or "").strip()
+    if not group_id:
+        return JSONResponse({"error": "Für diesen Server ist keine Gruppen-ID eingetragen."})
+    from cogs.vrc_link import vrc_session
+    session = await vrc_session()
+    if not session:
+        return JSONResponse({"error": "Die VRChat-Anmeldung des Bot-Kontos funktioniert gerade nicht."})
+    from vrchat import get_group_roles
+    try:
+        roles = await get_group_roles(group_id, session["auth_cookie"],
+                                      session["two_factor_cookie"])
+    except Exception as e:
+        return JSONResponse({"error": str(e)[:200]})
+    return JSONResponse({"roles": roles})
+
+
+@web.post("/servers/{guild_id}/vrc/rolemap/add")
+async def vrc_rolemap_add(request: Request, guild_id: int, discord_role_id: str = Form(""),
+                          vrc_role_id: str = Form(""), vrc_role_name: str = Form("")):
+    """Add one "Discord role → VRChat group role" pair."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    b = bot._bot_for_guild(guild_id)
+    guild = b.get_guild(guild_id) if b else None
+    valid = {str(ro.id) for ro in guild.roles if not ro.is_default()} if guild else set()
+    if discord_role_id not in valid:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=vrclink&error=Ungültige+Discord-Rolle", status_code=303)
+    vrc_role_id = (vrc_role_id or "").strip()[:64]
+    if not vrc_role_id:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=vrclink&error=Bitte+eine+VRChat-Rolle+wählen",
+            status_code=303)
+    try:
+        await db_exec(
+            "INSERT OR IGNORE INTO vrc_role_map (guild_id, discord_role_id, vrc_role_id, "
+            "vrc_role_name, created_at) VALUES (?,?,?,?,?)",
+            (str(guild_id), discord_role_id, vrc_role_id, (vrc_role_name or "").strip()[:100],
+             datetime.datetime.utcnow().isoformat()),
+        )
+    except Exception as e:
+        print(f"[vrc_link] could not store the role mapping for {guild_id}: {e}")
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=vrclink&error=Zuordnung+konnte+nicht+gespeichert+werden",
+            status_code=303)
+    return RedirectResponse(f"/servers/{guild_id}?tab=vrclink&success=Zuordnung+gespeichert",
+                            status_code=303)
+
+
+@web.post("/servers/{guild_id}/vrc/rolemap/delete/{map_id}")
+async def vrc_rolemap_delete(request: Request, guild_id: int, map_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    # guild_id in the WHERE as well as the id: without it, a moderator of one server could
+    # delete another server's mapping by guessing a number.
+    await db_exec("DELETE FROM vrc_role_map WHERE id=? AND guild_id=?", (map_id, str(guild_id)))
+    return RedirectResponse(f"/servers/{guild_id}?tab=vrclink&success=Zuordnung+entfernt",
+                            status_code=303)
 
 
 @web.post("/servers/{guild_id}/vrc/group/join")
@@ -6450,6 +6525,13 @@ async def server_config(
         ep.pop("image_data", None)
 
     # VRC-Link
+    _vrc_role_map_rows = await db_rows(
+        "SELECT * FROM vrc_role_map WHERE guild_id=? ORDER BY id", (str(guild_id),))
+    _role_names = {str(ro.id): ro.name for ro in guild.roles}
+    for _rm in _vrc_role_map_rows:
+        # A Discord role that has since been deleted still has a mapping pointing at it -
+        # shown as its bare id rather than silently dropped, so an admin can see and remove it.
+        _rm["discord_role_name"] = _role_names.get(_rm["discord_role_id"], "")
     _vrc_account = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,))
     if _vrc_account:
         # The password and the session cookies never leave the server - the page only needs to
@@ -6783,6 +6865,7 @@ async def server_config(
         # Only show the group column when this server actually uses a group - an extra column
         # of dashes tells nobody anything.
         "vrc_group_on": bool((cfg.get("vrc_group_id") or "").strip()),
+        "vrc_role_map": _vrc_role_map_rows,
         # Names for the live example under the format field. A real linked pair if there is
         # one - seeing the format applied to somebody who is actually on the server says more
         # than a made-up name - otherwise a stand-in, so the example is never empty.
@@ -6853,7 +6936,8 @@ _TAB_TEXT_KEYS = {
     ],
     "vrclink": ["vrc_linked_role", "vrc_nickname_format", "vrc_panel_channel",
                 "vrc_panel_title", "vrc_panel_text", "vrc_panel_button", "vrc_dm_text",
-                "vrc_group_id", "vrc_group_role", "vrc_link_minutes"],
+                "vrc_group_id", "vrc_group_role", "vrc_link_minutes",
+                "vrc_role_sync_minutes"],
     "birthday": ["birthday_channel", "birthday_message", "birthday_commands",
                  "birthday_delete_words", "birthday_reply_saved",
                  "birthday_reply_deleted", "birthday_reply_error"],
@@ -6969,6 +7053,8 @@ async def server_config_save(request: Request, guild_id: int):
         # somebody who is already standing at the keyboard; a day is the sensible ceiling for
         # a link that is, after all, the whole credential.
         ("vrc_link_minutes", 1, 1440, "Gültigkeit des VRC-Link-Links"),
+        # 0 = nur beim Verknüpfen, sonst der Abstand zwischen zwei Rollen-Abgleichen.
+        ("vrc_role_sync_minutes", 0, 1440, "Abgleich der VRChat-Rollen (Minuten)"),
     ]
     for field, lo, hi, label in numeric_fields:
         value = str(form.get(field, "")).strip()

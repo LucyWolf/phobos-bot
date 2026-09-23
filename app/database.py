@@ -1075,6 +1075,27 @@ async def init_db():
             # When the bot last sent this member a group invite, so the page can say "already
             # on its way" instead of firing another one at VRChat on every impatient click.
             "ALTER TABLE vrc_links ADD COLUMN vrc_group_invited TEXT NOT NULL DEFAULT ''",
+            # Discord-Rolle -> VRChat-Gruppenrolle, auf Wunsch ("Wenn user A auf dem Discord
+            # Server eine spezifisch festgelegte gruppe hat soll dieser in vrchat ... eine
+            # spezifische rolle in der vrchat gruppe bekommen"). Eine Zeile je Zuordnung; ein
+            # Discord-Rolle darf auf mehrere VRChat-Rollen zeigen und umgekehrt, deshalb ist
+            # nur das PAAR eindeutig.
+            """CREATE TABLE IF NOT EXISTS vrc_role_map (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                discord_role_id TEXT NOT NULL,
+                vrc_role_id TEXT NOT NULL,
+                vrc_role_name TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT '',
+                UNIQUE(guild_id, discord_role_id, vrc_role_id)
+            )""",
+            # Welche VRChat-Gruppenrollen dieses Mitglied zuletzt hatte, als JSON-Liste. Der
+            # Abgleich vergleicht den SOLL-Stand aus Discord damit und ruft VRChat nur an, wenn
+            # sich etwas unterscheidet - sonst waere ein Abgleich alle paar Minuten eine
+            # Anfrage pro Mitglied pro Durchlauf, also genau der Verkehr, fuer den VRChat
+            # Konten sperrt.
+            "ALTER TABLE vrc_links ADD COLUMN vrc_group_roles TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE vrc_links ADD COLUMN vrc_roles_synced TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

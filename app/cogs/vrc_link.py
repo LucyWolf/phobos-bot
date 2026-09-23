@@ -27,7 +27,9 @@ Configured via main.py's "VRC-Link" tab (guild_configs keys vrc_* plus the vrc_l
 the pages themselves live in main.py under /vrc/{token}.
 """
 import datetime
+import json
 import secrets
+import time
 import unicodedata
 
 import discord
@@ -328,6 +330,76 @@ def code_present(user: dict, code: str) -> bool:
     return _squash(code) in _squash(profile_text(user))
 
 
+async def desired_vrc_roles(guild_id, member: discord.Member) -> set:
+    """Which VRChat group roles this member's DISCORD roles entitle them to."""
+    rows = await db_rows("SELECT * FROM vrc_role_map WHERE guild_id=?", (str(guild_id),))
+    if not rows:
+        return set()
+    have = {str(r.id) for r in member.roles}
+    return {r["vrc_role_id"] for r in rows if r["discord_role_id"] in have}
+
+
+async def sync_vrc_roles(guild, member: discord.Member, link) -> list:
+    """Bring this member's VRChat group roles in line with their Discord roles.
+
+    Returns the roles actually changed, as human-readable strings - an empty list means there
+    was nothing to do, which is the normal case and costs NO VRChat request at all.
+
+    That last part is the whole design. Comparing against the roles we last wrote (stored on
+    the link) rather than asking VRChat every time is what makes running this on a timer
+    affordable: with nothing changed on Discord, a hundred members cost a hundred database
+    reads and zero network calls. Asking VRChat per member per interval is exactly the traffic
+    that gets a bot account banned.
+
+    The trade is stated plainly: a role changed by hand INSIDE VRChat is not noticed until
+    something else about that member changes. This syncs Discord to VRChat, not the reverse.
+    """
+    group_id = (await get_guild_config(guild.id, "vrc_group_id") or "").strip()
+    if not group_id or not link or not link["vrc_user_id"] or not link["vrc_group_member"]:
+        # Roles can only be held by a member of the group. Somebody outside it has nothing to
+        # sync, and asking VRChat to give them a role would just be a 404 per run.
+        return []
+    want = await desired_vrc_roles(guild.id, member)
+    try:
+        had = set(json.loads(link["vrc_group_roles"] or "[]"))
+    except (ValueError, TypeError):
+        had = set()
+    if want == had:
+        return []
+
+    session = await vrc_session()
+    if not session:
+        return []
+    from vrchat import add_member_role, remove_member_role
+    changed, now_have = [], set(had)
+    for role_id in sorted(want - had):
+        try:
+            await add_member_role(group_id, link["vrc_user_id"], role_id,
+                                  session["auth_cookie"], session["two_factor_cookie"])
+            now_have.add(role_id)
+            changed.append(f"VRChat-Rolle +{role_id}")
+        except Exception as e:
+            # Per role, not per member: one role the bot may not hand out must not stop the
+            # others - and it must not be recorded as given either, or the next run would skip
+            # it forever.
+            print(f"[vrc_link] could not add VRChat role {role_id} to {link['vrc_user_id']}: {e}")
+    for role_id in sorted(had - want):
+        try:
+            await remove_member_role(group_id, link["vrc_user_id"], role_id,
+                                     session["auth_cookie"], session["two_factor_cookie"])
+            now_have.discard(role_id)
+            changed.append(f"VRChat-Rolle −{role_id}")
+        except Exception as e:
+            print(f"[vrc_link] could not remove VRChat role {role_id} from {link['vrc_user_id']}: {e}")
+    try:
+        await db_exec("UPDATE vrc_links SET vrc_group_roles=?, vrc_roles_synced=? WHERE id=?",
+                      (json.dumps(sorted(now_have)),
+                       datetime.datetime.utcnow().isoformat(), link["id"]))
+    except Exception as e:
+        print(f"[vrc_link] could not store the VRChat roles for link {link['id']}: {e}")
+    return changed
+
+
 async def apply_link(bot, guild: discord.Guild, member: discord.Member, vrchat_name: str) -> list:
     """Give the member everything an approved link earns them. Returns what actually changed,
     for the caller to report - an empty list means "nothing to do", not "it failed"."""
@@ -494,6 +566,10 @@ async def post_panel(bot, guild: discord.Guild, channel: discord.TextChannel) ->
 class VRCLink(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        # When each guild's VRChat role sync last ran, so an interval of "every 30 minutes"
+        # means that and not "every minute". In memory: losing it on a restart costs one extra
+        # run, which is harmless, and it keeps a write out of the hot loop.
+        self._roles_last: dict[int, float] = {}
         self._check.start()
 
     async def cog_load(self):
@@ -528,11 +604,30 @@ class VRCLink(commands.Cog):
                     "SELECT * FROM vrc_links WHERE guild_id=? AND status=?",
                     (str(guild.id), VRC_STATE_APPROVED),
                 )
+                # Whether this guild's Discord -> VRChat role sync is due this minute.
+                # 0 or empty means "only when a link is made", which is the default: pushing
+                # roles on a timer is useful but it is also the only part of this feature that
+                # WRITES to VRChat, so it is switched on deliberately or not at all.
+                try:
+                    every = int((await get_guild_config(guild.id, "vrc_role_sync_minutes") or "0").strip())
+                except (TypeError, ValueError):
+                    every = 0
+                roles_due = False
+                if every > 0:
+                    last = self._roles_last.get(guild.id, 0.0)
+                    if time.monotonic() - last >= every * 60:
+                        self._roles_last[guild.id] = time.monotonic()
+                        roles_due = True
+
                 for row in rows:
                     member = guild.get_member(int(row["user_id"])) if str(row["user_id"]).isdigit() else None
                     if member is None:
                         continue  # gone from the server - on_member_join restores them if they return
                     await apply_link(self.bot, guild, member, row["vrchat_name"])
+                    if roles_due:
+                        # Costs nothing when the member's Discord roles map to what they
+                        # already have - see sync_vrc_roles() for why that matters.
+                        await sync_vrc_roles(guild, member, row)
             except Exception as e:
                 print(f"[vrc_link] periodic check failed for guild {guild.id}: {e}")
         try:
