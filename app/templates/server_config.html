@@ -3343,7 +3343,7 @@ document.addEventListener('click', function(e) {
 
 {# Zeigt, was VRChat fuer einen Namen wirklich herausgibt. Gebaut, weil "Code nicht in der
    Bio" und "der Bot bekommt die Bio gar nicht" von aussen gleich aussehen. #}
-<div class="card" data-sub="group">
+<div class="card" data-sub="link">
   <div class="feat-header">{{ tr.vrc_probe_heading }}</div>
   <p class="hint" style="margin-bottom:0.9rem;">{{ tr.vrc_probe_hint }}</p>
   <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
@@ -3372,12 +3372,23 @@ function vrcSub(which) {
   // Nur eine Bequemlichkeit: geht der Speicher nicht, bleibt schlicht der erste Unterreiter.
   try { localStorage.setItem('vrcSub:{{ guild.id }}', which); } catch (e) {}
 }
-(function () {
+// Erst wenn die Seite fertig geparst ist. Dieses Skript steht mitten im Reiter, und beim
+// Ausfuehren gab es die Karten darunter - die Verknuepfungsliste und die Instanzen - noch gar
+// nicht: querySelectorAll fand sie nicht, sie blieben in JEDEM Unterreiter stehen. Genau das
+// wurde gemeldet ("bei verküpfungen kommt raus vrchat instanzen announcement ... du hast paar
+// sachen dopelt drin").
+function vrcSubInit() {
+  if (!document.querySelector('#pane-vrclink .vrc-subtab')) return;
   let start = 'link';
   try { start = localStorage.getItem('vrcSub:{{ guild.id }}') || 'link'; } catch (e) {}
   if (!document.querySelector('#pane-vrclink [data-subtab="' + start + '"]')) start = 'link';
-  if (document.querySelector('#pane-vrclink .vrc-subtab')) vrcSub(start);
-})();
+  vrcSub(start);
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', vrcSubInit);
+} else {
+  vrcSubInit();
+}
 
 async function vrcInstCheck() {
   const out = document.getElementById('vrc-inst-out');
