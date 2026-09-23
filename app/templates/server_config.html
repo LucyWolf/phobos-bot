@@ -3446,6 +3446,49 @@ async function vrcInstRaw() {
   }
 }
 
+async function vrcDebug() {
+  const out = document.getElementById('vrc-debug-out');
+  const note = document.getElementById('vrc-debug-note');
+  out.style.display = '';
+  out.textContent = {{ tr.vrc_debug_working | jsraw }};
+  note.textContent = '';
+  document.getElementById('vrc-debug-copy').style.display = 'none';
+  try {
+    const r = await fetch('/servers/{{ guild.id }}/vrc/debug', {method: 'POST'});
+    const d = await r.json();
+    if (d.error) { out.textContent = '❌ ' + d.error; return; }
+    // textContent, nie innerHTML: im Bericht steht ungefilterter Fremdtext von VRChat -
+    // Weltnamen, Beschreibungen, Rollennamen. Als HTML gedeutet waere das eine Luecke.
+    out.textContent = d.report || '';
+    document.getElementById('vrc-debug-copy').style.display = '';
+  } catch (e) {
+    out.textContent = '❌ ' + e;
+  }
+}
+
+function vrcDebugCopy() {
+  const out = document.getElementById('vrc-debug-out');
+  const note = document.getElementById('vrc-debug-note');
+  const fertig = function () { note.textContent = {{ tr.vrc_debug_copied | jsraw }}; };
+  // Die Zwischenablage-Schnittstelle gibt es nur ueber HTTPS oder auf localhost. Ohne sie
+  // wird der Text markiert - dann reicht Strg+C, statt dass der Knopf einfach nichts tut.
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(out.textContent).then(fertig, function () { vrcDebugMark(); });
+  } else {
+    vrcDebugMark();
+  }
+}
+
+function vrcDebugMark() {
+  const out = document.getElementById('vrc-debug-out');
+  const sel = window.getSelection();
+  const rng = document.createRange();
+  rng.selectNodeContents(out);
+  sel.removeAllRanges();
+  sel.addRange(rng);
+  document.getElementById('vrc-debug-note').textContent = 'Strg+C';
+}
+
 async function vrcInstCheck() {
   const out = document.getElementById('vrc-inst-out');
   out.style.display = '';
@@ -3784,6 +3827,22 @@ async function vrcProbe() {
   </label>
   <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_cleanup_hint }}</div>
   <button type="submit" form="vrc-main-form" class="btn btn-primary" style="margin-top:0.9rem;">{{ tr.btn_save }}</button>
+</div>
+
+{# Debug. Nichts zum Einstellen, nur zum Nachsehen - deshalb ganz unten und ohne Formular. #}
+<div class="card" data-sub="instances">
+  <div class="feat-header">{{ tr.vrc_debug_heading }}</div>
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.vrc_debug_hint }}</p>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+    <button type="button" class="btn btn-secondary" onclick="vrcDebug()">{{ tr.vrc_debug_btn }}</button>
+    <button type="button" id="vrc-debug-copy" class="btn btn-secondary" style="display:none;"
+            onclick="vrcDebugCopy()">{{ tr.vrc_debug_copy }}</button>
+    <span id="vrc-debug-note" style="font-size:0.78rem;color:var(--muted);"></span>
+  </div>
+  <div id="vrc-debug-out" style="display:none;margin-top:0.7rem;font-size:0.72rem;
+       white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+       max-height:26rem;overflow:auto;background:var(--bg);border:1px solid var(--border);
+       border-radius:0.5rem;padding:0.7rem;"></div>
 </div>
 {% endif %}
 <script>

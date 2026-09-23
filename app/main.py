@@ -4615,6 +4615,251 @@ async def vrc_instances_raw(request: Request, guild_id: int):
     return JSONResponse({"anzahl": len(roh), "instanzen": eintraege, "einzelansicht": einzeln})
 
 
+# ── Debug-Bericht ────────────────────────────────────────────────────────────────
+# Gebaut auf Zuruf ("kannst du ein debug machen dann teste ich das direkt, ich will gerne
+# sehen was der alles melden kann"). Anders als "Rohdaten anzeigen" kuerzt hier nichts auf
+# eine Feldliste zusammen: der Bericht ist ein Text zum Kopieren, der in EINEM Durchlauf
+# alles sammelt, was der Bot ueber VRChat erfahren kann - Konto, Gruppe, Rollen, jede offene
+# Instanz roh und ausgewertet, dazu der eigene gespeicherte Stand und die Einstellungen.
+# Damit laesst sich von aussen beantworten, was sich nicht nachlesen laesst: wie VRChat einen
+# selbst vergebenen Instanznamen nennt und ob ueberhaupt ein Feld den Zwischenzustand
+# "geschlossen" verraet.
+
+# Feldnamen, die nach Zustand, Name oder Zugang klingen. Nur zum Hervorheben - der ganze
+# Baum steht ohnehin darunter, das hier spart nur das Suchen.
+_DEBUG_SPUR = ("clos", "hard", "end", "activ", "shut", "lock", "queue", "full", "capacit",
+               "name", "displayname", "type", "access", "public", "invite", "strict",
+               "count", "occupan", "user", "age", "role", "owner", "created", "region",
+               "canrequest", "hidden", "secure", "permanent", "tag")
+
+
+def _flach(wert, pfad: str = "", raus: list | None = None) -> list:
+    """Macht aus einer verschachtelten Antwort flache "pfad = wert"-Paare.
+
+    Listen werden bei 8 Eintraegen gekappt, lange Texte bei 200 Zeichen: der Bericht soll
+    vollstaendig genug sein, um Feldnamen zu finden, und kurz genug, um ihn zu verschicken.
+    """
+    raus = [] if raus is None else raus
+    if isinstance(wert, dict):
+        if not wert:
+            raus.append((pfad or ".", "{}"))
+        for k in sorted(wert):
+            _flach(wert[k], f"{pfad}.{k}" if pfad else str(k), raus)
+    elif isinstance(wert, list):
+        if not wert:
+            raus.append((pfad or ".", "[]"))
+        for i, v in enumerate(wert[:8]):
+            _flach(v, f"{pfad}[{i}]", raus)
+        if len(wert) > 8:
+            raus.append((f"{pfad}[…]", f"und {len(wert) - 8} weitere"))
+    else:
+        text = wert if isinstance(wert, (int, float, bool)) or wert is None else str(wert)
+        text = str(text)
+        raus.append((pfad or ".", text if len(text) <= 200 else text[:197] + "…"))
+    return raus
+
+
+def _baum(wert, einzug: str = "  ") -> list:
+    """Der flache Baum als Textzeilen."""
+    return [f"{einzug}{p} = {w}" for p, w in _flach(wert)]
+
+
+def _auffaellig(wert) -> list:
+    """Die Zeilen daraus, deren Feldname nach einem Zustands- oder Namensfeld klingt."""
+    treffer = []
+    for p, w in _flach(wert):
+        letzte = p.split(".")[-1].split("[")[0].lower()
+        if any(s in letzte for s in _DEBUG_SPUR):
+            treffer.append(f"  {p} = {w}")
+    return treffer
+
+
+@web.post("/servers/{guild_id}/vrc/debug")
+async def vrc_debug(request: Request, guild_id: int):
+    """Sammelt in einem Rutsch alles, was der Bot ueber die VRChat-Seite sagen kann.
+
+    Kostet je nach Lage etwa fuenf bis zehn VRChat-Anfragen - deswegen ein Knopf und keine
+    Schleife. Liest nur, schreibt nichts, und laesst Passwoerter, Geheimnisse und Kekse
+    draussen. Jeder Abschnitt faengt seine Fehler selbst ab: faellt einer aus, steht das
+    drin und der Rest wird trotzdem fertig.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return JSONResponse({"error": "Kein Zugriff"}, status_code=403)
+
+    b = bot._bot_for_guild(guild_id)
+    guild = b.get_guild(guild_id) if b else None
+    z = []
+    z.append("═══ Phobos VRC-Debug ═══")
+    z.append(f"Erzeugt: {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC · Phobos v{VERSION}")
+    z.append(f"Server:  {(guild.name if guild else '(Bot nicht auf dem Server)')} [{guild_id}]")
+    z.append("")
+
+    cfg = await get_all_guild_config(guild_id)
+    group_id = (cfg.get("vrc_group_id") or "").strip()
+
+    # ── 1. Einstellungen ─────────────────────────────────────────────────────
+    z.append("── 1. Einstellungen (vrc_*) ──")
+    geheim = ("pass", "secret", "token", "cookie")
+    vrc_keys = sorted(k for k in cfg if k.startswith("vrc_"))
+    if not vrc_keys:
+        z.append("  (nichts eingetragen)")
+    for k in vrc_keys:
+        v = cfg.get(k) or ""
+        if any(g in k.lower() for g in geheim):
+            v = "(nicht angezeigt)" if v else ""
+        if len(v) > 200:
+            v = v[:197] + "…"
+        z.append(f"  {k} = {v}")
+    z.append("")
+
+    # ── 2. Bot-Konto ─────────────────────────────────────────────────────────
+    z.append("── 2. VRChat-Konto des Bots ──")
+    from cogs.vrc_link import vrc_session, VRC_ACCOUNT_KEY
+    konto = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,))
+    if not konto or not konto["username"]:
+        z.append("  Kein VRChat-Konto hinterlegt - ab hier geht nichts weiter.")
+        return JSONResponse({"report": "\n".join(z)})
+    z.append(f"  Benutzername:   {konto['username']}")
+    z.append(f"  VRChat-ID:      {konto['vrc_user_id'] or '(unbekannt)'}")
+    z.append(f"  Anzeigename:    {konto['vrc_display_name'] or '(unbekannt)'}")
+    z.append(f"  2FA-Geheimnis:  {'hinterlegt' if konto['totp_secret'] else 'nein'}")
+    z.append(f"  Sitzungs-Keks:  {'vorhanden' if konto['auth_cookie'] else 'nein'}")
+    z.append(f"  Letzte Prüfung: {konto['last_check'] or '-'}")
+    z.append(f"  Letzter Fehler: {konto['last_error'] or '-'}")
+    session = await vrc_session()
+    if not session:
+        z.append("  → Anmeldung klappt gerade NICHT. Ohne sie bleibt der Rest leer.")
+        return JSONResponse({"report": "\n".join(z)})
+    z.append("  → Anmeldung steht.")
+    z.append("")
+
+    import vrchat as V
+
+    # ── 3. Gruppe ────────────────────────────────────────────────────────────
+    z.append("── 3. Gruppe ──")
+    if not group_id:
+        z.append("  Keine Gruppen-ID eingetragen - Abschnitte 3 bis 6 entfallen.")
+        return JSONResponse({"report": "\n".join(z)})
+    z.append(f"  Gruppen-ID: {group_id}")
+    try:
+        gruppe = await V.get_group(group_id, session["auth_cookie"], session["two_factor_cookie"])
+        if not gruppe:
+            z.append("  VRChat kennt diese Gruppe nicht (oder der Bot darf sie nicht sehen).")
+        else:
+            z.extend(_baum(gruppe))
+    except Exception as e:
+        z.append(f"  Fehler: {str(e)[:300]}")
+    z.append("")
+
+    # ── 4. Rollen der Gruppe ─────────────────────────────────────────────────
+    z.append("── 4. Rollen der Gruppe ──")
+    try:
+        rollen = await V.get_group_roles(group_id, session["auth_cookie"],
+                                         session["two_factor_cookie"])
+        if not rollen:
+            z.append("  Keine Rollen gelesen. Meist fehlt dem Bot-Konto das Recht dazu.")
+        for ro in rollen[:25]:
+            z.append(f"  • {ro.get('name', '?')}  [{ro.get('id', '?')}]"
+                     f"{'  (Verwaltung)' if ro.get('isManagementRole') else ''}")
+    except Exception as e:
+        z.append(f"  Fehler: {str(e)[:300]}")
+    zuord = await db_rows("SELECT * FROM vrc_role_map WHERE guild_id=?", (str(guild_id),))
+    z.append(f"  Hinterlegte Zuordnungen Discord → VRChat: {len(zuord)}")
+    for zz in zuord[:25]:
+        rolle = guild.get_role(int(zz["discord_role_id"])) if guild and str(zz["discord_role_id"]).isdigit() else None
+        z.append(f"    {(rolle.name if rolle else zz['discord_role_id'])} → "
+                 f"{zz['vrc_role_name'] or zz['vrc_role_id']}")
+    z.append("")
+
+    # ── 5. Offene Instanzen ──────────────────────────────────────────────────
+    z.append("── 5. Instanzen, wie die Gruppenliste sie liefert ──")
+    roh = []
+    try:
+        roh = await V.get_group_instances_raw(group_id, session["auth_cookie"],
+                                              session["two_factor_cookie"])
+    except Exception as e:
+        z.append(f"  Fehler: {str(e)[:300]}")
+    if not isinstance(roh, list):
+        z.append(f"  VRChat antwortete nicht mit einer Liste, sondern mit {type(roh).__name__}.")
+        roh = []
+    z.append(f"  VRChat liefert {len(roh)} Eintrag/Einträge.")
+    for n, eintrag in enumerate(roh[:5], 1):
+        z.append("")
+        z.append(f"  ┌─ Eintrag {n} ─ vollständig ─")
+        z.extend("  " + line for line in _baum(eintrag))
+    if len(roh) > 5:
+        z.append(f"  … und {len(roh) - 5} weitere Einträge, hier nicht abgedruckt.")
+    z.append("")
+
+    z.append("── 5b. Was der Bot daraus macht ──")
+    try:
+        gelesen = V._parse_group_instances(roh)
+        if not gelesen:
+            z.append("  Nichts lesbar. Wenn oben Einträge stehen, heißen die Felder anders "
+                     "als erwartet - genau das steht dann in Abschnitt 5.")
+        for i in gelesen:
+            z.append(f"  • Welt: {i.get('world_name') or '(ohne Namen)'}")
+            z.append(f"    Ort:  {i.get('location')}")
+            z.append(f"    Drin: {i.get('count')}")
+            z.append(f"    Link: {V.launch_url(i.get('location') or '')}")
+    except Exception as e:
+        z.append(f"  Fehler beim Auswerten: {str(e)[:300]}")
+    z.append("")
+
+    # ── 6. Einzelansicht ─────────────────────────────────────────────────────
+    z.append("── 6. Einzelansicht je Instanz (eigene Anfrage, oft mehr Felder) ──")
+    orte = [str(i.get("location") or "") for i in (V._parse_group_instances(roh) or [])]
+    orte = [o for o in orte if o][:3]
+    if not orte:
+        z.append("  Kein Ort bekannt, also nichts abzufragen.")
+    for ort in orte:
+        z.append("")
+        z.append(f"  ┌─ {ort} ─")
+        try:
+            det = await V.get_instance(ort, session["auth_cookie"], session["two_factor_cookie"])
+            if not det:
+                z.append("    VRChat gibt dazu nichts zurück (Instanz schon vorbei?).")
+            else:
+                z.extend("  " + line for line in _baum(det))
+                spur = _auffaellig(det)
+                if spur:
+                    z.append("    ── davon interessant für Zustand/Name ──")
+                    z.extend("  " + s for s in spur)
+        except Exception as e:
+            z.append(f"    Fehler: {str(e)[:300]}")
+    z.append("")
+
+    # ── 7. Eigener Stand ─────────────────────────────────────────────────────
+    z.append("── 7. Was der Bot selbst gespeichert hat ──")
+    eigene = await db_rows("SELECT * FROM vrc_instances WHERE guild_id=? ORDER BY id DESC "
+                           "LIMIT 15", (str(guild_id),))
+    if not eigene:
+        z.append("  Noch keine Instanz vermerkt.")
+    for e in eigene:
+        z.append(f"  • {e['location']}")
+        z.append(f"    Welt {e['world_name'] or '-'} · Nachricht {e['message_id'] or '-'} · "
+                 f"zuletzt {e['last_count'] if e['last_count'] is not None else '-'} drin")
+        z.append(f"    zuerst gesehen {e['first_seen'] or '-'} · beendet {e['closed_at'] or '-'}")
+    z.append("")
+
+    # ── 8. Verknüpfte Mitglieder ─────────────────────────────────────────────
+    z.append("── 8. Verknüpfte Mitglieder (Zahlen, keine Namen) ──")
+    try:
+        links = await db_rows("SELECT * FROM vrc_links WHERE guild_id=?", (str(guild_id),))
+        z.append(f"  Verknüpft: {len(links)}")
+        z.append(f"  davon bestätigt: {sum(1 for l in links if l['verified_at'])}")
+        z.append(f"  davon 18+ bei VRChat: {sum(1 for l in links if l['vrc_age_verified'])}")
+        z.append(f"  davon in der Gruppe: {sum(1 for l in links if l['vrc_group_member'])}")
+    except Exception as e:
+        z.append(f"  Fehler: {str(e)[:300]}")
+
+    bericht = "\n".join(z)
+    if len(bericht) > 120000:
+        bericht = bericht[:120000] + "\n… hier abgeschnitten."
+    return JSONResponse({"report": bericht})
+
+
 @web.post("/servers/{guild_id}/vrc/rolemap/add")
 async def vrc_rolemap_add(request: Request, guild_id: int, discord_role_id: str = Form(""),
                           vrc_role_id: str = Form(""), vrc_role_name: str = Form("")):

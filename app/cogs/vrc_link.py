@@ -695,15 +695,17 @@ async def announce_instances(bot, guild) -> int:
         return 0
 
     alle = await db_rows("SELECT * FROM vrc_instances WHERE guild_id=?", (str(guild.id),))
-    # Nur die noch offenen gelten als "schon gemeldet". Eine geschlossene Zeile wartet nur
+    # Nur die noch offenen gelten als "schon gemeldet". Eine beendete Zeile wartet nur
     # noch darauf, dass ihre Nachricht weggeraeumt wird, und darf nicht verhindern, dass
     # dieselbe Welt inzwischen wieder aufmacht und erneut gemeldet wird.
+    # (closed_at heisst aus Bestandsgruenden so, gemeint ist "beendet" - siehe unten.)
     known = {r["location"]: r for r in alle if not r["closed_at"]}
     wartet = [r for r in alle if r["closed_at"]]
     open_now = {i["location"] for i in instances}
 
-    # Gone from VRChat's list means closed. Forgetting them is what lets the same world be
-    # announced again the next time somebody opens it.
+    # Gone from VRChat's list means the instance is over for good - not merely closed to new
+    # joins, which VRChat does not tell us apart. Forgetting them is what lets the same world
+    # be announced again the next time somebody opens it.
     #
     # Auf Wunsch wird die Meldung dabei auch gleich geloescht, damit der Kanal nicht voller
     # Hinweise auf Instanzen steht, die es nicht mehr gibt. Standardmaessig aus: eine

@@ -1403,9 +1403,12 @@ DEFAULT_VRC_PANEL_BUTTON = "VRChat verknüpfen"
 DEFAULT_VRC_INSTANCE_MESSAGE = "Eine Instanz der Gruppe ist offen — schau vorbei!"
 DEFAULT_VRC_INSTANCE_BUTTON = "In VRChat öffnen"
 
-# Was aus der Meldung wird, wenn die Instanz zugeht. Platzhalter wie beim Eroeffnungstext,
-# dazu {duration} - wie lange sie offen war.
-DEFAULT_VRC_INSTANCE_CLOSED = "🔒 Diese Instanz ist zu. War {duration} offen — bis zum nächsten Mal!"
+# Was aus der Meldung wird, wenn die Instanz BEENDET ist - also aus der Gruppenliste
+# verschwunden und niemand mehr drin. Nur "geschlossen" (keiner kommt mehr rein, die Drinnen
+# bleiben) ist ein anderer Zustand, den VRChat uns bisher nicht erkennbar mitteilt; die
+# Schluesselnamen hier heissen aus Bestandsgruenden weiterhin "closed".
+# Platzhalter wie beim Eroeffnungstext, dazu {duration} - wie lange sie offen war.
+DEFAULT_VRC_INSTANCE_CLOSED = "🏁 Diese Instanz ist beendet. War {duration} offen — bis zum nächsten Mal!"
 
 # Die restlichen Bausteine der Meldung, ebenfalls frei schreibbar ("die anderen sachen will
 # ich auch selber schreiben können"). Ueberall dieselben Platzhalter wie im Text; leer
