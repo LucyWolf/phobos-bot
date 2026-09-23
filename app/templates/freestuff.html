@@ -155,6 +155,19 @@
     <option value="{{ c.id }}" {% if cfg and cfg.channel_id == c.id %}selected{% endif %}>#{{ c.name }}</option>
     {% endfor %}
   </select>
+
+  <label style="margin:0.6rem 0 0.35rem;">{{ tr.ping_role_label }}</label>
+  <select name="ping_role_id" style="margin-bottom:0.35rem;">
+    <option value="">{{ tr.ping_role_none }}</option>
+    {% for r in roles %}
+    <option value="{{ r.id }}" {% if cfg and cfg.ping_role_id == r.id %}selected{% endif %}>{{ r.name }}</option>
+    {% endfor %}
+  </select>
+  <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;font-weight:400;">
+    <input type="checkbox" name="ping_enabled" value="1" style="margin:0;width:auto;"
+           {% if not cfg or cfg.ping_enabled %}checked{% endif %}>
+    {{ tr.ping_enabled_label }}
+  </label>
 </div>
 
 <div class="fs-card">
@@ -221,6 +234,19 @@
           {% if cfg and cfg.deal_channel_id == c.id %}selected{% endif %}>#{{ c.name }}</option>
         {% endfor %}
       </select>
+
+      <label style="margin:0.6rem 0 0.35rem;">{{ tr.ping_role_label }}</label>
+      <select name="deal_ping_role_id" style="margin-bottom:0.35rem;">
+        <option value="">{{ tr.ping_role_none }}</option>
+        {% for r in roles %}
+        <option value="{{ r.id }}" {% if cfg and cfg.deal_ping_role_id == r.id %}selected{% endif %}>{{ r.name }}</option>
+        {% endfor %}
+      </select>
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;font-weight:400;">
+        <input type="checkbox" name="deal_ping_enabled" value="1" style="margin:0;width:auto;"
+               {% if not cfg or cfg.deal_ping_enabled %}checked{% endif %}>
+        {{ tr.ping_enabled_label }}
+      </label>
     </div>
   </div>
   <p class="hint">

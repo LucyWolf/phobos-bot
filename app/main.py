@@ -808,6 +808,12 @@ web.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="pho
 web.add_middleware(SecurityHeadersMiddleware)
 web.add_middleware(NoCacheMiddleware)
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
+def _ping_roles(guild) -> set:
+    """Die Rollen-IDs, die auf diesem Server als Ping-Ziel taugen. @everyone bleibt aussen
+    vor - die pingt ohnehin jeden, und genau davor sollen die Schalter schuetzen."""
+    return {str(r.id) for r in guild.roles if not r.is_default()} if guild else set()
+
+
 def _js_attr(value) -> str:
     """JSON-encode value for embedding as a JS string literal inside a double-quoted HTML
     attribute (e.g. onclick="fn({{ value | js }})"). Safe regardless of Jinja autoescape,
@@ -1623,7 +1629,7 @@ _BACKUP_TBL_INSERT = {
     "notifications":
         "INSERT OR IGNORE INTO notifications (guild_id,platform,discord_channel_id,target,target_name,last_id,live,custom_message) VALUES (:guild_id,:platform,:discord_channel_id,:target,:target_name,:last_id,0,:custom_message)",
     "freestuff_channels":
-        "INSERT INTO freestuff_channels (guild_id,channel_id,platforms,deal_max_price,deal_min_discount,deal_channel_id,deal_platforms) VALUES (:guild_id,:channel_id,:platforms,:deal_max_price,:deal_min_discount,:deal_channel_id,:deal_platforms) ON CONFLICT(guild_id) DO UPDATE SET channel_id=excluded.channel_id,platforms=excluded.platforms,deal_max_price=excluded.deal_max_price,deal_min_discount=excluded.deal_min_discount,deal_channel_id=excluded.deal_channel_id,deal_platforms=excluded.deal_platforms",
+        "INSERT INTO freestuff_channels (guild_id,channel_id,platforms,deal_max_price,deal_min_discount,deal_channel_id,deal_platforms,ping_role_id,ping_enabled,deal_ping_role_id,deal_ping_enabled) VALUES (:guild_id,:channel_id,:platforms,:deal_max_price,:deal_min_discount,:deal_channel_id,:deal_platforms,:ping_role_id,:ping_enabled,:deal_ping_role_id,:deal_ping_enabled) ON CONFLICT(guild_id) DO UPDATE SET channel_id=excluded.channel_id,platforms=excluded.platforms,deal_max_price=excluded.deal_max_price,deal_min_discount=excluded.deal_min_discount,deal_channel_id=excluded.deal_channel_id,deal_platforms=excluded.deal_platforms,ping_role_id=excluded.ping_role_id,ping_enabled=excluded.ping_enabled,deal_ping_role_id=excluded.deal_ping_role_id,deal_ping_enabled=excluded.deal_ping_enabled",
     "birthdays":
         "INSERT OR REPLACE INTO birthdays (user_id,guild_id,birthday) VALUES (:user_id,:guild_id,:birthday)",
     "warnings":
@@ -2092,6 +2098,11 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...),
                     # whole link rather than just the missing field.
                     if tbl == "vrc_links":
                         row = {"vrc_user_id": "", "verified_at": "", **row}
+                    if tbl == "freestuff_channels":
+                        row = {"ping_role_id": "", "ping_enabled": 1,
+                               "deal_ping_role_id": "", "deal_ping_enabled": 1, **row}
+                    if tbl == "notifications":
+                        row = {"ping_role_id": "", "ping_enabled": 1, **row}
                     if tbl == "temp_voice_config":
                         row = {"panel_enabled": 0, "panel_title": "", "panel_text": "",
                                "panel_labels": "", **row}
@@ -2301,6 +2312,11 @@ async def server_backup_restore(request: Request, guild_id: int,
                     if tbl == "vrc_links":
                         # Same older-backup fallback as the full-backup path above.
                         merged = {"vrc_user_id": "", "verified_at": "", **merged}
+                    if tbl == "freestuff_channels":
+                        merged = {"ping_role_id": "", "ping_enabled": 1,
+                                  "deal_ping_role_id": "", "deal_ping_enabled": 1, **merged}
+                    if tbl == "notifications":
+                        merged = {"ping_role_id": "", "ping_enabled": 1, **merged}
                     await db.execute(sql, merged)
                 except Exception:
                     pass
@@ -3868,6 +3884,8 @@ async def freestuff_page(request: Request, guild_id: str, success: str = "", err
         "active": f"server_{guild_id}",
         "guild_id": guild_id, "guild_name": guild.name,
         "channels": channels, "cfg": cfg,
+        # Fuer die Ping-Auswahl - @everyone bleibt draussen, siehe _ping_roles().
+        "roles": [{"id": str(r.id), "name": r.name} for r in guild.roles if not r.is_default()],
         "success": success, "error": error,
         "enabled_features": await _get_enabled_features(guild_id),
         "user_allowed_tabs": user_allowed_tabs,
@@ -3886,6 +3904,10 @@ async def freestuff_save(
     deal_min_discount: str = Form("75"),
     deal_channel_id: str = Form(""),
     deal_platforms: List[str] = Form(default=[]),
+    ping_role_id: str = Form(""),
+    ping_enabled: str = Form(""),
+    deal_ping_role_id: str = Form(""),
+    deal_ping_enabled: str = Form(""),
 ):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
@@ -3923,18 +3945,34 @@ async def freestuff_save(
             f"/servers/{guild_id}/freestuff?error=Bitte+mindestens+eine+Angebots-Plattform+wählen",
             status_code=302,
         )
+    # Rollen gegen die des Servers pruefen, wie ueberall sonst - eine erfundene ID wuerde sonst
+    # gespeichert und spaeter stumm ins Leere zeigen.
+    _b = bot._bot_for_guild(int(guild_id)) if str(guild_id).isdigit() else None
+    _g = _b.get_guild(int(guild_id)) if _b else None
+    _gueltig = {str(r.id) for r in _g.roles if not r.is_default()} if _g else set()
+    for _rid in (ping_role_id, deal_ping_role_id):
+        if _rid.strip() and _rid.strip() not in _gueltig:
+            return RedirectResponse(
+                f"/servers/{guild_id}/freestuff?error=Ungültige+Rolle", status_code=302)
     await db_exec(
         """INSERT INTO freestuff_channels
-               (guild_id, channel_id, platforms, deal_max_price, deal_min_discount, deal_channel_id, deal_platforms)
-           VALUES (?,?,?,?,?,?,?)
+               (guild_id, channel_id, platforms, deal_max_price, deal_min_discount, deal_channel_id,
+                deal_platforms, ping_role_id, ping_enabled, deal_ping_role_id, deal_ping_enabled)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(guild_id) DO UPDATE SET
                channel_id=excluded.channel_id,
                platforms=excluded.platforms,
                deal_max_price=excluded.deal_max_price,
                deal_min_discount=excluded.deal_min_discount,
                deal_channel_id=excluded.deal_channel_id,
-               deal_platforms=excluded.deal_platforms""",
-        (guild_id, channel_id, plat_str, max_price, min_disc, deal_ch, deal_plat_str),
+               deal_platforms=excluded.deal_platforms,
+               ping_role_id=excluded.ping_role_id,
+               ping_enabled=excluded.ping_enabled,
+               deal_ping_role_id=excluded.deal_ping_role_id,
+               deal_ping_enabled=excluded.deal_ping_enabled""",
+        (guild_id, channel_id, plat_str, max_price, min_disc, deal_ch, deal_plat_str,
+         ping_role_id.strip(), 1 if ping_enabled == "1" else 0,
+         deal_ping_role_id.strip(), 1 if deal_ping_enabled == "1" else 0),
     )
     return RedirectResponse(f"/servers/{guild_id}/freestuff?success=Gespeichert", status_code=302)
 
@@ -5804,6 +5842,8 @@ async def notifications_page(request: Request, guild_id: str, success: str = "",
         "active": f"server_{guild_id}",
         "guild_id": guild_id, "guild_name": guild.name,
         "channels": channels, "subs": subs,
+        # Fuer die Ping-Auswahl - @everyone bleibt draussen, siehe _ping_roles().
+        "roles": [{"id": str(r.id), "name": r.name} for r in guild.roles if not r.is_default()],
         "twitch_apis": twitch_apis,
         "current_api_id": current_api_id,
         "api_unresolved": api_unresolved,
@@ -5846,6 +5886,8 @@ async def notifications_add(
     discord_channel_id: str = Form(...),
     custom_message: str = Form(""),
     next_url: str = Form(""),
+    ping_role_id: str = Form(""),
+    ping_enabled: str = Form(""),
 ):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
@@ -5871,9 +5913,12 @@ async def notifications_add(
         dest = next_url or f"/servers/{guild_id}/notifications"
         return RedirectResponse(f"{dest}?error=Bereits+eingetragen", status_code=302)
     await db_exec(
-        "INSERT INTO notifications (guild_id,platform,discord_channel_id,target,target_name,custom_message) VALUES (?,?,?,?,?,?)",
+        "INSERT INTO notifications (guild_id,platform,discord_channel_id,target,target_name,"
+        "custom_message,ping_role_id,ping_enabled) VALUES (?,?,?,?,?,?,?,?)",
         (guild_id, platform, discord_channel_id, target.lower() if platform == "twitch" else target,
-         target_name.strip(), custom_message.strip()),
+         target_name.strip(), custom_message.strip(),
+         ping_role_id.strip() if ping_role_id.strip() in _ping_roles(guild) else "",
+         1 if ping_enabled == "1" else 0),
     )
     dest = next_url or f"/servers/{guild_id}/notifications"
     return RedirectResponse(f"{dest}&success=1" if "?" in dest else f"{dest}?success=1", status_code=302)
@@ -5887,6 +5932,8 @@ async def notifications_edit(
     discord_channel_id: str = Form(...),
     custom_message: str = Form(""),
     next_url: str = Form(""),
+    ping_role_id: str = Form(""),
+    ping_enabled: str = Form(""),
 ):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
@@ -5919,13 +5966,19 @@ async def notifications_edit(
         # Target changed - reset live-tracking state, otherwise stale state from the
         # previous streamer could suppress the first real notification for the new one.
         await db_exec(
-            "UPDATE notifications SET discord_channel_id=?, target=?, target_name=?, custom_message=?, live=0, last_id='' WHERE id=? AND guild_id=?",
-            (discord_channel_id, target_norm, target_name.strip(), custom_message.strip(), nid, guild_id),
+            "UPDATE notifications SET discord_channel_id=?, target=?, target_name=?, custom_message=?, "
+            "ping_role_id=?, ping_enabled=?, live=0, last_id='' WHERE id=? AND guild_id=?",
+            (discord_channel_id, target_norm, target_name.strip(), custom_message.strip(),
+             ping_role_id.strip() if ping_role_id.strip() in _ping_roles(guild) else "",
+             1 if ping_enabled == "1" else 0, nid, guild_id),
         )
     else:
         await db_exec(
-            "UPDATE notifications SET discord_channel_id=?, target=?, target_name=?, custom_message=? WHERE id=? AND guild_id=?",
-            (discord_channel_id, target_norm, target_name.strip(), custom_message.strip(), nid, guild_id),
+            "UPDATE notifications SET discord_channel_id=?, target=?, target_name=?, custom_message=?, "
+            "ping_role_id=?, ping_enabled=? WHERE id=? AND guild_id=?",
+            (discord_channel_id, target_norm, target_name.strip(), custom_message.strip(),
+             ping_role_id.strip() if ping_role_id.strip() in _ping_roles(guild) else "",
+             1 if ping_enabled == "1" else 0, nid, guild_id),
         )
     dest = next_url or f"/servers/{guild_id}/notifications"
     return RedirectResponse(f"{dest}&success=1" if "?" in dest else f"{dest}?success=1", status_code=302)
@@ -7236,7 +7289,7 @@ _TAB_TEXT_KEYS = {
         "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
         "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",
         "welcome_card_heading_text", "welcome_card_subtitle_text",
-        "welcome_card_avatar_shape", "welcome_card_avatar_position",
+        "welcome_card_avatar_shape", "welcome_card_avatar_position", "welcome_ping_role",
     ],
     "leveling": [
         "level_channel", "leveling_voice_xp_per_min", "leveling_role_mode",
@@ -7263,7 +7316,7 @@ _TAB_TEXT_KEYS = {
 }
 _TAB_CHECKBOX_KEYS = {
     "config": [],
-    "welcome": ["welcome_card_enabled"],
+    "welcome": ["welcome_card_enabled", "welcome_ping"],
     "leveling": ["leveling_enabled", "leveling_voice_enabled"],
     "automod": ["automod_enabled", "automod_links"],
     "birthday": [],
@@ -7349,7 +7402,7 @@ async def server_config_save(request: Request, guild_id: int):
     # to a silent no-op for a wrong ID, but a non-numeric value saved via a raw POST would raise
     # an unhandled ValueError in welcome.py's on_member_join for every future join).
     role_keys = ["autorole", "auto_kick_role_id", "vrc_linked_role", "vrc_group_role",
-                 "vrc_instance_role"]
+                 "vrc_instance_role", "welcome_ping_role"]
     valid_role_ids = {str(ro.id) for ro in guild.roles if not ro.is_default()}
     for key in role_keys:
         value = str(form.get(key, ""))

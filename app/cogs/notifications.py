@@ -146,7 +146,7 @@ class Notifications(commands.Cog):
                                 ch = self.bot.get_channel(int(row["discord_channel_id"]))
                                 if ch:
                                     try:
-                                        await self._send_embed(ch, live_map[uname], row["custom_message"])
+                                        await self._send_embed(ch, live_map[uname], row["custom_message"], row)
                                         await db_exec(
                                             "UPDATE notifications SET live=1, last_id=? WHERE id=?",
                                             (live_map[uname]["id"], row["id"]),
@@ -166,7 +166,8 @@ class Notifications(commands.Cog):
     async def _before_loop(self):
         await self.bot.wait_until_ready()
 
-    async def _send_embed(self, channel: discord.TextChannel, stream: dict, custom_msg: str):
+    async def _send_embed(self, channel: discord.TextChannel, stream: dict, custom_msg: str,
+                          sub: dict | None = None):
         name = stream.get("user_name", stream.get("user_login", ""))
         embed = discord.Embed(
             title=f"🔴 {name} ist jetzt live!",
@@ -184,7 +185,19 @@ class Notifications(commands.Cog):
             cache_bust = int(datetime.datetime.utcnow().timestamp())
             embed.set_image(url=f"{thumb}?t={cache_bust}")
         embed.set_footer(text="Twitch • Live-Benachrichtigung")
-        await channel.send(content=custom_msg or None, embed=embed)
+        # Der freie Text geht als echter Nachrichtentext raus und kann deshalb anpingen.
+        # Welche Erwaehnung wirklich durchkommt, steht jetzt ausdruecklich hier: die
+        # eingestellte Rolle, wenn der Schalter an ist, und sonst nichts - ein @everyone im
+        # Text erreicht damit niemanden mehr, es sei denn, es ist so gewollt.
+        ping, erlaubt = "", discord.AllowedMentions.none()
+        sub = sub or {}
+        if sub.get("ping_enabled", 1) and str(sub.get("ping_role_id") or "").isdigit():
+            rolle = channel.guild.get_role(int(sub["ping_role_id"]))
+            if rolle:
+                ping = rolle.mention
+                erlaubt = discord.AllowedMentions(everyone=False, users=False, roles=[rolle])
+        inhalt = " ".join(x for x in (ping, custom_msg or "") if x).strip()
+        await channel.send(content=inhalt or None, embed=embed, allowed_mentions=erlaubt)
 
 
 async def setup(bot):

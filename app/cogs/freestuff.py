@@ -118,7 +118,7 @@ class FreeStuff(commands.Cog):
                             ):
                                 continue
                             try:
-                                await self._send_embed(ch_free, game, is_deal=False)
+                                await self._send_embed(ch_free, game, is_deal=False, cfg=cfg)
                                 await db_exec(
                                     "INSERT OR IGNORE INTO freestuff_posted (guild_id,game_id,platform) VALUES (?,?,?)",
                                     (guild_id, game["id"], game["platform"]),
@@ -146,7 +146,7 @@ class FreeStuff(commands.Cog):
                             ):
                                 continue
                             try:
-                                await self._send_embed(ch_deals, game, is_deal=True)
+                                await self._send_embed(ch_deals, game, is_deal=True, cfg=cfg)
                                 await db_exec(
                                     "INSERT OR IGNORE INTO freestuff_posted (guild_id,game_id,platform) VALUES (?,?,?)",
                                     (guild_id, deal_key, game["platform"]),
@@ -359,7 +359,8 @@ class FreeStuff(commands.Cog):
 
     # ── Embed ─────────────────────────────────────────────────────────────────
 
-    async def _send_embed(self, channel: discord.TextChannel, game: dict, is_deal: bool):
+    async def _send_embed(self, channel: discord.TextChannel, game: dict, is_deal: bool,
+                          cfg: dict | None = None):
         info = PLATFORMS.get(game["platform"], {"name": game["platform"], "icon": "🎁", "color": 0x5865F2})
         disc = game.get("discount", 100)
         orig = game.get("original_price")
@@ -398,7 +399,19 @@ class FreeStuff(commands.Cog):
         embed.add_field(name="Plattform", value=info["name"], inline=True)
         footer = "Angebot" if is_deal else "Kostenlos"
         embed.set_footer(text=f"{info['name']} • {footer}-Benachrichtigung")
-        await channel.send(embed=embed)
+        # Gratis und Angebote haben eigene Kanaele und deshalb auch eigene Ping-Einstellungen -
+        # wer jedes Gratis-Spiel gemeldet haben will, will nicht zwangslaeufig bei jedem
+        # Rabatt geweckt werden. Eine Erwaehnung in einer Karte pingt bei Discord nicht,
+        # deshalb muss sie in den Nachrichtentext.
+        cfg = cfg or {}
+        vorsatz = "deal_" if is_deal else ""
+        ping, erlaubt = None, discord.AllowedMentions.none()
+        if cfg.get(f"{vorsatz}ping_enabled", 1) and str(cfg.get(f"{vorsatz}ping_role_id") or "").isdigit():
+            rolle = channel.guild.get_role(int(cfg[f"{vorsatz}ping_role_id"]))
+            if rolle:
+                ping = rolle.mention
+                erlaubt = discord.AllowedMentions(everyone=False, users=False, roles=[rolle])
+        await channel.send(ping, embed=embed, allowed_mentions=erlaubt)
 
 
 async def setup(bot):

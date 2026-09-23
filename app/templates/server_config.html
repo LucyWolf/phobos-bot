@@ -145,6 +145,21 @@
         <input type="checkbox" name="welcome_card_enabled" value="1" {% if cfg.get('welcome_card_enabled') == '1' %}checked{% endif %} style="width:auto;margin:0;" id="wc-toggle">
         <span>{{ tr.config_welcome_card_label }}</span>
       </label>
+
+      <div style="margin-bottom:0.9rem;">
+        <label>{{ tr.ping_role_label }}</label>
+        <select name="welcome_ping_role">
+          <option value="">{{ tr.ping_role_none }}</option>
+          {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('welcome_ping_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+        </select>
+        {# Fehlender Wert heisst AN - siehe ping_bits() in cogs/welcome.py. #}
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;font-weight:400;margin-top:-0.4rem;">
+          <input type="checkbox" name="welcome_ping" value="1" style="margin:0;width:auto;"
+                 {% if cfg.get('welcome_ping', '1') != '0' %}checked{% endif %}>
+          {{ tr.ping_enabled_label }}
+        </label>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.ping_welcome_hint }}</div>
+      </div>
       <div id="wc-colors" style="{% if cfg.get('welcome_card_enabled') != '1' %}display:none;{% endif %}">
         <div style="margin-bottom:1rem;">
           <label style="font-size:0.82rem;">{{ tr.config_card_preview_caption }}</label>

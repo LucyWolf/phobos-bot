@@ -1122,6 +1122,23 @@ async def init_db():
             # Zuletzt gemeldete Personenzahl, damit die Meldung nur dann bearbeitet wird,
             # wenn sich wirklich etwas geaendert hat.
             "ALTER TABLE vrc_instances ADD COLUMN last_count INTEGER NOT NULL DEFAULT 0",
+            # Rolle anpingen, getrennt schaltbar - auf Wunsch fuer Willkommen, Streaming und
+            # Free Stuff genauso wie bei den VRChat-Instanzen ("ich wil auch so einen
+            # schalter"). Bisher pingte keine dieser drei: Willkommen und Free Stuff
+            # verschicken reine Karten, und in einer Karte loest eine Erwaehnung bei Discord
+            # keine Benachrichtigung aus. Es braucht also beides - eine Rolle UND den
+            # Schalter -, sonst waere der Schalter allein ohne Wirkung.
+            #
+            # Free Stuff bekommt zwei Saetze, weil Gratis-Spiele und Angebote schon getrennte
+            # Kanaele haben und der Nutzer sie ausdruecklich getrennt haben wollte.
+            "ALTER TABLE freestuff_channels ADD COLUMN ping_role_id TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE freestuff_channels ADD COLUMN ping_enabled INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE freestuff_channels ADD COLUMN deal_ping_role_id TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE freestuff_channels ADD COLUMN deal_ping_enabled INTEGER NOT NULL DEFAULT 1",
+            # Streaming: je Abo, denn jedes hat schon seinen eigenen Kanal und seinen eigenen
+            # Text. Ein Ping fuer alle waere die falsche Koernung.
+            "ALTER TABLE notifications ADD COLUMN ping_role_id TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE notifications ADD COLUMN ping_enabled INTEGER NOT NULL DEFAULT 1",
         ]:
             try:
                 await db.execute(col)

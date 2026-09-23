@@ -284,6 +284,30 @@ def fill(template: str, member: discord.Member, *, plain_mention: bool = False) 
     return _PLACEHOLDER_RE.sub(lambda m: values[m.group(0)], template)
 
 
+async def ping_bits(guild, role_key: str, switch_key: str):
+    """(Inhalt, erlaubte Erwaehnungen) fuer eine Nachricht, die anpingen soll - oder (None, ...).
+
+    Willkommensnachrichten sind Karten, und eine Erwaehnung INNERHALB einer Karte loest bei
+    Discord keine Benachrichtigung aus. Wer angepingt werden soll, muss also im eigentlichen
+    Nachrichtentext stehen - genau das macht das hier, wenn eine Rolle gewaehlt und der
+    Schalter an ist.
+
+    Die erlaubten Erwaehnungen werden in JEDEM Fall ausdruecklich gesetzt, auch beim
+    Abschalten: so kann weder ein @everyone aus einem frei geschriebenen Text noch sonst
+    irgendetwas versehentlich den ganzen Server erreichen.
+    """
+    from database import get_guild_config
+    if (await get_guild_config(guild.id, switch_key) or "1") == "0":
+        return None, discord.AllowedMentions.none()
+    role_id = (await get_guild_config(guild.id, role_key) or "").strip()
+    if not role_id.isdigit():
+        return None, discord.AllowedMentions.none()
+    role = guild.get_role(int(role_id))
+    if not role:
+        return None, discord.AllowedMentions.none()
+    return role.mention, discord.AllowedMentions(everyone=False, users=False, roles=[role])
+
+
 class Welcome(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -306,6 +330,9 @@ class Welcome(commands.Cog):
                 channel = None
 
         if channel:
+            # Einmal fuer alle vier Wege darunter ermittelt - Karte mit Text, Karte allein,
+            # Notfall-Karte und reiner Text schicken sonst jeweils etwas anderes mit.
+            ping, erlaubt = await ping_bits(member.guild, "welcome_ping_role", "welcome_ping")
             card_enabled = await get_guild_config(member.guild.id, "welcome_card_enabled")
             if card_enabled == "1":
                 circle_color  = await get_guild_config(member.guild.id, "welcome_card_circle_color")  or "#5865F2"
@@ -330,9 +357,9 @@ class Welcome(commands.Cog):
                         embed = discord.Embed(description=fill(message, member), color=0x5865F2)
                         embed.set_author(name=str(member), icon_url=member.display_avatar.url)
                         embed.set_image(url="attachment://welcome.png")
-                        await channel.send(file=file, embed=embed)
+                        await channel.send(ping, file=file, embed=embed, allowed_mentions=erlaubt)
                     else:
-                        await channel.send(file=file)
+                        await channel.send(ping, file=file, allowed_mentions=erlaubt)
                 except Exception as e:
                     # Fallback: plain embed. Previously a bare `except Exception: pass`-style
                     # fallback with no logging at all - a card-generation failure (bad avatar
@@ -344,14 +371,14 @@ class Welcome(commands.Cog):
                         try:
                             embed = discord.Embed(description=fill(message, member), color=0x22c55e)
                             embed.set_author(name=str(member), icon_url=member.display_avatar.url)
-                            await channel.send(embed=embed)
+                            await channel.send(ping, embed=embed, allowed_mentions=erlaubt)
                         except (discord.HTTPException, OSError) as e2:
                             print(f"[Welcome] fallback plain embed also failed for {member} in guild {member.guild.id}: {e2}")
             elif message:
                 try:
                     embed = discord.Embed(description=fill(message, member), color=0x22c55e)
                     embed.set_author(name=str(member), icon_url=member.display_avatar.url)
-                    await channel.send(embed=embed)
+                    await channel.send(ping, embed=embed, allowed_mentions=erlaubt)
                 except (discord.HTTPException, OSError) as e:
                     print(f"[Welcome] welcome message failed for {member} in guild {member.guild.id}: {e}")
 
