@@ -3084,7 +3084,7 @@ document.addEventListener('click', function(e) {
    den ganzen Reiter, egal welcher Unterreiter gerade offen ist. #}
 <div class="vrc-subnav" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:1.1rem;
      border-bottom:1px solid var(--border);padding-bottom:0.7rem;">
-  {% for key, label in [('link', tr.vrc_sub_link), ('group', tr.vrc_sub_group), ('instances', tr.vrc_sub_instances)] %}
+  {% for key, label in [('link', tr.vrc_sub_link), ('instances', tr.vrc_sub_instances)] %}
   <button type="button" class="vrc-subtab" data-subtab="{{ key }}" onclick="vrcSub('{{ key }}')"
           style="background:none;border:1px solid var(--border);color:var(--muted);
                  border-radius:0.5rem;padding:0.35rem 0.8rem;font-size:0.82rem;
@@ -3153,7 +3153,7 @@ document.addEventListener('click', function(e) {
 {# Zweite Karte, gleiches Formular: der Unterreiter-Umschalter blendet ganze Karten ein und
    aus, und die Felder der ausgeblendeten werden trotzdem mitgespeichert - deshalb kann ein
    einziger Speichern-Knopf beide Unterreiter sichern. #}
-<div class="card" data-sub="group">
+<div class="card" data-sub="link">
   <div class="grid-2" style="gap:1rem;">
     <div style="grid-column:1 / -1;">
       <div style="font-weight:600;font-size:0.88rem;margin-bottom:0.35rem;">{{ tr.vrc_group_heading }}</div>
@@ -3276,8 +3276,33 @@ document.addEventListener('click', function(e) {
 </div>
 </form>
 
+
+
+<div class="card" data-sub="link" style="display:flex;align-items:center;gap:0.9rem;flex-wrap:wrap;">
+  <form method="post" action="/servers/{{ guild.id }}/vrc/panel" style="margin:0;">
+    <button type="submit" class="btn btn-secondary">{{ tr.vrc_panel_post_btn }}</button>
+  </form>
+  <div style="flex:1;min-width:220px;font-size:0.75rem;color:var(--muted);">{{ tr.vrc_panel_post_hint }}</div>
+</div>
+
+{# Zeigt, was VRChat fuer einen Namen wirklich herausgibt. Gebaut, weil "Code nicht in der
+   Bio" und "der Bot bekommt die Bio gar nicht" von aussen gleich aussehen. #}
+<div class="card" data-sub="link">
+  <div class="feat-header">{{ tr.vrc_probe_heading }}</div>
+  <p class="hint" style="margin-bottom:0.9rem;">{{ tr.vrc_probe_hint }}</p>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+    <input type="text" id="vrc-probe-name" maxlength="32" placeholder="{{ tr.vrcp_name_label }}"
+           style="flex:1;min-width:200px;margin:0;">
+    <button type="button" class="btn btn-secondary" id="vrc-probe-btn"
+            onclick="vrcProbe()">{{ tr.vrc_probe_btn }}</button>
+  </div>
+  <div id="vrc-probe-out" style="display:none;margin-top:0.9rem;background:var(--bg);
+       border:1px solid var(--border);border-radius:0.5rem;padding:0.7rem 0.9rem;
+       font-size:0.78rem;line-height:1.7;word-break:break-word;"></div>
+</div>
+
 {% if vrc_group_on %}
-<div class="card" data-sub="group">
+<div class="card" data-sub="link">
       {# Discord-Rolle -> VRChat-Gruppenrolle. Eigenes Formular, weil Zuordnungen einzeln
          hinzugefuegt und entfernt werden - der Rest des Reiters ist ein Sammel-Speichern. #}
         <div style="font-weight:600;font-size:0.82rem;margin-bottom:0.3rem;">{{ tr.vrc_rolemap_heading }}</div>
@@ -3333,29 +3358,6 @@ document.addEventListener('click', function(e) {
       </form>
 </div>
 {% endif %}
-
-<div class="card" data-sub="link" style="display:flex;align-items:center;gap:0.9rem;flex-wrap:wrap;">
-  <form method="post" action="/servers/{{ guild.id }}/vrc/panel" style="margin:0;">
-    <button type="submit" class="btn btn-secondary">{{ tr.vrc_panel_post_btn }}</button>
-  </form>
-  <div style="flex:1;min-width:220px;font-size:0.75rem;color:var(--muted);">{{ tr.vrc_panel_post_hint }}</div>
-</div>
-
-{# Zeigt, was VRChat fuer einen Namen wirklich herausgibt. Gebaut, weil "Code nicht in der
-   Bio" und "der Bot bekommt die Bio gar nicht" von aussen gleich aussehen. #}
-<div class="card" data-sub="link">
-  <div class="feat-header">{{ tr.vrc_probe_heading }}</div>
-  <p class="hint" style="margin-bottom:0.9rem;">{{ tr.vrc_probe_hint }}</p>
-  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
-    <input type="text" id="vrc-probe-name" maxlength="32" placeholder="{{ tr.vrcp_name_label }}"
-           style="flex:1;min-width:200px;margin:0;">
-    <button type="button" class="btn btn-secondary" id="vrc-probe-btn"
-            onclick="vrcProbe()">{{ tr.vrc_probe_btn }}</button>
-  </div>
-  <div id="vrc-probe-out" style="display:none;margin-top:0.9rem;background:var(--bg);
-       border:1px solid var(--border);border-radius:0.5rem;padding:0.7rem 0.9rem;
-       font-size:0.78rem;line-height:1.7;word-break:break-word;"></div>
-</div>
 
 <script>
 // ── Unterreiter ─────────────────────────────────────────────────────────────
