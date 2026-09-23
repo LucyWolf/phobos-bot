@@ -326,6 +326,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "vrc_account_connect":    "Verbinden und testen",
         "vrc_account_remove":     "Konto entfernen",
         "vrc_account_confirm_delete": "VRChat-Konto wirklich entfernen?",
+        "vrc_account_stale_hint": "Das Konto ist eingetragen, aber die Anmeldung läuft gerade nicht durch. Trag Passwort und ggf. einen Einmal-Code erneut ein und speichere — bis dahin ruhen alle VRChat-Funktionen.",
         # VRC-Link
         "vrc_info_tooltip":       "Was ist das?",
         "vrc_info_title":         "🔗 Wie funktioniert VRC-Link?",
@@ -1446,6 +1447,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "vrc_account_connect":    "Connect and test",
         "vrc_account_remove":     "Remove account",
         "vrc_account_confirm_delete": "Really remove the VRChat account?",
+        "vrc_account_stale_hint": "The account is stored, but signing in is currently failing. Enter the password (and a one-time code if asked) and save again — until then every VRChat feature sits idle.",
         # VRC-Link
         "vrc_info_tooltip":       "What is this?",
         "vrc_info_title":         "🔗 How does VRC-Link work?",

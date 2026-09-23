@@ -27,9 +27,17 @@
       <button type="submit" class="btn btn-danger" style="font-size:0.78rem;">{{ tr.vrc_account_remove }}</button>
     </form>
   </div>
-  {% elif vrc_account and vrc_account.last_error %}
+  {% endif %}
+
+  {# Auch bei verbundenem Konto anzeigen, nicht nur statt der Verbindung. Eine Sitzung kann
+     spaeter sterben - der Zwei-Faktor-Keks haelt etwa einen Monat - und dann stand hier
+     weiterhin nur das gruene "verbunden", waehrend im Hintergrund nichts mehr ging. #}
+  {% if vrc_account and vrc_account.last_error %}
   <div style="background:rgba(239,68,68,0.12);border:1px solid var(--danger);border-radius:0.5rem;padding:0.6rem 0.75rem;font-size:0.78rem;margin-bottom:0.9rem;">
     ❌ {{ vrc_account.last_error }}
+    {% if vrc_account.vrc_user_id %}
+    <div style="color:var(--muted);margin-top:0.35rem;">{{ tr.vrc_account_stale_hint }}</div>
+    {% endif %}
   </div>
   {% endif %}
 

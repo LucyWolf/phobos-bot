@@ -37,6 +37,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from database import (db_rows, db_one, db_exec, get_config, get_guild_config,
+                      set_guild_config,
                       vrc_nickname, DEFAULT_VRC_NICKNAME_FORMAT,
                       DEFAULT_VRC_PANEL_TITLE, DEFAULT_VRC_PANEL_TEXT,
                       DEFAULT_VRC_PANEL_BUTTON, DEFAULT_VRC_INSTANCE_MESSAGE,
@@ -51,6 +52,11 @@ MAX_VRCHAT_NAME = 32
 # which would leave an admin staring at a panel that never appears, with the reason only in the
 # bot's log. Clamped instead, same as every other free-text caption in this project.
 MAX_BUTTON_LABEL = 80
+
+# Wie viele Instanz-Meldungen ein Durchlauf hoechstens absetzt. Discord bremst Nachrichten je
+# Kanal aus, und ein Schwall am Stueck wird ohnehin nicht gelesen. Was uebrig bleibt, kommt im
+# naechsten Durchlauf - offene Instanzen laufen ja nicht weg.
+MAX_INSTANCE_POSTS = 5
 
 
 async def link_base_url() -> str:
@@ -140,7 +146,20 @@ async def vrc_session() -> dict | None:
             auth_cookie=row["auth_cookie"], two_factor_cookie=row["two_factor_cookie"],
         )
     except Exception as e:
-        print(f"[vrc_link] VRChat session unavailable: {e}")
+        # Der Grund muss sichtbar werden, nicht nur in der Konsole stehen. Vorher blieb eine
+        # abgelaufene Sitzung - der Zwei-Faktor-Keks haelt etwa einen Monat - voellig stumm:
+        # im Dashboard stand weiterhin "verbunden", waehrend jede VRChat-Funktion leise nichts
+        # mehr tat. Geschrieben wird nur bei einer AENDERUNG, damit nicht jede Minute eine
+        # Schreiboperation anfaellt.
+        grund = str(e)[:300]
+        print(f"[vrc_link] VRChat session unavailable: {grund}")
+        try:
+            if (row["last_error"] or "") != grund:
+                await db_exec(
+                    "UPDATE vrc_accounts SET last_error=?, last_check=? WHERE guild_id=?",
+                    (grund, datetime.datetime.utcnow().isoformat(), VRC_ACCOUNT_KEY))
+        except Exception as e2:
+            print(f"[vrc_link] konnte den Anmeldefehler nicht vermerken: {e2}")
         return None
     if not result["reused"]:
         try:
@@ -455,6 +474,46 @@ async def apply_link(bot, guild: discord.Guild, member: discord.Member, vrchat_n
     return changed
 
 
+async def strip_vrc_roles(guild_id, link) -> int:
+    """Nimmt einem Mitglied die VRChat-Gruppenrollen wieder ab, die der Bot vergeben hat.
+
+    Muss aufgerufen werden, BEVOR die Zeile geloescht wird - danach weiss niemand mehr, welches
+    VRChat-Konto gemeint war und welche Rollen von hier kamen. Genau das fehlte: revoke_link()
+    nahm die beiden Discord-Rollen und den Spitznamen zurueck, die auf VRChat-Seite vergebenen
+    Rollen blieben dem Mitglied dagegen dauerhaft erhalten. Wer sich loesen liess, behielt
+    seine Gruppenrechte.
+
+    Gibt zurueck, wie viele tatsaechlich entfernt wurden.
+    """
+    group_id = (await get_guild_config(guild_id, "vrc_group_id") or "").strip()
+    if not group_id or not link or not link["vrc_user_id"]:
+        return 0
+    try:
+        hatte = set(json.loads(link["vrc_group_roles"] or "[]"))
+    except (ValueError, TypeError):
+        hatte = set()
+    if not hatte:
+        return 0
+    session = await vrc_session()
+    if not session:
+        # Lieber nichts als ein halbes Ergebnis: die Zeile verschwindet gleich, aber der
+        # Vermerk bleibt so wenigstens im Log stehen.
+        print(f"[vrc_link] konnte VRChat-Rollen von {link['vrc_user_id']} nicht abnehmen — "
+              f"keine VRChat-Sitzung")
+        return 0
+    from vrchat import remove_member_role
+    weg = 0
+    for role_id in sorted(hatte):
+        try:
+            await remove_member_role(group_id, link["vrc_user_id"], role_id,
+                                     session["auth_cookie"], session["two_factor_cookie"])
+            weg += 1
+        except Exception as e:
+            print(f"[vrc_link] VRChat-Rolle {role_id} von {link['vrc_user_id']} nicht "
+                  f"abgenommen: {e}")
+    return weg
+
+
 async def revoke_link(bot, guild: discord.Guild, member: discord.Member) -> None:
     """Undo what apply_link() gave, as far as it is still there."""
     role_id = await get_guild_config(guild.id, "vrc_linked_role")
@@ -473,6 +532,16 @@ async def revoke_link(bot, guild: discord.Guild, member: discord.Member) -> None
                 await member.remove_roles(group_role, reason="VRC-Link entfernt")
             except (discord.HTTPException, OSError) as e:
                 print(f"[vrc_link] could not remove group role from {member.id}: {e}")
+    # Und die Rollen auf VRChat-Seite. Die Zeile steht hier noch, gleich danach nicht mehr -
+    # deshalb muss das an dieser Stelle passieren und nicht beim Aufrufer.
+    link = await db_one("SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
+                        (str(guild.id), str(member.id)))
+    if link:
+        await strip_vrc_roles(guild.id, link)
+        try:
+            await db_exec("UPDATE vrc_links SET vrc_group_roles='[]' WHERE id=?", (link["id"],))
+        except Exception as e:
+            print(f"[vrc_link] konnte den Rollenstand von {link['id']} nicht leeren: {e}")
     if (await get_guild_config(guild.id, "vrc_nickname_enabled") or "0") == "1":
         try:
             # None clears the nickname, putting the member back to their own Discord name.
@@ -533,10 +602,37 @@ async def announce_instances(bot, guild) -> int:
         if role:
             mention = role.mention
 
+    # Beim ALLERERSTEN Durchlauf wird nur mitgeschrieben, nicht gemeldet. Sonst kippt der Bot
+    # in dem Moment, in dem jemand die Funktion einschaltet, jede gerade offene Instanz auf
+    # einmal in den Kanal - bei einer grossen Gruppe ein Dutzend Nachrichten am Stueck.
+    # Gemeldet wird, was von da an aufmacht.
+    erstlauf = (await get_guild_config(guild.id, "vrc_instance_seeded") or "0") != "1"
+    if erstlauf:
+        for inst in instances:
+            try:
+                await db_exec(
+                    "INSERT OR IGNORE INTO vrc_instances (guild_id, location, world_name, "
+                    "first_seen, message_id) VALUES (?,?,?,?,'')",
+                    (str(guild.id), inst["location"], inst["world_name"],
+                     datetime.datetime.utcnow().isoformat()),
+                )
+            except Exception as e:
+                print(f"[vrc_link] Erstaufnahme von {inst['location']} fehlgeschlagen: {e}")
+        try:
+            await set_guild_config(guild.id, "vrc_instance_seeded", "1")
+        except Exception as e:
+            print(f"[vrc_link] konnte den Erstlauf nicht vermerken: {e}")
+        return 0
+
     posted = 0
     for inst in instances:
         if inst["location"] in known:
             continue
+        if posted >= MAX_INSTANCE_POSTS:
+            # Deckel je Durchlauf. Der Rest kommt beim naechsten - VRChat vergisst sie ja
+            # nicht, und ein Kanal, in den zwanzig Meldungen am Stueck fallen, liest niemand.
+            print(f"[vrc_link] {guild.id}: Deckel von {MAX_INSTANCE_POSTS} Meldungen erreicht")
+            break
         link = launch_url(inst["location"])
         text = (template
                 .replace("{world}", inst["world_name"] or "Unbekannte Welt")
@@ -551,7 +647,10 @@ async def announce_instances(bot, guild) -> int:
             description=f"👥 {inst['count']}",
             color=0x8B5CF6,
         )
-        if inst["world_image"]:
+        # Nur echte Web-Adressen: was VRChat sonst liefert, laesst Discord die GANZE Nachricht
+        # mit 400 abprallen - die Instanz waere dann bei jedem Durchlauf erneut dran und
+        # scheiterte jedes Mal.
+        if inst["world_image"].startswith(("http://", "https://")):
             embed.set_thumbnail(url=inst["world_image"])
         try:
             message = await channel.send(text[:2000], embed=embed)
@@ -731,11 +830,19 @@ class VRCLink(commands.Cog):
                     member = guild.get_member(int(row["user_id"])) if str(row["user_id"]).isdigit() else None
                     if member is None:
                         continue  # gone from the server - on_member_join restores them if they return
-                    await apply_link(self.bot, guild, member, row["vrchat_name"])
-                    if roles_due:
-                        # Costs nothing when the member's Discord roles map to what they
-                        # already have - see sync_vrc_roles() for why that matters.
-                        await sync_vrc_roles(guild, member, row)
+                    # Je Mitglied abgesichert, nicht je Server: vorher hat ein einziger Fehler
+                    # bei Mitglied Nummer fuenf alle danach uebersprungen - und weil der
+                    # Zeitstempel oben schon weitergesetzt ist, haetten die bis zum naechsten
+                    # Intervall gewartet. Ein Problemfall darf nicht die anderen ausbremsen.
+                    try:
+                        await apply_link(self.bot, guild, member, row["vrchat_name"])
+                        if roles_due:
+                            # Kostet nichts, solange die Discord-Rollen zu dem passen, was das
+                            # Mitglied schon hat - siehe sync_vrc_roles().
+                            await sync_vrc_roles(guild, member, row)
+                    except Exception as e:
+                        print(f"[vrc_link] Abgleich fuer {row['user_id']} in {guild.id} "
+                              f"fehlgeschlagen: {e}")
             except Exception as e:
                 print(f"[vrc_link] periodic check failed for guild {guild.id}: {e}")
         try:
@@ -749,6 +856,22 @@ class VRCLink(commands.Cog):
     @_check.before_loop
     async def _before_check(self):
         await self.bot.wait_until_ready()
+
+    @_check.error
+    async def _check_error(self, error):
+        """Faengt, was bis hierher durchkommt, und startet die Schleife wieder.
+
+        Ohne das beendet discord.py eine Schleife nach der ersten unbehandelten Ausnahme
+        endgueltig - der Minutenlauf waere tot, und zwar lautlos: Rollen und Spitznamen
+        wuerden einfach nicht mehr nachgezogen, ohne dass irgendwo etwas danach aussieht.
+        Innen ist alles je Server und je Mitglied abgesichert; das hier ist das Netz
+        darunter, fuer das, woran niemand gedacht hat.
+        """
+        print(f"[vrc_link] Minutenlauf abgestuerzt, wird neu gestartet: {error!r}")
+        try:
+            self._check.restart()
+        except Exception as e:
+            print(f"[vrc_link] Neustart des Minutenlaufs fehlgeschlagen: {e}")
 
     async def _enabled(self, guild_id: int) -> bool:
         return (await get_guild_config(guild_id, "vrc_enabled") or "0") == "1"

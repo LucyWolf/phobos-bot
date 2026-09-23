@@ -4656,7 +4656,16 @@ async def _vrc_fresh_code() -> str:
 
 
 async def _vrc_token_row(token: str):
-    """The token's row, or None when it is unknown or has expired."""
+    """The token's row, or None when it is unknown, expired - or the server has switched the
+    feature off in the meantime.
+
+    Die Abschalt-Pruefung sitzt genau hier, weil jede der sechs oeffentlichen Routen ueber
+    diese Funktion geht. Vorher stand sie nur dort, wo der Link AUSGEGEBEN wird: schaltete ein
+    Admin VRC-Link ab, konnten alle, die kurz vorher einen Link bekommen hatten, munter
+    weitermachen - Konto verknuepfen, Rolle und Spitzname kassieren, Gruppeneinladungen
+    anfordern. Ein abgeschalteter Schalter muss sofort wirken, nicht erst wenn der letzte
+    ausgegebene Link abgelaufen ist.
+    """
     row = await db_one("SELECT * FROM vrc_link_tokens WHERE token=?", (token,))
     if not row:
         return None
@@ -4664,6 +4673,10 @@ async def _vrc_token_row(token: str):
         if datetime.datetime.fromisoformat(row["expires_at"]) < datetime.datetime.utcnow():
             return None
     except ValueError:
+        return None
+    if not str(row["guild_id"]).isdigit():
+        return None
+    if (await get_guild_config(int(row["guild_id"]), "vrc_enabled") or "0") != "1":
         return None
     return row
 
@@ -5018,8 +5031,14 @@ async def _vrc_sync_group(guild_id: int, link) -> None:
     if state != "ok":
         return
     try:
+        # Wer nicht (mehr) in der Gruppe ist, hat dort auch keine Rollen mehr - VRChat nimmt
+        # sie mit der Mitgliedschaft weg. Der gemerkte Stand muss deshalb mitgeleert werden,
+        # sonst haelt sync_vrc_roles() beim Wiedereintritt "Soll == Ist" fuer erfuellt und
+        # vergibt nie wieder etwas. Genau der Fall: austreten, wieder beitreten, Rollen weg.
         await db_exec(
-            "UPDATE vrc_links SET vrc_group_member=?, vrc_group_checked=? WHERE id=?",
+            "UPDATE vrc_links SET vrc_group_member=?, vrc_group_checked=?"
+            + ("" if is_member else ", vrc_group_roles='[]'")
+            + " WHERE id=?",
             (1 if is_member else 0, datetime.datetime.utcnow().isoformat(), link["id"]),
         )
     except Exception as e:
