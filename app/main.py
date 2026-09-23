@@ -139,6 +139,7 @@ from database import (
     DEFAULT_TEMPVOICE_PANEL_TEXT, DEFAULT_TEMPVOICE_LABELS, parse_panel_labels,
     DEFAULT_VRC_NICKNAME_FORMAT, vrc_nickname, VRC_ACCOUNT_KEY,
     DEFAULT_VRC_PANEL_TITLE, DEFAULT_VRC_PANEL_TEXT, DEFAULT_VRC_PANEL_BUTTON,
+    DEFAULT_VRC_INSTANCE_MESSAGE,
     VRC_TOKEN_TTL_MINUTES, VRC_STATE_UNVERIFIED, VRC_STATE_PENDING, VRC_STATE_APPROVED,
     vrc_verify_code,
 )
@@ -4195,6 +4196,42 @@ async def vrc_group_roles(request: Request, guild_id: int):
     return JSONResponse({"roles": roles})
 
 
+@web.post("/servers/{guild_id}/vrc/instances/check")
+async def vrc_instances_check(request: Request, guild_id: int):
+    """Look for open group instances right now and announce whatever is new.
+
+    The same routine the timer runs, on a button - so an admin can see it work instead of
+    waiting out an interval to find out whether the channel and permissions are right.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return JSONResponse({"error": "Kein Zugriff"}, status_code=403)
+    group_id = (await get_guild_config(guild_id, "vrc_group_id") or "").strip()
+    if not group_id:
+        return JSONResponse({"error": "Für diesen Server ist keine Gruppen-ID eingetragen."})
+    b = bot._bot_for_guild(guild_id)
+    guild = b.get_guild(guild_id) if b else None
+    if not guild:
+        return JSONResponse({"error": "Der Bot ist auf diesem Server gerade nicht erreichbar."})
+    from cogs.vrc_link import vrc_session, announce_instances
+    session = await vrc_session()
+    if not session:
+        return JSONResponse({"error": "Die VRChat-Anmeldung des Bot-Kontos funktioniert gerade nicht."})
+    from vrchat import get_group_instances
+    try:
+        instances = await get_group_instances(group_id, session["auth_cookie"],
+                                              session["two_factor_cookie"])
+    except Exception as e:
+        return JSONResponse({"error": str(e)[:200]})
+    posted = 0
+    if (await get_guild_config(guild_id, "vrc_instance_channel") or "").strip().isdigit():
+        posted = await announce_instances(b, guild)
+    return JSONResponse({
+        "open": [{"world": i["world_name"], "count": i["count"]} for i in instances],
+        "posted": posted,
+    })
+
+
 @web.post("/servers/{guild_id}/vrc/rolemap/add")
 async def vrc_rolemap_add(request: Request, guild_id: int, discord_role_id: str = Form(""),
                           vrc_role_id: str = Form(""), vrc_role_name: str = Form("")):
@@ -6866,6 +6903,7 @@ async def server_config(
         # of dashes tells nobody anything.
         "vrc_group_on": bool((cfg.get("vrc_group_id") or "").strip()),
         "vrc_role_map": _vrc_role_map_rows,
+        "vrc_instance_default": DEFAULT_VRC_INSTANCE_MESSAGE,
         # Names for the live example under the format field. A real linked pair if there is
         # one - seeing the format applied to somebody who is actually on the server says more
         # than a made-up name - otherwise a stand-in, so the example is never empty.
@@ -6937,7 +6975,8 @@ _TAB_TEXT_KEYS = {
     "vrclink": ["vrc_linked_role", "vrc_nickname_format", "vrc_panel_channel",
                 "vrc_panel_title", "vrc_panel_text", "vrc_panel_button", "vrc_dm_text",
                 "vrc_group_id", "vrc_group_role", "vrc_link_minutes",
-                "vrc_role_sync_minutes"],
+                "vrc_role_sync_minutes", "vrc_instance_channel", "vrc_instance_role",
+                "vrc_instance_message", "vrc_instance_minutes"],
     "birthday": ["birthday_channel", "birthday_message", "birthday_commands",
                  "birthday_delete_words", "birthday_reply_saved",
                  "birthday_reply_deleted", "birthday_reply_error"],
@@ -7000,7 +7039,7 @@ async def server_config_save(request: Request, guild_id: int):
     # unvalidated ID here could otherwise make the bot post into a channel in a different
     # guild served by the same token.
     channel_keys = ["welcome_channel", "leave_channel", "birthday_channel", "level_channel",
-                    "vrc_panel_channel"]
+                    "vrc_panel_channel", "vrc_instance_channel"]
     valid_channel_ids = {str(c.id) for c in guild.text_channels}
     for key in channel_keys:
         value = str(form.get(key, ""))
@@ -7013,7 +7052,8 @@ async def server_config_save(request: Request, guild_id: int):
     # channel keys above, it isn't even guild-scoped-safe by construction (get_role() degrades
     # to a silent no-op for a wrong ID, but a non-numeric value saved via a raw POST would raise
     # an unhandled ValueError in welcome.py's on_member_join for every future join).
-    role_keys = ["autorole", "auto_kick_role_id", "vrc_linked_role", "vrc_group_role"]
+    role_keys = ["autorole", "auto_kick_role_id", "vrc_linked_role", "vrc_group_role",
+                 "vrc_instance_role"]
     valid_role_ids = {str(ro.id) for ro in guild.roles if not ro.is_default()}
     for key in role_keys:
         value = str(form.get(key, ""))
@@ -7055,6 +7095,9 @@ async def server_config_save(request: Request, guild_id: int):
         ("vrc_link_minutes", 1, 1440, "Gültigkeit des VRC-Link-Links"),
         # 0 = nur beim Verknüpfen, sonst der Abstand zwischen zwei Rollen-Abgleichen.
         ("vrc_role_sync_minutes", 0, 1440, "Abgleich der VRChat-Rollen (Minuten)"),
+        # 0 = aus. Eine Anfrage je Server und Durchlauf, deshalb sind kurze Abstände hier
+        # vertretbar - anders als bei allem, was pro Mitglied fragt.
+        ("vrc_instance_minutes", 0, 1440, "Instanz-Prüfung (Minuten)"),
     ]
     for field, lo, hi, label in numeric_fields:
         value = str(form.get(field, "")).strip()

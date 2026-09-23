@@ -248,7 +248,11 @@ Once linked, the page shows the account with its VRChat badges (ownership confir
 
 The sync compares against the state it last wrote: with nothing changed in Discord, a run costs **no VRChat request at all**, even across a hundred members. The flip side, stated plainly: a role changed by hand inside VRChat is not noticed until something else about that member changes. This syncs Discord → VRChat, not the other way.
 
-**Link validity** is set in the same tab, in minutes (1 to 1440, default 60). A background check once a minute puts back a role or nickname that went missing; it deliberately makes **no** VRChat requests, because re-reading every profile every minute is exactly what gets an account rate-limited and banned. A VRChat-side rename is picked up by the member's own "Refresh link" button or by "Refresh all" on the dashboard.
+**Announce open instances.** Under the *Instances* sub-tab you pick a channel and an interval in minutes: as soon as the group opens an instance, the bot posts a message there with the world, how many are in, and a link to join — optionally with a role ping and your own text (`{world}`, `{count}`, `{group}`, `{link}`). Each instance is announced exactly once; when it closes, the same world can be announced again later. This costs **one** VRChat request per run for the whole server, not per member — so short intervals are fine.
+
+The tab is split into three sub-tabs: **Linking**, **Group** and **Instances**. Saving still saves everything, whichever one is open.
+
+**Link validity** is set under the *Linking* sub-tab, in minutes (1 to 1440, default 60). A background check once a minute puts back a role or nickname that went missing; it deliberately makes **no** VRChat requests, because re-reading every profile every minute is exactly what gets an account rate-limited and banned. A VRChat-side rename is picked up by the member's own "Refresh link" button or by "Refresh all" on the dashboard.
 
 The link address is taken from whatever address you have this dashboard open at — the same way the invite link in the user administration works, nothing to configure. A **base URL** under *Settings → Email/SMTP* overrides it if you need something else. On Discord's side the bot needs **Manage Roles** and **Manage Nicknames**.
 
@@ -889,7 +893,11 @@ Nach der Verknüpfung zeigt die Seite das Konto mit seinen VRChat-Abzeichen (Eig
 
 Der Abgleich vergleicht gegen den zuletzt gesetzten Stand: hat sich auf Discord nichts geändert, kostet ein Durchlauf **keine einzige VRChat-Anfrage**, auch bei hundert Mitgliedern. Umgekehrt heißt das: eine in VRChat von Hand geänderte Rolle merkt der Bot erst, wenn sich sonst etwas an diesem Mitglied ändert. Die Richtung ist Discord → VRChat, nicht zurück.
 
-Die **Gültigkeit der Links** stellst du im selben Reiter in Minuten ein (1 bis 1440, Standard 60). Eine Prüfung im Minutentakt setzt eine verlorene Rolle oder einen geänderten Spitznamen zurück; sie stellt bewusst **keine** VRChat-Anfragen, denn jedes Profil jede Minute neu zu lesen ist genau das, wofür Konten gedrosselt und gesperrt werden. Eine Umbenennung auf VRChat-Seite holt das Mitglied mit „Verknüpfung auffrischen“ oder du mit „Alle auffrischen“ im Dashboard.
+**Offene Instanzen melden.** Im Unterreiter *Instanzen* wählst du einen Kanal und einen Abstand in Minuten: Sobald die Gruppe eine Instanz öffnet, postet der Bot dort eine Meldung mit Welt, Anzahl der Leute und einem Link zum Beitreten — optional mit Rollen-Ping und eigenem Text (`{world}`, `{count}`, `{group}`, `{link}`). Jede Instanz wird genau einmal gemeldet; schließt sie, kann dieselbe Welt später wieder gemeldet werden. Das kostet **eine** VRChat-Anfrage pro Durchlauf für den ganzen Server, nicht pro Mitglied — kurze Abstände sind hier also unproblematisch.
+
+Der Reiter ist in drei Unterreiter geteilt: **Verknüpfung**, **Gruppe** und **Instanzen**. Gespeichert wird weiterhin alles zusammen, egal welcher gerade offen ist.
+
+Die **Gültigkeit der Links** stellst du im Unterreiter *Verknüpfung* in Minuten ein (1 bis 1440, Standard 60). Eine Prüfung im Minutentakt setzt eine verlorene Rolle oder einen geänderten Spitznamen zurück; sie stellt bewusst **keine** VRChat-Anfragen, denn jedes Profil jede Minute neu zu lesen ist genau das, wofür Konten gedrosselt und gesperrt werden. Eine Umbenennung auf VRChat-Seite holt das Mitglied mit „Verknüpfung auffrischen“ oder du mit „Alle auffrischen“ im Dashboard.
 
 Die Adresse für die Links nimmt der Bot von dort, wo du dieses Dashboard gerade aufhast — genau wie der Einladungslink in der Benutzerverwaltung, einzustellen ist dafür nichts. Eine **Basis-URL** unter *Einstellungen → E-Mail/SMTP* geht vor, falls du eine andere brauchst. Auf Discord-Seite braucht der Bot **Rollen verwalten** und **Nicknames verwalten**.
 

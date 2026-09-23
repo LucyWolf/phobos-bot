@@ -601,3 +601,81 @@ async def add_member_role(group_id: str, user_id: str, role_id: str, auth_cookie
 async def remove_member_role(group_id: str, user_id: str, role_id: str, auth_cookie: str,
                              two_factor_cookie: str = "") -> None:
     await _member_role("DELETE", group_id, user_id, role_id, auth_cookie, two_factor_cookie)
+
+
+async def get_group_instances(group_id: str, auth_cookie: str,
+                              two_factor_cookie: str = "") -> list:
+    """The group's currently open instances.
+
+    Each entry: {"instance_id", "world_id", "world_name", "world_image", "count", "location"}.
+    "location" is the "worldId:instanceId" pair VRChat itself uses in launch links, which is
+    the only part a person can actually act on.
+
+    Returns an empty list for a group with nothing open - that is the normal state, not an
+    error. A group the bot cannot see raises instead, because "nothing open" and "I am not
+    allowed to look" must not be reported as the same thing: one is quiet, the other needs
+    fixing.
+    """
+    if not looks_like_group_id(group_id):
+        raise VRChatError("Das ist keine gültige VRChat-Gruppen-ID.")
+    url = f"{API_BASE}/groups/{urllib.parse.quote(group_id, safe='')}/instances"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=_headers(auth_cookie, two_factor_cookie),
+                               timeout=TIMEOUT) as resp:
+            if resp.status == 403:
+                raise VRChatError("Das Bot-Konto darf die Instanzen dieser Gruppe nicht sehen — "
+                                  "es muss Mitglied der Gruppe sein und dort die Instanzen "
+                                  "sehen dürfen.")
+            if resp.status == 404:
+                raise VRChatError("Diese Gruppe gibt es nicht.")
+            if resp.status == 401:
+                raise VRChatError("Die VRChat-Sitzung ist abgelaufen — bitte das Konto im "
+                                  "Dashboard neu verbinden.")
+            if resp.status == 429:
+                raise VRChatError("VRChat bremst gerade zu viele Anfragen aus.")
+            if resp.status != 200:
+                raise VRChatError(f"VRChat antwortete mit Status {resp.status}.")
+            try:
+                data = await resp.json(content_type=None)
+            except Exception:
+                return []
+    if not isinstance(data, list):
+        return []
+    out = []
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        world = entry.get("world") if isinstance(entry.get("world"), dict) else {}
+        location = str(entry.get("location") or "")
+        instance_id = str(entry.get("instanceId") or "")
+        # VRChat has answered with either field alone depending on the endpoint's mood, and
+        # they carry the same information - "worldId:instance" versus just "instance". Each is
+        # derived from the other rather than trusted to be there.
+        world_id = str(world.get("id") or entry.get("worldId") or "")
+        if location and ":" in location and not world_id:
+            world_id = location.split(":", 1)[0]
+        if location and ":" in location and not instance_id:
+            instance_id = location.split(":", 1)[1]
+        if not location and world_id and instance_id:
+            location = f"{world_id}:{instance_id}"
+        if not location:
+            continue
+        out.append({
+            "location": location,
+            "instance_id": instance_id,
+            "world_id": world_id,
+            "world_name": str(world.get("name") or ""),
+            "world_image": str(world.get("thumbnailImageUrl") or world.get("imageUrl") or ""),
+            "count": entry.get("memberCount") or entry.get("userCount") or 0,
+        })
+    return out
+
+
+def launch_url(location: str) -> str:
+    """The link that opens an instance in VRChat, from a "worldId:instance" location."""
+    if not location or ":" not in location:
+        return ""
+    world_id, instance = location.split(":", 1)
+    return ("https://vrchat.com/home/launch"
+            f"?worldId={urllib.parse.quote(world_id, safe='')}"
+            f"&instanceId={urllib.parse.quote(instance, safe='')}")

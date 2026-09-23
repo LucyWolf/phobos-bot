@@ -39,7 +39,8 @@ from discord.ext import commands, tasks
 from database import (db_rows, db_one, db_exec, get_config, get_guild_config,
                       vrc_nickname, DEFAULT_VRC_NICKNAME_FORMAT,
                       DEFAULT_VRC_PANEL_TITLE, DEFAULT_VRC_PANEL_TEXT,
-                      DEFAULT_VRC_PANEL_BUTTON, VRC_ACCOUNT_KEY, VRC_TOKEN_TTL_MINUTES,
+                      DEFAULT_VRC_PANEL_BUTTON, DEFAULT_VRC_INSTANCE_MESSAGE,
+                      VRC_ACCOUNT_KEY, VRC_TOKEN_TTL_MINUTES,
                       VRC_STATE_UNVERIFIED, VRC_STATE_PENDING, VRC_STATE_APPROVED)
 
 # VRChat display names are at most 32 characters; anything longer is not a name, it is a paste
@@ -480,6 +481,101 @@ async def revoke_link(bot, guild: discord.Guild, member: discord.Member) -> None
             pass
 
 
+async def announce_instances(bot, guild) -> int:
+    """Post a message for every group instance that has newly opened. Returns how many.
+
+    One VRChat request per server per run, never one per member - which is what makes this
+    affordable to run on a short interval at all. What has already been announced is kept in
+    vrc_instances, so a room that stays open for three hours is announced once, not sixty
+    times; a room that closes is forgotten again so the same world can be announced afresh
+    next time it opens.
+    """
+    group_id = (await get_guild_config(guild.id, "vrc_group_id") or "").strip()
+    channel_id = (await get_guild_config(guild.id, "vrc_instance_channel") or "").strip()
+    if not group_id or not channel_id.isdigit():
+        return 0
+    channel = guild.get_channel(int(channel_id))
+    if channel is None:
+        return 0
+
+    session = await vrc_session()
+    if not session:
+        return 0
+    try:
+        from vrchat import get_group_instances, launch_url
+        instances = await get_group_instances(group_id, session["auth_cookie"],
+                                              session["two_factor_cookie"])
+    except Exception as e:
+        # Swallowed on purpose: this runs on a timer, and an outage at VRChat must not fill
+        # the log with a traceback a minute. The line says enough to find it.
+        print(f"[vrc_link] instance check for guild {guild.id} failed: {e}")
+        return 0
+
+    known = {r["location"]: r for r in
+             await db_rows("SELECT * FROM vrc_instances WHERE guild_id=?", (str(guild.id),))}
+    open_now = {i["location"] for i in instances}
+
+    # Gone from VRChat's list means closed. Forgetting them is what lets the same world be
+    # announced again the next time somebody opens it.
+    for location in set(known) - open_now:
+        try:
+            await db_exec("DELETE FROM vrc_instances WHERE guild_id=? AND location=?",
+                          (str(guild.id), location))
+        except Exception as e:
+            print(f"[vrc_link] could not forget instance {location}: {e}")
+
+    template = (await get_guild_config(guild.id, "vrc_instance_message") or "").strip() \
+        or DEFAULT_VRC_INSTANCE_MESSAGE
+    mention_id = (await get_guild_config(guild.id, "vrc_instance_role") or "").strip()
+    mention = ""
+    if mention_id.isdigit():
+        role = guild.get_role(int(mention_id))
+        if role:
+            mention = role.mention
+
+    posted = 0
+    for inst in instances:
+        if inst["location"] in known:
+            continue
+        link = launch_url(inst["location"])
+        text = (template
+                .replace("{world}", inst["world_name"] or "Unbekannte Welt")
+                .replace("{count}", str(inst["count"]))
+                .replace("{group}", guild.name)
+                .replace("{link}", link))
+        if mention:
+            text = f"{mention} {text}"
+        embed = discord.Embed(
+            title=(inst["world_name"] or "VRChat")[:256],
+            url=link or None,
+            description=f"👥 {inst['count']}",
+            color=0x8B5CF6,
+        )
+        if inst["world_image"]:
+            embed.set_thumbnail(url=inst["world_image"])
+        try:
+            message = await channel.send(text[:2000], embed=embed)
+        except discord.Forbidden:
+            print(f"[vrc_link] no permission to post instances in {channel_id} ({guild.id})")
+            return posted
+        except (discord.HTTPException, OSError) as e:
+            print(f"[vrc_link] could not announce instance {inst['location']}: {e}")
+            continue
+        try:
+            # Written AFTER the message went out, not before: a failed send must be retried
+            # next run, and a row written first would mark it announced forever.
+            await db_exec(
+                "INSERT OR IGNORE INTO vrc_instances (guild_id, location, world_name, "
+                "first_seen, message_id) VALUES (?,?,?,?,?)",
+                (str(guild.id), inst["location"], inst["world_name"],
+                 datetime.datetime.utcnow().isoformat(), str(message.id)),
+            )
+        except Exception as e:
+            print(f"[vrc_link] could not record instance {inst['location']}: {e}")
+        posted += 1
+    return posted
+
+
 class VRCLinkPanelView(discord.ui.View):
     """The single button under the panel message a server posts.
 
@@ -570,6 +666,7 @@ class VRCLink(commands.Cog):
         # means that and not "every minute". In memory: losing it on a restart costs one extra
         # run, which is harmless, and it keeps a write out of the hot loop.
         self._roles_last: dict[int, float] = {}
+        self._instances_last: dict[int, float] = {}
         self._check.start()
 
     async def cog_load(self):
@@ -600,6 +697,17 @@ class VRCLink(commands.Cog):
             try:
                 if not await self._enabled(guild.id):
                     continue
+                # Instance announcements run on their own clock: one VRChat request per server
+                # per interval, independent of how many members are linked.
+                try:
+                    every_inst = int((await get_guild_config(guild.id, "vrc_instance_minutes") or "0").strip())
+                except (TypeError, ValueError):
+                    every_inst = 0
+                if every_inst > 0:
+                    last = self._instances_last.get(guild.id, 0.0)
+                    if time.monotonic() - last >= every_inst * 60:
+                        self._instances_last[guild.id] = time.monotonic()
+                        await announce_instances(self.bot, guild)
                 rows = await db_rows(
                     "SELECT * FROM vrc_links WHERE guild_id=? AND status=?",
                     (str(guild.id), VRC_STATE_APPROVED),

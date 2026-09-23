@@ -3077,9 +3077,24 @@ document.addEventListener('click', function(e) {
   <a href="/settings/vrchat" class="btn btn-primary" style="margin-top:0.9rem;display:inline-block;">{{ tr.vrc_locked_link }}</a>
 </div>
 {% else %}
-<form method="post" action="/servers/{{ guild.id }}">
+
+{# Unterreiter. Der Reiter ist zu lang geworden, um ihn an einem Stück zu lesen. Umgeschaltet
+   wird rein im Browser: die Karten bleiben alle im selben Formular stehen, ausgeblendete
+   Felder werden von Haus aus mitgeschickt - deshalb speichert jeder Speichern-Knopf weiterhin
+   den ganzen Reiter, egal welcher Unterreiter gerade offen ist. #}
+<div class="vrc-subnav" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:1.1rem;
+     border-bottom:1px solid var(--border);padding-bottom:0.7rem;">
+  {% for key, label in [('link', tr.vrc_sub_link), ('group', tr.vrc_sub_group), ('instances', tr.vrc_sub_instances)] %}
+  <button type="button" class="vrc-subtab" data-subtab="{{ key }}" onclick="vrcSub('{{ key }}')"
+          style="background:none;border:1px solid var(--border);color:var(--muted);
+                 border-radius:0.5rem;padding:0.35rem 0.8rem;font-size:0.82rem;
+                 font-family:inherit;cursor:pointer;">{{ label }}</button>
+  {% endfor %}
+</div>
+
+<form method="post" action="/servers/{{ guild.id }}" id="vrc-main-form">
 <input type="hidden" name="tab" value="vrclink">
-<div class="card">
+<div class="card" data-sub="link">
   <p class="hint" style="margin-bottom:1rem;">{{ tr.vrc_hint }}</p>
   <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-bottom:0.9rem;">
     <input type="checkbox" name="vrc_enabled" value="1" style="margin:0;" {% if cfg.get('vrc_enabled') == '1' %}checked{% endif %}>
@@ -3131,7 +3146,16 @@ document.addEventListener('click', function(e) {
              value="{{ cfg.get('vrc_link_minutes', '') }}" placeholder="60">
       <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_link_minutes_hint }}</div>
     </div>
-    <div style="grid-column:1 / -1;border-top:1px solid var(--border);margin-top:0.9rem;padding-top:0.9rem;">
+  </div>
+  <button type="submit" class="btn btn-primary" style="margin-top:0.9rem;">{{ tr.btn_save }}</button>
+</div>
+
+{# Zweite Karte, gleiches Formular: der Unterreiter-Umschalter blendet ganze Karten ein und
+   aus, und die Felder der ausgeblendeten werden trotzdem mitgespeichert - deshalb kann ein
+   einziger Speichern-Knopf beide Unterreiter sichern. #}
+<div class="card" data-sub="group">
+  <div class="grid-2" style="gap:1rem;">
+    <div style="grid-column:1 / -1;">
       <div style="font-weight:600;font-size:0.88rem;margin-bottom:0.35rem;">{{ tr.vrc_group_heading }}</div>
       <p class="hint" style="margin-bottom:0.9rem;">{{ tr.vrc_group_hint }}</p>
       <div class="grid-2" style="gap:1rem;">
@@ -3188,7 +3212,7 @@ document.addEventListener('click', function(e) {
    instant it exists, while a newly added slash command stays invisible for up to an hour
    while Discord propagates it globally - which is exactly what made the first version of
    this feature look dead. #}
-<div class="card">
+<div class="card" data-sub="link">
   <div class="feat-header">{{ tr.vrc_panel_heading }}</div>
   <p class="hint" style="margin-bottom:1rem;">{{ tr.vrc_panel_hint }}</p>
   {# The address members' links are built on. Normally just the one this dashboard is open
@@ -3253,7 +3277,7 @@ document.addEventListener('click', function(e) {
 </form>
 
 {% if vrc_group_on %}
-<div class="card">
+<div class="card" data-sub="group">
       {# Discord-Rolle -> VRChat-Gruppenrolle. Eigenes Formular, weil Zuordnungen einzeln
          hinzugefuegt und entfernt werden - der Rest des Reiters ist ein Sammel-Speichern. #}
         <div style="font-weight:600;font-size:0.82rem;margin-bottom:0.3rem;">{{ tr.vrc_rolemap_heading }}</div>
@@ -3310,7 +3334,7 @@ document.addEventListener('click', function(e) {
 </div>
 {% endif %}
 
-<div class="card" style="display:flex;align-items:center;gap:0.9rem;flex-wrap:wrap;">
+<div class="card" data-sub="link" style="display:flex;align-items:center;gap:0.9rem;flex-wrap:wrap;">
   <form method="post" action="/servers/{{ guild.id }}/vrc/panel" style="margin:0;">
     <button type="submit" class="btn btn-secondary">{{ tr.vrc_panel_post_btn }}</button>
   </form>
@@ -3319,7 +3343,7 @@ document.addEventListener('click', function(e) {
 
 {# Zeigt, was VRChat fuer einen Namen wirklich herausgibt. Gebaut, weil "Code nicht in der
    Bio" und "der Bot bekommt die Bio gar nicht" von aussen gleich aussehen. #}
-<div class="card">
+<div class="card" data-sub="group">
   <div class="feat-header">{{ tr.vrc_probe_heading }}</div>
   <p class="hint" style="margin-bottom:0.9rem;">{{ tr.vrc_probe_hint }}</p>
   <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
@@ -3334,6 +3358,49 @@ document.addEventListener('click', function(e) {
 </div>
 
 <script>
+// ── Unterreiter ─────────────────────────────────────────────────────────────
+function vrcSub(which) {
+  document.querySelectorAll('#pane-vrclink [data-sub]').forEach(function (el) {
+    el.hidden = el.getAttribute('data-sub') !== which;
+  });
+  document.querySelectorAll('#pane-vrclink .vrc-subtab').forEach(function (b) {
+    const on = b.getAttribute('data-subtab') === which;
+    b.style.background = on ? 'var(--accent-light)' : 'none';
+    b.style.color = on ? '#a78bfa' : 'var(--muted)';
+    b.style.borderColor = on ? 'var(--accent)' : 'var(--border)';
+  });
+  // Nur eine Bequemlichkeit: geht der Speicher nicht, bleibt schlicht der erste Unterreiter.
+  try { localStorage.setItem('vrcSub:{{ guild.id }}', which); } catch (e) {}
+}
+(function () {
+  let start = 'link';
+  try { start = localStorage.getItem('vrcSub:{{ guild.id }}') || 'link'; } catch (e) {}
+  if (!document.querySelector('#pane-vrclink [data-subtab="' + start + '"]')) start = 'link';
+  if (document.querySelector('#pane-vrclink .vrc-subtab')) vrcSub(start);
+})();
+
+async function vrcInstCheck() {
+  const out = document.getElementById('vrc-inst-out');
+  out.style.display = '';
+  out.textContent = '…';
+  try {
+    const r = await fetch('/servers/{{ guild.id }}/vrc/instances/check', {method: 'POST'});
+    const d = await r.json();
+    if (d.error) { out.textContent = '❌ ' + d.error; return; }
+    const lines = [];
+    if (!d.open.length) {
+      lines.push({{ tr.vrc_inst_none | jsraw }});
+    } else {
+      // textContent, nie innerHTML: Weltnamen kommen aus VRChat.
+      d.open.forEach(function (i) { lines.push('• ' + i.world + ' (' + i.count + ')'); });
+    }
+    if (d.posted) lines.push({{ tr.vrc_inst_posted | jsraw }}.replace('{n}', d.posted));
+    out.textContent = lines.join('\n');
+  } catch (e) {
+    out.textContent = '❌ ' + e;
+  }
+}
+
 async function vrcLoadGroupRoles() {
   const sel = document.getElementById('vrc-map-vrc');
   const out = document.getElementById('vrc-map-out');
@@ -3442,7 +3509,7 @@ async function vrcProbe() {
 }
 </script>
 
-<div class="card">
+<div class="card" data-sub="link">
   <div class="feat-header" style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
     {{ tr.vrc_links_heading }}
     <span style="font-weight:400;color:var(--muted);font-size:0.8rem;">
@@ -3529,6 +3596,57 @@ async function vrcProbe() {
   {% else %}
   <p class="hint">{{ tr.vrc_links_empty }}</p>
   {% endif %}
+</div>
+
+<div class="card" data-sub="instances">
+  <div class="feat-header">{{ tr.vrc_inst_heading }}</div>
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.vrc_inst_hint }}</p>
+  {% if not vrc_group_on %}
+  <div style="background:rgba(245,158,11,0.12);border:1px solid #f59e0b;border-radius:0.6rem;
+              padding:0.7rem 0.9rem;font-size:0.8rem;color:#fbbf24;margin-bottom:1rem;">
+    {{ tr.vrc_inst_needs_group }}
+  </div>
+  {% endif %}
+  {# Die Felder gehoeren per form="vrc-main-form" zum grossen Formular oben, obwohl sie
+     ausserhalb davon stehen. So speichert ein Druck auf Speichern weiterhin den ganzen
+     Reiter, ohne dass hier ein zweites Formular die Werte der anderen Unterreiter leeren
+     koennte - der generische Speicher-Pfad schreibt fehlende Schluessel als leer. #}
+  <div class="grid-2" style="gap:1rem;">
+    <div>
+      <label>{{ tr.vrc_inst_channel_label }}</label>
+      <select name="vrc_instance_channel" form="vrc-main-form">
+        <option value="">{{ tr.vrc_role_none }}</option>
+        {% for c in channels %}<option value="{{ c.id }}" {% if cfg.get('vrc_instance_channel') == c.id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>{{ tr.vrc_inst_minutes_label }}</label>
+      <input type="number" name="vrc_instance_minutes" form="vrc-main-form" min="0" max="1440"
+             value="{{ cfg.get('vrc_instance_minutes', '') }}" placeholder="0">
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_inst_minutes_hint }}</div>
+    </div>
+    <div>
+      <label>{{ tr.vrc_inst_role_label }}</label>
+      <select name="vrc_instance_role" form="vrc-main-form">
+        <option value="">{{ tr.vrc_inst_role_none }}</option>
+        {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('vrc_instance_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div style="grid-column:1 / -1;">
+      <label>{{ tr.vrc_inst_message_label }}</label>
+      <textarea name="vrc_instance_message" form="vrc-main-form" rows="4" maxlength="1800"
+        placeholder="{{ vrc_instance_default }}"
+        style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;
+               padding:0.6rem 0.8rem;color:var(--text);font-size:0.85rem;font-family:inherit;
+               line-height:1.5;resize:vertical;outline:none;">{{ cfg.get('vrc_instance_message', '') }}</textarea>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_message_hint }}</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.9rem;align-items:center;">
+    <button type="submit" form="vrc-main-form" class="btn btn-primary">{{ tr.btn_save }}</button>
+    <button type="button" class="btn btn-secondary" onclick="vrcInstCheck()">{{ tr.vrc_inst_check_btn }}</button>
+  </div>
+  <div id="vrc-inst-out" style="display:none;margin-top:0.7rem;font-size:0.78rem;white-space:pre-wrap;"></div>
 </div>
 {% endif %}
 <script>

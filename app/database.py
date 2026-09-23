@@ -1096,6 +1096,21 @@ async def init_db():
             # Konten sperrt.
             "ALTER TABLE vrc_links ADD COLUMN vrc_group_roles TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE vrc_links ADD COLUMN vrc_roles_synced TEXT NOT NULL DEFAULT ''",
+            # Welche Gruppen-Instanzen der Bot schon gemeldet hat. Ohne diese Zeilen wuerde
+            # jeder Durchlauf dieselbe offene Instanz erneut ankuendigen - der Abgleich
+            # vergleicht die Liste von VRChat gegen das hier und meldet nur, was neu ist.
+            # Geschlossene Instanzen werden wieder geloescht, damit dieselbe Welt spaeter
+            # erneut angekuendigt werden kann.
+            """CREATE TABLE IF NOT EXISTS vrc_instances (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                location TEXT NOT NULL,
+                world_name TEXT NOT NULL DEFAULT '',
+                first_seen TEXT NOT NULL DEFAULT '',
+                message_id TEXT NOT NULL DEFAULT '',
+                UNIQUE(guild_id, location)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_vrc_instances_guild ON vrc_instances(guild_id)",
         ]:
             try:
                 await db.execute(col)
@@ -1334,6 +1349,15 @@ DEFAULT_VRC_PANEL_TEXT = (
     "Alles Weitere passiert auf der Seite."
 )
 DEFAULT_VRC_PANEL_BUTTON = "VRChat verknüpfen"
+
+# Standardtext der Instanz-Meldung. Platzhalter werden im Cog ersetzt:
+#   {world}    Name der Welt        {count}  Leute drin
+#   {group}    Name der Gruppe      {link}   Link zum Beitreten
+DEFAULT_VRC_INSTANCE_MESSAGE = (
+    "🌍 **{world}** ist offen!\n"
+    "Gerade drin: {count}\n"
+    "{link}"
+)
 
 
 def role_rule_actions(rule) -> list:
