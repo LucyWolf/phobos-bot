@@ -46,6 +46,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "server_backup_download": "💾 Herunterladen",
         "server_backup_file_label": "Backup-Datei (.json)",
         "server_backup_restore_btn": "📂 Wiederherstellen",
+        "backup_password_ph":     "Passwort (optional)",
+        "backup_password_hint":   "Mit Passwort verlässt die Datei den Server verschlüsselt. Ohne dieses Passwort ist sie nicht wiederherstellbar — auf dem Server selbst ändert sich nichts.",
+        "backup_password_restore_ph": "Passwort, falls verschlüsselt",
         # Tokens
         # Settings
         # Users
@@ -1163,6 +1166,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "server_backup_download": "💾 Download",
         "server_backup_file_label": "Backup file (.json)",
         "server_backup_restore_btn": "📂 Restore",
+        "backup_password_ph":     "Password (optional)",
+        "backup_password_hint":   "With a password the file leaves the server encrypted. Without that password it cannot be restored — nothing changes on the server itself.",
+        "backup_password_restore_ph": "Password, if encrypted",
         # Tokens
         # Settings
         # Users

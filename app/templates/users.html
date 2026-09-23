@@ -73,7 +73,12 @@
     Alle Benutzer
     <span style="font-size:0.78rem; font-weight:400; color:var(--muted);">{{ users|length }} gesamt</span>
     <span style="flex:1;"></span>
-    <a href="/admin/backup/all" class="btn btn-secondary" style="font-size:0.78rem;padding:0.28rem 0.7rem;">💾 Alle sichern</a>
+    <form method="post" action="/admin/backup/all" style="display:inline-flex;gap:0.4rem;align-items:center;margin:0;">
+      <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;padding:0.28rem 0.7rem;">💾 Alle sichern</button>
+      <input type="password" name="password" autocomplete="new-password"
+             placeholder="Passwort (optional)" style="margin:0;max-width:180px;font-size:0.78rem;padding:0.28rem 0.5rem;"
+             title="Mit Passwort wird die Datei verschlüsselt. Ohne das Passwort ist sie nicht wiederherstellbar.">
+    </form>
   </div>
   <div class="table-wrap">
     <table>
@@ -131,8 +136,8 @@
                 {% if u.active %}🚫{% else %}✅{% endif %}
               </button>
             </form>
-            <a href="/admin/backup/user/{{ u.id }}" class="btn btn-secondary"
-               style="font-size:0.78rem;padding:0.25rem 0.6rem;" title="Backup herunterladen">💾</a>
+            <form method="post" action="/admin/backup/user/{{ u.id }}" style="display:inline;margin:0;"><button type="submit" class="btn btn-secondary"
+               style="font-size:0.78rem;padding:0.25rem 0.6rem;" title="Backup herunterladen">💾</button></form>
             <form method="post" action="/users/delete/{{ u.id }}?next=/users" onsubmit="return confirm({{ ('Benutzer „' ~ u.username ~ '“ wirklich löschen?') | js }})" style="display:inline">
               <button type="submit" class="btn btn-danger" title="Löschen">✕</button>
             </form>
@@ -200,6 +205,9 @@
         onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='⏳ Lädt…'">
     <label>Backup-Datei (.json)</label>
     <input type="file" name="backup_file" accept=".json,application/json" required style="margin-bottom:1rem;">
+    <input type="password" name="password" autocomplete="new-password"
+           placeholder="Passwort, falls die Datei verschlüsselt ist"
+           style="margin-bottom:1rem;">
     <button type="submit" class="btn btn-primary">📂 Backup einspielen</button>
   </form>
 </div>

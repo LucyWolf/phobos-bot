@@ -64,8 +64,11 @@
   <p class="hint" style="margin-bottom:0.5rem;">{{ tr.server_backup_hint }}</p>
   <p class="hint" style="margin-bottom:0.85rem;">{{ tr.server_backup_handover_hint }}</p>
   <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-end;">
-    <form method="get" action="/servers/{{ guild.id }}/backup" style="display:flex;gap:0.6rem;align-items:flex-end;flex-wrap:wrap;margin:0;">
+    <form method="post" action="/servers/{{ guild.id }}/backup" style="display:flex;gap:0.6rem;align-items:flex-end;flex-wrap:wrap;margin:0;">
       <button type="submit" class="btn btn-secondary">{{ tr.server_backup_download }}</button>
+      <input type="password" name="password" autocomplete="new-password"
+             placeholder="{{ tr.backup_password_ph }}" style="margin:0 0 0.35rem;max-width:210px;"
+             title="{{ tr.backup_password_hint }}">
       <label style="display:flex;align-items:center;gap:0.4rem;margin:0 0 0.55rem;font-size:0.8rem;font-weight:400;">
         <input type="checkbox" name="include_secrets" value="1" style="margin:0;"> {{ tr.server_backup_secrets_label }}
       </label>
@@ -77,6 +80,8 @@
         <label style="margin:0;">{{ tr.server_backup_file_label }}</label>
         <input type="file" name="backup_file" accept=".json,application/json" required style="margin:0;">
       </div>
+      <input type="password" name="password" autocomplete="new-password"
+             placeholder="{{ tr.backup_password_restore_ph }}" style="margin:0;max-width:230px;">
       <button type="submit" class="btn btn-primary">{{ tr.server_backup_restore_btn }}</button>
     </form>
   </div>

@@ -136,9 +136,15 @@
       Exportiert dein Benutzerkonto, deine Bot-Tokens und alle Server-Konfigurationen als JSON-Datei.
       Diese Datei kann auf einer anderen Instanz über die Admin-Benutzerverwaltung wieder eingespielt werden.
     </p>
-    <a href="/backup/export" class="btn btn-secondary" style="display:inline-flex;">
-      💾 Meine Daten sichern
-    </a>
+    <form method="post" action="/backup/export" style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;margin:0;">
+      <button type="submit" class="btn btn-secondary">💾 Meine Daten sichern</button>
+      <input type="password" name="password" autocomplete="new-password"
+             placeholder="Passwort (optional)" style="margin:0;max-width:210px;">
+    </form>
+    <p style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem;">
+      Mit Passwort verlässt die Datei deinen Server verschlüsselt — ohne das Passwort ist sie
+      nicht wiederherstellbar. Leer lassen speichert wie bisher im Klartext.
+    </p>
   </div>
 
   <!-- ── Konto löschen ── -->

@@ -379,7 +379,9 @@ The dashboard is meant to sit on the open internet, so a few things are handled 
 
 **Behind HTTPS**, set `PHOBOS_COOKIE_SECURE=1` in your docker-compose `environment:` block. That adds the `Secure` flag and sends HSTS. It is **off by default on purpose** — a Secure cookie is dropped by the browser over plain HTTP, so guessing this wrong would lock an already-running installation out of its own dashboard.
 
-**What is not protected:** the Discord bot token, the VRChat credentials, users' 2FA secrets and the SMTP/AMP passwords are stored in plain text, because the bot needs them back. Keep backups of `data/` somewhere safe, and change the default `admin` password on first login.
+**Backups can be encrypted.** Every export — your own data, a single user, the full installation, a single server — takes an optional password. Enter one and the downloaded file leaves the server unreadable; leave it empty and you get the same plain JSON as before, so existing habits and older files keep working. Restoring asks for the password only when the file is actually encrypted. Forget it and only *that file* is lost — nothing on the server changes. Uses only Python's own standard library (scrypt + HMAC), because a compiled crypto package would break the Android and Termux builds.
+
+**What is not protected:** the Discord bot token, the VRChat credentials, users' 2FA secrets and the SMTP/AMP passwords are stored in plain text *on the server*, because the bot needs them back. Whoever controls the machine can read them — no database encryption changes that, since the key has to live there too. What you can do is keep the copies safe: use an export password, and keep your `data/` backups encrypted. And change the default `admin` password on first login.
 
 ---
 
@@ -1046,7 +1048,9 @@ Das Dashboard soll im offenen Internet stehen können, deshalb ist einiges bewus
 
 **Hinter HTTPS** trägst du `PHOBOS_COOKIE_SECURE=1` in den `environment:`-Block deiner docker-compose ein. Das setzt das `Secure`-Flag und schickt HSTS. Standardmäßig ist es **absichtlich aus** — ein Secure-Cookie wird über einfaches HTTP vom Browser verworfen, einmal falsch geraten sperrt es eine laufende Installation aus ihrem eigenen Dashboard aus.
 
-**Nicht geschützt:** Discord-Token, VRChat-Zugangsdaten, die 2FA-Geheimnisse der Nutzer sowie SMTP- und AMP-Passwort liegen im Klartext, weil der Bot sie zurückbraucht. Bewahre Backups von `data/` entsprechend sicher auf, und ändere das Standard-Passwort `admin` bei der ersten Anmeldung.
+**Backups lassen sich verschlüsseln.** Jeder Export — eigene Daten, ein einzelner Nutzer, die ganze Installation, ein einzelner Server — nimmt ein optionales Passwort entgegen. Trägst du eins ein, verlässt die Datei den Server unlesbar; lässt du es leer, bekommst du dasselbe Klartext-JSON wie bisher, vorhandene Abläufe und ältere Dateien laufen also weiter. Beim Einspielen wird nur dann nach dem Passwort gefragt, wenn die Datei tatsächlich verschlüsselt ist. Vergisst du es, ist nur *diese Datei* verloren — auf dem Server ändert sich nichts. Gebaut allein mit Pythons Standardbibliothek (scrypt + HMAC), weil ein kompiliertes Krypto-Paket die Android- und Termux-Wege zerlegen würde.
+
+**Nicht geschützt:** Discord-Token, VRChat-Zugangsdaten, die 2FA-Geheimnisse der Nutzer sowie SMTP- und AMP-Passwort liegen *auf dem Server* im Klartext, weil der Bot sie zurückbraucht. Wer die Maschine kontrolliert, kommt daran — daran ändert auch eine verschlüsselte Datenbank nichts, denn der Schlüssel müsste ebenfalls dort liegen. Was du tun kannst, ist die Kopien schützen: Export-Passwort nutzen und `data/`-Backups verschlüsselt aufbewahren. Und das Standard-Passwort `admin` bei der ersten Anmeldung ändern.
 
 ---
 

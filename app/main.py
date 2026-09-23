@@ -1845,8 +1845,23 @@ async def _build_guild_backup(guild_id: int, exported_by: str, include_secrets: 
     return data
 
 
-def _json_dl(data: dict, filename: str) -> Response:
-    content = _djson.dumps(data, ensure_ascii=False, indent=2)
+def _json_dl(data: dict, filename: str, password: str = "") -> Response:
+    """Ein Backup zum Herunterladen - auf Wunsch mit Passwort verschlüsselt.
+
+    Ohne Passwort passiert genau das, was schon immer passiert ist: eine lesbare JSON-Datei.
+    Das bleibt der Standard, damit vorhandene Abläufe und Lesezeichen weiterlaufen.
+
+    Mit Passwort verlässt die Datei den Server unlesbar. Das ist der eine Ort, an dem der Bot
+    etwas gegen ein abhandengekommenes Backup tun kann: auf der Maschine selbst muss er seine
+    Zugangsdaten im Klartext zurückbekommen, in der Kopie nicht. Vergisst jemand das Passwort,
+    ist nur diese Datei verloren - auf dem Server bleibt alles, wie es war.
+    """
+    if password:
+        from backup_crypto import encrypt
+        content = encrypt(data, password)
+        filename = filename.replace(".json", ".enc.json")
+    else:
+        content = _djson.dumps(data, ensure_ascii=False, indent=2)
     return Response(
         content=content,
         media_type="application/json",
@@ -1854,18 +1869,50 @@ def _json_dl(data: dict, filename: str) -> Response:
     )
 
 
+async def _backup_payload(raw: bytes, password: str) -> dict:
+    """Den Inhalt einer hochgeladenen Backup-Datei holen, verschlüsselt oder nicht.
+
+    Eine Datei von früher wird unverändert wie bisher gelesen - erkannt wird nur, was sich
+    ausdrücklich als verschlüsseltes Phobos-Backup ausweist. Wirft ValueError mit einem Text,
+    der dem Menschen davor sagt, was los ist.
+    """
+    from backup_crypto import is_encrypted, decrypt, BackupCryptoError
+    if is_encrypted(raw):
+        try:
+            return decrypt(raw, password)
+        except BackupCryptoError as e:
+            raise ValueError(str(e))
+    data = _djson.loads(raw)
+    if not isinstance(data, dict):
+        # Gültiges JSON, das kein Objekt ist (eine nackte Liste, Zahl, null ...) - json.loads()
+        # nimmt das an, aber der Aufrufer greift gleich darauf zu wie auf ein Wörterbuch.
+        raise ValueError("not a JSON object")
+    return data
+
+
 @web.get("/backup/export")
-async def backup_export_own(request: Request):
+async def backup_export_own_get(request: Request):
+    """Der alte Weg ohne Passwort - bleibt, damit Lesezeichen und Abläufe weiterlaufen."""
+    return await backup_export_own(request, "")
+
+
+@web.post("/backup/export")
+async def backup_export_own(request: Request, password: str = Form("")):
     if r := auth_redirect(request): return r
     uid = request.session.get("user_id")
     uname = request.session.get("username", "user")
     data = await _build_user_backup(uid, uname)
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-    return _json_dl(data, f"backup_{uname}_{ts}.json")
+    return _json_dl(data, f"backup_{uname}_{ts}.json", password)
 
 
 @web.get("/admin/backup/user/{user_id}")
-async def backup_export_user(request: Request, user_id: int):
+async def backup_export_user_get(request: Request, user_id: int):
+    return await backup_export_user(request, user_id, "")
+
+
+@web.post("/admin/backup/user/{user_id}")
+async def backup_export_user(request: Request, user_id: int, password: str = Form("")):
     if r := admin_redirect(request): return r
     by = request.session.get("username", "admin")
     data = await _build_user_backup(user_id, by)
@@ -1873,30 +1920,43 @@ async def backup_export_user(request: Request, user_id: int):
         return RedirectResponse("/users?error=Benutzer+nicht+gefunden", status_code=302)
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
     uname = data["meta"]["username"]
-    return _json_dl(data, f"backup_{uname}_{ts}.json")
+    return _json_dl(data, f"backup_{uname}_{ts}.json", password)
 
 
 @web.get("/admin/backup/all")
-async def backup_export_all(request: Request):
+async def backup_export_all_get(request: Request):
+    return await backup_export_all(request, "")
+
+
+@web.post("/admin/backup/all")
+async def backup_export_all(request: Request, password: str = Form("")):
     if r := admin_redirect(request): return r
     by = request.session.get("username", "admin")
     data = await _build_full_backup(by)
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-    return _json_dl(data, f"backup_full_{ts}.json")
+    return _json_dl(data, f"backup_full_{ts}.json", password)
 
 
 @web.post("/admin/backup/restore")
-async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
+async def backup_restore(request: Request, backup_file: UploadFile = File(...),
+                         password: str = Form("")):
     if r := admin_redirect(request): return r
     try:
         raw = await backup_file.read()
-        data = _djson.loads(raw)
-        if not isinstance(data, dict):
-            # Valid JSON that isn't a JSON *object* (a bare array/string/number/null/bool) -
-            # json.loads() succeeds for all of those, so the except above never fires, but the
-            # very next line's data.get(...) would then raise an unhandled AttributeError
-            # instead of showing the same "not a valid backup" message a parse failure gets.
-            raise ValueError("not a JSON object")
+        data = await _backup_payload(raw, password)
+    except ValueError as e:
+        # Beim verschlüsselten Backup sagt der Text, was los ist - falsches Passwort oder
+        # veränderte Datei. Bei einer kaputten Klartext-Datei die bisherige Meldung.
+        # Ein Fehler, den der Mensch davor beheben kann, bekommt seinen Grund gesagt -
+        # falsches Passwort oder veraenderte Datei. Alles andere bleibt bei der bisherigen
+        # Meldung. Kein erneutes raise: das hier IST schon der Fehlerzweig, ein raise daraus
+        # faengt das except darunter nicht mehr und landete als Serverfehler beim Nutzer.
+        grund = str(e)
+        if grund == "not a JSON object":
+            return RedirectResponse("/users?error=Ungültige+Backup-Datei+(kein+gültiges+JSON)",
+                                    status_code=302)
+        return RedirectResponse(f"/users?error={urllib.parse.quote_plus(grund[:160])}",
+                                status_code=302)
     except Exception:
         return RedirectResponse("/users?error=Ungültige+Backup-Datei+(kein+gültiges+JSON)", status_code=302)
 
@@ -2125,7 +2185,13 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...)):
 
 
 @web.get("/servers/{guild_id}/backup")
-async def server_backup_export(request: Request, guild_id: int, include_secrets: str = ""):
+async def server_backup_export_get(request: Request, guild_id: int, include_secrets: str = ""):
+    return await server_backup_export(request, guild_id, include_secrets, "")
+
+
+@web.post("/servers/{guild_id}/backup")
+async def server_backup_export(request: Request, guild_id: int,
+                               include_secrets: str = Form(""), password: str = Form("")):
     if r := admin_redirect(request): return r
     by = request.session.get("username", "admin")
     data = await _build_guild_backup(guild_id, by, include_secrets == "1")
@@ -2135,20 +2201,27 @@ async def server_backup_export(request: Request, guild_id: int, include_secrets:
     # that would be awkward or invalid in one, unlike the guild_id fallback which is already
     # filename-safe on its own.
     name_part = re.sub(r"[^\w\-]+", "_", guild.name).strip("_") if guild else str(guild_id)
-    return _json_dl(data, f"backup_server_{name_part or guild_id}_{ts}.json")
+    return _json_dl(data, f"backup_server_{name_part or guild_id}_{ts}.json", password)
 
 
 @web.post("/servers/{guild_id}/backup/restore")
-async def server_backup_restore(request: Request, guild_id: int, backup_file: UploadFile = File(...)):
+async def server_backup_restore(request: Request, guild_id: int,
+                                backup_file: UploadFile = File(...),
+                                password: str = Form("")):
     if r := admin_redirect(request): return r
     try:
         raw = await backup_file.read()
-        data = _djson.loads(raw)
-        if not isinstance(data, dict):
-            # Same guard as backup_restore() above - valid JSON that isn't an object (a bare
-            # array/string/number/etc.) would otherwise pass this try/except and crash the
-            # next line's data.get(...) with an unhandled AttributeError.
-            raise ValueError("not a JSON object")
+        data = await _backup_payload(raw, password)
+    except ValueError as e:
+        # Siehe backup_restore(): kein raise aus dem Fehlerzweig heraus.
+        grund = str(e)
+        if grund == "not a JSON object":
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=config&error=Ungültige+Backup-Datei+(kein+gültiges+JSON)",
+                status_code=302)
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=config&error={urllib.parse.quote_plus(grund[:160])}",
+            status_code=302)
     except Exception:
         return RedirectResponse(
             f"/servers/{guild_id}?tab=config&error=Ungültige+Backup-Datei+(kein+gültiges+JSON)",
