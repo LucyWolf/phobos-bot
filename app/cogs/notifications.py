@@ -191,7 +191,7 @@ class Notifications(commands.Cog):
         # Text erreicht damit niemanden mehr, es sei denn, es ist so gewollt.
         ping, erlaubt = "", discord.AllowedMentions.none()
         sub = sub or {}
-        if sub.get("ping_enabled", 1) and str(sub.get("ping_role_id") or "").isdigit():
+        if str(sub.get("ping_role_id") or "").isdigit():
             rolle = channel.guild.get_role(int(sub["ping_role_id"]))
             if rolle:
                 ping = rolle.mention

@@ -3905,9 +3905,7 @@ async def freestuff_save(
     deal_channel_id: str = Form(""),
     deal_platforms: List[str] = Form(default=[]),
     ping_role_id: str = Form(""),
-    ping_enabled: str = Form(""),
     deal_ping_role_id: str = Form(""),
-    deal_ping_enabled: str = Form(""),
 ):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
@@ -3971,8 +3969,7 @@ async def freestuff_save(
                deal_ping_role_id=excluded.deal_ping_role_id,
                deal_ping_enabled=excluded.deal_ping_enabled""",
         (guild_id, channel_id, plat_str, max_price, min_disc, deal_ch, deal_plat_str,
-         ping_role_id.strip(), 1 if ping_enabled == "1" else 0,
-         deal_ping_role_id.strip(), 1 if deal_ping_enabled == "1" else 0),
+         ping_role_id.strip(), 1, deal_ping_role_id.strip(), 1),
     )
     return RedirectResponse(f"/servers/{guild_id}/freestuff?success=Gespeichert", status_code=302)
 
@@ -5973,7 +5970,6 @@ async def notifications_add(
     custom_message: str = Form(""),
     next_url: str = Form(""),
     ping_role_id: str = Form(""),
-    ping_enabled: str = Form(""),
 ):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
@@ -6004,7 +6000,7 @@ async def notifications_add(
         (guild_id, platform, discord_channel_id, target.lower() if platform == "twitch" else target,
          target_name.strip(), custom_message.strip(),
          ping_role_id.strip() if ping_role_id.strip() in _ping_roles(guild) else "",
-         1 if ping_enabled == "1" else 0),
+         1),
     )
     dest = next_url or f"/servers/{guild_id}/notifications"
     return RedirectResponse(f"{dest}&success=1" if "?" in dest else f"{dest}?success=1", status_code=302)
@@ -6019,7 +6015,6 @@ async def notifications_edit(
     custom_message: str = Form(""),
     next_url: str = Form(""),
     ping_role_id: str = Form(""),
-    ping_enabled: str = Form(""),
 ):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
@@ -6056,7 +6051,7 @@ async def notifications_edit(
             "ping_role_id=?, ping_enabled=?, live=0, last_id='' WHERE id=? AND guild_id=?",
             (discord_channel_id, target_norm, target_name.strip(), custom_message.strip(),
              ping_role_id.strip() if ping_role_id.strip() in _ping_roles(guild) else "",
-             1 if ping_enabled == "1" else 0, nid, guild_id),
+             1, nid, guild_id),
         )
     else:
         await db_exec(
@@ -6064,7 +6059,7 @@ async def notifications_edit(
             "ping_role_id=?, ping_enabled=? WHERE id=? AND guild_id=?",
             (discord_channel_id, target_norm, target_name.strip(), custom_message.strip(),
              ping_role_id.strip() if ping_role_id.strip() in _ping_roles(guild) else "",
-             1 if ping_enabled == "1" else 0, nid, guild_id),
+             1, nid, guild_id),
         )
     dest = next_url or f"/servers/{guild_id}/notifications"
     return RedirectResponse(f"{dest}&success=1" if "?" in dest else f"{dest}?success=1", status_code=302)
@@ -7402,7 +7397,7 @@ _TAB_TEXT_KEYS = {
 }
 _TAB_CHECKBOX_KEYS = {
     "config": [],
-    "welcome": ["welcome_card_enabled", "welcome_ping"],
+    "welcome": ["welcome_card_enabled"],
     "leveling": ["leveling_enabled", "leveling_voice_enabled"],
     "automod": ["automod_enabled", "automod_links"],
     "birthday": [],
@@ -7410,7 +7405,7 @@ _TAB_CHECKBOX_KEYS = {
     # proof it already had - see the read in vrc_public_name().
     "vrclink": ["vrc_enabled", "vrc_nickname_enabled", "vrc_auto_approve", "vrc_dm_on_join",
                 "vrc_require_ownership", "vrc_group_invite", "vrc_instance_cleanup",
-                "vrc_instance_live_count", "vrc_instance_ping"],
+                "vrc_instance_live_count"],
     # auto_kick_enabled deliberately NOT here - it needs the previous saved value to detect an
     # off→on transition (see the dedicated handling in server_config_save below), the generic
     # loop below has no way to express that.

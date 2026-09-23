@@ -406,7 +406,7 @@ class FreeStuff(commands.Cog):
         cfg = cfg or {}
         vorsatz = "deal_" if is_deal else ""
         ping, erlaubt = None, discord.AllowedMentions.none()
-        if cfg.get(f"{vorsatz}ping_enabled", 1) and str(cfg.get(f"{vorsatz}ping_role_id") or "").isdigit():
+        if str(cfg.get(f"{vorsatz}ping_role_id") or "").isdigit():
             rolle = channel.guild.get_role(int(cfg[f"{vorsatz}ping_role_id"]))
             if rolle:
                 ping = rolle.mention

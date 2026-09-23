@@ -284,21 +284,19 @@ def fill(template: str, member: discord.Member, *, plain_mention: bool = False) 
     return _PLACEHOLDER_RE.sub(lambda m: values[m.group(0)], template)
 
 
-async def ping_bits(guild, role_key: str, switch_key: str):
+async def ping_bits(guild, role_key: str):
     """(Inhalt, erlaubte Erwaehnungen) fuer eine Nachricht, die anpingen soll - oder (None, ...).
 
     Willkommensnachrichten sind Karten, und eine Erwaehnung INNERHALB einer Karte loest bei
     Discord keine Benachrichtigung aus. Wer angepingt werden soll, muss also im eigentlichen
-    Nachrichtentext stehen - genau das macht das hier, wenn eine Rolle gewaehlt und der
-    Schalter an ist.
+    Nachrichtentext stehen - genau das macht das hier, wenn eine Rolle gewaehlt ist. Keine
+    Rolle heisst kein Ping; ein zusaetzlicher Schalter waere doppelt.
 
     Die erlaubten Erwaehnungen werden in JEDEM Fall ausdruecklich gesetzt, auch beim
     Abschalten: so kann weder ein @everyone aus einem frei geschriebenen Text noch sonst
     irgendetwas versehentlich den ganzen Server erreichen.
     """
     from database import get_guild_config
-    if (await get_guild_config(guild.id, switch_key) or "1") == "0":
-        return None, discord.AllowedMentions.none()
     role_id = (await get_guild_config(guild.id, role_key) or "").strip()
     if not role_id.isdigit():
         return None, discord.AllowedMentions.none()
@@ -332,7 +330,7 @@ class Welcome(commands.Cog):
         if channel:
             # Einmal fuer alle vier Wege darunter ermittelt - Karte mit Text, Karte allein,
             # Notfall-Karte und reiner Text schicken sonst jeweils etwas anderes mit.
-            ping, erlaubt = await ping_bits(member.guild, "welcome_ping_role", "welcome_ping")
+            ping, erlaubt = await ping_bits(member.guild, "welcome_ping_role")
             card_enabled = await get_guild_config(member.guild.id, "welcome_card_enabled")
             if card_enabled == "1":
                 circle_color  = await get_guild_config(member.guild.id, "welcome_card_circle_color")  or "#5865F2"

@@ -163,11 +163,6 @@
     <option value="{{ r.id }}" {% if cfg and cfg.ping_role_id == r.id %}selected{% endif %}>{{ r.name }}</option>
     {% endfor %}
   </select>
-  <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;font-weight:400;">
-    <input type="checkbox" name="ping_enabled" value="1" style="margin:0;width:auto;"
-           {% if not cfg or cfg.ping_enabled %}checked{% endif %}>
-    {{ tr.ping_enabled_label }}
-  </label>
 </div>
 
 <div class="fs-card">
@@ -242,11 +237,6 @@
         <option value="{{ r.id }}" {% if cfg and cfg.deal_ping_role_id == r.id %}selected{% endif %}>{{ r.name }}</option>
         {% endfor %}
       </select>
-      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;font-weight:400;">
-        <input type="checkbox" name="deal_ping_enabled" value="1" style="margin:0;width:auto;"
-               {% if not cfg or cfg.deal_ping_enabled %}checked{% endif %}>
-        {{ tr.ping_enabled_label }}
-      </label>
     </div>
   </div>
   <p class="hint">

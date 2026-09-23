@@ -1139,6 +1139,22 @@ async def init_db():
             # Text. Ein Ping fuer alle waere die falsche Koernung.
             "ALTER TABLE notifications ADD COLUMN ping_role_id TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE notifications ADD COLUMN ping_enabled INTEGER NOT NULL DEFAULT 1",
+            # Der zusaetzliche Haken "Wirklich anpingen" ist wieder entfallen: neben einer
+            # Auswahl, die schon "— Niemanden anpingen —" anbietet, war er doppelt gemoppelt
+            # ("wen sowas da ist dann barauche ich den Wirklich anpingen nicht").
+            #
+            # Damit niemand ploetzlich doch gepingt wird, wird die Absicht einmalig
+            # uebersetzt: wer den Haken AUS hatte, verliert die Rolle - das ist dasselbe
+            # Ergebnis, nur ueber den einen verbliebenen Weg ausgedrueckt. Die Spalten selbst
+            # bleiben stehen; sie zu entfernen braeuchte ein SQLite, das nicht auf jedem
+            # Android-Geraet liegt, und sie stoeren niemanden.
+            "UPDATE freestuff_channels SET ping_role_id='' WHERE ping_enabled=0",
+            "UPDATE freestuff_channels SET deal_ping_role_id='' WHERE deal_ping_enabled=0",
+            "UPDATE notifications SET ping_role_id='' WHERE ping_enabled=0",
+            """UPDATE guild_configs SET value='' WHERE key='welcome_ping_role' AND guild_id IN
+               (SELECT guild_id FROM guild_configs WHERE key='welcome_ping' AND value='0')""",
+            """UPDATE guild_configs SET value='' WHERE key='vrc_instance_role' AND guild_id IN
+               (SELECT guild_id FROM guild_configs WHERE key='vrc_instance_ping' AND value='0')""",
         ]:
             try:
                 await db.execute(col)

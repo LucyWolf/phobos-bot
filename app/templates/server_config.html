@@ -152,12 +152,6 @@
           <option value="">{{ tr.ping_role_none }}</option>
           {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('welcome_ping_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
         </select>
-        {# Fehlender Wert heisst AN - siehe ping_bits() in cogs/welcome.py. #}
-        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;font-weight:400;margin-top:-0.4rem;">
-          <input type="checkbox" name="welcome_ping" value="1" style="margin:0;width:auto;"
-                 {% if cfg.get('welcome_ping', '1') != '0' %}checked{% endif %}>
-          {{ tr.ping_enabled_label }}
-        </label>
         <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.ping_welcome_hint }}</div>
       </div>
       <div id="wc-colors" style="{% if cfg.get('welcome_card_enabled') != '1' %}display:none;{% endif %}">
@@ -3704,13 +3698,6 @@ async function vrcProbe() {
         <option value="">{{ tr.vrc_inst_role_none }}</option>
         {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('vrc_instance_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
       </select>
-      {# Fehlender Wert heisst AN - siehe announce_instances(). #}
-      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;font-weight:400;margin-top:-0.4rem;">
-        <input type="checkbox" name="vrc_instance_ping" form="vrc-main-form" value="1" style="margin:0;"
-               {% if cfg.get('vrc_instance_ping', '1') != '0' %}checked{% endif %}>
-        {{ tr.vrc_inst_ping_label }}
-      </label>
-      <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_ping_hint }}</div>
     </div>
     <div>
       <label>{{ tr.vrc_inst_button_label }}</label>

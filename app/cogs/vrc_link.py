@@ -761,14 +761,12 @@ async def announce_instances(bot, guild) -> int:
 
     template = (await get_guild_config(guild.id, "vrc_instance_message") or "").strip() \
         or DEFAULT_VRC_INSTANCE_MESSAGE
-    # Ob ueberhaupt gepingt wird, ist ein eigener Schalter - gepostet wird so oder so.
-    # Fehlender Wert heisst AN, damit ein Server, der bisher eine Rolle eingetragen hat,
-    # sich nicht ploetzlich anders verhaelt.
-    pingen = (await get_guild_config(guild.id, "vrc_instance_ping") or "1") != "0"
+    # Keine Rolle gewaehlt heisst kein Ping - gepostet wird trotzdem. Ein zusaetzlicher
+    # Haken dafuer waere doppelt, die Auswahl bietet "Niemanden anpingen" bereits an.
     mention_id = (await get_guild_config(guild.id, "vrc_instance_role") or "").strip()
     mention = ""
     erlaubte_rolle = None
-    if pingen and mention_id.isdigit():
+    if mention_id.isdigit():
         role = guild.get_role(int(mention_id))
         if role:
             mention = role.mention

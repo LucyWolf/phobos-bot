@@ -130,11 +130,6 @@
                 <option value="{{ r.id }}" {% if s.ping_role_id == r.id %}selected{% endif %}>{{ r.name }}</option>
                 {% endfor %}
               </select>
-              <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;font-weight:400;">
-                <input type="checkbox" name="ping_enabled" value="1" style="margin:0;width:auto;"
-                       {% if s.ping_enabled %}checked{% endif %}>
-                {{ tr.ping_enabled_label }}
-              </label>
             </div>
           </div>
           <button type="submit" class="btn btn-primary" style="font-size:0.82rem;">{{ tr.btn_save }}</button>
@@ -176,10 +171,6 @@
             <option value="">{{ tr.ping_role_none }}</option>
             {% for r in roles %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
           </select>
-          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;font-weight:400;">
-            <input type="checkbox" name="ping_enabled" value="1" checked style="margin:0;width:auto;">
-            {{ tr.ping_enabled_label }}
-          </label>
         </div>
       </div>
       <button type="submit" class="btn btn-primary" {% if not twitch_configured %}disabled title="{{ tr.notif_add_disabled_title }}"{% endif %}>
