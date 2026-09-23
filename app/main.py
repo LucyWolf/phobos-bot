@@ -4105,6 +4105,91 @@ async def vrc_probe(request: Request, guild_id: int, vrchat_name: str = Form("")
     })
 
 
+async def _vrc_group_and_bot(guild_id: int) -> dict:
+    """The configured group, plus where the BOT account itself stands with it.
+
+    The bot cannot be granted a single group permission until it is a member, so this is the
+    first thing an operator needs to see - and it was previously nowhere on the page.
+    """
+    group_id = (await get_guild_config(guild_id, "vrc_group_id") or "").strip()
+    if not group_id:
+        return {"error": "Für diesen Server ist keine Gruppen-ID eingetragen."}
+    account = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,))
+    if not account or not account["vrc_user_id"]:
+        return {"error": "Es ist kein VRChat-Bot-Konto verbunden."}
+    from cogs.vrc_link import vrc_session
+    session = await vrc_session()
+    if not session:
+        return {"error": "Die VRChat-Anmeldung des Bot-Kontos funktioniert gerade nicht."}
+    from vrchat import get_group, group_member, GROUP_STATUS_LABELS
+    out = {"group_id": group_id, "bot_name": account["vrc_display_name"] or account["username"]}
+    try:
+        group = await get_group(group_id, session["auth_cookie"], session["two_factor_cookie"])
+    except Exception as e:
+        # A group the bot cannot see is the normal answer for "not a member yet", not a
+        # breakdown - so the name stays unknown and the membership check below still runs.
+        group = None
+        out["group_note"] = str(e)[:200]
+    if group:
+        out["group_name"] = str(group.get("name") or "")
+        out["group_members"] = group.get("memberCount")
+    try:
+        member = await group_member(group_id, account["vrc_user_id"],
+                                    session["auth_cookie"], session["two_factor_cookie"])
+    except Exception as e:
+        return {**out, "error": str(e)[:200]}
+    status = "member" if member else "inactive"
+    if isinstance(member, dict) and member.get("membershipStatus"):
+        status = str(member["membershipStatus"])
+    out["bot_status"] = status
+    out["bot_status_text"] = GROUP_STATUS_LABELS.get(status, status)
+    out["bot_is_member"] = status == "member"
+    return out
+
+
+@web.post("/servers/{guild_id}/vrc/group/check")
+async def vrc_group_check(request: Request, guild_id: int):
+    """Read-only: is the bot account in this group, and what is the group called."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return JSONResponse({"error": "Kein Zugriff"}, status_code=403)
+    try:
+        return JSONResponse(await _vrc_group_and_bot(guild_id))
+    except Exception as e:
+        print(f"[vrc_link] group check for guild {guild_id} failed: {e}")
+        return JSONResponse({"error": str(e)[:200]})
+
+
+@web.post("/servers/{guild_id}/vrc/group/join")
+async def vrc_group_join(request: Request, guild_id: int):
+    """Have the bot account join the configured group.
+
+    An open group takes it straight away; a request-based one answers "requested" and the
+    group's own staff decide. Either way this saves an operator from signing in to vrchat.com
+    as the bot account, two-factor and all, to press one button.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return JSONResponse({"error": "Kein Zugriff"}, status_code=403)
+    group_id = (await get_guild_config(guild_id, "vrc_group_id") or "").strip()
+    if not group_id:
+        return JSONResponse({"error": "Für diesen Server ist keine Gruppen-ID eingetragen."})
+    from cogs.vrc_link import vrc_session
+    session = await vrc_session()
+    if not session:
+        return JSONResponse({"error": "Die VRChat-Anmeldung des Bot-Kontos funktioniert gerade nicht."})
+    from vrchat import join_group, GROUP_STATUS_LABELS
+    try:
+        status = await join_group(group_id, session["auth_cookie"], session["two_factor_cookie"])
+    except Exception as e:
+        return JSONResponse({"error": str(e)[:200]})
+    return JSONResponse({
+        "bot_status": status,
+        "bot_status_text": GROUP_STATUS_LABELS.get(status, status),
+        "bot_is_member": status == "member",
+    })
+
+
 # ── VRC-Link: the member's own page ───────────────────────────────────────────
 # Everything below is reachable WITHOUT a dashboard login. That is the point: these pages are
 # for Discord members, who have no account here and never will. A token is the whole

@@ -450,3 +450,68 @@ async def group_invite(group_id: str, user_id: str, auth_cookie: str,
                 raise VRChatError("VRChat bremst gerade zu viele Anfragen aus. Versuch es "
                                   "in ein paar Minuten nochmal.")
             raise VRChatError(message[:200] or f"VRChat antwortete mit Status {resp.status}.")
+
+
+# Membership states VRChat reports for a group, and what each one means for the bot account.
+# "inactive" is the odd one: it is what comes back for an account that has no relationship
+# with the group at all, not a lapsed membership.
+GROUP_STATUS_LABELS = {
+    "member": "Mitglied",
+    "requested": "Beitritt angefragt — die Gruppenleitung muss zustimmen",
+    "invited": "Eingeladen — die Einladung ist noch offen",
+    "banned": "Gesperrt",
+    "userblocked": "Blockiert",
+    "inactive": "Kein Mitglied",
+}
+
+
+async def join_group(group_id: str, auth_cookie: str, two_factor_cookie: str = "") -> str:
+    """Have the signed-in account join the group, and report what came of it.
+
+    Returns one of GROUP_STATUS_LABELS' keys. Which one depends on how the group is set up:
+    an open group answers "member" straight away, a request-based one "requested" and leaves
+    the rest to whoever runs the group, and a group that had already invited this account
+    turns that invite into a membership here.
+
+    This exists because the bot cannot be given any group permission until it is IN the group
+    ("der bot selber muss ja noch in die vrchat gruppe beitretten sonst kann ich den keine
+    rechte geheben"), and the alternative was telling an operator to sign into vrchat.com as
+    the bot account by hand - password, two-factor and all - just to press one button.
+    """
+    if not looks_like_group_id(group_id):
+        raise VRChatError("Das ist keine gültige VRChat-Gruppen-ID — sie beginnt mit „grp_“.")
+    url = f"{API_BASE}/groups/{urllib.parse.quote(group_id, safe='')}/join"
+    headers = _headers(auth_cookie, two_factor_cookie)
+    headers["Content-Type"] = "application/json"
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json={}, headers=headers, timeout=TIMEOUT) as resp:
+            try:
+                data = await resp.json(content_type=None)
+            except Exception:
+                data = {}
+            if resp.status in (200, 201):
+                status = ""
+                if isinstance(data, dict):
+                    status = str(data.get("membershipStatus") or "")
+                # A 200 with no membershipStatus still means the call was accepted; "member" is
+                # the honest reading of that, and the tab's own check corrects it either way.
+                return status or "member"
+            message = ""
+            if isinstance(data, dict):
+                err = data.get("error")
+                message = (err.get("message") if isinstance(err, dict) else str(err or "")) or ""
+            lowered = message.lower()
+            if resp.status == 400 and "already" in lowered:
+                return "member"
+            if resp.status == 403:
+                raise VRChatError("VRChat hat den Beitritt abgelehnt — die Gruppe nimmt "
+                                  "vermutlich nur Mitglieder auf Einladung auf. Lade das "
+                                  "Bot-Konto in VRChat ein und versuch es dann erneut.")
+            if resp.status == 404:
+                raise VRChatError("Diese Gruppe gibt es nicht.")
+            if resp.status == 401:
+                raise VRChatError("Die VRChat-Sitzung ist abgelaufen — bitte das Konto im "
+                                  "Dashboard neu verbinden.")
+            if resp.status == 429:
+                raise VRChatError("VRChat bremst gerade zu viele Anfragen aus.")
+            raise VRChatError(message[:200] or f"VRChat antwortete mit Status {resp.status}.")

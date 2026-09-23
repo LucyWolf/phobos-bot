@@ -3155,6 +3155,23 @@ document.addEventListener('click', function(e) {
         {{ tr.vrc_group_invite_label }}
       </label>
       <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_group_invite_hint }}</div>
+
+      {# Ohne Mitgliedschaft des Bot-Kontos laesst sich ihm in der Gruppe kein Recht geben -
+         deshalb steht das hier und nicht in irgendeiner Anleitung. #}
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;
+                  padding:0.7rem 0.9rem;margin-top:0.9rem;">
+        <div style="font-weight:600;font-size:0.82rem;margin-bottom:0.3rem;">{{ tr.vrc_group_bot_heading }}</div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.6rem;">{{ tr.vrc_group_bot_hint }}</div>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+          <button type="button" class="btn btn-secondary" id="vrc-grp-check"
+                  onclick="vrcGroupCall('check')">{{ tr.vrc_group_check_btn }}</button>
+          <button type="button" class="btn btn-secondary" id="vrc-grp-join"
+                  onclick="vrcGroupCall('join')">{{ tr.vrc_group_join_btn }}</button>
+        </div>
+        <div id="vrc-grp-out" style="display:none;margin-top:0.6rem;font-size:0.78rem;
+             white-space:pre-wrap;word-break:break-word;"></div>
+        <div style="font-size:0.7rem;color:var(--muted);margin-top:0.5rem;">{{ tr.vrc_group_join_note }}</div>
+      </div>
     </div>
   </div>
   <button type="submit" class="btn btn-primary" style="margin-top:0.9rem;">{{ tr.btn_save }}</button>
@@ -3252,6 +3269,34 @@ document.addEventListener('click', function(e) {
 </div>
 
 <script>
+async function vrcGroupCall(what) {
+  const out = document.getElementById('vrc-grp-out');
+  const a = document.getElementById('vrc-grp-check');
+  const b = document.getElementById('vrc-grp-join');
+  a.disabled = b.disabled = true;
+  out.style.display = '';
+  out.textContent = '…';
+  try {
+    const r = await fetch('/servers/{{ guild.id }}/vrc/group/' + what, {method: 'POST'});
+    const d = await r.json();
+    // textContent, nie innerHTML: hier landen fremde Gruppennamen im Dashboard.
+    if (d.error) {
+      out.textContent = '❌ ' + d.error;
+    } else {
+      const lines = [];
+      if (d.group_name) lines.push('Gruppe: ' + d.group_name
+        + (d.group_members != null ? ' (' + d.group_members + ' Mitglieder)' : ''));
+      if (d.bot_name) lines.push('Bot-Konto: ' + d.bot_name);
+      lines.push((d.bot_is_member ? '✅ ' : '⚠️ ') + (d.bot_status_text || d.bot_status || '?'));
+      if (d.group_note) lines.push('Hinweis: ' + d.group_note);
+      out.textContent = lines.join('\n');
+    }
+  } catch (e) {
+    out.textContent = '❌ ' + e;
+  }
+  a.disabled = b.disabled = false;
+}
+
 async function vrcProbe() {
   const name = document.getElementById('vrc-probe-name').value.trim();
   const out  = document.getElementById('vrc-probe-out');
