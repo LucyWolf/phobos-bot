@@ -761,12 +761,23 @@ async def announce_instances(bot, guild) -> int:
 
     template = (await get_guild_config(guild.id, "vrc_instance_message") or "").strip() \
         or DEFAULT_VRC_INSTANCE_MESSAGE
+    # Ob ueberhaupt gepingt wird, ist ein eigener Schalter - gepostet wird so oder so.
+    # Fehlender Wert heisst AN, damit ein Server, der bisher eine Rolle eingetragen hat,
+    # sich nicht ploetzlich anders verhaelt.
+    pingen = (await get_guild_config(guild.id, "vrc_instance_ping") or "1") != "0"
     mention_id = (await get_guild_config(guild.id, "vrc_instance_role") or "").strip()
     mention = ""
-    if mention_id.isdigit():
+    erlaubte_rolle = None
+    if pingen and mention_id.isdigit():
         role = guild.get_role(int(mention_id))
         if role:
             mention = role.mention
+            erlaubte_rolle = role
+    # Ausdruecklich festlegen, wen diese Nachricht ueberhaupt erreichen darf: genau die eine
+    # eingestellte Rolle, sonst niemanden. Ohne das koennte ein @everyone im frei
+    # geschriebenen Text den ganzen Server aus dem Bett klingeln.
+    erlaubt = discord.AllowedMentions(everyone=False, users=False,
+                                      roles=[erlaubte_rolle] if erlaubte_rolle else False)
 
     # Beim ALLERERSTEN Durchlauf wird nur mitgeschrieben, nicht gemeldet. Sonst kippt der Bot
     # in dem Moment, in dem jemand die Funktion einschaltet, jede gerade offene Instanz auf
@@ -851,7 +862,8 @@ async def announce_instances(bot, guild) -> int:
             view.add_item(discord.ui.Button(label=knopf[:MAX_BUTTON_LABEL], emoji="🌍",
                                             style=discord.ButtonStyle.link, url=link))
         try:
-            message = await channel.send(mention or None, embed=embed, view=view)
+            message = await channel.send(mention or None, embed=embed, view=view,
+                                         allowed_mentions=erlaubt)
         except discord.Forbidden:
             print(f"[vrc_link] no permission to post instances in {channel_id} ({guild.id})")
             return posted
