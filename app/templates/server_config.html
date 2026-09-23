@@ -3359,6 +3359,7 @@ async function vrcProbe() {
       <thead><tr>
         <th>{{ tr.vrc_col_member }}</th><th>{{ tr.vrc_col_vrchat }}</th>
         <th>{{ tr.vrc_col_owner }}</th>
+        {% if vrc_group_on %}<th>{{ tr.vrc_col_group }}</th>{% endif %}
         <th>{{ tr.vrc_col_preview }}</th><th>{{ tr.vrc_col_status }}</th><th></th>
       </tr></thead>
       <tbody>
@@ -3383,6 +3384,17 @@ async function vrcProbe() {
             <span style="color:var(--muted);font-size:0.78rem;">– {{ tr.vrc_owner_no }}</span>
             {% endif %}
           </td>
+          {% if vrc_group_on %}
+          <td style="white-space:nowrap;">
+            {% if v.vrc_group_member %}
+            <span style="color:#4ade80;font-size:0.78rem;" title="{{ v.vrc_group_checked }}">✓ {{ tr.vrc_group_yes }}</span>
+            {% elif v.vrc_group_checked %}
+            <span style="color:var(--muted);font-size:0.78rem;" title="{{ v.vrc_group_checked }}">– {{ tr.vrc_group_no }}</span>
+            {% else %}
+            <span style="color:var(--muted);font-size:0.78rem;">{{ tr.vrc_group_unchecked }}</span>
+            {% endif %}
+          </td>
+          {% endif %}
           <td style="color:var(--muted);font-size:0.82rem;">{{ v.preview }}</td>
           <td>
             {% if v.status == 'approved' %}

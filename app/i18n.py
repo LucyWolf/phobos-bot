@@ -407,6 +407,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "vrc_linkbase_hint":      "Das ist die Adresse, unter der du dieses Dashboard gerade aufrufst — genau wie beim Einladungslink in der Benutzerverwaltung. Trägst du unter „Einstellungen → E-Mail/SMTP“ eine Basis-URL ein, gilt die stattdessen.",
         "vrc_status_unverified":  "Eigentum offen",
         "vrc_col_owner":          "Eigentum",
+        "vrc_col_group":          "Gruppe",
+        "vrc_group_yes":          "drin",
+        "vrc_group_no":           "nicht drin",
+        "vrc_group_unchecked":    "noch nicht geprüft",
         "vrc_owner_yes":          "bestätigt",
         "vrc_owner_no":           "offen",
         # VRC-Link: die Seite, die das Mitglied selbst aufruft (/vrc/{token})
@@ -1495,6 +1499,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "vrc_linkbase_hint":      "That is the address you are reading this dashboard at — the same way the invite link in the user administration works. If you set a base URL under “Settings → Email/SMTP”, that one is used instead.",
         "vrc_status_unverified":  "Ownership open",
         "vrc_col_owner":          "Ownership",
+        "vrc_col_group":          "Group",
+        "vrc_group_yes":          "in",
+        "vrc_group_no":           "not in",
+        "vrc_group_unchecked":    "not checked yet",
         "vrc_owner_yes":          "confirmed",
         "vrc_owner_no":           "open",
         # VRC-Link: the page a member opens for themselves (/vrc/{token})

@@ -4013,6 +4013,12 @@ async def vrc_refresh(request: Request, guild_id: int):
         # Sequential on purpose: each iteration is one or two Discord edits, and firing a few
         # hundred of them at once is how a bot earns a rate limit that stalls everything else
         # it is doing. discord.py serialises per route anyway, so this only looks slower.
+        #
+        # The group is re-read here too, which is one VRChat request per member. That is a lot,
+        # and it is why this sits behind a button an admin presses deliberately rather than on
+        # any timer - "refresh everything" is exactly when somebody wants the group state to be
+        # current, and no_op when no group is configured.
+        await _vrc_sync_group(guild_id, row)
         await _vrc_apply(guild_id, row["user_id"], row["vrchat_name"])
         done += 1
     return RedirectResponse(
@@ -4510,6 +4516,14 @@ async def vrc_public_name(request: Request, lang: str = Form(""), t: str = Form(
         print(f"[vrc_link] storing claim for {row['user_id']} in {row['guild_id']} failed: {e}")
         return await _vrc_page(request, row, lang,
                                error=tr["vrcp_err_taken"].replace("{name}", name))
+    # Whether they are already in the VRChat group is part of knowing WHO this is, so it is
+    # settled the moment the link exists - not only later, on the confirmation step. With the
+    # ownership proof switched off there IS no confirmation step, and the group would
+    # otherwise stay unknown until somebody happened to press "refresh".
+    stored = await db_one("SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
+                          (row["guild_id"], row["user_id"]))
+    await _vrc_sync_group(int(row["guild_id"]), stored)
+
     if new_status == VRC_STATE_APPROVED:
         # Nothing left to confirm - the role and the nickname are due right now.
         await _vrc_apply(int(row["guild_id"]), row["user_id"], name)
@@ -6766,6 +6780,9 @@ async def server_config(
         "vrc_panel_title_default": DEFAULT_VRC_PANEL_TITLE,
         "vrc_panel_text_default": DEFAULT_VRC_PANEL_TEXT,
         "vrc_panel_button_default": DEFAULT_VRC_PANEL_BUTTON,
+        # Only show the group column when this server actually uses a group - an extra column
+        # of dashes tells nobody anything.
+        "vrc_group_on": bool((cfg.get("vrc_group_id") or "").strip()),
         # Names for the live example under the format field. A real linked pair if there is
         # one - seeing the format applied to somebody who is actually on the server says more
         # than a made-up name - otherwise a stand-in, so the example is never empty.
