@@ -618,6 +618,16 @@ async def get_group_instances(group_id: str, auth_cookie: str,
     """
     if not looks_like_group_id(group_id):
         raise VRChatError("Das ist keine gültige VRChat-Gruppen-ID.")
+    return _parse_group_instances(
+        await _fetch_group_instances(group_id, auth_cookie, two_factor_cookie))
+
+
+async def _fetch_group_instances(group_id: str, auth_cookie: str,
+                                 two_factor_cookie: str = "") -> list:
+    """Die rohe Antwort von VRChat. Geteilt von der ausgewerteten und der rohen Ansicht,
+    damit beide garantiert dieselbe Abfrage sehen."""
+    if not looks_like_group_id(group_id):
+        raise VRChatError("Das ist keine gültige VRChat-Gruppen-ID.")
     url = f"{API_BASE}/groups/{urllib.parse.quote(group_id, safe='')}/instances"
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=_headers(auth_cookie, two_factor_cookie),
@@ -639,6 +649,50 @@ async def get_group_instances(group_id: str, auth_cookie: str,
                 data = await resp.json(content_type=None)
             except Exception:
                 return []
+    return _parse_group_instances(data)
+
+
+async def get_group_instances_raw(group_id: str, auth_cookie: str,
+                                  two_factor_cookie: str = "") -> list:
+    """Dasselbe wie get_group_instances(), nur UNVERAENDERT so, wie VRChat es geliefert hat.
+
+    Fuer die Prüfhilfe im Dashboard. Diese Schnittstelle ist nicht dokumentiert und aendert
+    sich ohne Ankuendigung - was wirklich in einer Antwort steht, laesst sich nur nachsehen,
+    nicht nachlesen. Genau dafuer ist das hier: bevor etwas auf ein Feld gebaut wird, wird
+    geschaut, ob es das Feld ueberhaupt gibt und wie es heisst.
+    """
+    return await _fetch_group_instances(group_id, auth_cookie, two_factor_cookie)
+
+
+async def get_instance(location: str, auth_cookie: str, two_factor_cookie: str = "") -> dict | None:
+    """Die Einzelansicht einer Instanz ("worldId:instanceId"), unveraendert.
+
+    Die Gruppenliste und diese Ansicht liefern nicht dasselbe - Felder wie der Zustand einer
+    Instanz stehen erfahrungsgemaess eher hier. Ebenfalls fuer die Prüfhilfe.
+    """
+    if not location or ":" not in location:
+        return None
+    url = f"{API_BASE}/instances/{urllib.parse.quote(location, safe='')}"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=_headers(auth_cookie, two_factor_cookie),
+                               timeout=TIMEOUT) as resp:
+            if resp.status in (404, 403):
+                return None
+            if resp.status == 401:
+                raise VRChatError("Die VRChat-Sitzung ist abgelaufen — bitte das Konto im "
+                                  "Dashboard neu verbinden.")
+            if resp.status == 429:
+                raise VRChatError("VRChat bremst gerade zu viele Anfragen aus.")
+            if resp.status != 200:
+                return None
+            try:
+                data = await resp.json(content_type=None)
+            except Exception:
+                return None
+    return data if isinstance(data, dict) else None
+
+
+def _parse_group_instances(data) -> list:
     if not isinstance(data, list):
         return []
     out = []

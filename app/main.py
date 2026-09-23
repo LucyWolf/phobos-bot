@@ -4524,6 +4524,92 @@ async def vrc_instances_check(request: Request, guild_id: int):
     })
 
 
+def _kurzfassung(wert, tiefe: int = 0):
+    """Ein Wert so, dass ein Mensch ihn lesen kann, ohne dass eine Seite explodiert.
+
+    Zahlen, Wahrheitswerte und kurze Texte kommen unveraendert; laengere Texte werden
+    gekuerzt; verschachtelte Objekte zeigen ihre Schluessel statt ihres ganzen Inhalts. Es
+    geht darum zu sehen, WELCHE Felder es gibt und was ungefaehr drinsteht - nicht darum,
+    eine Antwort vollstaendig abzudrucken.
+    """
+    if isinstance(wert, str):
+        return wert if len(wert) <= 120 else wert[:117] + "…"
+    if isinstance(wert, (int, float, bool)) or wert is None:
+        return wert
+    if isinstance(wert, dict):
+        if tiefe >= 1:
+            return f"{{…{len(wert)} Felder: {', '.join(sorted(wert)[:8])}}}"
+        return {k: _kurzfassung(v, tiefe + 1) for k, v in sorted(wert.items())}
+    if isinstance(wert, list):
+        if not wert:
+            return []
+        return [_kurzfassung(x, tiefe + 1) for x in wert[:5]] + \
+               ([f"… und {len(wert) - 5} weitere"] if len(wert) > 5 else [])
+    return str(wert)[:120]
+
+
+@web.post("/servers/{guild_id}/vrc/instances/raw")
+async def vrc_instances_raw(request: Request, guild_id: int):
+    """Zeigt unveraendert, was VRChat fuer die offenen Instanzen dieser Gruppe liefert.
+
+    Gebaut, weil zwei Fragen offen sind, die sich nicht nachlesen lassen: ob eine Instanz
+    einen selbst vergebenen Namen mitbringt, und ob VRChat die drei Zustaende unterscheidet -
+    offen, geschlossen (keiner kommt mehr rein, die Drinnen bleiben) und beendet. Die
+    Schnittstelle ist nicht dokumentiert; was in einer Antwort steht, sieht man nur nach.
+
+    Zusaetzlich wird fuer die erste Instanz die EINZELANSICHT geholt: Gruppenliste und
+    Einzelansicht liefern erfahrungsgemaess nicht dasselbe, und ein Zustandsfeld steht eher
+    dort. Nur fuer die erste, damit die Prüfhilfe nicht selbst zur Anfragenschleuder wird.
+
+    Liest nur, speichert nichts.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return JSONResponse({"error": "Kein Zugriff"}, status_code=403)
+    group_id = (await get_guild_config(guild_id, "vrc_group_id") or "").strip()
+    if not group_id:
+        return JSONResponse({"error": "Für diesen Server ist keine Gruppen-ID eingetragen."})
+    from cogs.vrc_link import vrc_session
+    session = await vrc_session()
+    if not session:
+        return JSONResponse({"error": "Die VRChat-Anmeldung des Bot-Kontos funktioniert gerade nicht."})
+    from vrchat import get_group_instances_raw, get_instance
+    try:
+        roh = await get_group_instances_raw(group_id, session["auth_cookie"],
+                                            session["two_factor_cookie"])
+    except Exception as e:
+        return JSONResponse({"error": str(e)[:200]})
+    if not isinstance(roh, list):
+        return JSONResponse({"error": "VRChat antwortete nicht mit einer Liste."})
+
+    eintraege = []
+    for entry in roh[:10]:
+        if isinstance(entry, dict):
+            eintraege.append({"felder": sorted(entry.keys()),
+                              "inhalt": _kurzfassung(entry)})
+    einzeln = None
+    ort = ""
+    for entry in roh:
+        if isinstance(entry, dict):
+            ort = str(entry.get("location") or "")
+            if not ort:
+                w = entry.get("world") if isinstance(entry.get("world"), dict) else {}
+                wid, iid = str(w.get("id") or ""), str(entry.get("instanceId") or "")
+                ort = f"{wid}:{iid}" if wid and iid else ""
+            if ort:
+                break
+    if ort:
+        try:
+            details = await get_instance(ort, session["auth_cookie"],
+                                         session["two_factor_cookie"])
+            if details:
+                einzeln = {"ort": ort, "felder": sorted(details.keys()),
+                           "inhalt": _kurzfassung(details)}
+        except Exception as e:
+            einzeln = {"ort": ort, "fehler": str(e)[:200]}
+    return JSONResponse({"anzahl": len(roh), "instanzen": eintraege, "einzelansicht": einzeln})
+
+
 @web.post("/servers/{guild_id}/vrc/rolemap/add")
 async def vrc_rolemap_add(request: Request, guild_id: int, discord_role_id: str = Form(""),
                           vrc_role_id: str = Form(""), vrc_role_name: str = Form("")):

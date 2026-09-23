@@ -3421,6 +3421,37 @@ if (document.readyState === 'loading') {
   vrcSubInit();
 }
 
+async function vrcInstRaw() {
+  const out = document.getElementById('vrc-inst-out');
+  out.style.display = '';
+  out.textContent = '…';
+  try {
+    const r = await fetch('/servers/{{ guild.id }}/vrc/instances/raw', {method: 'POST'});
+    const d = await r.json();
+    if (d.error) { out.textContent = '❌ ' + d.error; return; }
+    const z = ['Offene Instanzen: ' + d.anzahl, ''];
+    (d.instanzen || []).forEach(function (i, n) {
+      z.push('── Instanz ' + (n + 1) + ' ──');
+      z.push('Felder: ' + i.felder.join(', '));
+      // textContent unten, nie innerHTML: hier steht ungefilterter Fremdtext von VRChat.
+      z.push(JSON.stringify(i.inhalt, null, 2));
+      z.push('');
+    });
+    if (d.einzelansicht) {
+      z.push('── Einzelansicht (' + d.einzelansicht.ort + ') ──');
+      if (d.einzelansicht.fehler) {
+        z.push('Fehler: ' + d.einzelansicht.fehler);
+      } else {
+        z.push('Felder: ' + d.einzelansicht.felder.join(', '));
+        z.push(JSON.stringify(d.einzelansicht.inhalt, null, 2));
+      }
+    }
+    out.textContent = z.join('\n');
+  } catch (e) {
+    out.textContent = '❌ ' + e;
+  }
+}
+
 async function vrcInstCheck() {
   const out = document.getElementById('vrc-inst-out');
   out.style.display = '';
@@ -3731,6 +3762,7 @@ async function vrcProbe() {
   <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.9rem;align-items:center;">
     <button type="submit" form="vrc-main-form" class="btn btn-primary">{{ tr.btn_save }}</button>
     <button type="button" class="btn btn-secondary" onclick="vrcInstCheck()">{{ tr.vrc_inst_check_btn }}</button>
+    <button type="button" class="btn btn-secondary" onclick="vrcInstRaw()">{{ tr.vrc_inst_raw_btn }}</button>
   </div>
   <div id="vrc-inst-out" style="display:none;margin-top:0.7rem;font-size:0.78rem;white-space:pre-wrap;"></div>
 </div>
