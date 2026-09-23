@@ -35,6 +35,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 - [Birthday System](#birthday-system)
 - [Backup & Restore](#backup--restore)
 - [Two-Factor Authentication](#two-factor-authentication)
+- [Security](#security)
 - [Event Logging](#event-logging)
 - [Bug & Feature Reports](#bug--feature-reports)
 - [Permission System](#permission-system)
@@ -230,6 +231,7 @@ Links a member's **VRChat account to their Discord account**: they get a role fo
 - **Approve automatically** — off by default, so every link waits for a moderator
 - **Linking button** — the bot posts a message with a button in a channel of your choice; heading, text and button caption are yours to write. This is the entry point members actually use, and it works the moment the message exists
 - **DM on join** — optionally send new members their link directly
+- **Require proof of ownership** — on by default. Switched off, a typed name is enough and the link is made immediately; those links get no "ownership confirmed" badge and are marked as such in the list, so you can see at a glance which ones were never proven
 
 **How a member links their account:**
 
@@ -239,6 +241,8 @@ Links a member's **VRChat account to their Discord account**: they get a role fo
 4. Role and nickname are applied, either at once or after a moderator approves.
 
 The page **never asks for a VRChat password**. Anything that does is phishing, whoever it claims to be.
+
+**Check a VRChat profile.** A read-only lookup in the *Linking* sub-tab: enter a name and see exactly what VRChat returns for it — display name, 18+, trust rank, and whether the status message and bio arrive at all. Built because "the code is not in your status" and "the bot never receives that field" look identical from the outside; this tells the two apart in one query. It stores nothing.
 
 Once linked, the page shows the account with its VRChat badges (ownership confirmed, 18+ verified, VRChat+, trust rank) and lets the member refresh or remove the link themselves.
 
@@ -358,6 +362,24 @@ Passwords of existing accounts are never overwritten during a restore.
 ## Two-Factor Authentication
 
 Every dashboard user can enable TOTP-based two-factor authentication under **Profile → Two-Factor Authentication** — compatible with Google Authenticator, Authy, Aegis and similar apps. After entering the confirmation code once, 8 one-time backup codes are shown (for account recovery if you lose your device); they can be regenerated anytime with your password. Login then requires the app code (or a backup code) after the password, and repeated failed codes temporarily lock the account.
+
+---
+
+## Security
+
+The dashboard is meant to sit on the open internet, so a few things are handled deliberately rather than left to chance.
+
+**Login.** After 5 wrong passwords from the same address for the same account, that combination is locked for 15 minutes; a second, looser count per address stops one host from working through a list of usernames. An unknown username is checked against a dummy hash so the answer takes just as long — otherwise the response time alone tells an attacker which accounts exist.
+
+**Sessions.** Every login gets its own handle, stored server-side. Signing out deletes it, so a copy of that cookie — taken from a shared machine, a backup, a proxy log — stops working at the same moment. Other devices of the same user keep their own sessions. The handle is stored hashed, as are password-reset tokens and invite codes: all three are only ever compared, never read back, so reading the database file gives you nothing usable.
+
+**One cookie, and only for the dashboard.** `phobos_session`, `HttpOnly` and `SameSite=Lax` — the latter is also what stands in for CSRF protection. The member-facing VRC-Link pages set **no cookie at all**. A login cookie is technically necessary, so it needs no consent banner.
+
+**Headers.** Every response carries `X-Frame-Options: SAMEORIGIN`, `Content-Security-Policy: frame-ancestors 'self'`, `X-Content-Type-Options: nosniff` and a `Referrer-Policy`. Deliberately no full CSP: the dashboard is built on inline scripts and styles, and a policy without `unsafe-inline` would break every page at once.
+
+**Behind HTTPS**, set `PHOBOS_COOKIE_SECURE=1` in your docker-compose `environment:` block. That adds the `Secure` flag and sends HSTS. It is **off by default on purpose** — a Secure cookie is dropped by the browser over plain HTTP, so guessing this wrong would lock an already-running installation out of its own dashboard.
+
+**What is not protected:** the Discord bot token, the VRChat credentials, users' 2FA secrets and the SMTP/AMP passwords are stored in plain text, because the bot needs them back. Keep backups of `data/` somewhere safe, and change the default `admin` password on first login.
 
 ---
 
@@ -680,6 +702,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 - [Geburtstags-System](#geburtstags-system)
 - [Backup & Wiederherstellen](#backup--wiederherstellen)
 - [Zwei-Faktor-Authentifizierung](#zwei-faktor-authentifizierung)
+- [Sicherheit](#sicherheit)
 - [Event-Logging](#event-logging-1)
 - [Bug & Feature-Meldungen](#bug--feature-meldungen)
 - [Berechtigungssystem](#berechtigungssystem)
@@ -875,6 +898,7 @@ Verknüpft das **VRChat-Konto eines Mitglieds mit seinem Discord-Konto**: Es bek
 - **Automatisch freigeben** — standardmäßig aus, jede Verknüpfung wartet also auf die Moderation
 - **Knopf zum Verknüpfen** — der Bot postet in einem Kanal deiner Wahl eine Nachricht mit einem Knopf; Überschrift, Text und Beschriftung schreibst du selbst. Das ist der Weg, den Mitglieder tatsächlich nutzen, und er wirkt sofort
 - **DM beim Beitritt** — neuen Mitgliedern den Link optional direkt schicken
+- **Eigentum nachweisen lassen** — standardmäßig an. Ausgeschaltet genügt der eingetippte Name und die Verknüpfung entsteht sofort; solche Einträge bekommen kein „Eigentum bestätigt“ und werden in der Liste entsprechend geführt, du siehst also auf einen Blick, welche nie nachgewiesen wurden
 
 **So verknüpft sich ein Mitglied:**
 
@@ -884,6 +908,8 @@ Verknüpft das **VRChat-Konto eines Mitglieds mit seinem Discord-Konto**: Es bek
 4. Rolle und Spitzname werden vergeben, sofort oder nach der Freigabe durch die Moderation.
 
 Die Seite fragt **nie nach einem VRChat-Passwort**. Wer das tut, betreibt Phishing — egal, als wer er sich ausgibt.
+
+**VRChat-Profil prüfen.** Eine reine Abfrage im Unterreiter *Verknüpfung*: Name eingeben und sehen, was VRChat für ihn tatsächlich herausgibt — Anzeigename, 18+, Vertrauensstufe, und ob Statusmeldung und Bio überhaupt ankommen. Gebaut, weil „der Code steht nicht im Status“ und „der Bot bekommt das Feld gar nicht“ von außen gleich aussehen; das trennt beides in einer Abfrage. Gespeichert wird nichts.
 
 Nach der Verknüpfung zeigt die Seite das Konto mit seinen VRChat-Abzeichen (Eigentum bestätigt, 18+ verifiziert, VRChat+, Vertrauensstufe); das Mitglied kann die Verknüpfung dort selbst auffrischen oder lösen.
 
@@ -1003,6 +1029,24 @@ Passwörter bestehender Konten werden beim Einspielen nie überschrieben.
 ## Zwei-Faktor-Authentifizierung
 
 Jeder Dashboard-Nutzer kann unter **Profil → Zwei-Faktor-Authentifizierung** TOTP-basierte 2FA aktivieren — kompatibel mit Google Authenticator, Authy, Aegis und ähnlichen Apps. Nach einmaliger Bestätigung mit dem Code aus der App werden 8 Backup-Codes angezeigt (für den Notfall, falls das Handy verloren geht); sie lassen sich jederzeit mit dem Passwort neu erstellen. Der Login verlangt danach zusätzlich zum Passwort den App-Code (oder einen Backup-Code); wiederholt falsche Codes sperren das Konto vorübergehend.
+
+---
+
+## Sicherheit
+
+Das Dashboard soll im offenen Internet stehen können, deshalb ist einiges bewusst geregelt statt dem Zufall überlassen.
+
+**Anmeldung.** Nach 5 falschen Passwörtern von derselben Adresse auf dasselbe Konto ist diese Kombination 15 Minuten gesperrt; ein zweiter, lockerer Zähler je Adresse fängt das Durchprobieren vieler Benutzernamen ab. Ein unbekannter Benutzername wird gegen einen Dummy-Hash geprüft, damit die Antwort genauso lange braucht — sonst verrät allein die Antwortzeit, welche Konten es gibt.
+
+**Sitzungen.** Jede Anmeldung bekommt ein eigenes Handle, das auf dem Server liegt. Abmelden löscht es, eine mitgeschnittene Kopie des Cookies ist im selben Moment wertlos — egal ob von einem geteilten Rechner, aus einem Backup oder einem Proxy-Protokoll. Andere Geräte desselben Nutzers bleiben angemeldet. Das Handle steht gehasht in der Datenbank, ebenso Passwort-Reset-Token und Einladungscodes: alle drei werden nur verglichen, nie zurückgelesen — wer die Datenbankdatei liest, kann damit nichts anfangen.
+
+**Ein Cookie, und nur fürs Dashboard.** `phobos_session`, `HttpOnly` und `SameSite=Lax` — Letzteres stellt zugleich den CSRF-Schutz. Die Mitglieder-Seiten von VRC-Link setzen **gar kein Cookie**. Ein Anmelde-Cookie ist technisch notwendig und braucht daher kein Banner.
+
+**Kopfzeilen.** Jede Antwort trägt `X-Frame-Options: SAMEORIGIN`, `Content-Security-Policy: frame-ancestors 'self'`, `X-Content-Type-Options: nosniff` und eine `Referrer-Policy`. Bewusst keine vollständige CSP: das Dashboard lebt von inline geschriebenem JavaScript, eine Richtlinie ohne `unsafe-inline` würde jede Seite auf einen Schlag lahmlegen.
+
+**Hinter HTTPS** trägst du `PHOBOS_COOKIE_SECURE=1` in den `environment:`-Block deiner docker-compose ein. Das setzt das `Secure`-Flag und schickt HSTS. Standardmäßig ist es **absichtlich aus** — ein Secure-Cookie wird über einfaches HTTP vom Browser verworfen, einmal falsch geraten sperrt es eine laufende Installation aus ihrem eigenen Dashboard aus.
+
+**Nicht geschützt:** Discord-Token, VRChat-Zugangsdaten, die 2FA-Geheimnisse der Nutzer sowie SMTP- und AMP-Passwort liegen im Klartext, weil der Bot sie zurückbraucht. Bewahre Backups von `data/` entsprechend sicher auf, und ändere das Standard-Passwort `admin` bei der ersten Anmeldung.
 
 ---
 
