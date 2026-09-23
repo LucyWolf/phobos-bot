@@ -164,6 +164,48 @@ AVATARS_DIR = DATA_DIR / "avatars"
 SESSION_MAX_AGE = 14 * 24 * 60 * 60
 
 
+def _looks_hashed(value: str) -> bool:
+    """Ob dieser Wert aussieht wie ein gespeicherter Hash - 64 Hex-Zeichen.
+
+    Klingt nach Kleinkram, ist aber der Punkt, an dem die ganze Massnahme sonst kippt: die
+    Rueckfaelle unten akzeptieren waehrend der Umstellung auch noch den ROHEN Wert aus einer
+    alten Zeile. Wer ein Backup liest, findet dort den Hash - und koennte ihn einfach als
+    Token einreichen, woraufhin der Rueckfall ihn gegen genau dieselbe Zeile pruefen und
+    durchwinken wuerde. Der eigene Test hat das aufgedeckt, bevor es je lief.
+
+    Ein echtes Geheimnis aus secrets.token_urlsafe() ist Base64 und enthaelt praktisch immer
+    Zeichen ausserhalb von [0-9a-f] oder hat eine andere Laenge; ein Treffer waere
+    astronomisch unwahrscheinlich und kostet dann nur einen neuen Link.
+    """
+    value = value or ""
+    return len(value) == 64 and all(c in "0123456789abcdef" for c in value.lower())
+
+
+def _token_pair(raw: str) -> tuple:
+    """(Hash, Rohwert) fuer eine Abfrage mit "IN (?,?)" - der Rohwert wird unterdrueckt, wenn
+    er wie ein Hash aussieht, damit der Umstellungs-Rueckfall nicht zum Einfallstor wird."""
+    digest = _token_hash(raw)
+    return (digest, digest if _looks_hashed(raw) else raw)
+
+
+def _token_hash(raw: str) -> str:
+    """Der Speicher-Wert fuer ein zufaellig erzeugtes Geheimnis, das nur VERGLICHEN wird.
+
+    Betrifft drei Sorten: Passwort-Reset-Token, Einladungscodes und die Sitzungs-Handles.
+    Keiner davon wird je zurueckgelesen - der Bot prueft nur, ob ein hereingereichter Wert
+    dazu passt. Also gehoert er gehasht statt gespeichert, und damit ist "wer die Datenbank
+    liest, uebernimmt Konten" fuer diese drei erledigt, ohne dass irgendwo ein Schluessel
+    verwaltet oder verloren werden koennte.
+
+    Ohne Salt und ohne Streckung, und das ist hier richtig: die Werte kommen aus
+    secrets.token_urlsafe() mit 128 bis 256 Bit Zufall. Da gibt es nichts zu raten und keine
+    Liste vorberechneter Hashes, gegen die ein Salt schuetzen muesste - anders als bei
+    Passwoertern, die Menschen sich ausdenken und die deshalb weiterhin ueber bcrypt laufen.
+    """
+    import hashlib
+    return hashlib.sha256((raw or "").encode()).hexdigest()
+
+
 def _cookie_secure() -> bool:
     """Whether the session cookie gets the Secure flag (and HSTS gets sent).
 
@@ -627,6 +669,39 @@ async def link_base_url() -> str:
     return base.rstrip("/")
 
 
+async def _session_alive(sid: str) -> bool:
+    """Ob dieses Sitzungs-Handle noch gilt - und stellt eine alte Zeile dabei still um.
+
+    Gespeichert wird nur noch der Hash. Wer die Datenbankdatei erbeutet - ein Backup, ein
+    Abzug - kann daraus kein gueltiges Handle mehr ablesen. Das zaehlt, weil der
+    Sitzungsschluessel in derselben Ordnerstruktur liegt: mit beidem zusammen liesse sich
+    sonst ein Cookie faelschen UND ein passendes Handle nachschlagen.
+
+    Der Rueckfall auf den rohen Wert ist ausdruecklich KEINE dauerhafte Schwaeche, sondern die
+    Umstellung: wer beim Update angemeldet war, hat eine Zeile im alten Format. Die wird beim
+    naechsten Seitenaufruf auf den Hash umgeschrieben, statt die Sitzung wegzuwerfen - es soll
+    niemand nach einem Update ploetzlich vor dem Login stehen. Nach einmal Durchlaufen gibt es
+    keine alten Zeilen mehr.
+    """
+    digest = _token_hash(sid)
+    if await db_one("SELECT sid FROM user_sessions WHERE sid=?", (digest,)):
+        return True
+    if _looks_hashed(sid):
+        # Sieht der eingereichte Wert selbst wie ein gespeicherter Hash aus, ist er kein
+        # Altbestand, sondern jemand, der ihn irgendwo abgelesen hat. Kein Rueckfall.
+        return False
+    alt = await db_one("SELECT sid FROM user_sessions WHERE sid=?", (sid,))
+    if not alt:
+        return False
+    try:
+        await db_exec("UPDATE user_sessions SET sid=? WHERE sid=?", (digest, sid))
+    except Exception as e:
+        # Schlaegt das Umschreiben fehl, bleibt die Zeile im alten Format stehen und wird beim
+        # naechsten Aufruf erneut versucht. Die Sitzung darf daran nicht scheitern.
+        print(f"[session] Umstellung eines alten Sitzungs-Handles fehlgeschlagen: {e}")
+    return True
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Die Kopfzeilen, die jede Antwort tragen sollte.
 
@@ -686,7 +761,7 @@ class SessionValidityMiddleware(BaseHTTPMiddleware):
                 # revocable like any other.
                 sid = request.session.get("sid")
                 if sid:
-                    if not await db_one("SELECT sid FROM user_sessions WHERE sid=?", (sid,)):
+                    if not await _session_alive(sid):
                         request.session.clear()
                 else:
                     try:
@@ -694,7 +769,7 @@ class SessionValidityMiddleware(BaseHTTPMiddleware):
                         now = datetime.datetime.utcnow().isoformat()
                         await db_exec(
                             "INSERT INTO user_sessions (sid, user_id, created_at, last_seen) "
-                            "VALUES (?,?,?,?)", (sid, uid, now, now))
+                            "VALUES (?,?,?,?)", (_token_hash(sid), uid, now, now))
                         request.session["sid"] = sid
                     except Exception as e:
                         print(f"[session] Nachrüsten einer Altsitzung fehlgeschlagen: {e}")
@@ -905,7 +980,7 @@ async def _complete_login(request: Request, user: dict) -> None:
     now = datetime.datetime.utcnow().isoformat()
     request.session["sid"] = sid
     await db_exec("INSERT INTO user_sessions (sid, user_id, created_at, last_seen) "
-                  "VALUES (?,?,?,?)", (sid, user["id"], now, now))
+                  "VALUES (?,?,?,?)", (_token_hash(sid), user["id"], now, now))
     # Sessions older than the cookie can possibly live are dead weight; clearing them here
     # costs one statement per login instead of a background task.
     try:
@@ -1127,7 +1202,7 @@ async def logout(request: Request):
     sid = request.session.get("sid")
     if sid:
         try:
-            await db_exec("DELETE FROM user_sessions WHERE sid=?", (sid,))
+            await db_exec("DELETE FROM user_sessions WHERE sid IN (?,?)", _token_pair(sid))
         except Exception as e:
             print(f"[session] Abmelden konnte die Sitzung nicht löschen: {e}")
     request.session.clear()
@@ -2253,7 +2328,7 @@ async def forgot_pw_submit(request: Request, email_addr: str = Form(...)):
         expires = (datetime.datetime.utcnow() + datetime.timedelta(hours=1)).isoformat()
         await db_exec(
             "INSERT OR REPLACE INTO password_reset_tokens (token,user_id,expires_at) VALUES (?,?,?)",
-            (token, user["id"], expires),
+            (_token_hash(token), user["id"], expires),
         )
         base = await get_config("base_url") or ""
         reset_url = f"{base.rstrip('/')}/reset-password?token={token}"
@@ -2273,8 +2348,11 @@ async def reset_pw_page(request: Request, token: str = "", error: str = ""):
     if not token:
         return RedirectResponse("/login", status_code=302)
     row = await db_one(
-        "SELECT user_id FROM password_reset_tokens WHERE token=? AND expires_at > ?",
-        (token, datetime.datetime.utcnow().isoformat()),
+        "SELECT user_id FROM password_reset_tokens WHERE token IN (?,?) AND expires_at > ?",
+        # Der gehashte Wert zuerst, der rohe als Rueckfall: ein Link, der beim Update schon
+        # unterwegs war, soll weiter funktionieren. Solche Zeilen sind nach einer Stunde
+        # ohnehin weg, danach greift nur noch der Hash.
+        (*_token_pair(token), datetime.datetime.utcnow().isoformat()),
     )
     if not row:
         return RedirectResponse("/login?error=Link+ungültig+oder+abgelaufen", status_code=302)
@@ -2290,13 +2368,16 @@ async def reset_pw_submit(request: Request, token: str = Form(...), password: st
     if len(password) < 6:
         return RedirectResponse(f"/reset-password?token={token}&error=Mindestens+6+Zeichen", status_code=302)
     row = await db_one(
-        "SELECT user_id FROM password_reset_tokens WHERE token=? AND expires_at > ?",
-        (token, datetime.datetime.utcnow().isoformat()),
+        "SELECT user_id FROM password_reset_tokens WHERE token IN (?,?) AND expires_at > ?",
+        # Der gehashte Wert zuerst, der rohe als Rueckfall: ein Link, der beim Update schon
+        # unterwegs war, soll weiter funktionieren. Solche Zeilen sind nach einer Stunde
+        # ohnehin weg, danach greift nur noch der Hash.
+        (*_token_pair(token), datetime.datetime.utcnow().isoformat()),
     )
     if not row:
         return RedirectResponse("/login?error=Link+ungültig+oder+abgelaufen", status_code=302)
     await db_exec("UPDATE users SET password_hash=? WHERE id=?", (hash_pw(password), row["user_id"]))
-    await db_exec("DELETE FROM password_reset_tokens WHERE token=?", (token,))
+    await db_exec("DELETE FROM password_reset_tokens WHERE token IN (?,?)", _token_pair(token))
     return RedirectResponse("/login?success=Passwort+erfolgreich+geändert", status_code=302)
 
 
@@ -2832,7 +2913,8 @@ async def admin_invite_generate(request: Request):
     code = secrets.token_urlsafe(16)
     expires_at = (datetime.datetime.utcnow() + datetime.timedelta(minutes=5)).isoformat()
     await db_exec("DELETE FROM invite_codes")
-    await db_exec("INSERT INTO invite_codes (code, expires_at) VALUES (?, ?)", (code, expires_at))
+    await db_exec("INSERT INTO invite_codes (code, expires_at) VALUES (?, ?)",
+                  (_token_hash(code), expires_at))
     return JSONResponse({"code": code, "expires_at": expires_at})
 
 
@@ -2865,7 +2947,8 @@ async def admin_logout_all(request: Request):
 async def register_page(request: Request, code: str = "", error: str = ""):
     if not code:
         return RedirectResponse("/login", status_code=302)
-    inv = await db_one("SELECT * FROM invite_codes WHERE code=? AND used=0", (code,))
+    inv = await db_one("SELECT * FROM invite_codes WHERE code IN (?,?) AND used=0",
+                       _token_pair(code))
     if not inv:
         return templates.TemplateResponse("register.html", {
             "request": request, "code": code,
@@ -2892,7 +2975,8 @@ async def register_submit(
     password: str = Form(...),
     pw_confirm: str = Form(...),
 ):
-    inv = await db_one("SELECT * FROM invite_codes WHERE code=? AND used=0", (code,))
+    inv = await db_one("SELECT * FROM invite_codes WHERE code IN (?,?) AND used=0",
+                       _token_pair(code))
     if not inv or datetime.datetime.utcnow() > datetime.datetime.fromisoformat(inv["expires_at"]):
         return templates.TemplateResponse("register.html", {
             "request": request, "code": code,
@@ -2928,7 +3012,7 @@ async def register_submit(
             "request": request, "code": code, "valid": True,
             "error": "Benutzername bereits vergeben.",
         })
-    await db_exec("UPDATE invite_codes SET used=1 WHERE code=?", (code,))
+    await db_exec("UPDATE invite_codes SET used=1 WHERE code IN (?,?)", _token_pair(code))
     return RedirectResponse(
         "/login?success=Registrierung+erfolgreich+–+bitte+einloggen", status_code=302
     )
