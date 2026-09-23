@@ -42,6 +42,8 @@ from database import (db_rows, db_one, db_exec, get_config, get_guild_config,
                       DEFAULT_VRC_PANEL_TITLE, DEFAULT_VRC_PANEL_TEXT,
                       DEFAULT_VRC_PANEL_BUTTON, DEFAULT_VRC_INSTANCE_MESSAGE,
                       DEFAULT_VRC_INSTANCE_BUTTON, DEFAULT_VRC_INSTANCE_CLOSED,
+                      DEFAULT_VRC_INSTANCE_TITLE, DEFAULT_VRC_INSTANCE_CLOSED_TITLE,
+                      DEFAULT_VRC_INSTANCE_COUNT_LABEL, DEFAULT_VRC_INSTANCE_FOOTER,
                       human_duration,
                       VRC_ACCOUNT_KEY, VRC_TOKEN_TTL_MINUTES,
                       VRC_STATE_UNVERIFIED, VRC_STATE_PENDING, VRC_STATE_APPROVED)
@@ -552,6 +554,36 @@ async def revoke_link(bot, guild: discord.Guild, member: discord.Member) -> None
             pass
 
 
+def _fuelle(vorlage: str, *, welt: str = "", anzahl="", gruppe: str = "",
+            link: str = "", dauer: str = "") -> str:
+    """Setzt die Platzhalter in einen frei geschriebenen Baustein ein.
+
+    An einer Stelle statt an fuenf: Ueberschrift, Text, Zahl-Bezeichnung, Fusszeile und
+    Abschiedstext sind alle frei schreibbar und sollen dieselben Platzhalter verstehen -
+    sonst muss sich jemand merken, welcher wo geht.
+    """
+    return (vorlage
+            .replace("{world}", welt)
+            .replace("{count}", str(anzahl))
+            .replace("{group}", gruppe)
+            .replace("{link}", link)
+            .replace("{duration}", dauer)).strip()
+
+
+async def _instance_texte(guild) -> dict:
+    """Die frei schreibbaren Bausteine dieses Servers, leere auf den Standard gesetzt."""
+    async def hol(schluessel, standard):
+        return (await get_guild_config(guild.id, schluessel) or "").strip() or standard
+    return {
+        "titel": await hol("vrc_instance_title", DEFAULT_VRC_INSTANCE_TITLE),
+        "text": await hol("vrc_instance_message", DEFAULT_VRC_INSTANCE_MESSAGE),
+        "zahl": await hol("vrc_instance_count_label", DEFAULT_VRC_INSTANCE_COUNT_LABEL),
+        "fuss": await hol("vrc_instance_footer", DEFAULT_VRC_INSTANCE_FOOTER),
+        "zu_titel": await hol("vrc_instance_closed_title", DEFAULT_VRC_INSTANCE_CLOSED_TITLE),
+        "zu_text": await hol("vrc_instance_closed_message", DEFAULT_VRC_INSTANCE_CLOSED),
+    }
+
+
 async def _update_instance_count(guild, channel, zeile, inst) -> None:
     """Zieht die Personenzahl in einer bereits gestellten Meldung nach.
 
@@ -571,12 +603,14 @@ async def _update_instance_count(guild, channel, zeile, inst) -> None:
     embed = nachricht.embeds[0]
     # Das Feld an seinem Platz ersetzen statt die Karte neu zu bauen: so bleiben Bild,
     # Beschreibung und alles andere unangetastet, auch wenn sie sich spaeter mal aendern.
-    for i, feld in enumerate(embed.fields):
-        if feld.name == "Gerade drin":
-            embed.set_field_at(i, name=feld.name, value=f"👥 {inst['count']}", inline=True)
-            break
+    # Ueber die POSITION, nicht ueber die Beschriftung: die ist jetzt frei waehlbar, und wer
+    # sie aendert, waehrend eine Meldung steht, wuerde die Zahl sonst nie wieder finden - es
+    # kaeme bei jedem Durchlauf ein zweites Feld dazu.
+    if embed.fields:
+        alt = embed.fields[0]
+        embed.set_field_at(0, name=alt.name, value=f"👥 {inst['count']}", inline=True)
     else:
-        embed.add_field(name="Gerade drin", value=f"👥 {inst['count']}", inline=True)
+        embed.add_field(name="\u200b", value=f"👥 {inst['count']}", inline=True)
     try:
         await nachricht.edit(embed=embed)
     except (discord.Forbidden, discord.HTTPException, OSError) as e:
@@ -589,7 +623,7 @@ async def _update_instance_count(guild, channel, zeile, inst) -> None:
         print(f"[vrc_link] Zahlstand von {zeile['id']} nicht gespeichert: {e}")
 
 
-async def _close_instance_post(guild, channel, zeile, vorlage: str, jetzt) -> None:
+async def _close_instance_post(guild, channel, zeile, texte: dict, jetzt) -> None:
     """Schreibt die Meldung einer zugegangenen Instanz auf den Abschieds-Text um.
 
     Umschreiben statt loeschen: wer den Kanal spaeter liest, soll sehen, dass es die Instanz
@@ -604,10 +638,10 @@ async def _close_instance_post(guild, channel, zeile, vorlage: str, jetzt) -> No
             (jetzt - datetime.datetime.fromisoformat(zeile["first_seen"])).total_seconds())
     except ValueError:
         dauer = "?"
-    text = (vorlage
-            .replace("{world}", zeile["world_name"] or "Unbekannte Welt")
-            .replace("{group}", guild.name)
-            .replace("{duration}", dauer)).strip()
+    welt = zeile["world_name"] or "Unbekannte Welt"
+    def f(v):
+        return _fuelle(v, welt=welt, anzahl=zeile["last_count"], gruppe=guild.name, dauer=dauer)
+    text = f(texte["zu_text"])
     try:
         nachricht = await channel.fetch_message(int(nachricht_id))
     except discord.NotFound:
@@ -616,11 +650,13 @@ async def _close_instance_post(guild, channel, zeile, vorlage: str, jetzt) -> No
         print(f"[vrc_link] Abschieds-Meldung {nachricht_id} nicht erreichbar: {e}")
         return
     embed = discord.Embed(
-        title=(zeile["world_name"] or "VRChat")[:256],
+        title=(f(texte["zu_titel"]) or welt)[:256],
         description=text[:4000] or None,
         color=0x4B5563,          # grau statt violett: auf einen Blick "vorbei"
     )
-    embed.set_footer(text=guild.name[:2048])
+    fuss = f(texte["fuss"])
+    if fuss:
+        embed.set_footer(text=fuss[:2048])
     try:
         # view=None nimmt den Beitritts-Knopf weg.
         await nachricht.edit(content=None, embed=embed, view=None)
@@ -673,14 +709,14 @@ async def announce_instances(bot, guild) -> int:
     # Hinweise auf Instanzen steht, die es nicht mehr gibt. Standardmaessig aus: eine
     # Nachricht ungefragt wegzuraeumen ist nichts, was man einem Bot beibringt, ohne dass es
     # jemand eingeschaltet hat - manche Server wollen die Historie behalten.
+    # Vor der Schliess-Schleife, denn die Abschieds-Meldung braucht die Bausteine schon.
+    texte = await _instance_texte(guild)
     aufraeumen = (await get_guild_config(guild.id, "vrc_instance_cleanup") or "0") == "1"
     try:
         frist = int((await get_guild_config(guild.id, "vrc_instance_delete_after") or "0").strip())
     except (TypeError, ValueError):
         frist = 0
     frist = max(0, min(1440, frist))
-    schluss_vorlage = (await get_guild_config(guild.id, "vrc_instance_closed_message") or "").strip() \
-        or DEFAULT_VRC_INSTANCE_CLOSED
     jetzt = datetime.datetime.utcnow()
 
     # Gerade zugegangen: die Meldung wird umgeschrieben statt weggeworfen - der Kanal soll
@@ -710,7 +746,7 @@ async def announce_instances(bot, guild) -> int:
                 print(f"[vrc_link] could not forget instance {location}: {e}")
             continue
 
-        await _close_instance_post(guild, channel, zeile, schluss_vorlage, jetzt)
+        await _close_instance_post(guild, channel, zeile, texte, jetzt)
         try:
             if aufraeumen:
                 # Bleibt stehen, bis die Frist um ist - dann holt der Block darunter sie ab.
@@ -759,8 +795,6 @@ async def announce_instances(bot, guild) -> int:
         except Exception as e:
             print(f"[vrc_link] could not forget instance {zeile['location']}: {e}")
 
-    template = (await get_guild_config(guild.id, "vrc_instance_message") or "").strip() \
-        or DEFAULT_VRC_INSTANCE_MESSAGE
     # Keine Rolle gewaehlt heisst kein Ping - gepostet wird trotzdem. Ein zusaetzlicher
     # Haken dafuer waere doppelt, die Auswahl bietet "Niemanden anpingen" bereits an.
     mention_id = (await get_guild_config(guild.id, "vrc_instance_role") or "").strip()
@@ -822,23 +856,24 @@ async def announce_instances(bot, guild) -> int:
             break
         link = launch_url(inst["location"])
         welt = inst["world_name"] or "Unbekannte Welt"
-        text = (template
-                .replace("{world}", welt)
-                .replace("{count}", str(inst["count"]))
-                .replace("{group}", guild.name)
-                .replace("{link}", link)).strip()
+        def f(vorlage):
+            return _fuelle(vorlage, welt=welt, anzahl=inst["count"], gruppe=guild.name, link=link)
+        text = f(texte["text"])
 
         # Alles in die Karte, nichts daneben. Vorher stand der Text mitsamt der vollen,
         # sehr langen Beitritts-Adresse als nackte Zeile ueber einer kleinen Karte, und der
         # Weltname doppelt - einmal im Text, einmal als Titel. Jetzt traegt die Nachricht
         # selbst nur noch die Rollen-Erwaehnung, falls eine eingestellt ist.
         embed = discord.Embed(
-            title=welt[:256],
+            # Faellt die frei geschriebene Ueberschrift leer aus, steht der Weltname da -
+            # eine Karte ganz ohne Titel sieht kaputt aus.
+            title=(f(texte["titel"]) or welt)[:256],
             url=link or None,          # macht die Ueberschrift anklickbar
             description=text[:4000] or None,
             color=0x8B5CF6,
         )
-        embed.add_field(name="Gerade drin", value=f"👥 {inst['count']}", inline=True)
+        embed.add_field(name=(f(texte["zahl"]) or "\u200b")[:256],
+                        value=f"👥 {inst['count']}", inline=True)
         # Das GROSSE Bild, nicht das briefmarkengrosse Vorschaubild rechts - das war der
         # Hauptgrund, warum die Meldung mickrig aussah.
         #
@@ -847,7 +882,9 @@ async def announce_instances(bot, guild) -> int:
         # scheiterte jedes Mal.
         if inst["world_image"].startswith(("http://", "https://")):
             embed.set_image(url=inst["world_image"])
-        embed.set_footer(text=guild.name[:2048])
+        fuss = f(texte["fuss"])
+        if fuss:
+            embed.set_footer(text=fuss[:2048])
 
         # Ein Bild in einer Karte kann bei Discord nicht selbst auf eine Adresse zeigen -
         # ein Klick darauf oeffnet nur das Bild. Der Knopf ist das, was dem am naechsten

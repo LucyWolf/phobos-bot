@@ -1407,6 +1407,14 @@ DEFAULT_VRC_INSTANCE_BUTTON = "In VRChat öffnen"
 # dazu {duration} - wie lange sie offen war.
 DEFAULT_VRC_INSTANCE_CLOSED = "🔒 Diese Instanz ist zu. War {duration} offen — bis zum nächsten Mal!"
 
+# Die restlichen Bausteine der Meldung, ebenfalls frei schreibbar ("die anderen sachen will
+# ich auch selber schreiben können"). Ueberall dieselben Platzhalter wie im Text; leer
+# gelassen gilt der Standard hier.
+DEFAULT_VRC_INSTANCE_TITLE = "{world}"
+DEFAULT_VRC_INSTANCE_CLOSED_TITLE = "{world}"
+DEFAULT_VRC_INSTANCE_COUNT_LABEL = "Gerade drin"
+DEFAULT_VRC_INSTANCE_FOOTER = "{group}"
+
 
 def human_duration(seconds: float) -> str:
     """Eine Dauer, wie ein Mensch sie sagt: "3 Min", "2 Std 15 Min", "1 Tag 4 Std".

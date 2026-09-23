@@ -3705,6 +3705,26 @@ async function vrcProbe() {
              value="{{ cfg.get('vrc_instance_button', '') }}" placeholder="{{ vrc_instance_button_default }}">
       <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_inst_button_hint }}</div>
     </div>
+    <div>
+      <label>{{ tr.vrc_inst_title_label }}</label>
+      <input type="text" name="vrc_instance_title" form="vrc-main-form" maxlength="200"
+             value="{{ cfg.get('vrc_instance_title', '') }}" placeholder="{{ vrc_instance_title_default }}">
+    </div>
+    <div>
+      <label>{{ tr.vrc_inst_count_label }}</label>
+      <input type="text" name="vrc_instance_count_label" form="vrc-main-form" maxlength="200"
+             value="{{ cfg.get('vrc_instance_count_label', '') }}" placeholder="{{ vrc_instance_count_default }}">
+    </div>
+    <div>
+      <label>{{ tr.vrc_inst_footer_label }}</label>
+      <input type="text" name="vrc_instance_footer" form="vrc-main-form" maxlength="200"
+             value="{{ cfg.get('vrc_instance_footer', '') }}" placeholder="{{ vrc_instance_footer_default }}">
+    </div>
+    <div>
+      <label>{{ tr.vrc_inst_closed_title_label }}</label>
+      <input type="text" name="vrc_instance_closed_title" form="vrc-main-form" maxlength="200"
+             value="{{ cfg.get('vrc_instance_closed_title', '') }}" placeholder="{{ vrc_instance_closed_title_default }}">
+    </div>
     <div style="grid-column:1 / -1;">
       <label>{{ tr.vrc_inst_message_label }}</label>
       <textarea name="vrc_instance_message" form="vrc-main-form" rows="4" maxlength="1800"
