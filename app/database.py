@@ -1111,6 +1111,17 @@ async def init_db():
                 UNIQUE(guild_id, location)
             )""",
             "CREATE INDEX IF NOT EXISTS idx_vrc_instances_guild ON vrc_instances(guild_id)",
+            # Wann die Instanz zugegangen ist. Leer heisst "laeuft noch". Die Zeile bleibt nach
+            # dem Schliessen bewusst stehen, bis die Meldung tatsaechlich geloescht ist -
+            # vorher wusste niemand mehr, welche Nachricht zu welcher Instanz gehoerte.
+            #
+            # Eine geschlossene Zeile blockiert das erneute Melden NICHT: gepruefet wird nur
+            # gegen die, die noch offen sind. Macht dieselbe Welt in der Frist wieder auf,
+            # kommt trotzdem eine neue Meldung.
+            "ALTER TABLE vrc_instances ADD COLUMN closed_at TEXT NOT NULL DEFAULT ''",
+            # Zuletzt gemeldete Personenzahl, damit die Meldung nur dann bearbeitet wird,
+            # wenn sich wirklich etwas geaendert hat.
+            "ALTER TABLE vrc_instances ADD COLUMN last_count INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await db.execute(col)
@@ -1358,6 +1369,30 @@ DEFAULT_VRC_PANEL_BUTTON = "VRChat verknüpfen"
 # jemand sie doch im Text haben will.
 DEFAULT_VRC_INSTANCE_MESSAGE = "Eine Instanz der Gruppe ist offen — schau vorbei!"
 DEFAULT_VRC_INSTANCE_BUTTON = "In VRChat öffnen"
+
+# Was aus der Meldung wird, wenn die Instanz zugeht. Platzhalter wie beim Eroeffnungstext,
+# dazu {duration} - wie lange sie offen war.
+DEFAULT_VRC_INSTANCE_CLOSED = "🔒 Diese Instanz ist zu. War {duration} offen — bis zum nächsten Mal!"
+
+
+def human_duration(seconds: float) -> str:
+    """Eine Dauer, wie ein Mensch sie sagt: "3 Min", "2 Std 15 Min", "1 Tag 4 Std".
+
+    Keine Sekunden ab einer Minute und keine Minuten ab einem Tag - wer liest, wie lange eine
+    Instanz offen war, will eine Groessenordnung, keine Stoppuhr.
+    """
+    seconds = max(0, int(seconds))
+    if seconds < 60:
+        return f"{seconds} Sek"
+    minuten = seconds // 60
+    if minuten < 60:
+        return f"{minuten} Min"
+    stunden, minuten = divmod(minuten, 60)
+    if stunden < 24:
+        return f"{stunden} Std {minuten} Min" if minuten else f"{stunden} Std"
+    tage, stunden = divmod(stunden, 24)
+    return f"{tage} Tag{'e' if tage != 1 else ''} {stunden} Std" if stunden else \
+        f"{tage} Tag{'e' if tage != 1 else ''}"
 
 
 def role_rule_actions(rule) -> list:

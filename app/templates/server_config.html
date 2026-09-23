@@ -3675,12 +3675,37 @@ async function vrcProbe() {
       <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_message_hint }}</div>
     </div>
   </div>
+  <div class="grid-2" style="gap:1rem;margin-top:0.9rem;">
+    <div style="grid-column:1 / -1;">
+      <label>{{ tr.vrc_inst_closed_label }}</label>
+      <textarea name="vrc_instance_closed_message" form="vrc-main-form" rows="3" maxlength="1800"
+        placeholder="{{ vrc_instance_closed_default }}"
+        style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;
+               padding:0.6rem 0.8rem;color:var(--text);font-size:0.85rem;font-family:inherit;
+               line-height:1.5;resize:vertical;outline:none;">{{ cfg.get('vrc_instance_closed_message', '') }}</textarea>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_closed_hint }}</div>
+    </div>
+  </div>
+
+  <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-top:0.9rem;">
+    <input type="checkbox" name="vrc_instance_live_count" form="vrc-main-form" value="1" style="margin:0;"
+           {% if cfg.get('vrc_instance_live_count') == '1' %}checked{% endif %}>
+    {{ tr.vrc_inst_live_label }}
+  </label>
+  <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_live_hint }}</div>
+
   <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-top:0.9rem;">
     <input type="checkbox" name="vrc_instance_cleanup" form="vrc-main-form" value="1" style="margin:0;"
            {% if cfg.get('vrc_instance_cleanup') == '1' %}checked{% endif %}>
     {{ tr.vrc_inst_cleanup_label }}
   </label>
   <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_cleanup_hint }}</div>
+  <div style="max-width:260px;margin-top:0.6rem;">
+    <label>{{ tr.vrc_inst_delete_after_label }}</label>
+    <input type="number" name="vrc_instance_delete_after" form="vrc-main-form" min="0" max="1440"
+           value="{{ cfg.get('vrc_instance_delete_after', '') }}" placeholder="0">
+    <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_inst_delete_after_hint }}</div>
+  </div>
   <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.9rem;align-items:center;">
     <button type="submit" form="vrc-main-form" class="btn btn-primary">{{ tr.btn_save }}</button>
     <button type="button" class="btn btn-secondary" onclick="vrcInstCheck()">{{ tr.vrc_inst_check_btn }}</button>

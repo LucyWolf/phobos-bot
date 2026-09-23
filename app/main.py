@@ -140,6 +140,7 @@ from database import (
     DEFAULT_VRC_NICKNAME_FORMAT, vrc_nickname, VRC_ACCOUNT_KEY,
     DEFAULT_VRC_PANEL_TITLE, DEFAULT_VRC_PANEL_TEXT, DEFAULT_VRC_PANEL_BUTTON,
     DEFAULT_VRC_INSTANCE_MESSAGE, DEFAULT_VRC_INSTANCE_BUTTON,
+    DEFAULT_VRC_INSTANCE_CLOSED,
     VRC_TOKEN_TTL_MINUTES, VRC_STATE_UNVERIFIED, VRC_STATE_PENDING, VRC_STATE_APPROVED,
     vrc_verify_code,
 )
@@ -7177,6 +7178,7 @@ async def server_config(
         "vrc_role_map": _vrc_role_map_rows,
         "vrc_instance_default": DEFAULT_VRC_INSTANCE_MESSAGE,
         "vrc_instance_button_default": DEFAULT_VRC_INSTANCE_BUTTON,
+        "vrc_instance_closed_default": DEFAULT_VRC_INSTANCE_CLOSED,
         # Names for the live example under the format field. A real linked pair if there is
         # one - seeing the format applied to somebody who is actually on the server says more
         # than a made-up name - otherwise a stand-in, so the example is never empty.
@@ -7249,7 +7251,8 @@ _TAB_TEXT_KEYS = {
                 "vrc_panel_title", "vrc_panel_text", "vrc_panel_button", "vrc_dm_text",
                 "vrc_group_id", "vrc_group_role", "vrc_link_minutes",
                 "vrc_role_sync_minutes", "vrc_instance_channel", "vrc_instance_role",
-                "vrc_instance_message", "vrc_instance_minutes", "vrc_instance_button"],
+                "vrc_instance_message", "vrc_instance_minutes", "vrc_instance_button",
+                "vrc_instance_closed_message", "vrc_instance_delete_after"],
     "birthday": ["birthday_channel", "birthday_message", "birthday_commands",
                  "birthday_delete_words", "birthday_reply_saved",
                  "birthday_reply_deleted", "birthday_reply_error"],
@@ -7267,7 +7270,8 @@ _TAB_CHECKBOX_KEYS = {
     # vrc_require_ownership defaults to ON when absent, so an existing server keeps the
     # proof it already had - see the read in vrc_public_name().
     "vrclink": ["vrc_enabled", "vrc_nickname_enabled", "vrc_auto_approve", "vrc_dm_on_join",
-                "vrc_require_ownership", "vrc_group_invite", "vrc_instance_cleanup"],
+                "vrc_require_ownership", "vrc_group_invite", "vrc_instance_cleanup",
+                "vrc_instance_live_count"],
     # auto_kick_enabled deliberately NOT here - it needs the previous saved value to detect an
     # off→on transition (see the dedicated handling in server_config_save below), the generic
     # loop below has no way to express that.
@@ -7390,6 +7394,7 @@ async def server_config_save(request: Request, guild_id: int):
         # 0 = aus. Eine Anfrage je Server und Durchlauf, deshalb sind kurze Abstände hier
         # vertretbar - anders als bei allem, was pro Mitglied fragt.
         ("vrc_instance_minutes", 0, 1440, "Instanz-Prüfung (Minuten)"),
+        ("vrc_instance_delete_after", 0, 1440, "Meldung löschen nach (Minuten)"),
     ]
     for field, lo, hi, label in numeric_fields:
         value = str(form.get(field, "")).strip()

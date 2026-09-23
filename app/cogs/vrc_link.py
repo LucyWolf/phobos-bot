@@ -41,7 +41,8 @@ from database import (db_rows, db_one, db_exec, get_config, get_guild_config,
                       vrc_nickname, DEFAULT_VRC_NICKNAME_FORMAT,
                       DEFAULT_VRC_PANEL_TITLE, DEFAULT_VRC_PANEL_TEXT,
                       DEFAULT_VRC_PANEL_BUTTON, DEFAULT_VRC_INSTANCE_MESSAGE,
-                      DEFAULT_VRC_INSTANCE_BUTTON,
+                      DEFAULT_VRC_INSTANCE_BUTTON, DEFAULT_VRC_INSTANCE_CLOSED,
+                      human_duration,
                       VRC_ACCOUNT_KEY, VRC_TOKEN_TTL_MINUTES,
                       VRC_STATE_UNVERIFIED, VRC_STATE_PENDING, VRC_STATE_APPROVED)
 
@@ -551,6 +552,82 @@ async def revoke_link(bot, guild: discord.Guild, member: discord.Member) -> None
             pass
 
 
+async def _update_instance_count(guild, channel, zeile, inst) -> None:
+    """Zieht die Personenzahl in einer bereits gestellten Meldung nach.
+
+    Die Karte zeigte bisher die Zahl vom Moment des Meldens - aus "1" wurden nie "20", auch
+    wenn die Bude voll war. Bearbeitet wird nur, wenn sich die Zahl wirklich geaendert hat:
+    eine Bearbeitung je Instanz und Durchlauf ist in Ordnung, eine ohne Anlass nicht.
+    """
+    try:
+        nachricht = await channel.fetch_message(int(zeile["message_id"]))
+    except discord.NotFound:
+        return
+    except (discord.Forbidden, discord.HTTPException, OSError) as e:
+        print(f"[vrc_link] Meldung {zeile['message_id']} nicht erreichbar: {e}")
+        return
+    if not nachricht.embeds:
+        return
+    embed = nachricht.embeds[0]
+    # Das Feld an seinem Platz ersetzen statt die Karte neu zu bauen: so bleiben Bild,
+    # Beschreibung und alles andere unangetastet, auch wenn sie sich spaeter mal aendern.
+    for i, feld in enumerate(embed.fields):
+        if feld.name == "Gerade drin":
+            embed.set_field_at(i, name=feld.name, value=f"👥 {inst['count']}", inline=True)
+            break
+    else:
+        embed.add_field(name="Gerade drin", value=f"👥 {inst['count']}", inline=True)
+    try:
+        await nachricht.edit(embed=embed)
+    except (discord.Forbidden, discord.HTTPException, OSError) as e:
+        print(f"[vrc_link] Zahl in {zeile['message_id']} nicht nachgezogen: {e}")
+        return
+    try:
+        await db_exec("UPDATE vrc_instances SET last_count=? WHERE id=?",
+                      (int(inst["count"]), zeile["id"]))
+    except Exception as e:
+        print(f"[vrc_link] Zahlstand von {zeile['id']} nicht gespeichert: {e}")
+
+
+async def _close_instance_post(guild, channel, zeile, vorlage: str, jetzt) -> None:
+    """Schreibt die Meldung einer zugegangenen Instanz auf den Abschieds-Text um.
+
+    Umschreiben statt loeschen: wer den Kanal spaeter liest, soll sehen, dass es die Instanz
+    gab und wie lange sie offen war. Der Knopf verschwindet dabei - er wuerde ins Leere
+    fuehren, und ein Knopf, der nichts mehr tut, ist schlimmer als keiner.
+    """
+    nachricht_id = str(zeile["message_id"] or "")
+    if not nachricht_id.isdigit():
+        return
+    try:
+        dauer = human_duration(
+            (jetzt - datetime.datetime.fromisoformat(zeile["first_seen"])).total_seconds())
+    except ValueError:
+        dauer = "?"
+    text = (vorlage
+            .replace("{world}", zeile["world_name"] or "Unbekannte Welt")
+            .replace("{group}", guild.name)
+            .replace("{duration}", dauer)).strip()
+    try:
+        nachricht = await channel.fetch_message(int(nachricht_id))
+    except discord.NotFound:
+        return
+    except (discord.Forbidden, discord.HTTPException, OSError) as e:
+        print(f"[vrc_link] Abschieds-Meldung {nachricht_id} nicht erreichbar: {e}")
+        return
+    embed = discord.Embed(
+        title=(zeile["world_name"] or "VRChat")[:256],
+        description=text[:4000] or None,
+        color=0x4B5563,          # grau statt violett: auf einen Blick "vorbei"
+    )
+    embed.set_footer(text=guild.name[:2048])
+    try:
+        # view=None nimmt den Beitritts-Knopf weg.
+        await nachricht.edit(content=None, embed=embed, view=None)
+    except (discord.Forbidden, discord.HTTPException, OSError) as e:
+        print(f"[vrc_link] Meldung {nachricht_id} nicht umgeschrieben: {e}")
+
+
 async def announce_instances(bot, guild) -> int:
     """Post a message for every group instance that has newly opened. Returns how many.
 
@@ -581,8 +658,12 @@ async def announce_instances(bot, guild) -> int:
         print(f"[vrc_link] instance check for guild {guild.id} failed: {e}")
         return 0
 
-    known = {r["location"]: r for r in
-             await db_rows("SELECT * FROM vrc_instances WHERE guild_id=?", (str(guild.id),))}
+    alle = await db_rows("SELECT * FROM vrc_instances WHERE guild_id=?", (str(guild.id),))
+    # Nur die noch offenen gelten als "schon gemeldet". Eine geschlossene Zeile wartet nur
+    # noch darauf, dass ihre Nachricht weggeraeumt wird, und darf nicht verhindern, dass
+    # dieselbe Welt inzwischen wieder aufmacht und erneut gemeldet wird.
+    known = {r["location"]: r for r in alle if not r["closed_at"]}
+    wartet = [r for r in alle if r["closed_at"]]
     open_now = {i["location"] for i in instances}
 
     # Gone from VRChat's list means closed. Forgetting them is what lets the same world be
@@ -593,27 +674,90 @@ async def announce_instances(bot, guild) -> int:
     # Nachricht ungefragt wegzuraeumen ist nichts, was man einem Bot beibringt, ohne dass es
     # jemand eingeschaltet hat - manche Server wollen die Historie behalten.
     aufraeumen = (await get_guild_config(guild.id, "vrc_instance_cleanup") or "0") == "1"
+    try:
+        frist = int((await get_guild_config(guild.id, "vrc_instance_delete_after") or "0").strip())
+    except (TypeError, ValueError):
+        frist = 0
+    frist = max(0, min(1440, frist))
+    schluss_vorlage = (await get_guild_config(guild.id, "vrc_instance_closed_message") or "").strip() \
+        or DEFAULT_VRC_INSTANCE_CLOSED
+    jetzt = datetime.datetime.utcnow()
+
+    # Gerade zugegangen: die Meldung wird umgeschrieben statt weggeworfen - der Kanal soll
+    # zeigen, dass es die Instanz GAB, nicht so tun, als waere nie etwas gewesen.
     for location in set(known) - open_now:
-        if aufraeumen:
-            nachricht_id = str(known[location]["message_id"] or "")
+        zeile = known[location]
+        if aufraeumen and frist == 0:
+            # Aufraeumen ohne Frist heisst: weg, sofort. Ein Abschiedstext, der im selben
+            # Atemzug geloescht wird, waere nur eine Bearbeitung ins Leere - und so verhaelt
+            # sich eine bestehende Installation, die den Haken schon gesetzt hat, exakt wie
+            # bisher. Wer sich verabschieden will, gibt eine Frist an.
+            nachricht_id = str(zeile["message_id"] or "")
             if nachricht_id.isdigit():
                 try:
                     nachricht = await channel.fetch_message(int(nachricht_id))
                     await nachricht.delete()
                 except discord.NotFound:
-                    pass  # schon weg - von Hand geloescht oder der Kanal wurde gewechselt
+                    pass
                 except discord.Forbidden:
                     print(f"[vrc_link] darf in {channel_id} nichts loeschen ({guild.id})")
                 except (discord.HTTPException, OSError) as e:
                     print(f"[vrc_link] Meldung {nachricht_id} nicht geloescht: {e}")
+            try:
+                await db_exec("DELETE FROM vrc_instances WHERE guild_id=? AND location=?",
+                              (str(guild.id), location))
+            except Exception as e:
+                print(f"[vrc_link] could not forget instance {location}: {e}")
+            continue
+
+        await _close_instance_post(guild, channel, zeile, schluss_vorlage, jetzt)
+        try:
+            if aufraeumen:
+                # Bleibt stehen, bis die Frist um ist - dann holt der Block darunter sie ab.
+                await db_exec(
+                    "UPDATE vrc_instances SET closed_at=? WHERE guild_id=? AND location=?",
+                    (jetzt.isoformat(), str(guild.id), location))
+            else:
+                # Ohne Aufraeumen bleibt die Abschieds-Meldung einfach stehen; die Zeile wird
+                # nicht mehr gebraucht und wuerde die Tabelle sonst ewig fuellen.
+                await db_exec("DELETE FROM vrc_instances WHERE guild_id=? AND location=?",
+                              (str(guild.id), location))
+        except Exception as e:
+            print(f"[vrc_link] could not update instance {location}: {e}")
+
+    # Schon zugegangen und Frist abgelaufen: jetzt wirklich weg.
+    for zeile in wartet:
+        if zeile["location"] in open_now:
+            # Dieselbe Adresse ist wieder offen - die alte Zeile hat sich erledigt, die neue
+            # Meldung kommt weiter unten durch den normalen Weg.
+            try:
+                await db_exec("DELETE FROM vrc_instances WHERE id=?", (zeile["id"],))
+            except Exception as e:
+                print(f"[vrc_link] could not clear reopened {zeile['location']}: {e}")
+            continue
+        try:
+            zu_seit = (jetzt - datetime.datetime.fromisoformat(zeile["closed_at"])).total_seconds()
+        except ValueError:
+            zu_seit = frist * 60  # unlesbarer Zeitstempel: lieber jetzt aufraeumen
+        if zu_seit < frist * 60:
+            continue
+        nachricht_id = str(zeile["message_id"] or "")
+        if nachricht_id.isdigit():
+            try:
+                nachricht = await channel.fetch_message(int(nachricht_id))
+                await nachricht.delete()
+            except discord.NotFound:
+                pass  # schon weg - von Hand geloescht oder der Kanal wurde gewechselt
+            except discord.Forbidden:
+                print(f"[vrc_link] darf in {channel_id} nichts loeschen ({guild.id})")
+            except (discord.HTTPException, OSError) as e:
+                print(f"[vrc_link] Meldung {nachricht_id} nicht geloescht: {e}")
         try:
             # Die Zeile verschwindet in JEDEM Fall, auch wenn das Loeschen scheiterte. Sonst
-            # haengt der Bot an einer Nachricht fest, die er nie wegbekommt, und die Welt
-            # koennte beim naechsten Oeffnen nicht erneut gemeldet werden.
-            await db_exec("DELETE FROM vrc_instances WHERE guild_id=? AND location=?",
-                          (str(guild.id), location))
+            # haengt der Bot an einer Nachricht fest, die er nie wegbekommt.
+            await db_exec("DELETE FROM vrc_instances WHERE id=?", (zeile["id"],))
         except Exception as e:
-            print(f"[vrc_link] could not forget instance {location}: {e}")
+            print(f"[vrc_link] could not forget instance {zeile['location']}: {e}")
 
     template = (await get_guild_config(guild.id, "vrc_instance_message") or "").strip() \
         or DEFAULT_VRC_INSTANCE_MESSAGE
@@ -645,6 +789,18 @@ async def announce_instances(bot, guild) -> int:
         except Exception as e:
             print(f"[vrc_link] konnte den Erstlauf nicht vermerken: {e}")
         return 0
+
+    # Die Zahl in einer schon stehenden Meldung nachziehen. Kostet keine zusaetzliche
+    # VRChat-Anfrage - die Zahlen liegen aus derselben Abfrage bereits vor - nur eine
+    # Discord-Bearbeitung je Instanz, und auch die nur, wenn sich die Zahl geaendert hat.
+    if (await get_guild_config(guild.id, "vrc_instance_live_count") or "0") == "1":
+        for inst in instances:
+            zeile = known.get(inst["location"])
+            if not zeile or str(zeile["message_id"] or "") == "":
+                continue
+            if str(zeile["last_count"]) == str(inst["count"]):
+                continue
+            await _update_instance_count(guild, channel, zeile, inst)
 
     posted = 0
     for inst in instances:
@@ -707,9 +863,9 @@ async def announce_instances(bot, guild) -> int:
             # next run, and a row written first would mark it announced forever.
             await db_exec(
                 "INSERT OR IGNORE INTO vrc_instances (guild_id, location, world_name, "
-                "first_seen, message_id) VALUES (?,?,?,?,?)",
+                "first_seen, message_id, last_count) VALUES (?,?,?,?,?,?)",
                 (str(guild.id), inst["location"], inst["world_name"],
-                 datetime.datetime.utcnow().isoformat(), str(message.id)),
+                 datetime.datetime.utcnow().isoformat(), str(message.id), int(inst["count"])),
             )
         except Exception as e:
             print(f"[vrc_link] could not record instance {inst['location']}: {e}")
