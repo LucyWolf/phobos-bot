@@ -3659,6 +3659,12 @@ async function vrcProbe() {
         {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('vrc_instance_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
       </select>
     </div>
+    <div>
+      <label>{{ tr.vrc_inst_button_label }}</label>
+      <input type="text" name="vrc_instance_button" form="vrc-main-form" maxlength="80"
+             value="{{ cfg.get('vrc_instance_button', '') }}" placeholder="{{ vrc_instance_button_default }}">
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_inst_button_hint }}</div>
+    </div>
     <div style="grid-column:1 / -1;">
       <label>{{ tr.vrc_inst_message_label }}</label>
       <textarea name="vrc_instance_message" form="vrc-main-form" rows="4" maxlength="1800"
@@ -3669,6 +3675,12 @@ async function vrcProbe() {
       <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_message_hint }}</div>
     </div>
   </div>
+  <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-top:0.9rem;">
+    <input type="checkbox" name="vrc_instance_cleanup" form="vrc-main-form" value="1" style="margin:0;"
+           {% if cfg.get('vrc_instance_cleanup') == '1' %}checked{% endif %}>
+    {{ tr.vrc_inst_cleanup_label }}
+  </label>
+  <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_cleanup_hint }}</div>
   <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.9rem;align-items:center;">
     <button type="submit" form="vrc-main-form" class="btn btn-primary">{{ tr.btn_save }}</button>
     <button type="button" class="btn btn-secondary" onclick="vrcInstCheck()">{{ tr.vrc_inst_check_btn }}</button>

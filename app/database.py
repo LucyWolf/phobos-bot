@@ -1353,11 +1353,11 @@ DEFAULT_VRC_PANEL_BUTTON = "VRChat verknüpfen"
 # Standardtext der Instanz-Meldung. Platzhalter werden im Cog ersetzt:
 #   {world}    Name der Welt        {count}  Leute drin
 #   {group}    Name der Gruppe      {link}   Link zum Beitreten
-DEFAULT_VRC_INSTANCE_MESSAGE = (
-    "🌍 **{world}** ist offen!\n"
-    "Gerade drin: {count}\n"
-    "{link}"
-)
+# Weltname, Anzahl und der Beitritts-Link stecken in der Karte bzw. im Knopf darunter - der
+# Text hier ist der freie Teil daneben. Die Platzhalter funktionieren trotzdem alle, falls
+# jemand sie doch im Text haben will.
+DEFAULT_VRC_INSTANCE_MESSAGE = "Eine Instanz der Gruppe ist offen — schau vorbei!"
+DEFAULT_VRC_INSTANCE_BUTTON = "In VRChat öffnen"
 
 
 def role_rule_actions(rule) -> list:

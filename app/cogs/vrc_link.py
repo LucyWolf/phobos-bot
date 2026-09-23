@@ -41,6 +41,7 @@ from database import (db_rows, db_one, db_exec, get_config, get_guild_config,
                       vrc_nickname, DEFAULT_VRC_NICKNAME_FORMAT,
                       DEFAULT_VRC_PANEL_TITLE, DEFAULT_VRC_PANEL_TEXT,
                       DEFAULT_VRC_PANEL_BUTTON, DEFAULT_VRC_INSTANCE_MESSAGE,
+                      DEFAULT_VRC_INSTANCE_BUTTON,
                       VRC_ACCOUNT_KEY, VRC_TOKEN_TTL_MINUTES,
                       VRC_STATE_UNVERIFIED, VRC_STATE_PENDING, VRC_STATE_APPROVED)
 
@@ -586,8 +587,29 @@ async def announce_instances(bot, guild) -> int:
 
     # Gone from VRChat's list means closed. Forgetting them is what lets the same world be
     # announced again the next time somebody opens it.
+    #
+    # Auf Wunsch wird die Meldung dabei auch gleich geloescht, damit der Kanal nicht voller
+    # Hinweise auf Instanzen steht, die es nicht mehr gibt. Standardmaessig aus: eine
+    # Nachricht ungefragt wegzuraeumen ist nichts, was man einem Bot beibringt, ohne dass es
+    # jemand eingeschaltet hat - manche Server wollen die Historie behalten.
+    aufraeumen = (await get_guild_config(guild.id, "vrc_instance_cleanup") or "0") == "1"
     for location in set(known) - open_now:
+        if aufraeumen:
+            nachricht_id = str(known[location]["message_id"] or "")
+            if nachricht_id.isdigit():
+                try:
+                    nachricht = await channel.fetch_message(int(nachricht_id))
+                    await nachricht.delete()
+                except discord.NotFound:
+                    pass  # schon weg - von Hand geloescht oder der Kanal wurde gewechselt
+                except discord.Forbidden:
+                    print(f"[vrc_link] darf in {channel_id} nichts loeschen ({guild.id})")
+                except (discord.HTTPException, OSError) as e:
+                    print(f"[vrc_link] Meldung {nachricht_id} nicht geloescht: {e}")
         try:
+            # Die Zeile verschwindet in JEDEM Fall, auch wenn das Loeschen scheiterte. Sonst
+            # haengt der Bot an einer Nachricht fest, die er nie wegbekommt, und die Welt
+            # koennte beim naechsten Oeffnen nicht erneut gemeldet werden.
             await db_exec("DELETE FROM vrc_instances WHERE guild_id=? AND location=?",
                           (str(guild.id), location))
         except Exception as e:
@@ -634,26 +656,46 @@ async def announce_instances(bot, guild) -> int:
             print(f"[vrc_link] {guild.id}: Deckel von {MAX_INSTANCE_POSTS} Meldungen erreicht")
             break
         link = launch_url(inst["location"])
+        welt = inst["world_name"] or "Unbekannte Welt"
         text = (template
-                .replace("{world}", inst["world_name"] or "Unbekannte Welt")
+                .replace("{world}", welt)
                 .replace("{count}", str(inst["count"]))
                 .replace("{group}", guild.name)
-                .replace("{link}", link))
-        if mention:
-            text = f"{mention} {text}"
+                .replace("{link}", link)).strip()
+
+        # Alles in die Karte, nichts daneben. Vorher stand der Text mitsamt der vollen,
+        # sehr langen Beitritts-Adresse als nackte Zeile ueber einer kleinen Karte, und der
+        # Weltname doppelt - einmal im Text, einmal als Titel. Jetzt traegt die Nachricht
+        # selbst nur noch die Rollen-Erwaehnung, falls eine eingestellt ist.
         embed = discord.Embed(
-            title=(inst["world_name"] or "VRChat")[:256],
-            url=link or None,
-            description=f"👥 {inst['count']}",
+            title=welt[:256],
+            url=link or None,          # macht die Ueberschrift anklickbar
+            description=text[:4000] or None,
             color=0x8B5CF6,
         )
+        embed.add_field(name="Gerade drin", value=f"👥 {inst['count']}", inline=True)
+        # Das GROSSE Bild, nicht das briefmarkengrosse Vorschaubild rechts - das war der
+        # Hauptgrund, warum die Meldung mickrig aussah.
+        #
         # Nur echte Web-Adressen: was VRChat sonst liefert, laesst Discord die GANZE Nachricht
         # mit 400 abprallen - die Instanz waere dann bei jedem Durchlauf erneut dran und
         # scheiterte jedes Mal.
         if inst["world_image"].startswith(("http://", "https://")):
-            embed.set_thumbnail(url=inst["world_image"])
+            embed.set_image(url=inst["world_image"])
+        embed.set_footer(text=guild.name[:2048])
+
+        # Ein Bild in einer Karte kann bei Discord nicht selbst auf eine Adresse zeigen -
+        # ein Klick darauf oeffnet nur das Bild. Der Knopf ist das, was dem am naechsten
+        # kommt: gross, eindeutig, und auf dem Handy genauso gut zu treffen.
+        view = None
+        if link:
+            knopf = (await get_guild_config(guild.id, "vrc_instance_button") or "").strip() \
+                or DEFAULT_VRC_INSTANCE_BUTTON
+            view = discord.ui.View(timeout=None)
+            view.add_item(discord.ui.Button(label=knopf[:MAX_BUTTON_LABEL], emoji="🌍",
+                                            style=discord.ButtonStyle.link, url=link))
         try:
-            message = await channel.send(text[:2000], embed=embed)
+            message = await channel.send(mention or None, embed=embed, view=view)
         except discord.Forbidden:
             print(f"[vrc_link] no permission to post instances in {channel_id} ({guild.id})")
             return posted
