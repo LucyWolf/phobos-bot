@@ -1155,6 +1155,12 @@ async def init_db():
                (SELECT guild_id FROM guild_configs WHERE key='welcome_ping' AND value='0')""",
             """UPDATE guild_configs SET value='' WHERE key='vrc_instance_role' AND guild_id IN
                (SELECT guild_id FROM guild_configs WHERE key='vrc_instance_ping' AND value='0')""",
+            # Der Zwischenzustand "geschlossen". locked_at haelt fest, dass die Meldung schon
+            # darauf umgeschrieben wurde - sonst wuerde sie jede Minute erneut bearbeitet.
+            # inst_name merkt sich den selbst vergebenen Instanznamen, damit {name} auch im
+            # Abschiedstext noch stimmt, wenn VRChat die Instanz gar nicht mehr kennt.
+            "ALTER TABLE vrc_instances ADD COLUMN locked_at TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE vrc_instances ADD COLUMN inst_name TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)
@@ -1404,9 +1410,9 @@ DEFAULT_VRC_INSTANCE_MESSAGE = "Eine Instanz der Gruppe ist offen — schau vorb
 DEFAULT_VRC_INSTANCE_BUTTON = "In VRChat öffnen"
 
 # Was aus der Meldung wird, wenn die Instanz BEENDET ist - also aus der Gruppenliste
-# verschwunden und niemand mehr drin. Nur "geschlossen" (keiner kommt mehr rein, die Drinnen
-# bleiben) ist ein anderer Zustand, den VRChat uns bisher nicht erkennbar mitteilt; die
-# Schluesselnamen hier heissen aus Bestandsgruenden weiterhin "closed".
+# verschwunden und niemand mehr drin. "Geschlossen" (keiner kommt mehr rein, die Drinnen
+# bleiben) ist ein eigener Zustand mit eigenen Bausteinen weiter unten; die Schluesselnamen
+# hier heissen aus Bestandsgruenden weiterhin "closed", gemeint ist beendet.
 # Platzhalter wie beim Eroeffnungstext, dazu {duration} - wie lange sie offen war.
 DEFAULT_VRC_INSTANCE_CLOSED = "🏁 Diese Instanz ist beendet. War {duration} offen — bis zum nächsten Mal!"
 
@@ -1415,6 +1421,13 @@ DEFAULT_VRC_INSTANCE_CLOSED = "🏁 Diese Instanz ist beendet. War {duration} of
 # gelassen gilt der Standard hier.
 DEFAULT_VRC_INSTANCE_TITLE = "{world}"
 DEFAULT_VRC_INSTANCE_CLOSED_TITLE = "{world}"
+
+# Der Zwischenzustand: zu fuer neue Leute, die Drinnen bleiben. Er wird nur erkannt, wenn
+# "genauer nachsehen" eingeschaltet ist - siehe vrchat.instance_state(). Eigene Bausteine,
+# weil es ein anderer Moment ist als das Ende: die Instanz laeuft ja noch.
+DEFAULT_VRC_INSTANCE_LOCKED = ("🔒 Diese Instanz ist geschlossen — es kommt niemand mehr rein, "
+                               "die Drinnen bleiben. Offen seit {duration}.")
+DEFAULT_VRC_INSTANCE_LOCKED_TITLE = "{world}"
 DEFAULT_VRC_INSTANCE_COUNT_LABEL = "Gerade drin"
 DEFAULT_VRC_INSTANCE_FOOTER = "{group}"
 

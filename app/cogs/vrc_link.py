@@ -44,6 +44,7 @@ from database import (db_rows, db_one, db_exec, get_config, get_guild_config,
                       DEFAULT_VRC_INSTANCE_BUTTON, DEFAULT_VRC_INSTANCE_CLOSED,
                       DEFAULT_VRC_INSTANCE_TITLE, DEFAULT_VRC_INSTANCE_CLOSED_TITLE,
                       DEFAULT_VRC_INSTANCE_COUNT_LABEL, DEFAULT_VRC_INSTANCE_FOOTER,
+                      DEFAULT_VRC_INSTANCE_LOCKED, DEFAULT_VRC_INSTANCE_LOCKED_TITLE,
                       human_duration,
                       VRC_ACCOUNT_KEY, VRC_TOKEN_TTL_MINUTES,
                       VRC_STATE_UNVERIFIED, VRC_STATE_PENDING, VRC_STATE_APPROVED)
@@ -61,6 +62,10 @@ MAX_BUTTON_LABEL = 80
 # Kanal aus, und ein Schwall am Stueck wird ohnehin nicht gelesen. Was uebrig bleibt, kommt im
 # naechsten Durchlauf - offene Instanzen laufen ja nicht weg.
 MAX_INSTANCE_POSTS = 5
+# Wie viele Instanzen je Durchlauf einzeln abgefragt werden, wenn "genauer nachsehen" an
+# ist. Jede kostet eine eigene VRChat-Anfrage; bei einem Abstand von einer Minute waeren
+# es ohne Deckel bei zehn offenen Lobbys zehn Anfragen pro Minute, nur fuer die Zustaende.
+MAX_INSTANCE_DETAIL = 5
 
 
 async def link_base_url() -> str:
@@ -555,19 +560,24 @@ async def revoke_link(bot, guild: discord.Guild, member: discord.Member) -> None
 
 
 def _fuelle(vorlage: str, *, welt: str = "", anzahl="", gruppe: str = "",
-            link: str = "", dauer: str = "") -> str:
+            link: str = "", dauer: str = "", name: str = "") -> str:
     """Setzt die Platzhalter in einen frei geschriebenen Baustein ein.
 
     An einer Stelle statt an fuenf: Ueberschrift, Text, Zahl-Bezeichnung, Fusszeile und
     Abschiedstext sind alle frei schreibbar und sollen dieselben Platzhalter verstehen -
     sonst muss sich jemand merken, welcher wo geht.
+
+    {name} ist der selbst vergebene Instanzname. Den kennt nur die Einzelansicht, also
+    bleibt er leer, solange "genauer nachsehen" aus ist - und dann faellt er aus dem Text
+    heraus, statt eine Luecke oder ein rohes "{name}" stehen zu lassen.
     """
     return (vorlage
             .replace("{world}", welt)
             .replace("{count}", str(anzahl))
             .replace("{group}", gruppe)
             .replace("{link}", link)
-            .replace("{duration}", dauer)).strip()
+            .replace("{duration}", dauer)
+            .replace("{name}", name)).strip()
 
 
 async def _instance_texte(guild) -> dict:
@@ -581,6 +591,8 @@ async def _instance_texte(guild) -> dict:
         "fuss": await hol("vrc_instance_footer", DEFAULT_VRC_INSTANCE_FOOTER),
         "zu_titel": await hol("vrc_instance_closed_title", DEFAULT_VRC_INSTANCE_CLOSED_TITLE),
         "zu_text": await hol("vrc_instance_closed_message", DEFAULT_VRC_INSTANCE_CLOSED),
+        "dicht_titel": await hol("vrc_instance_locked_title", DEFAULT_VRC_INSTANCE_LOCKED_TITLE),
+        "dicht_text": await hol("vrc_instance_locked_message", DEFAULT_VRC_INSTANCE_LOCKED),
     }
 
 
@@ -623,6 +635,65 @@ async def _update_instance_count(guild, channel, zeile, inst) -> None:
         print(f"[vrc_link] Zahlstand von {zeile['id']} nicht gespeichert: {e}")
 
 
+def _spalte(zeile, name: str, standard=""):
+    """Ein Feld aus einer Datenbankzeile, das es vielleicht noch nicht gibt.
+
+    sqlite3.Row wirft bei einer unbekannten Spalte einen IndexError statt None zu liefern.
+    Die Spalten locked_at und inst_name kamen spaeter dazu; laeuft der Cog waehrend eines
+    Updates noch gegen die alte Tabelle, soll er weiterarbeiten statt abzubrechen.
+    """
+    try:
+        wert = zeile[name]
+    except (IndexError, KeyError):
+        return standard
+    return standard if wert is None else wert
+
+
+async def _lock_instance_post(guild, channel, zeile, texte: dict, jetzt, anzahl) -> None:
+    """Schreibt die Meldung um, wenn die Instanz GESCHLOSSEN wurde - aber noch laeuft.
+
+    Der Unterschied zum Ende: es sind noch Leute drin, die Instanz existiert weiter, nur
+    kommt niemand mehr hinein. Der Beitritts-Knopf muss trotzdem weg, weil er ins Leere
+    fuehrt, und die Karte wird orange statt violett - zwischen "los" und "vorbei".
+
+    Die Meldung bleibt danach stehen. Verschwindet die Instanz spaeter wirklich, schreibt
+    _close_instance_post() sie ein zweites Mal um, auf den Abschiedstext.
+    """
+    nachricht_id = str(zeile["message_id"] or "")
+    if not nachricht_id.isdigit():
+        return
+    try:
+        dauer = human_duration(
+            (jetzt - datetime.datetime.fromisoformat(zeile["first_seen"])).total_seconds())
+    except ValueError:
+        dauer = "?"
+    welt = zeile["world_name"] or "Unbekannte Welt"
+    def f(v):
+        return _fuelle(v, welt=welt, anzahl=anzahl, gruppe=guild.name, dauer=dauer,
+                       name=_spalte(zeile, "inst_name"))
+    try:
+        nachricht = await channel.fetch_message(int(nachricht_id))
+    except discord.NotFound:
+        return
+    except (discord.Forbidden, discord.HTTPException, OSError) as e:
+        print(f"[vrc_link] Meldung {nachricht_id} nicht erreichbar: {e}")
+        return
+    embed = discord.Embed(
+        title=(f(texte["dicht_titel"]) or welt)[:256],
+        description=f(texte["dicht_text"])[:4000] or None,
+        color=0xF59E0B,          # orange: zu, aber noch nicht vorbei
+    )
+    embed.add_field(name=(f(texte["zahl"]) or "\u200b")[:256],
+                    value=f"👥 {anzahl}", inline=True)
+    fuss = f(texte["fuss"])
+    if fuss:
+        embed.set_footer(text=fuss[:2048])
+    try:
+        await nachricht.edit(content=None, embed=embed, view=None)
+    except (discord.Forbidden, discord.HTTPException, OSError) as e:
+        print(f"[vrc_link] Meldung {nachricht_id} nicht auf geschlossen umgeschrieben: {e}")
+
+
 async def _close_instance_post(guild, channel, zeile, texte: dict, jetzt) -> None:
     """Schreibt die Meldung einer zugegangenen Instanz auf den Abschieds-Text um.
 
@@ -640,7 +711,8 @@ async def _close_instance_post(guild, channel, zeile, texte: dict, jetzt) -> Non
         dauer = "?"
     welt = zeile["world_name"] or "Unbekannte Welt"
     def f(v):
-        return _fuelle(v, welt=welt, anzahl=zeile["last_count"], gruppe=guild.name, dauer=dauer)
+        return _fuelle(v, welt=welt, anzahl=zeile["last_count"], gruppe=guild.name, dauer=dauer,
+                       name=_spalte(zeile, "inst_name"))
     text = f(texte["zu_text"])
     try:
         nachricht = await channel.fetch_message(int(nachricht_id))
@@ -693,6 +765,28 @@ async def announce_instances(bot, guild) -> int:
         # the log with a traceback a minute. The line says enough to find it.
         print(f"[vrc_link] instance check for guild {guild.id} failed: {e}")
         return 0
+
+    # Genauer nachsehen. Die Gruppenliste sagt nur, DASS eine Instanz da ist - ob sie
+    # geschlossen wurde und wie sie heisst, steht ausschliesslich in der Einzelansicht
+    # (siehe vrchat.instance_state()). Das kostet eine Anfrage je Instanz und Durchlauf,
+    # deshalb ein Schalter und ein Deckel. Aus heisst: alles genau wie vorher, eine Anfrage.
+    zustand = {}
+    if (await get_guild_config(guild.id, "vrc_instance_detail") or "0") == "1":
+        from vrchat import get_instance, instance_state
+        for inst in instances[:MAX_INSTANCE_DETAIL]:
+            try:
+                details = await get_instance(inst["location"], session["auth_cookie"],
+                                             session["two_factor_cookie"])
+            except Exception as e:
+                # Eine einzelne Instanz, die sich nicht abfragen laesst, darf den Durchlauf
+                # nicht kippen - der Rest wird trotzdem gemeldet.
+                print(f"[vrc_link] Einzelansicht von {inst['location']} fehlgeschlagen: {e}")
+                continue
+            if details:
+                lage = instance_state(details)
+                zustand[inst["location"]] = lage
+                if lage["name"]:
+                    inst["name"] = lage["name"]
 
     alle = await db_rows("SELECT * FROM vrc_instances WHERE guild_id=?", (str(guild.id),))
     # Nur die noch offenen gelten als "schon gemeldet". Eine beendete Zeile wartet nur
@@ -835,6 +929,34 @@ async def announce_instances(bot, guild) -> int:
             print(f"[vrc_link] konnte den Erstlauf nicht vermerken: {e}")
         return 0
 
+    # Gerade GESCHLOSSEN, aber noch da: die Meldung einmal umschreiben und das vermerken.
+    # Ohne locked_at liefe das jede Minute erneut, solange die Instanz noch in der Liste
+    # steht. Verschwindet sie spaeter, greift weiter oben der Abschiedstext.
+    for location, lage in zustand.items():
+        zeile = known.get(location)
+        if not zeile or not lage["closed_at"] or _spalte(zeile, "locked_at"):
+            continue
+        if str(zeile["message_id"] or "") == "":
+            continue
+        anzahl = lage["count"] if lage["known"] else zeile["last_count"]
+        await _lock_instance_post(guild, channel, zeile, texte, jetzt, anzahl)
+        try:
+            await db_exec("UPDATE vrc_instances SET locked_at=?, last_count=? WHERE id=?",
+                          (jetzt.isoformat(), int(anzahl or 0), zeile["id"]))
+        except Exception as e:
+            print(f"[vrc_link] konnte {location} nicht als geschlossen vermerken: {e}")
+
+    # Den selbst vergebenen Namen nachtragen, sobald er bekannt ist. Er wird gebraucht, wenn
+    # VRChat die Instanz laengst vergessen hat und der Abschiedstext noch {name} enthaelt.
+    for location, lage in zustand.items():
+        zeile = known.get(location)
+        if zeile and lage["name"] and _spalte(zeile, "inst_name") != lage["name"]:
+            try:
+                await db_exec("UPDATE vrc_instances SET inst_name=? WHERE id=?",
+                              (lage["name"], zeile["id"]))
+            except Exception as e:
+                print(f"[vrc_link] konnte den Instanznamen von {location} nicht merken: {e}")
+
     # Die Zahl in einer schon stehenden Meldung nachziehen. Kostet keine zusaetzliche
     # VRChat-Anfrage - die Zahlen liegen aus derselben Abfrage bereits vor - nur eine
     # Discord-Bearbeitung je Instanz, und auch die nur, wenn sich die Zahl geaendert hat.
@@ -859,7 +981,8 @@ async def announce_instances(bot, guild) -> int:
         link = launch_url(inst["location"])
         welt = inst["world_name"] or "Unbekannte Welt"
         def f(vorlage):
-            return _fuelle(vorlage, welt=welt, anzahl=inst["count"], gruppe=guild.name, link=link)
+            return _fuelle(vorlage, welt=welt, anzahl=inst["count"], gruppe=guild.name,
+                           link=link, name=inst.get("name", ""))
         text = f(texte["text"])
 
         # Alles in die Karte, nichts daneben. Vorher stand der Text mitsamt der vollen,
@@ -912,9 +1035,10 @@ async def announce_instances(bot, guild) -> int:
             # next run, and a row written first would mark it announced forever.
             await db_exec(
                 "INSERT OR IGNORE INTO vrc_instances (guild_id, location, world_name, "
-                "first_seen, message_id, last_count) VALUES (?,?,?,?,?,?)",
+                "first_seen, message_id, last_count, inst_name) VALUES (?,?,?,?,?,?,?)",
                 (str(guild.id), inst["location"], inst["world_name"],
-                 datetime.datetime.utcnow().isoformat(), str(message.id), int(inst["count"])),
+                 datetime.datetime.utcnow().isoformat(), str(message.id), int(inst["count"]),
+                 inst.get("name", "")),
             )
         except Exception as e:
             print(f"[vrc_link] could not record instance {inst['location']}: {e}")

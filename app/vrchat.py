@@ -753,6 +753,42 @@ def _parse_group_instances(data) -> list:
     return out
 
 
+def instance_state(details: dict) -> dict:
+    """Zustand und eigener Name einer Instanz, aus der EINZELANSICHT gelesen.
+
+    Am 23.09.2026 nachgemessen, weil sich das nirgends nachlesen laesst. Eine Gruppe, eine
+    Instanz, drei Abrufe - offen, geschlossen (zu fuer neue Leute, die Drinnen bleiben) und
+    beendet:
+
+        offen:        closedAt = None                      active = True   in der Gruppenliste
+        geschlossen:  closedAt = 2026-09-23T22:42:46.241Z  hardClose = False   weiterhin drin
+        beendet:      ueberhaupt nicht mehr in der Gruppenliste
+
+    Zwei Dinge folgen daraus. Erstens steht der Zwischenzustand AUSSCHLIESSLICH in der
+    Einzelansicht - die Gruppenliste liefert nur instanceId, location, memberCount und die
+    Welt, dort ist nichts zu holen. Zweitens ist "beendet" weiterhin nur am Verschwinden zu
+    erkennen; ein eigenes Feld dafuer gibt es nicht.
+
+    hardClose unterscheidet sanft von hart: False heisst zu, aber niemand wurde
+    hinausgeworfen. Eingelesen wird es, damit ein Text spaeter darauf eingehen kann.
+
+    Der selbst vergebene Name steht in displayName, waehrend name nur die Instanznummer
+    traegt ("displayName = TEST" neben "name = 53164"). Sind beide gleich, hat sich niemand
+    einen Namen ausgedacht.
+    """
+    if not isinstance(details, dict):
+        return {"closed_at": "", "hard_close": None, "name": "", "count": 0, "known": False}
+    nummer = str(details.get("name") or "").strip()
+    eigener = str(details.get("displayName") or "").strip()
+    return {
+        "closed_at": str(details.get("closedAt") or "").strip(),
+        "hard_close": details.get("hardClose") if isinstance(details.get("hardClose"), bool) else None,
+        "name": eigener if eigener and eigener != nummer else "",
+        "count": _zahl_drin(details),
+        "known": True,
+    }
+
+
 def launch_url(location: str) -> str:
     """The link that opens an instance in VRChat, from a "worldId:instance" location."""
     if not location or ":" not in location:

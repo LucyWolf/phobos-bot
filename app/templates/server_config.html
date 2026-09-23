@@ -3785,12 +3785,44 @@ async function vrcProbe() {
   </label>
   <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_live_hint }}</div>
 
+  <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-top:0.9rem;">
+    <input type="checkbox" name="vrc_instance_detail" form="vrc-main-form" value="1" style="margin:0;"
+           {% if cfg.get('vrc_instance_detail') == '1' %}checked{% endif %}>
+    {{ tr.vrc_inst_detail_label }}
+  </label>
+  <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_detail_hint }}</div>
+
   <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.9rem;align-items:center;">
     <button type="submit" form="vrc-main-form" class="btn btn-primary">{{ tr.btn_save }}</button>
     <button type="button" class="btn btn-secondary" onclick="vrcInstCheck()">{{ tr.vrc_inst_check_btn }}</button>
     <button type="button" class="btn btn-secondary" onclick="vrcInstRaw()">{{ tr.vrc_inst_raw_btn }}</button>
   </div>
   <div id="vrc-inst-out" style="display:none;margin-top:0.7rem;font-size:0.78rem;white-space:pre-wrap;"></div>
+</div>
+
+{# Der Zustand DAZWISCHEN. Am 23.09.2026 nachgemessen: die Einzelansicht setzt closedAt,
+   waehrend die Instanz weiter in der Gruppenliste steht - deshalb ueberhaupt erkennbar, und
+   deshalb nur mit dem Schalter oben. #}
+<div class="card" data-sub="instances">
+  <div class="feat-header">{{ tr.vrc_inst_locked_heading }}</div>
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.vrc_inst_locked_heading_hint }}</p>
+  <div class="grid-2" style="gap:1rem;">
+    <div>
+      <label>{{ tr.vrc_inst_locked_title_label }}</label>
+      <input type="text" name="vrc_instance_locked_title" form="vrc-main-form" maxlength="200"
+             value="{{ cfg.get('vrc_instance_locked_title', '') }}" placeholder="{{ vrc_instance_locked_title_default }}">
+    </div>
+    <div style="grid-column:1 / -1;">
+      <label>{{ tr.vrc_inst_locked_label }}</label>
+      <textarea name="vrc_instance_locked_message" form="vrc-main-form" rows="3" maxlength="1800"
+        placeholder="{{ vrc_instance_locked_default }}"
+        style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;
+               padding:0.6rem 0.8rem;color:var(--text);font-size:0.85rem;font-family:inherit;
+               line-height:1.5;resize:vertical;outline:none;">{{ cfg.get('vrc_instance_locked_message', '') }}</textarea>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_inst_locked_hint }}</div>
+    </div>
+  </div>
+  <button type="submit" form="vrc-main-form" class="btn btn-primary" style="margin-top:0.9rem;">{{ tr.btn_save }}</button>
 </div>
 
 {# Eigener Block fuer den Zustand danach - auf Wunsch getrennt von den Einstellungen fuer die

@@ -142,7 +142,8 @@ from database import (
     DEFAULT_VRC_INSTANCE_MESSAGE, DEFAULT_VRC_INSTANCE_BUTTON,
     DEFAULT_VRC_INSTANCE_CLOSED, DEFAULT_VRC_INSTANCE_TITLE,
     DEFAULT_VRC_INSTANCE_CLOSED_TITLE, DEFAULT_VRC_INSTANCE_COUNT_LABEL,
-    DEFAULT_VRC_INSTANCE_FOOTER,
+    DEFAULT_VRC_INSTANCE_FOOTER, DEFAULT_VRC_INSTANCE_LOCKED,
+    DEFAULT_VRC_INSTANCE_LOCKED_TITLE,
     VRC_TOKEN_TTL_MINUTES, VRC_STATE_UNVERIFIED, VRC_STATE_PENDING, VRC_STATE_APPROVED,
     vrc_verify_code,
 )
@@ -4822,6 +4823,13 @@ async def vrc_debug(request: Request, guild_id: int):
                 z.append("    VRChat gibt dazu nichts zurück (Instanz schon vorbei?).")
             else:
                 z.extend("  " + line for line in _baum(det))
+                from vrchat import instance_state
+                lage = instance_state(det)
+                z.append("    ── so liest der Bot das ──")
+                z.append(f"    Zustand: {'GESCHLOSSEN seit ' + lage['closed_at'] if lage['closed_at'] else 'offen'}"
+                         f" · hart: {lage['hard_close']}")
+                z.append(f"    Eigener Name: {lage['name'] or '(keiner, nur die Instanznummer)'}")
+                z.append(f"    Drin: {lage['count']}")
                 spur = _auffaellig(det)
                 if spur:
                     z.append("    ── davon interessant für Zustand/Name ──")
@@ -7570,6 +7578,8 @@ async def server_config(
         "vrc_instance_closed_title_default": DEFAULT_VRC_INSTANCE_CLOSED_TITLE,
         "vrc_instance_count_default": DEFAULT_VRC_INSTANCE_COUNT_LABEL,
         "vrc_instance_footer_default": DEFAULT_VRC_INSTANCE_FOOTER,
+        "vrc_instance_locked_default": DEFAULT_VRC_INSTANCE_LOCKED,
+        "vrc_instance_locked_title_default": DEFAULT_VRC_INSTANCE_LOCKED_TITLE,
         # Names for the live example under the format field. A real linked pair if there is
         # one - seeing the format applied to somebody who is actually on the server says more
         # than a made-up name - otherwise a stand-in, so the example is never empty.
@@ -7645,7 +7655,8 @@ _TAB_TEXT_KEYS = {
                 "vrc_instance_message", "vrc_instance_minutes", "vrc_instance_button",
                 "vrc_instance_closed_message", "vrc_instance_delete_after",
                 "vrc_instance_title", "vrc_instance_closed_title",
-                "vrc_instance_count_label", "vrc_instance_footer"],
+                "vrc_instance_count_label", "vrc_instance_footer",
+                "vrc_instance_locked_title", "vrc_instance_locked_message"],
     "birthday": ["birthday_channel", "birthday_message", "birthday_commands",
                  "birthday_delete_words", "birthday_reply_saved",
                  "birthday_reply_deleted", "birthday_reply_error"],
@@ -7664,7 +7675,7 @@ _TAB_CHECKBOX_KEYS = {
     # proof it already had - see the read in vrc_public_name().
     "vrclink": ["vrc_enabled", "vrc_nickname_enabled", "vrc_auto_approve", "vrc_dm_on_join",
                 "vrc_require_ownership", "vrc_group_invite", "vrc_instance_cleanup",
-                "vrc_instance_live_count"],
+                "vrc_instance_live_count", "vrc_instance_detail"],
     # auto_kick_enabled deliberately NOT here - it needs the previous saved value to detect an
     # off→on transition (see the dedicated handling in server_config_save below), the generic
     # loop below has no way to express that.
