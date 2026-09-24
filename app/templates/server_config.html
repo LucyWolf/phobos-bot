@@ -5179,7 +5179,16 @@ function coopMarkieren(id) {
 function coopStatus(id) {
   const out = document.getElementById('coop-status-' + id);
   out.textContent = '…';
-  fetch('/servers/{{ guild.id }}/coop/' + id + '/status', {method: 'POST'})
+  // Das, was gerade im Formular steht, mitschicken - sonst muesste man erst speichern.
+  const formular = out.closest('form');
+  const daten = new URLSearchParams();
+  if (formular) {
+    const adresse = formular.querySelector('[name="base_url"]');
+    const schluessel = formular.querySelector('[name="key_out"]');
+    if (adresse) daten.append('base_url', adresse.value.trim());
+    if (schluessel) daten.append('key_out', schluessel.value.trim());
+  }
+  fetch('/servers/{{ guild.id }}/coop/' + id + '/status', {method: 'POST', body: daten})
     .then(function (r) { return r.json(); })
     .then(function (d) {
       if (!d.ok) { out.textContent = '⚠️ ' + (d.error || ''); return; }

@@ -5959,16 +5959,34 @@ async def coop_status(request: Request, guild_id: int, coop_id: int):
                        (coop_id, str(guild_id)))
     if not row:
         return JSONResponse({"ok": False, "error": "Nicht gefunden"}, status_code=404)
-    info = await coop_frage_info(row)
+
+    # Was gerade im Formular steht, hat Vorrang vor dem Gespeicherten. Sonst muesste man
+    # zwingend erst speichern und dann pruefen - und genau das hat der Knopf nicht gesagt:
+    # er meldete "Adresse oder Schluessel fehlt", obwohl beides eingetippt dastand.
+    form = await request.form()
+    entwurf = dict(row)
+    for feld in ("base_url", "key_out"):
+        wert = (form.get(feld) or "").strip()
+        if wert:
+            entwurf[feld] = wert.rstrip("/") if feld == "base_url" else wert
+    if not entwurf.get("base_url") or not entwurf.get("key_out"):
+        return JSONResponse({"ok": False,
+                             "error": "Bitte Adresse und Schlüssel des Partners eintragen."})
+    if not str(entwurf["base_url"]).startswith(("http://", "https://")):
+        return JSONResponse({"ok": False, "error": "Die Adresse muss mit https:// beginnen."})
+
+    info = await coop_frage_info(entwurf)
     if not info.get("ok"):
         return JSONResponse(info)
     try:
+        # Adresse und Schluessel gleich mitsichern: sie haben sich soeben als richtig
+        # erwiesen, und wer danach vergisst zu speichern, stuende sonst wieder ohne da.
         await db_exec(
             "UPDATE coop_partners SET partner_name=?, partner_roles=?, partner_checked=?, "
-            "last_out=? WHERE id=? AND guild_id=?",
+            "last_out=?, base_url=?, key_out=? WHERE id=? AND guild_id=?",
             (info["server"], ", ".join(info["roles"]),
              datetime.datetime.utcnow().isoformat(), datetime.datetime.utcnow().isoformat(),
-             coop_id, str(guild_id)),
+             entwurf["base_url"], entwurf["key_out"], coop_id, str(guild_id)),
         )
     except Exception as e:
         print(f"[coop] konnte den Partner-Stand nicht merken: {e}")
