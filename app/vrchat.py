@@ -57,6 +57,11 @@ def _basic_auth(username: str, password: str) -> str:
 
 
 def _headers(auth_cookie: str = "", two_factor_cookie: str = "") -> dict:
+    """Die Kopfzeilen jeder Anfrage: Sitzungs-Kekse und ein sprechender User-Agent.
+
+    Der User-Agent ist keine Hoeflichkeit, sondern Bedingung - VRChat weist Anfragen ohne
+    erkennbaren Absender ab und sperrt Konten, die anonym Last erzeugen.
+    """
     cookies = []
     if auth_cookie:
         cookies.append(f"auth={auth_cookie}")
@@ -595,11 +600,13 @@ async def _member_role(method: str, group_id: str, user_id: str, role_id: str,
 
 async def add_member_role(group_id: str, user_id: str, role_id: str, auth_cookie: str,
                           two_factor_cookie: str = "") -> None:
+    """Gibt einem Gruppenmitglied eine Rolle. Siehe _member_role() fuer die Fehlerbehandlung."""
     await _member_role("PUT", group_id, user_id, role_id, auth_cookie, two_factor_cookie)
 
 
 async def remove_member_role(group_id: str, user_id: str, role_id: str, auth_cookie: str,
                              two_factor_cookie: str = "") -> None:
+    """Nimmt einem Gruppenmitglied eine Rolle wieder ab. Gegenstueck zu add_member_role()."""
     await _member_role("DELETE", group_id, user_id, role_id, auth_cookie, two_factor_cookie)
 
 
@@ -707,6 +714,12 @@ COUNT_FIELDS = ("memberCount", "userCount", "nUsers", "n_users", "users", "playe
 
 
 def _zahl_drin(entry: dict) -> int:
+    """Liest die Zahl der Anwesenden aus einem Eintrag, egal wie VRChat das Feld gerade nennt.
+
+    Wahrheitswerte werden uebersprungen (True ist in Python eine 1 und waere sonst eine Person),
+    eine Liste wird gezaehlt, eine Ziffernfolge als Text gelesen. Steht nichts davon drin,
+    bleibt es bei 0 - und der Debug-Bericht zeigt, wie das Feld wirklich heisst.
+    """
     for key in COUNT_FIELDS:
         wert = entry.get(key)
         if isinstance(wert, bool):

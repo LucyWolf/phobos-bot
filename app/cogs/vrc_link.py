@@ -690,6 +690,7 @@ def _fuelle(vorlage: str, *, welt: str = "", anzahl="", gruppe: str = "",
 async def _instance_texte(guild) -> dict:
     """Die frei schreibbaren Bausteine dieses Servers, leere auf den Standard gesetzt."""
     async def hol(schluessel, standard):
+        """Ein Baustein aus den Einstellungen; leer oder nur Leerzeichen heisst: Standard nehmen."""
         return (await get_guild_config(guild.id, schluessel) or "").strip() or standard
     return {
         "titel": await hol("vrc_instance_title", DEFAULT_VRC_INSTANCE_TITLE),
@@ -789,6 +790,7 @@ async def _lock_instance_post(guild, channel, zeile, texte: dict, jetzt, anzahl)
         dauer = "?"
     welt = zeile["world_name"] or "Unbekannte Welt"
     def f(v):
+        """Setzt die Platzhalter dieser geschlossenen Instanz ein."""
         return _fuelle(v, welt=welt, anzahl=anzahl, gruppe=guild.name, dauer=dauer,
                        name=_spalte(zeile, "inst_name"))
     try:
@@ -835,6 +837,7 @@ async def _close_instance_post(guild, channel, zeile, texte: dict, jetzt) -> Non
         dauer = "?"
     welt = zeile["world_name"] or "Unbekannte Welt"
     def f(v):
+        """Setzt die Platzhalter dieser beendeten Instanz ein."""
         return _fuelle(v, welt=welt, anzahl=zeile["last_count"], gruppe=guild.name, dauer=dauer,
                        name=_spalte(zeile, "inst_name"))
     text = f(texte["zu_text"])
@@ -1157,6 +1160,7 @@ async def _announce_instances(bot, guild) -> int:
         link = launch_url(inst["location"])
         welt = inst["world_name"] or "Unbekannte Welt"
         def f(vorlage):
+            """Setzt die Platzhalter dieser frisch geoeffneten Instanz ein."""
             return _fuelle(vorlage, welt=welt, anzahl=inst["count"], gruppe=guild.name,
                            link=link, name=inst.get("name", ""))
         text = f(texte["text"])
@@ -1253,6 +1257,11 @@ class VRCLinkPanelView(discord.ui.View):
     """
 
     def __init__(self, label: str = ""):
+        """Nimmt die Beschriftung des Servers an, falls eine gesetzt ist.
+
+        Die in cog_load() registrierte Kopie behaelt die Standard-Beschriftung: discord.py findet
+        den Knopf ueber seine custom_id und schaut die Aufschrift nie an.
+        """
         super().__init__(timeout=None)
         # Only the POSTED message carries a server's own caption; the copy registered in
         # cog_load keeps the default. discord.py routes a component interaction by its
@@ -1263,6 +1272,7 @@ class VRCLinkPanelView(discord.ui.View):
     @discord.ui.button(label=DEFAULT_VRC_PANEL_BUTTON, emoji="🔗",
                        style=discord.ButtonStyle.primary, custom_id="vrc:link:start")
     async def start(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Der Knopf unter dem Panel - gibt dem Klickenden seinen persoenlichen Link."""
         await send_personal_link(interaction)
 
 
@@ -1327,7 +1337,18 @@ async def post_panel(bot, guild: discord.Guild, channel: discord.TextChannel) ->
 
 
 class VRCLink(commands.Cog):
+    """Der Cog selbst: Zeitschaltuhr, Slash-Befehle und die zwei Ereignisse, an denen Rechte haengen.
+
+    Die eigentliche Arbeit steht als freie Funktionen weiter oben - der Cog ruft sie nur zu den
+    richtigen Zeitpunkten auf. So laesst sich jede davon einzeln testen, ohne eine
+    Discord-Verbindung aufzubauen.
+    """
     def __init__(self, bot):
+        """Merkt sich je Server, wann Rollen und Instanzen zuletzt dran waren.
+
+        Im Arbeitsspeicher und nicht in der Datenbank: beim Neustart kostet das einen zusaetzlichen
+        Durchlauf, was harmlos ist, und haelt dafuer einen Schreibzugriff aus dem Minutentakt heraus.
+        """
         self.bot = bot
         # When each guild's VRChat role sync last ran, so an interval of "every 30 minutes"
         # means that and not "every minute". In memory: losing it on a restart costs one extra
@@ -1337,11 +1358,13 @@ class VRCLink(commands.Cog):
         self._check.start()
 
     async def cog_load(self):
+        """Registriert den Panel-Knopf einmal, damit er auch nach einem Neustart noch reagiert."""
         # Registered once, with the default caption. Every posted panel routes through this
         # same view regardless of the caption it was posted with - see VRCLinkPanelView.
         self.bot.add_view(VRCLinkPanelView())
 
     def cog_unload(self):
+        """Haelt die Zeitschaltuhr an, wenn der Cog entladen wird."""
         self._check.cancel()
 
     @tasks.loop(minutes=1)
@@ -1432,6 +1455,7 @@ class VRCLink(commands.Cog):
 
     @_check.before_loop
     async def _before_check(self):
+        """Wartet, bis die Verbindung steht - vorher kennt der Bot seine Server noch nicht."""
         await self.bot.wait_until_ready()
 
     @_check.error
@@ -1451,6 +1475,7 @@ class VRCLink(commands.Cog):
             print(f"[vrc_link] Neustart des Minutenlaufs fehlgeschlagen: {e}")
 
     async def _enabled(self, guild_id: int) -> bool:
+        """Ob VRC-Link auf diesem Server ueberhaupt eingeschaltet ist."""
         return (await get_guild_config(guild_id, "vrc_enabled") or "0") == "1"
 
     @app_commands.command(name="vrc-link", description="VRChat-Konto verknüpfen")
@@ -1464,6 +1489,7 @@ class VRCLink(commands.Cog):
 
     @app_commands.command(name="vrc-unlink", description="Eigene VRChat-Verknüpfung entfernen")
     async def vrc_unlink(self, interaction: discord.Interaction):
+        """Loest die eigene Verknuepfung - dasselbe wie der Knopf auf der Mitgliederseite."""
         if not interaction.guild:
             await interaction.response.send_message(
                 "❌ Das geht nur auf einem Server.", ephemeral=True)
@@ -1486,6 +1512,11 @@ class VRCLink(commands.Cog):
 
     @app_commands.command(name="vrc-whois", description="Verknüpften VRChat-Namen eines Mitglieds anzeigen")
     async def vrc_whois(self, interaction: discord.Interaction, member: discord.Member):
+        """Zeigt, mit welchem VRChat-Konto ein Mitglied verknuepft ist.
+
+        Nur fuer den Fragenden sichtbar, und ohne Abzeichen: wer wissen will, ob jemand dazugehoert,
+        bekommt die Antwort - ein oeffentlicher Aushang ueber fremde Konten wird daraus nicht.
+        """
         if not interaction.guild:
             await interaction.response.send_message(
                 "❌ Das geht nur auf einem Server.", ephemeral=True)
@@ -1618,4 +1649,5 @@ class VRCLink(commands.Cog):
 
 
 async def setup(bot):
+    """Einstiegspunkt fuer discord.py - laedt den Cog in diese Bot-Instanz."""
     await bot.add_cog(VRCLink(bot))
