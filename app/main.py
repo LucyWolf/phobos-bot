@@ -94,6 +94,23 @@ from typing import List, Optional
 
 from PIL import Image
 
+# Wie viele Bildpunkte ein hochgeladenes Bild hoechstens haben darf, bevor Pillow abbricht.
+# Ohne das gilt Pillows Standard, und der WARNT bei 89 Megapixeln bloss - abgebrochen wird
+# erst beim Doppelten. Ein PNG, das 178 Megapixel ankuendigt, ist als Datei ein paar Kilobyte
+# gross und belegt beim Entpacken ueber ein halbes Gigabyte Arbeitsspeicher. 50 Megapixel sind
+# immer noch ein Bild von 7000 x 7000 Punkten - mehr braucht weder eine Willkommenskarte noch
+# ein Discord-Anhang.
+Image.MAX_IMAGE_PIXELS = 50_000_000
+
+# Obergrenze fuer hochgeladene Bilder in Bytes. Sie landen base64-kodiert in guild_configs und
+# damit in jedem Backup - ohne Grenze traegt eine einzige 200-MB-Datei jeden Export mit sich.
+MAX_BILD_UPLOAD = 8 * 1024 * 1024
+
+# Und fuer Backup-Dateien. Grosszuegig, weil ein Backup die eingebetteten Bilder base64-kodiert
+# mitfuehrt - aber nicht unbegrenzt: Dashboard und Bot teilen sich einen Prozess, eine einzige
+# zu grosse Datei nimmt also nicht nur die Weboberflaeche mit, sondern auch die Discord-Seite.
+MAX_BACKUP_UPLOAD = 64 * 1024 * 1024
+
 import aiohttp
 import aiosqlite
 import bcrypt
@@ -893,6 +910,36 @@ def session(request: Request) -> dict:
     }
 
 
+async def _sitzungen_beenden(user_id, ausser_sid: str = "") -> int:
+    """Wirft alle angemeldeten Sitzungen dieses Kontos raus. Gibt zurueck, wie viele.
+
+    Gehoert an jede Stelle, die ein Passwort setzt. Ein Passwortwechsel ist fast immer eine
+    Reaktion: jemand fuerchtet, dass ein anderer mitliest. Genau dann muss die Sitzung dieses
+    anderen enden - sonst aendert der Wechsel nur, womit man sich neu anmeldet, und der
+    Eindringling bleibt sitzen, bis seine Sitzung von selbst verfaellt.
+
+    `ausser_sid` laesst genau eine Sitzung stehen: wer sein eigenes Passwort im Profil aendert,
+    soll nicht im selben Moment vor dem Login stehen. Beim Zuruecksetzen per Link und beim
+    Setzen durch eine Administratorin bleibt nichts stehen.
+    """
+    try:
+        if ausser_sid:
+            behalten = _token_pair(ausser_sid)
+            rows = await db_rows(
+                "SELECT sid FROM user_sessions WHERE user_id=? AND sid NOT IN (?,?)",
+                (user_id, *behalten))
+            await db_exec(
+                "DELETE FROM user_sessions WHERE user_id=? AND sid NOT IN (?,?)",
+                (user_id, *behalten))
+        else:
+            rows = await db_rows("SELECT sid FROM user_sessions WHERE user_id=?", (user_id,))
+            await db_exec("DELETE FROM user_sessions WHERE user_id=?", (user_id,))
+        return len(rows)
+    except Exception as e:
+        print(f"[session] konnte die Sitzungen von {user_id} nicht beenden: {e}")
+        return 0
+
+
 def auth_redirect(request: Request) -> Optional[RedirectResponse]:
     if not request.session.get("user_id"):
         return RedirectResponse("/login", status_code=302)
@@ -1361,7 +1408,11 @@ async def profile_password_save(
     if len(pw_new) < 6:
         return RedirectResponse("/profile?error=Passwort+zu+kurz+(min.+6+Zeichen)", status_code=302)
     await db_exec("UPDATE users SET password_hash=? WHERE id=?", (hash_pw(pw_new), uid))
-    return RedirectResponse("/profile?success=Passwort+geändert", status_code=302)
+    weg = await _sitzungen_beenden(uid, request.session.get("sid", ""))
+    hinweis = "Passwort+geändert"
+    if weg:
+        hinweis += f",+{weg}+andere+Anmeldung(en)+beendet"
+    return RedirectResponse(f"/profile?success={hinweis}", status_code=302)
 
 
 @web.get("/profile/2fa/setup", response_class=HTMLResponse)
@@ -1953,6 +2004,8 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...),
     if r := admin_redirect(request): return r
     try:
         raw = await backup_file.read()
+        if len(raw) > MAX_BACKUP_UPLOAD:
+            raise ValueError(f"Backup-Datei zu groß (max. {MAX_BACKUP_UPLOAD // (1024*1024)} MB)")
         data = await _backup_payload(raw, password)
     except ValueError as e:
         # Beim verschlüsselten Backup sagt der Text, was los ist - falsches Passwort oder
@@ -2226,6 +2279,8 @@ async def server_backup_restore(request: Request, guild_id: int,
     if r := admin_redirect(request): return r
     try:
         raw = await backup_file.read()
+        if len(raw) > MAX_BACKUP_UPLOAD:
+            raise ValueError(f"Backup-Datei zu groß (max. {MAX_BACKUP_UPLOAD // (1024*1024)} MB)")
         data = await _backup_payload(raw, password)
     except ValueError as e:
         # Siehe backup_restore(): kein raise aus dem Fehlerzweig heraus.
@@ -2470,6 +2525,7 @@ async def reset_pw_submit(request: Request, token: str = Form(...), password: st
     if not row:
         return RedirectResponse("/login?error=Link+ungültig+oder+abgelaufen", status_code=302)
     await db_exec("UPDATE users SET password_hash=? WHERE id=?", (hash_pw(password), row["user_id"]))
+    await _sitzungen_beenden(row["user_id"])
     await db_exec("DELETE FROM password_reset_tokens WHERE token IN (?,?)", _token_pair(token))
     return RedirectResponse("/login?success=Passwort+erfolgreich+geändert", status_code=302)
 
@@ -2670,7 +2726,11 @@ async def users_set_password(request: Request, user_id: int, new_pw: str = Form(
     if len(new_pw) < 6:
         return RedirectResponse("/users?error=Passwort+mindestens+6+Zeichen", status_code=302)
     await db_exec("UPDATE users SET password_hash=? WHERE id=?", (hash_pw(new_pw), user_id))
-    return RedirectResponse("/users?success=Passwort+geändert", status_code=302)
+    weg = await _sitzungen_beenden(user_id)
+    hinweis = "Passwort+geändert"
+    if weg:
+        hinweis += f",+{weg}+Anmeldung(en)+beendet"
+    return RedirectResponse(f"/users?success={hinweis}", status_code=302)
 
 
 @web.post("/users/{user_id}/toggle-active")
@@ -8615,6 +8675,8 @@ async def _read_embed_image_upload(image_file):
     data = await image_file.read()
     if not data:
         return None, None
+    if len(data) > MAX_BILD_UPLOAD:
+        raise ValueError(f"Bild zu groß (max. {MAX_BILD_UPLOAD // (1024*1024)} MB)")
     try:
         img = Image.open(io.BytesIO(data))
         img.verify()
@@ -8962,6 +9024,8 @@ async def _read_welcome_bg_upload(upload_file, max_dim: int = 1600) -> str | Non
     data = await upload_file.read()
     if not data:
         return None
+    if len(data) > MAX_BILD_UPLOAD:
+        raise ValueError(f"Bild+zu+groß+(max.+{MAX_BILD_UPLOAD // (1024*1024)}+MB)")
     try:
         img = Image.open(io.BytesIO(data))
         img.load()
@@ -8990,6 +9054,8 @@ async def _read_welcome_overlay_upload(upload_file, max_dim: int = 1600) -> str 
     data = await upload_file.read()
     if not data:
         return None
+    if len(data) > MAX_BILD_UPLOAD:
+        raise ValueError(f"Bild+zu+groß+(max.+{MAX_BILD_UPLOAD // (1024*1024)}+MB)")
     try:
         img = Image.open(io.BytesIO(data))
         img.load()
