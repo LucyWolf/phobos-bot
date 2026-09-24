@@ -1192,6 +1192,13 @@ async def init_db():
             # Abschiedstext noch stimmt, wenn VRChat die Instanz gar nicht mehr kennt.
             "ALTER TABLE vrc_instances ADD COLUMN locked_at TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE vrc_instances ADD COLUMN inst_name TEXT NOT NULL DEFAULT ''",
+            # Was die Gegenseite ueber sich mitteilt, damit man beim Einrichten nicht raten
+            # muss, wie deren Rollen heissen. Wird beim "Verbindung pruefen" geholt und hier
+            # abgelegt - so steht es auch beim naechsten Oeffnen der Seite da, ohne dass
+            # dafuer jedes Mal der Partner angefragt werden muss.
+            "ALTER TABLE coop_partners ADD COLUMN partner_name TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE coop_partners ADD COLUMN partner_roles TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE coop_partners ADD COLUMN partner_checked TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

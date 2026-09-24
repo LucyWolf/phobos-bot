@@ -5015,11 +5015,26 @@ function updateAmpCmdPreview(id, action, value) {
   </div>
   {% endif %}
 
+  {# Was der Partner von UNS braucht: Adresse und Schluessel. Beides zusammen, damit man
+     es in einem Rutsch hinuebergeben kann. #}
+  <div style="border:1px solid var(--border);border-radius:0.6rem;padding:0.7rem 0.8rem;margin-bottom:1rem;background:var(--bg);">
+    <div style="font-weight:600;font-size:0.8rem;margin-bottom:0.3rem;">{{ tr.coop_mine_heading }}</div>
+    <div class="hint" style="margin-bottom:0.4rem;">{{ tr.coop_mine_hint }}</div>
+    {% if coop_eigene_adresse %}
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+      <code id="coop-eigene-adresse" style="flex:1;min-width:220px;word-break:break-all;background:var(--card);border-radius:0.4rem;padding:0.45rem 0.6rem;font-size:0.8rem;">{{ coop_eigene_adresse }}</code>
+      <button type="button" class="btn btn-secondary" onclick="coopKopieren('coop-eigene-adresse', this)">{{ tr.coop_copy }}</button>
+    </div>
+    {% else %}
+    <div style="font-size:0.78rem;color:#f59e0b;">{{ tr.coop_mine_unknown }}</div>
+    {% endif %}
+  </div>
+
   {% if not coops %}<p class="hint">{{ tr.coop_none }}</p>{% endif %}
 
   {% for c in coops %}
   <form method="post" action="/servers/{{ guild.id }}/coop/{{ c.id }}/save"
-        style="border:1px solid var(--border);border-radius:0.6rem;padding:0.8rem;margin-bottom:0.8rem;">
+        style="border:1px solid var(--border);border-radius:0.6rem;padding:0.8rem;margin-bottom:0.3rem;">
     <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;">
       <div style="flex:1;min-width:200px;">
         <label>{{ tr.coop_name_label }}</label>
@@ -5031,9 +5046,35 @@ function updateAmpCmdPreview(id, action, value) {
       </label>
     </div>
 
-    {# Eine Zeile je Rolle mit zwei Haken statt zweier vollstaendiger Rollenlisten - die
-       Unterscheidung bleibt, die doppelte Liste faellt weg. #}
-    <div style="font-weight:600;font-size:0.8rem;margin:0.8rem 0 0.2rem;">{{ tr.coop_roles_heading }}</div>
+    {# ── Schritt 1: erst die Verbindung. Ohne sie weiss niemand, wie die Rollen drueben
+       heissen - danach zu fragen waere Raten. #}
+    <div style="font-weight:600;font-size:0.8rem;margin:0.9rem 0 0.2rem;">{{ tr.coop_step1 }}</div>
+    <div class="hint" style="margin-bottom:0.4rem;">{{ tr.coop_accept_hint }}</div>
+    <div class="grid-2" style="gap:0.8rem;">
+      <div>
+        <label>{{ tr.coop_url_label }}</label>
+        <input type="text" name="base_url" maxlength="300" value="{{ c.base_url }}"
+               placeholder="https://partner.example" style="margin:0;">
+        <div style="font-size:0.7rem;color:var(--muted);margin-top:0.2rem;">{{ tr.coop_url_hint }}</div>
+      </div>
+      <div>
+        <label>{{ tr.coop_keyout_label }}</label>
+        <input type="password" name="key_out" maxlength="200" value="{{ c.key_out }}" style="margin:0;">
+        <div style="font-size:0.7rem;color:var(--muted);margin-top:0.2rem;">{{ tr.coop_keyout_hint }}</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-top:0.5rem;">
+      <button type="button" class="btn btn-secondary" onclick="coopStatus({{ c.id }})">{{ tr.coop_status_btn }}</button>
+      <span id="coop-status-{{ c.id }}" style="font-size:0.8rem;color:var(--muted);">
+        {% if c.partner_name or c.partner_roles %}
+          ✅ {{ c.partner_name }} · {{ tr.coop_partner_shares }}: {{ c.partner_roles or '—' }}
+        {% endif %}
+      </span>
+    </div>
+    <div style="font-size:0.7rem;color:var(--muted);margin-top:0.25rem;">{{ tr.coop_status_hint }}</div>
+
+    {# ── Schritt 2: jetzt erst die Rollen. #}
+    <div style="font-weight:600;font-size:0.8rem;margin:1rem 0 0.2rem;">{{ tr.coop_step2 }}</div>
     <div class="hint" style="margin-bottom:0.5rem;">{{ tr.coop_roles_hint }}</div>
     <div class="table-wrap" style="margin-bottom:0.9rem;">
       <table style="width:100%;font-size:0.78rem;">
@@ -5060,31 +5101,31 @@ function updateAmpCmdPreview(id, action, value) {
       </table>
     </div>
 
-    <div style="font-weight:600;font-size:0.8rem;margin:0.9rem 0 0.2rem;">{{ tr.coop_connection_heading }}</div>
-    <div class="hint" style="margin-bottom:0.4rem;">{{ tr.coop_accept_hint }}</div>
-    <div class="grid-2" style="gap:0.8rem;">
-      <div>
-        <label>{{ tr.coop_url_label }}</label>
-        <input type="text" name="base_url" maxlength="300" value="{{ c.base_url }}"
-               placeholder="https://partner.example" style="margin:0;">
-        <div style="font-size:0.7rem;color:var(--muted);margin-top:0.2rem;">{{ tr.coop_url_hint }}</div>
-      </div>
-      <div>
-        <label>{{ tr.coop_keyout_label }}</label>
-        <input type="password" name="key_out" maxlength="200" value="{{ c.key_out }}" style="margin:0;">
-      </div>
-    </div>
-    <div style="margin-top:0.7rem;">
+    <div>
       <label>{{ tr.coop_note_label }}</label>
       <input type="text" name="note" maxlength="300" value="{{ c.note }}" style="margin:0;">
     </div>
 
     <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-top:0.8rem;">
       <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
-      <input type="text" id="coop-test-{{ c.id }}" placeholder="Discord-ID" maxlength="20"
-             style="width:170px;margin:0;">
+      {# Mitglieder statt Nummern: der Bot ist mit dem Server verbunden, also kann er sie
+         anbieten. Die ID steht daneben, damit man sie nicht suchen muss, wenn man sie
+         doch einmal braucht. #}
+      <select id="coop-test-{{ c.id }}" style="margin:0;max-width:300px;"
+              onchange="coopZeigeId({{ c.id }})">
+        <option value="">{{ tr.coop_test_pick }}</option>
+        {% for m in guild.members[:500] %}
+        <option value="{{ m.id }}"{% if m.id == guild.owner_id %} selected{% endif %}>{{ m.display_name }} — {{ m.id }}</option>
+        {% endfor %}
+      </select>
       <button type="button" class="btn btn-secondary" onclick="coopTest({{ c.id }})">{{ tr.coop_test_btn }}</button>
       <span id="coop-out-{{ c.id }}" style="font-size:0.78rem;color:var(--muted);"></span>
+    </div>
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-top:0.4rem;">
+      <span style="font-size:0.72rem;color:var(--muted);">{{ tr.coop_selected_id }}:</span>
+      <code id="coop-id-{{ c.id }}" style="font-size:0.75rem;background:var(--bg);border-radius:0.3rem;padding:0.2rem 0.4rem;">—</code>
+      <button type="button" class="btn btn-secondary" style="padding:0.15rem 0.5rem;font-size:0.72rem;"
+              onclick="coopKopieren('coop-id-{{ c.id }}', this)">{{ tr.coop_copy }}</button>
     </div>
     <div style="font-size:0.72rem;color:var(--muted);margin-top:0.35rem;">{{ tr.coop_test_hint }}</div>
     <div style="font-size:0.7rem;color:var(--muted);margin-top:0.25rem;">
@@ -5092,7 +5133,7 @@ function updateAmpCmdPreview(id, action, value) {
       {{ tr.coop_last_out }}: {{ c.last_out or tr.coop_never }}
     </div>
   </form>
-  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:-0.4rem 0 1rem;">
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:0 0 1rem;">
     <form method="post" action="/servers/{{ guild.id }}/coop/{{ c.id }}/newkey" style="margin:0;">
       <button type="submit" class="btn btn-secondary">{{ tr.coop_newkey_btn }}</button>
     </form>
@@ -5117,7 +5158,47 @@ function updateAmpCmdPreview(id, action, value) {
 </div>
 
 <script>
+const COOP_SHARES = {{ tr.coop_partner_shares | tojson }};
 // Antwort immer ueber textContent: was zurueckkommt, stammt von einer fremden Installation.
+function coopKopieren(id, knopf) {
+  const text = document.getElementById(id).textContent.trim();
+  const fertig = function () { const alt = knopf.textContent; knopf.textContent = '✅';
+                               setTimeout(function () { knopf.textContent = alt; }, 1200); };
+  // Ohne HTTPS gibt es die Zwischenablage nicht - dann wird markiert, Strg+C macht der Mensch.
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(fertig).catch(function () { coopMarkieren(id); });
+  } else { coopMarkieren(id); }
+}
+function coopMarkieren(id) {
+  const bereich = document.getElementById(id);
+  const auswahl = window.getSelection(); const r = document.createRange();
+  r.selectNodeContents(bereich); auswahl.removeAllRanges(); auswahl.addRange(r);
+}
+// Fragt den Partner, wer er ist und was er teilt. Antwort immer ueber textContent: sie
+// stammt von einer fremden Installation.
+function coopStatus(id) {
+  const out = document.getElementById('coop-status-' + id);
+  out.textContent = '…';
+  fetch('/servers/{{ guild.id }}/coop/' + id + '/status', {method: 'POST'})
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d.ok) { out.textContent = '⚠️ ' + (d.error || ''); return; }
+      out.textContent = '✅ ' + (d.server || '') + ' · ' + COOP_SHARES + ': '
+                      + ((d.roles && d.roles.length) ? d.roles.join(', ') : '—');
+    })
+    .catch(function () { out.textContent = '⚠️'; });
+}
+// Zeigt die Discord-ID des gewaehlten Mitglieds an, damit sie niemand suchen muss.
+function coopZeigeId(id) {
+  const wahl = document.getElementById('coop-test-' + id);
+  const feld = document.getElementById('coop-id-' + id);
+  if (feld) feld.textContent = (wahl && wahl.value) ? wahl.value : '—';
+}
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('[id^="coop-test-"]').forEach(function (w) {
+    coopZeigeId(w.id.replace('coop-test-', ''));
+  });
+});
 function coopTest(id) {
   const feld = document.getElementById('coop-test-' + id);
   const out = document.getElementById('coop-out-' + id);
