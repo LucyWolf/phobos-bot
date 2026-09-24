@@ -4290,9 +4290,10 @@ async def vrc_decide(request: Request, guild_id: int, link_id: int):
         await _vrc_apply(guild_id, row["user_id"], row["vrchat_name"], revoke=True)
         msg = "Freigabe+zurückgenommen"
     elif action == "delete":
-        await db_exec("DELETE FROM vrc_links WHERE id=?", (link_id,))
+        # Reihenfolge wie beim Selbst-Loesen: zuruecknehmen, solange die Zeile noch da ist.
         if row["status"] == "approved":
             await _vrc_apply(guild_id, row["user_id"], row["vrchat_name"], revoke=True)
+        await db_exec("DELETE FROM vrc_links WHERE id=?", (link_id,))
         msg = "Eintrag+gelöscht"
     else:
         return RedirectResponse(f"/servers/{guild_id}?tab=vrclink&error=Unbekannte+Aktion", status_code=302)
@@ -4309,7 +4310,35 @@ async def vrc_refresh(request: Request, guild_id: int):
     rows = await db_rows(
         "SELECT * FROM vrc_links WHERE guild_id=? AND status='approved'", (str(guild_id),))
     done = 0
+    umbenannt = 0
     for row in rows:
+        # Das VRChat-Profil WIRKLICH neu lesen. Vorher hat dieser Knopf nur Rolle und
+        # Spitznamen aus dem gespeicherten Namen neu gesetzt - wer sich bei VRChat umbenannt
+        # hatte, behielt hier also ewig den alten Namen, obwohl genau dieser Knopf laut
+        # Beschreibung der Weg dafuer ist. Kostet eine Anfrage je Mitglied; deshalb sitzt er
+        # hinter einem Knopf und auf keiner Zeitschaltuhr.
+        neuer_name = row["vrchat_name"]
+        if row["vrc_user_id"]:
+            from cogs.vrc_link import fetch_profile, profile_fields
+            state, user = await fetch_profile(row["vrc_user_id"])
+            if state == "ok" and user:
+                fields = profile_fields(user)
+                neuer_name = fields["vrchat_name"] or row["vrchat_name"]
+                try:
+                    await db_exec(
+                        "UPDATE vrc_links SET vrchat_name=?, vrc_trust=?, vrc_age_verified=?, "
+                        "vrc_supporter=?, vrc_avatar=? WHERE id=?",
+                        (neuer_name, fields["vrc_trust"], fields["vrc_age_verified"],
+                         fields["vrc_supporter"], fields["vrc_avatar"], row["id"]),
+                    )
+                    if neuer_name != row["vrchat_name"]:
+                        umbenannt += 1
+                except Exception as e:
+                    # Der neue Name kann mit einer anderen Verknuepfung auf diesem Server
+                    # kollidieren - dann gewinnt der eindeutige Index, und dieses eine
+                    # Mitglied bleibt, wie es war. Der Rest laeuft weiter.
+                    print(f"[vrc_link] Auffrischen von {row['id']} fehlgeschlagen: {e}")
+                    neuer_name = row["vrchat_name"]
         # Sequential on purpose: each iteration is one or two Discord edits, and firing a few
         # hundred of them at once is how a bot earns a rate limit that stalls everything else
         # it is doing. discord.py serialises per route anyway, so this only looks slower.
@@ -4319,11 +4348,13 @@ async def vrc_refresh(request: Request, guild_id: int):
         # any timer - "refresh everything" is exactly when somebody wants the group state to be
         # current, and no_op when no group is configured.
         await _vrc_sync_group(guild_id, row)
-        await _vrc_apply(guild_id, row["user_id"], row["vrchat_name"])
+        await _vrc_apply(guild_id, row["user_id"], neuer_name)
         done += 1
-    return RedirectResponse(
-        f"/servers/{guild_id}?tab=vrclink&success={done}+Verknüpfung(en)+aufgefrischt",
-        status_code=303)
+    hinweis = f"{done}+Verknüpfung(en)+aufgefrischt"
+    if umbenannt:
+        hinweis += f",+davon+{umbenannt}+mit+neuem+VRChat-Namen"
+    return RedirectResponse(f"/servers/{guild_id}?tab=vrclink&success={hinweis}",
+                            status_code=303)
 
 
 @web.post("/servers/{guild_id}/vrc/panel")
@@ -4898,8 +4929,11 @@ async def vrc_rolemap_add(request: Request, guild_id: int, discord_role_id: str 
         return RedirectResponse(
             f"/servers/{guild_id}?tab=vrclink&error=Zuordnung+konnte+nicht+gespeichert+werden",
             status_code=303)
-    return RedirectResponse(f"/servers/{guild_id}?tab=vrclink&success=Zuordnung+gespeichert",
-                            status_code=303)
+    weg = await _vrc_sync_rolemap(guild_id)
+    hinweis = "Zuordnung+gespeichert"
+    if weg:
+        hinweis += f",+bei+{weg}+Mitglied(ern)+angewendet"
+    return RedirectResponse(f"/servers/{guild_id}?tab=vrclink&success={hinweis}", status_code=303)
 
 
 @web.post("/servers/{guild_id}/vrc/rolemap/delete/{map_id}")
@@ -4910,8 +4944,43 @@ async def vrc_rolemap_delete(request: Request, guild_id: int, map_id: int):
     # guild_id in the WHERE as well as the id: without it, a moderator of one server could
     # delete another server's mapping by guessing a number.
     await db_exec("DELETE FROM vrc_role_map WHERE id=? AND guild_id=?", (map_id, str(guild_id)))
-    return RedirectResponse(f"/servers/{guild_id}?tab=vrclink&success=Zuordnung+entfernt",
-                            status_code=303)
+    weg = await _vrc_sync_rolemap(guild_id)
+    hinweis = "Zuordnung+entfernt"
+    if weg:
+        hinweis += f",+bei+{weg}+Mitglied(ern)+nachgezogen"
+    return RedirectResponse(f"/servers/{guild_id}?tab=vrclink&success={hinweis}", status_code=303)
+
+
+async def _vrc_sync_rolemap(guild_id: int) -> int:
+    """Zieht die VRChat-Rollen aller bestaetigten Mitglieder nach. Gibt zurueck, bei wie vielen.
+
+    Gebraucht, wenn sich die ZUORDNUNG aendert statt der Discord-Rollen. Fuer Rollenwechsel
+    gibt es den Listener im Cog; eine geloeschte Zuordnung loest den aber nicht aus - die
+    Betroffenen behielten ihre VRChat-Rolle, bis sich zufaellig etwas anderes an ihnen
+    aenderte. Ein Admin, der eine Zuordnung wegnimmt, meint damit die Rechte.
+
+    Kostet je betroffenem Mitglied eine VRChat-Anfrage und sonst nichts: sync_vrc_roles()
+    vergleicht gegen den gemerkten Stand und ruft nur an, wo sich wirklich etwas unterscheidet.
+    """
+    b = bot._bot_for_guild(guild_id)
+    guild = b.get_guild(guild_id) if b else None
+    if not guild:
+        return 0
+    from cogs.vrc_link import sync_vrc_roles
+    rows = await db_rows(
+        "SELECT * FROM vrc_links WHERE guild_id=? AND status='approved' AND vrc_group_member=1",
+        (str(guild_id),))
+    betroffen = 0
+    for row in rows:
+        member = guild.get_member(int(row["user_id"])) if str(row["user_id"]).isdigit() else None
+        if not member:
+            continue
+        try:
+            if await sync_vrc_roles(guild, member, row):
+                betroffen += 1
+        except Exception as e:
+            print(f"[vrc_link] Nachziehen fuer {row['user_id']} in {guild_id}: {e}")
+    return betroffen
 
 
 @web.post("/servers/{guild_id}/vrc/group/join")
@@ -5248,10 +5317,19 @@ async def vrc_public_name(request: Request, lang: str = Form(""), t: str = Form(
     now = datetime.datetime.utcnow().isoformat()
     try:
         if existing:
+            # Ist es ein ANDERES VRChat-Konto als bisher, gilt nichts mehr von dem, was ueber
+            # das alte bekannt war. Der gemerkte Rollenstand gehoerte dem alten Konto: bliebe
+            # er stehen, haelt sync_vrc_roles() "Soll == Ist" fuer erfuellt und gibt dem neuen
+            # Konto nie eine Rolle. Ebenso der Einladungs-Merker - sonst wartet jemand auf
+            # eine Einladung, die an ein fremdes Konto ging.
+            wechsel = (existing["vrc_user_id"] or "") != fields["vrc_user_id"]
             await db_exec(
                 "UPDATE vrc_links SET vrchat_name=?, vrc_user_id=?, vrc_trust=?, "
                 "vrc_age_verified=?, vrc_supporter=?, vrc_avatar=?, status=?, verify_code=?, "
-                "verified_at='', requested_at=?, decided_at=?, decided_by=? WHERE id=?",
+                "verified_at='', requested_at=?, decided_at=?, decided_by=?"
+                + (", vrc_group_member=0, vrc_group_roles='[]', vrc_roles_synced='', "
+                   "vrc_group_invited='', vrc_group_checked=''" if wechsel else "")
+                + " WHERE id=?",
                 (name, fields["vrc_user_id"], fields["vrc_trust"], fields["vrc_age_verified"],
                  fields["vrc_supporter"], fields["vrc_avatar"], new_status, code,
                  now, decided_at, decided_by, existing["id"]),
@@ -5479,6 +5557,13 @@ async def vrc_public_invite(request: Request, lang: str = Form(""), t: str = For
                       (datetime.datetime.utcnow().isoformat(), link["id"]))
     except Exception as e:
         print(f"[vrc_link] could not note the group invite for link {link['id']}: {e}")
+    if state == "already":
+        # VRChat meldet "bereits eingeladen" und "ist schon Mitglied" beide als dasselbe
+        # "already" - welches von beiden, sagt nur ein Blick in die Mitgliederliste. Ohne den
+        # blieb der Merker auf "kein Mitglied" stehen: die Gruppenrolle auf Discord kam nie,
+        # obwohl der Betreffende laengst drin war. Kostet eine Anfrage, und nur in diesem
+        # seltenen Zweig.
+        await _vrc_sync_group(guild_id, link)
     return await _vrc_page(request, row, lang,
                            success=tr["vrcp_invite_sent"] if state == "sent"
                            else tr["vrcp_invite_already"])
@@ -5495,9 +5580,13 @@ async def vrc_public_unlink(request: Request, lang: str = Form(""), t: str = For
                         (row["guild_id"], row["user_id"]))
     if not link:
         return await _vrc_page(request, row, lang)
-    await db_exec("DELETE FROM vrc_links WHERE id=?", (link["id"],))
+    # Erst zuruecknehmen, DANN loeschen - nicht umgekehrt. revoke_link() schlaegt die Zeile
+    # noch einmal nach, um die auf VRChat-Seite vergebenen Gruppenrollen abzunehmen; war sie
+    # da schon geloescht, fand es nichts mehr und die Rollen blieben dem Mitglied erhalten.
+    # Wer sich loesen liess, behielt also genau die Rechte, um die es ging.
     if link["status"] == VRC_STATE_APPROVED:
         await _vrc_apply(int(row["guild_id"]), row["user_id"], link["vrchat_name"], revoke=True)
+    await db_exec("DELETE FROM vrc_links WHERE id=?", (link["id"],))
     return await _vrc_page(request, row, lang, success=tr["vrcp_ok_unlinked"])
 
 

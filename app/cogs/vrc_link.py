@@ -436,6 +436,55 @@ async def sync_vrc_roles(guild, member: discord.Member, link) -> list:
     return changed
 
 
+def _darf_rolle(guild, role) -> bool:
+    """Ob der Bot diese Rolle ueberhaupt vergeben oder abnehmen KANN.
+
+    Vorher wurde es einfach versucht und der Fehlschlag protokolliert - jede Minute aufs Neue,
+    fuer jedes betroffene Mitglied. Eine Rolle ueber der eigenen bekommt der Bot nie vergeben,
+    daran aendert auch der tausendste Versuch nichts; er kostet nur eine Discord-Anfrage, und
+    Discord zaehlt die mit.
+
+    Im Zweifel True: kennt der Bot seinen eigenen Rang gerade nicht - halb gefuellter Cache,
+    Test-Doubles -, soll er es versuchen und den Fehler wie bisher wegstecken.
+    """
+    ich = getattr(guild, "me", None)
+    if ich is None:
+        return True
+    rechte = getattr(ich, "guild_permissions", None)
+    if rechte is not None and not getattr(rechte, "manage_roles", True):
+        return False
+    oben = getattr(ich, "top_role", None)
+    if oben is None:
+        return True
+    try:
+        return role < oben
+    except TypeError:
+        return True
+
+
+def _darf_umbenennen(guild, member) -> bool:
+    """Ob der Bot diesem Mitglied ueberhaupt einen Spitznamen geben KANN.
+
+    Den Serverinhaber kann kein Bot umbenennen, und ein Mitglied mit hoeherer Rolle auch
+    nicht. Beides steht fest, bevor die Anfrage rausgeht - siehe _darf_rolle().
+    """
+    ich = getattr(guild, "me", None)
+    if ich is None:
+        return True
+    if getattr(guild, "owner_id", None) is not None and guild.owner_id == getattr(member, "id", None):
+        return False
+    rechte = getattr(ich, "guild_permissions", None)
+    if rechte is not None and not getattr(rechte, "manage_nicknames", True):
+        return False
+    meine, seine = getattr(ich, "top_role", None), getattr(member, "top_role", None)
+    if meine is None or seine is None:
+        return True
+    try:
+        return seine < meine
+    except TypeError:
+        return True
+
+
 async def apply_link(bot, guild: discord.Guild, member: discord.Member, vrchat_name: str) -> list:
     """Give the member everything an approved link earns them. Returns what actually changed,
     for the caller to report - an empty list means "nothing to do", not "it failed"."""
@@ -444,7 +493,7 @@ async def apply_link(bot, guild: discord.Guild, member: discord.Member, vrchat_n
     role_id = await get_guild_config(guild.id, "vrc_linked_role")
     if role_id and str(role_id).isdigit():
         role = guild.get_role(int(role_id))
-        if role and role not in member.roles:
+        if role and role not in member.roles and _darf_rolle(guild, role):
             try:
                 await member.add_roles(role, reason="VRC-Link bestätigt")
                 changed.append(f"Rolle {role.name}")
@@ -457,7 +506,7 @@ async def apply_link(bot, guild: discord.Guild, member: discord.Member, vrchat_n
     group_role_id = await get_guild_config(guild.id, "vrc_group_role")
     if group_role_id and str(group_role_id).isdigit():
         group_role = guild.get_role(int(group_role_id))
-        if group_role:
+        if group_role and _darf_rolle(guild, group_role):
             row = await db_one(
                 "SELECT vrc_group_member FROM vrc_links WHERE guild_id=? AND user_id=?",
                 (str(guild.id), str(member.id)),
@@ -476,7 +525,7 @@ async def apply_link(bot, guild: discord.Guild, member: discord.Member, vrchat_n
     if (await get_guild_config(guild.id, "vrc_nickname_enabled") or "0") == "1":
         fmt = await get_guild_config(guild.id, "vrc_nickname_format") or DEFAULT_VRC_NICKNAME_FORMAT
         nick = vrc_nickname(fmt, vrchat_name, member.name)
-        if nick and nick != member.display_name:
+        if nick and nick != member.display_name and _darf_umbenennen(guild, member):
             try:
                 await member.edit(nick=nick, reason="VRC-Link bestätigt")
                 changed.append(f"Spitzname {nick}")
@@ -535,7 +584,7 @@ async def revoke_link(bot, guild: discord.Guild, member: discord.Member) -> None
     role_id = await get_guild_config(guild.id, "vrc_linked_role")
     if role_id and str(role_id).isdigit():
         role = guild.get_role(int(role_id))
-        if role and role in member.roles:
+        if role and role in member.roles and _darf_rolle(guild, role):
             try:
                 await member.remove_roles(role, reason="VRC-Link entfernt")
             except (discord.HTTPException, OSError) as e:
@@ -543,7 +592,7 @@ async def revoke_link(bot, guild: discord.Guild, member: discord.Member) -> None
     group_role_id = await get_guild_config(guild.id, "vrc_group_role")
     if group_role_id and str(group_role_id).isdigit():
         group_role = guild.get_role(int(group_role_id))
-        if group_role and group_role in member.roles:
+        if group_role and group_role in member.roles and _darf_rolle(guild, group_role):
             try:
                 await member.remove_roles(group_role, reason="VRC-Link entfernt")
             except (discord.HTTPException, OSError) as e:
@@ -558,7 +607,8 @@ async def revoke_link(bot, guild: discord.Guild, member: discord.Member) -> None
             await db_exec("UPDATE vrc_links SET vrc_group_roles='[]' WHERE id=?", (link["id"],))
         except Exception as e:
             print(f"[vrc_link] konnte den Rollenstand von {link['id']} nicht leeren: {e}")
-    if (await get_guild_config(guild.id, "vrc_nickname_enabled") or "0") == "1":
+    if (await get_guild_config(guild.id, "vrc_nickname_enabled") or "0") == "1" \
+            and _darf_umbenennen(guild, member):
         try:
             # None clears the nickname, putting the member back to their own Discord name.
             await member.edit(nick=None, reason="VRC-Link entfernt")
@@ -1357,9 +1407,12 @@ class VRCLink(commands.Cog):
             await interaction.response.send_message(
                 "❌ Du hast hier keine Verknüpfung.", ephemeral=True)
             return
-        await db_exec("DELETE FROM vrc_links WHERE id=?", (row["id"],))
+        # Erst zuruecknehmen, dann loeschen: revoke_link() schlaegt die Zeile noch einmal
+        # nach, um die auf VRChat-Seite vergebenen Gruppenrollen abzunehmen. War sie da schon
+        # weg, blieben dem Mitglied genau die Rechte, die es gerade abgeben wollte.
         if row["status"] == VRC_STATE_APPROVED:
             await revoke_link(self.bot, interaction.guild, interaction.user)
+        await db_exec("DELETE FROM vrc_links WHERE id=?", (row["id"],))
         await interaction.response.send_message("✅ Verknüpfung entfernt.", ephemeral=True)
 
     @app_commands.command(name="vrc-whois", description="Verknüpften VRChat-Namen eines Mitglieds anzeigen")
@@ -1403,6 +1456,16 @@ class VRCLink(commands.Cog):
             )
             if row and row["status"] == VRC_STATE_APPROVED:
                 await apply_link(self.bot, member.guild, member, row["vrchat_name"])
+                # Und die VRChat-Rollen, die ihre Discord-Rollen hergeben. Beim Austritt
+                # wurden sie abgenommen (siehe on_member_remove) - ohne das hier kaeme
+                # jemand zurueck, bekaeme seine Discord-Rollen wieder und stuende in VRChat
+                # trotzdem ohne da, bis sich zufaellig etwas anderes aendert.
+                frisch = await db_one(
+                    "SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
+                    (str(member.guild.id), str(member.id)),
+                )
+                if frisch:
+                    await sync_vrc_roles(member.guild, member, frisch)
                 return
             if member.bot or not await self._enabled(member.guild.id):
                 return
@@ -1424,6 +1487,65 @@ class VRCLink(commands.Cog):
                 pass
         except Exception as e:
             print(f"[vrc_link] join handling failed for {member.id} in {member.guild.id}: {e}")
+
+
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        """Aendern sich die Discord-Rollen, ziehen die VRChat-Rollen sofort nach.
+
+        Vorher hing das ausschliesslich am Intervall - und dessen Standard ist "aus", also
+        "nur beim Verknuepfen". Damit wirkte ein ENTZUG praktisch nie: wer die Orga-Rolle
+        verlor, behielt seine Staff-Rechte in der VRChat-Gruppe, bis jemand ein Intervall
+        einschaltete. Hier kostet es nichts: sync_vrc_roles() vergleicht gegen den gemerkten
+        Stand und ruft VRChat nur an, wenn sich wirklich etwas unterscheidet.
+        """
+        try:
+            if after.bot or before.roles == after.roles:
+                return
+            if not await self._enabled(after.guild.id):
+                return
+            row = await db_one(
+                "SELECT * FROM vrc_links WHERE guild_id=? AND user_id=? AND status=?",
+                (str(after.guild.id), str(after.id), VRC_STATE_APPROVED),
+            )
+            if not row:
+                return
+            geaendert = await sync_vrc_roles(after.guild, after, row)
+            if geaendert:
+                print(f"[vrc_link] Rollenwechsel bei {after.id} in {after.guild.id}: "
+                      f"{', '.join(geaendert)}")
+        except Exception as e:
+            print(f"[vrc_link] Rollenwechsel bei {after.id} in {after.guild.id}: {e}")
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member):
+        """Wer den Server verlaesst, verliert auch die VRChat-Rollen, die er von hier hatte.
+
+        Die Zuordnung sagt "Discord-Rolle X gibt VRChat-Rolle Y". Mit dem Austritt sind alle
+        Discord-Rollen weg, die VRChat-Rollen blieben aber: der Minutenlauf ueberspringt
+        Mitglieder, die nicht mehr da sind, und nichts anderes hat sie je wieder angefasst.
+        Wer als Orga geflogen ist, behielt damit seine Staff-Rechte in der VRChat-Gruppe -
+        auf unbestimmte Zeit.
+
+        Die Verknuepfung selbst bleibt stehen. Sie ist die Geschichte dieses Mitglieds, und
+        wer zurueckkommt, bekommt ueber on_member_join alles wieder.
+        """
+        try:
+            if member.bot or not await self._enabled(member.guild.id):
+                return
+            row = await db_one(
+                "SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
+                (str(member.guild.id), str(member.id)),
+            )
+            if not row or row["status"] != VRC_STATE_APPROVED:
+                return
+            weg = await strip_vrc_roles(member.guild.id, row)
+            if weg:
+                print(f"[vrc_link] {member.id} hat {member.guild.id} verlassen - "
+                      f"{weg} VRChat-Rolle(n) abgenommen")
+            await db_exec("UPDATE vrc_links SET vrc_group_roles='[]' WHERE id=?", (row["id"],))
+        except Exception as e:
+            print(f"[vrc_link] Austritt von {member.id} in {member.guild.id}: {e}")
 
 
 async def setup(bot):
