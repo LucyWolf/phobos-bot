@@ -59,7 +59,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 
 ### Bot Features
 
-*Updated 24 September 2026 · v1.17.33.* The short version — what the bot can do. Everything below this table is the long one: settings, limits and the reasoning behind them.
+*Updated 24 September 2026.* The short version — what the bot can do. Everything below this table is the long one: settings, limits and the reasoning behind them.
 
 | Feature | What it does |
 |---|---|
@@ -704,7 +704,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 
 ### Bot-Funktionen
 
-*Stand 24. September 2026 · v1.17.33.* Die Kurzfassung — was der Bot kann. Alles unterhalb dieser Tabelle ist die lange: Einstellungen, Grenzen und die Gründe dahinter.
+*Stand 24. September 2026.* Die Kurzfassung — was der Bot kann. Alles unterhalb dieser Tabelle ist die lange: Einstellungen, Grenzen und die Gründe dahinter.
 
 | Funktion | Was sie kann |
 |---|---|
