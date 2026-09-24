@@ -163,6 +163,7 @@
     <option value="{{ r.id }}" {% if cfg and cfg.ping_role_id == r.id %}selected{% endif %}>{{ r.name }}</option>
     {% endfor %}
   </select>
+  <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.35rem;">{{ tr.ping_role_hint }}</div>
 </div>
 
 <div class="fs-card">
@@ -237,6 +238,7 @@
         <option value="{{ r.id }}" {% if cfg and cfg.deal_ping_role_id == r.id %}selected{% endif %}>{{ r.name }}</option>
         {% endfor %}
       </select>
+      <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.35rem;">{{ tr.ping_role_hint }}</div>
     </div>
   </div>
   <p class="hint">
