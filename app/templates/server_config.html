@@ -5079,8 +5079,8 @@ function updateAmpCmdPreview(id, action, value) {
       <button type="button" class="btn btn-secondary" onclick="coopTest({{ c.id }})">{{ tr.coop_test_btn }}</button>
       <span id="coop-out-{{ c.id }}" style="font-size:0.78rem;color:var(--muted);"></span>
     </div>
-    <div style="font-size:0.7rem;color:var(--muted);margin-top:0.3rem;">
-      {{ tr.coop_test_hint }} ·
+    <div style="font-size:0.72rem;color:var(--muted);margin-top:0.35rem;">{{ tr.coop_test_hint }}</div>
+    <div style="font-size:0.7rem;color:var(--muted);margin-top:0.25rem;">
       {{ tr.coop_last_in }}: {{ c.last_in or tr.coop_never }} ·
       {{ tr.coop_last_out }}: {{ c.last_out or tr.coop_never }}
     </div>
@@ -5101,10 +5101,11 @@ function updateAmpCmdPreview(id, action, value) {
     <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;">
       <div style="flex:1;min-width:220px;">
         <label>{{ tr.coop_name_label }}</label>
-        <input type="text" name="name" maxlength="80" placeholder="Paniczone GER" style="margin:0;">
+        <input type="text" name="name" maxlength="80" placeholder="{{ tr.coop_name_placeholder }}" style="margin:0;">
       </div>
       <button type="submit" class="btn btn-primary">{{ tr.coop_add_btn }}</button>
     </div>
+    <div style="font-size:0.72rem;color:var(--muted);margin-top:0.4rem;">{{ tr.coop_add_hint }}</div>
   </form>
 </div>
 
