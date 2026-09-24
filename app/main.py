@@ -5730,79 +5730,6 @@ async def coop_check(request: Request):
     return JSONResponse({"verified": verifiziert})
 
 
-@web.post("/coop/info")
-async def coop_info(request: Request):
-    """Sagt dem Partner, wer wir sind und welche Rollen wir mit ihm teilen.
-
-    Damit muss beim Einrichten niemand raten, wie die Rollen drueben heissen - die
-    Gegenseite bekommt sie angezeigt und waehlt danach aus, was sie dafuer vergibt.
-
-    Herausgegeben werden nur die NAMEN der Rollen, die diese Seite ausdruecklich fuer diese
-    Kooperation ausgewaehlt hat, und der Servername. Nicht die uebrigen Rollen, nicht ihre
-    IDs, nichts ueber Mitglieder. Wer den Schluessel hat, sieht damit genau das, worauf er
-    sich ohnehin berufen koennen soll.
-    """
-    form = await request.form()
-    schluessel = (form.get("key") or "").strip()
-    if not schluessel:
-        return JSONResponse({"ok": False}, status_code=400)
-    digest = _token_hash(schluessel)
-    if _coop_gebremst(digest):
-        return JSONResponse({"ok": False, "error": "too many requests"}, status_code=429)
-    row = await db_one("SELECT * FROM coop_partners WHERE key_in_hash=? AND enabled=1", (digest,))
-    if not row:
-        return JSONResponse({"ok": False}, status_code=403)
-
-    b = bot._bot_for_guild(int(row["guild_id"])) if str(row["guild_id"]).isdigit() else None
-    guild = b.get_guild(int(row["guild_id"])) if b else None
-    geteilt = [r.strip() for r in (row["share_role_ids"] or "").split(",") if r.strip()]
-    namen = []
-    if guild:
-        for rid in geteilt:
-            rolle = guild.get_role(int(rid)) if rid.isdigit() else None
-            if rolle:
-                namen.append(rolle.name)
-    try:
-        await db_exec("UPDATE coop_partners SET last_in=? WHERE id=?",
-                      (datetime.datetime.utcnow().isoformat(), row["id"]))
-    except Exception as e:
-        print(f"[coop] konnte den Zeitstempel nicht setzen: {e}")
-    return JSONResponse({"ok": True, "server": guild.name if guild else "", "roles": namen})
-
-
-async def coop_frage_info(row) -> dict:
-    """Holt beim Partner, wie er heisst und welche Rollen er mit uns teilt.
-
-    Gibt {"ok": False, "error": "..."} zurueck, wenn etwas dazwischenkommt - der Text geht
-    unveraendert an die Oberflaeche, weil "Schluessel abgelehnt" und "Adresse nicht
-    erreichbar" voellig verschiedene Dinge sind und man beim Einrichten genau wissen will,
-    welches davon vorliegt.
-    """
-    ziel = (row["base_url"] or "").strip().rstrip("/")
-    schluessel = (row["key_out"] or "").strip()
-    if not ziel or not schluessel:
-        return {"ok": False, "error": "Adresse oder Schlüssel fehlt."}
-    if not _is_public_http_url(ziel):
-        return {"ok": False, "error": "Diese Adresse ist von außen nicht erreichbar."}
-    try:
-        timeout = aiohttp.ClientTimeout(total=8)
-        async with aiohttp.ClientSession(timeout=timeout) as sitzung:
-            async with sitzung.post(f"{ziel}/coop/info", data={"key": schluessel}) as antwort:
-                if antwort.status == 403:
-                    return {"ok": False, "error": "Der Partner lehnt diesen Schlüssel ab."}
-                if antwort.status == 429:
-                    return {"ok": False, "error": "Der Partner bremst gerade zu viele Anfragen."}
-                if antwort.status != 200:
-                    return {"ok": False, "error": f"Der Partner antwortete mit Status {antwort.status}."}
-                daten = await antwort.json(content_type=None)
-    except Exception as e:
-        return {"ok": False, "error": f"Nicht erreichbar: {str(e)[:120]}"}
-    if not isinstance(daten, dict) or not daten.get("ok"):
-        return {"ok": False, "error": "Unerwartete Antwort vom Partner."}
-    return {"ok": True, "server": str(daten.get("server") or "")[:100],
-            "roles": [str(r)[:60] for r in (daten.get("roles") or [])][:40]}
-
-
 async def coop_frage_partner(row, user_id) -> bool:
     """Fragt EINEN Partner, ob diese Discord-ID bei ihm geprueft ist.
 
@@ -5944,37 +5871,6 @@ async def coop_delete(request: Request, guild_id: int, coop_id: int):
                             status_code=302)
 
 
-@web.post("/servers/{guild_id}/coop/{coop_id}/status")
-async def coop_status(request: Request, guild_id: int, coop_id: int):
-    """Fragt beim Partner nach, wer er ist und was er teilt - und merkt es sich.
-
-    Der Schritt vor allem anderen: erst steht die Verbindung, dann sieht man, welche Rollen
-    drueben ueberhaupt geteilt werden, und erst dann waehlt man aus, was man dafuer vergibt.
-    Vorher war das Raten.
-    """
-    if r := auth_redirect(request): return r
-    if not await _guild_access(request, guild_id):
-        return JSONResponse({"ok": False, "error": "Kein Zugriff"}, status_code=403)
-    row = await db_one("SELECT * FROM coop_partners WHERE id=? AND guild_id=?",
-                       (coop_id, str(guild_id)))
-    if not row:
-        return JSONResponse({"ok": False, "error": "Nicht gefunden"}, status_code=404)
-    info = await coop_frage_info(row)
-    if not info.get("ok"):
-        return JSONResponse(info)
-    try:
-        await db_exec(
-            "UPDATE coop_partners SET partner_name=?, partner_roles=?, partner_checked=?, "
-            "last_out=? WHERE id=? AND guild_id=?",
-            (info["server"], ", ".join(info["roles"]),
-             datetime.datetime.utcnow().isoformat(), datetime.datetime.utcnow().isoformat(),
-             coop_id, str(guild_id)),
-        )
-    except Exception as e:
-        print(f"[coop] konnte den Partner-Stand nicht merken: {e}")
-    return JSONResponse(info)
-
-
 @web.post("/servers/{guild_id}/coop/{coop_id}/test")
 async def coop_test(request: Request, guild_id: int, coop_id: int, user_id: str = Form("")):
     """Fragt den Partner testweise nach einer Discord-ID und zeigt, was zurueckkommt.
@@ -5991,12 +5887,9 @@ async def coop_test(request: Request, guild_id: int, coop_id: int, user_id: str 
         return JSONResponse({"error": "Nicht gefunden"}, status_code=404)
     if not (row["base_url"] or "").strip():
         return JSONResponse({"error": "Für diese Kooperation ist keine Partner-Adresse eingetragen."})
-    # Frueher stand hier ein Rueckfall auf request.session["user_id"] - das ist aber die
-    # Nummer des DASHBOARD-Kontos, nicht die Discord-ID. Der Test haette damit nach einer
-    # Person gefragt, die es bei Discord gar nicht gibt, und immer "nein" gemeldet.
-    ziel = (user_id or "").strip()
+    ziel = (user_id or "").strip() or str(request.session.get("user_id") or "")
     if not ziel.isdigit():
-        return JSONResponse({"error": "Bitte ein Mitglied aus der Liste auswählen."})
+        return JSONResponse({"error": "Bitte eine Discord-ID angeben."})
     verifiziert = await coop_frage_partner(row, ziel)
     return JSONResponse({"verified": bool(verifiziert), "user_id": ziel})
 
@@ -8012,9 +7905,6 @@ async def server_config(
 
     _coops = await db_rows(
         "SELECT * FROM coop_partners WHERE guild_id=? ORDER BY id", (str(guild_id),))
-    # Die eigene Adresse zum Weitergeben: der Partner braucht sie zusammen mit dem
-    # Schluessel, um hier anfragen zu koennen.
-    _coop_eigene_adresse = await link_base_url()
     _coop_key_einmal = request.session.pop("coop_new_key", "")
     _coop_name_einmal = request.session.pop("coop_new_name", "")
     return templates.TemplateResponse("server_config.html", {
@@ -8029,7 +7919,6 @@ async def server_config(
         # Ein frisch erzeugter Schluessel wird genau einmal gezeigt und dabei aus der Sitzung
         # genommen: gespeichert ist nur sein Hash, ein zweites Mal gibt es ihn nicht.
         "coop_new_key": _coop_key_einmal, "coop_new_name": _coop_name_einmal,
-        "coop_eigene_adresse": _coop_eigene_adresse,
         "role_rule_target_guilds": role_rule_target_guilds,
         "role_rule_target_roles": role_rule_target_roles,
         "role_rules_interval": role_rules_interval,
