@@ -5031,19 +5031,36 @@ function updateAmpCmdPreview(id, action, value) {
       </label>
     </div>
 
-    <div style="font-weight:600;font-size:0.8rem;margin:0.8rem 0 0.2rem;">{{ tr.coop_share_heading }}</div>
-    <div class="hint" style="margin-bottom:0.4rem;">{{ tr.coop_share_hint }}</div>
-    <div style="display:flex;flex-wrap:wrap;gap:0.4rem 0.9rem;">
-      {% for r in roles %}
-      <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.78rem;font-weight:400;">
-        <input type="checkbox" name="share_role_ids" value="{{ r.id }}" style="margin:0;"
-               {% if r.id in (c.share_role_ids or '').split(',') %}checked{% endif %}>
-        {{ r.name }}
-      </label>
-      {% endfor %}
+    {# Eine Zeile je Rolle mit zwei Haken statt zweier vollstaendiger Rollenlisten - die
+       Unterscheidung bleibt, die doppelte Liste faellt weg. #}
+    <div style="font-weight:600;font-size:0.8rem;margin:0.8rem 0 0.2rem;">{{ tr.coop_roles_heading }}</div>
+    <div class="hint" style="margin-bottom:0.5rem;">{{ tr.coop_roles_hint }}</div>
+    <div class="table-wrap" style="margin-bottom:0.9rem;">
+      <table style="width:100%;font-size:0.78rem;">
+        <thead><tr>
+          <th style="text-align:left;">{{ tr.coop_roles_heading }}</th>
+          <th style="width:9rem;">🤝 {{ tr.coop_col_share }}</th>
+          <th style="width:9rem;">✅ {{ tr.coop_col_grant }}</th>
+        </tr></thead>
+        <tbody>
+          {% for r in roles %}
+          <tr>
+            <td>{{ r.name }}</td>
+            <td style="text-align:center;">
+              <input type="checkbox" name="share_role_ids" value="{{ r.id }}" style="margin:0;"
+                     {% if r.id in (c.share_role_ids or '').split(',') %}checked{% endif %}>
+            </td>
+            <td style="text-align:center;">
+              <input type="checkbox" name="grant_role_ids" value="{{ r.id }}" style="margin:0;"
+                     {% if r.id in (c.grant_role_ids or '').split(',') %}checked{% endif %}>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
 
-    <div style="font-weight:600;font-size:0.8rem;margin:0.9rem 0 0.2rem;">{{ tr.coop_accept_heading }}</div>
+    <div style="font-weight:600;font-size:0.8rem;margin:0.9rem 0 0.2rem;">{{ tr.coop_connection_heading }}</div>
     <div class="hint" style="margin-bottom:0.4rem;">{{ tr.coop_accept_hint }}</div>
     <div class="grid-2" style="gap:0.8rem;">
       <div>
@@ -5057,16 +5074,6 @@ function updateAmpCmdPreview(id, action, value) {
         <input type="password" name="key_out" maxlength="200" value="{{ c.key_out }}" style="margin:0;">
       </div>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:0.4rem 0.9rem;margin-top:0.5rem;">
-      {% for r in roles %}
-      <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.78rem;font-weight:400;">
-        <input type="checkbox" name="grant_role_ids" value="{{ r.id }}" style="margin:0;"
-               {% if r.id in (c.grant_role_ids or '').split(',') %}checked{% endif %}>
-        {{ r.name }}
-      </label>
-      {% endfor %}
-    </div>
-
     <div style="margin-top:0.7rem;">
       <label>{{ tr.coop_note_label }}</label>
       <input type="text" name="note" maxlength="300" value="{{ c.note }}" style="margin:0;">
