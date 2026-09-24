@@ -1689,6 +1689,18 @@ function pollPreviewEscapeHtml(s) {
   div.textContent = s;
   return div.innerHTML;
 }
+// Fuer den Inhalt eines Attributs reicht das oben NICHT: textContent laesst
+// Anfuehrungszeichen unberuehrt, und genau die beenden ein src="...". Also zusaetzlich.
+function pollPreviewEscapeAttr(s) {
+  return pollPreviewEscapeHtml(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+// Und nur echte Web-Adressen: eine Bildquelle, die mit javascript: anfaengt, waere ein
+// Klick vom naechsten Problem entfernt. Die Zeichenkette kommt teils von fremden Seiten
+// (og:image des verlinkten Servers), nicht nur aus dem eigenen Formular.
+function pollPreviewSafeUrl(s) {
+  s = String(s === null || s === undefined ? '' : s).trim();
+  return /^https?:\/\//i.test(s) ? s : '';
+}
 // Caches one object URL per File instance (a WeakMap key, so it's automatically forgotten once
 // the file input moves on to a different File) rather than calling URL.createObjectURL() fresh
 // on every single keystroke-triggered re-render - that would mint a new, never-revoked blob URL
@@ -1799,7 +1811,7 @@ function renderPollPreview(form) {
       // is explicitly an approximation, not a pixel-exact mockup (see renderPollPreview()'s doc
       // comment above).
       var widthStyle = opt.customWidth ? ' style="width:' + opt.customWidth + 'px;max-width:100%;"' : '';
-      html += '<img class="poll-preview-option-large-img" src="' + opt.image + '"' + widthStyle + ' onerror="this.remove()">';
+      html += '<img class="poll-preview-option-large-img" src="' + pollPreviewEscapeAttr(pollPreviewSafeUrl(opt.image)) + '"' + widthStyle + ' onerror="this.remove()">';
     }
     html += '<span class="poll-preview-progress-track"><span class="poll-preview-progress-fill" style="width:0%;background:' + barColor + ';"></span></span>'
       + '<span class="poll-preview-pct">0% (0)</span></div>';

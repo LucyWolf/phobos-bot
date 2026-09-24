@@ -8698,6 +8698,14 @@ def _extract_image_candidates(html: str, base_url: str) -> list:
         if not content_m or not content_m.group(1).strip():
             continue
         url = urllib.parse.urljoin(base_url, content_m.group(1).strip())[:500]
+        # Anfuehrungszeichen, spitze Klammern und Leerraum gehoeren in keine Bild-Adresse -
+        # echte sind an diesen Stellen prozentkodiert. Ungeprueft kaeme so etwas hier durch:
+        #   <meta property="og:image" content='https://x/y.png" onerror="...'>
+        # Die Adresse beginnt mit https://, besteht die Pruefung unten also, und landete im
+        # Dashboard in einem src="..." - ein fremder Server haette damit Code im Browser
+        # desjenigen ausgefuehrt, der seinen Link in eine Umfrage einfuegt.
+        if any(z in url for z in '"\'<>`\\') or any(z.isspace() for z in url):
+            continue
         if url.startswith(("http://", "https://")) and url not in seen:
             seen.append(url)
             candidates.append(url)
