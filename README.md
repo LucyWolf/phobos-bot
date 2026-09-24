@@ -60,32 +60,36 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 
 ### Bot Features
 
-| Feature | Details |
+The short version — what the bot can do. Everything below this table is the long one: settings, limits and the reasoning behind them.
+
+| Feature | What it does |
 |---|---|
-| **Moderation** | `/kick` `/ban` `/unban` `/timeout` `/warn` `/warnings` `/clearwarns` `/clear` |
-| **Leveling / XP** | `/rank` `/leaderboard` `/setxp` — separate text and voice XP tracks with independently configurable curves, restrict XP to specific channels, auto-assign roles per level, optional custom reward text |
-| **Welcome** | Auto join/leave messages, auto-role assignment, **generated welcome card image** with custom colors, own background image, transparent overlay (built-in or custom presets), free-text heading/subtitle, and 5 avatar shapes/3 layouts |
-| **Auto-Moderation** | Configurable spam threshold/window, link filter, word filter with editable quick-add categories, configurable action (warn/timeout/kick/ban) |
-| **Reaction Roles** | Set up from the dashboard or `/reactionrole-add` `/reactionrole-remove` `/reactionrole-list` |
-| **Event Logging** | Join/leave, bans, roles, messages, voice — **shows who deleted a message** via audit log, bulk-delete detection, exclude channels |
-| **Custom Commands** | Manage from the dashboard or `/addcommand` `/delcommand` `/commands` |
-| **Tickets** | Button-based ticket system with panels — support role, category, custom button/close-button text, optional archive category instead of deleting on close, `/ticket-close` |
-| **Giveaways** | Start/end/reroll from the dashboard or `/giveaway-start` `/giveaway-end` `/giveaway-reroll` — reroll excludes previous winners, winners get a DM in addition to the channel announcement |
-| **Twitch Notifications** | Go-live alerts with embed (game, viewers, thumbnail) |
-| **Free Stuff & Deals** | Automatic free game alerts + configurable deal notifications + test button |
-| **Auto-Delete** | Automatically delete messages in selected channels after a configurable time, optionally including the bot's own messages (off by default) |
-| **Auto-Thread** | Automatically opens a thread on every message in selected channels — templated thread name (`{user}` / `{text}` / `{date}`), auto-archive duration, optional opening message inside the thread, optionally only for messages with an attachment |
-| **VRC-Link** | Links VRChat accounts to Discord accounts — members open a personal link, prove the account is theirs with a code in their VRChat status message, and get a role plus their VRChat name as their Discord nickname |
-| **Temp Voice** | Join-to-Create temporary voice channels — auto-created on join, auto-deleted when empty |
-| **Scheduled Messages** | Schedule messages to be sent to any channel at a specific date and time |
-| **Birthday System** | `!<your word> DD.MM` — the command words are configurable **per server**, several at once for multilingual servers; daily congratulations at 8 AM, configurable channel and message |
-| **Discord Events** | Create/edit native Discord scheduled events (voice or external) from the dashboard, with optional reminders and start/end announcements posted to a channel; optionally recurring (daily/weekly/monthly), pausable/resumable |
-| **CrossVerification** | "IF a member has/lacks certain roles, THEN ..." rules with any number of AND-chained actions (give role A **and** take role B in one rule), live or on a configurable interval, optionally targeting a different server, recreates a deleted target role from a saved snapshot, with a test sandbox |
-| **Polls** | `/poll-create` `/poll-end` — single- or multiple-choice, per-option images/links, scheduled start, live ranking, fully editable after posting |
-| **Ratings** | `/bewerten` `/bewertungen` — a persistent 1–5-star list (maps, games, servers, anything) members can rate anytime, optionally posted to a channel with a star picker |
-| **Gameserver (AMP)** | `/gameserver-status` `/gameserver-start` `/gameserver-stop` `/gameserver-restart` — control [CubeCoders AMP](https://cubecoders.com/AMP)-hosted game servers, auto-detects every instance as its own tile, with optional per-instance custom slash commands |
-| **Auto-Kick** | Kicks members still holding a "not yet verified" role after a configurable deadline, with any number of reminder DMs beforehand |
-| **Embed Messages** | Post fully custom, multi-block embed messages (incl. forum channels) to any channel from the dashboard — images, footer, tags, editable after posting |
+| **Moderation** | Kick, ban, timeout and warn — from Discord or the dashboard, with a warning history that stays |
+| **Leveling / XP** | Members earn XP for chatting and for hanging out in voice, climb levels and get roles for it |
+| **Welcome** | Greets every newcomer with a generated welcome card — your colours, your background, your words |
+| **Auto-Moderation** | Catches spam, links and words you would rather not read, and warns, mutes, kicks or bans on its own |
+| **Reaction Roles** | Members pick their own roles by clicking an emoji |
+| **Event Logging** | Keeps a record of what happens on the server — and shows who deleted a message |
+| **Custom Commands** | Your own commands, without writing a line of code |
+| **Tickets** | A button turns a question into a private ticket channel — support role, category, archive when it closes |
+| **Giveaways** | Run a giveaway in one click; the bot draws, announces and DMs the winners |
+| **Twitch Notifications** | Tells your channel the moment one of your streamers goes live |
+| **Free Stuff & Deals** | Posts free games and the deals you care about, by itself |
+| **Auto-Delete** | Keeps chosen channels tidy by clearing messages after a time you set |
+| **Auto-Thread** | Gives every message in a channel its own thread, named the way you want |
+| **VRC-Link** | Members link their VRChat account, prove it is really theirs, and wear their VRChat name on Discord |
+| **VRChat group** | Sees who is in your group, hands out the matching Discord role, and sends invites on request |
+| **VRChat instances** | Spots every lobby your group opens and announces it — live head count, join button, your own words |
+| **Temp Voice** | Join one channel and get your own; it disappears when the last person leaves |
+| **Scheduled Messages** | Write it now, let the bot post it later, in any channel |
+| **Birthday System** | Members drop their birthday in chat, the bot congratulates them on the day |
+| **Discord Events** | Plans real Discord events from the dashboard — reminders, announcements, and repeats if you want |
+| **CrossVerification** | Rules of the shape "has this role → gets that one", even onto another server |
+| **Polls** | Polls with pictures, a live ranking and a start time |
+| **Ratings** | A star list your members keep rating — maps, games, servers, anything |
+| **Gameserver (AMP)** | Start, stop and watch your game servers without leaving Discord |
+| **Auto-Kick** | Shows still-unverified members the door after a deadline — with reminders first |
+| **Embed Messages** | Build a good-looking announcement in the dashboard and post it anywhere |
 
 ### Web Dashboard
 
@@ -221,50 +225,40 @@ Requires the **Create Public Threads** permission in that channel. Deliberately 
 
 ## VRC-Link (VRChat)
 
-Links a member's **VRChat account to their Discord account**: they get a role for it, and their Discord nickname is set to their VRChat name so the same person is recognisable in both places.
+Links a member's **VRChat account to their Discord account**, and from there connects the server to the VRChat **group** and its **lobbies**. A linked member gets a role and carries their VRChat name as their Discord nickname.
 
-**Setup, once for the whole bot:** under **Settings → VRC Account Link** you connect one VRChat account that the bot signs in as. Use a **separate account, not your main one** — VRChat has no open API, automated logins go against its terms of use, and the account doing it can be banned. The password is stored in this bot's database and is deliberately **not** part of a server backup.
+**Once for the whole bot:** under **Settings → VRC Account Link**, connect the account the bot signs in as — a **separate account, not your main one**, because VRChat's API is unofficial and an account that hammers it can be suspended. Two-factor is supported: the bot asks for a one-time code and keeps the session (about a month), so the secret never has to be stored. The page shows the last check and the last error, if there was one.
 
-**Per server**, under **Server → 🔗 VRC-Link**:
+Everything else lives under **Server → 🔗 VRC-Link**, in two sub-tabs.
 
-- **Role for linked members** and a **nickname template** (`{vrchatName}`, `{discordName}`) with a live preview
-- **Approve automatically** — off by default, so every link waits for a moderator
-- **Linking button** — the bot posts a message with a button in a channel of your choice; heading, text and button caption are yours to write. This is the entry point members actually use, and it works the moment the message exists
-- **DM on join** — optionally send new members their link directly
-- **Require proof of ownership** — on by default. Switched off, a typed name is enough and the link is made immediately; those links get no "ownership confirmed" badge and are marked as such in the list, so you can see at a glance which ones were never proven
+### Linking
 
-**How a member links their account:**
+- **Role** for linked members and a **nickname template** (`{vrchatName}`, `{discordName}`) with a live preview, clamped to Discord's 32 characters
+- **Linking button** — the bot posts a message with a button in a channel you pick; heading, text and caption are yours. `/vrc-link` does the same, and new arrivals can get their link by **DM on join**
+- **Proof of ownership** (on by default) — the member puts a short code such as `PHOBOS-K7M2QD` into their **VRChat status message**. Switched off, a typed name is enough and the link carries no "ownership confirmed" badge
+- **Approve automatically** (off by default) — otherwise every link waits for a moderator
+- **Link validity** in minutes, 1 to 1440, default 60
+- **Check a VRChat profile** — a read-only lookup showing what VRChat returns for a name and the exact text the ownership check reads, so "the code is right there" and "the bot cannot see that field" stop looking alike
 
-1. They click the button (or use `/vrc-link`) and get a **personal link**, valid for one hour and only for them. The page **sets no cookies**: from the first screen on, the key travels inside the forms, so it never reaches a proxy log, a browser history or a `Referer` header again. A countdown shows how long the door stays open; once the hour is up the page closes itself and a new link is one click away in Discord.
-2. On that page they enter their VRChat display name; the bot looks it up and adopts VRChat's own spelling.
-3. They get a short code such as `PHOBOS-K7M2QD` to put into their **VRChat status message**, then press "Check now". The bot reads the profile back and compares — that is the ownership proof. The code can be deleted again straight afterwards.
-4. Role and nickname are applied, either at once or after a moderator approves.
+**How a member links:** button or `/vrc-link` → a **personal link**, valid only for them → they type their VRChat name (the bot adopts VRChat's own spelling) → paste the code into their status message and press "Check now" → role and nickname follow, at once or after a moderator approves. The page **sets no cookies**: the key travels inside the forms and never in the address, so it stays out of proxy logs, browser history and `Referer` headers; a countdown shows how long the door stays open. The page **never asks for a VRChat password** — anything that does is phishing, whoever it claims to be. Once linked it shows the account's badges (ownership confirmed, 18+ verified, VRChat+, trust rank) and offers refresh and unlink.
 
-The page **never asks for a VRChat password**. Anything that does is phishing, whoever it claims to be.
+**VRChat group (optional).** Enter a **group ID** (`grp_…`) and the bot checks, after every confirmation and refresh, whether the linked account is in it — optionally handing out a Discord role for that and taking it back when somebody leaves. Members can request an **invite** from their own page. The bot account has to be in the group itself and needs its invite permission, and no permission can be granted before it is in: *Check status* and *Join group* handle that from the dashboard (open groups admit it at once, request-based ones file a request, invite-only ones need it invited there first). Checked only when somebody is waiting anyway, never on a timer.
 
-**Check a VRChat profile.** A read-only lookup in the *Linking* sub-tab: enter a name and see exactly what VRChat returns for it — display name, 18+, trust rank, and whether the status message and bio arrive at all. Built because "the code is not in your status" and "the bot never receives that field" look identical from the outside; this tells the two apart in one query. It stores nothing.
+**Discord role → VRChat group role.** Map one to the other: hold the Discord role, get the group role. Changes take effect immediately and in both directions — a role given or taken, a mapping added or deleted, somebody unlinking or leaving the Discord server; the interval (`0` = only on linking) is a safety net, not the mechanism. The sync compares against the state it last wrote, so nothing changed means no VRChat request at all. **Two Discord servers on one group** — a NA and a EU server, say — do not fight over it: neither takes away a role the other still holds. The bot account needs the group's permission to manage roles, and its own role above the ones it hands out.
 
-Once linked, the page shows the account with its VRChat badges (ownership confirmed, 18+ verified, VRChat+, trust rank) and lets the member refresh or remove the link themselves.
+### Instances
 
-**VRChat group (optional).** Enter a **group ID** (`grp_…`) under *Server → 🔗 VRC-Link* and the bot checks, after every confirmation and every refresh, whether the linked VRChat account is in that group — optionally handing out a Discord role for it and taking it away again when somebody leaves. Members can also be given a button on their page that sends them a **group invite**. The bot account has to be in the group itself, and to invite it also needs the group's permission to send invites — and **no permission can be granted until the bot is in**. Two buttons in the same section handle that: *Check status* shows the group's name and whether the bot account is a member, *Join group* joins. Open groups admit it straight away; a request-based group files a join request you confirm in VRChat; an invite-only group needs the bot account invited there first, then press again. That saves signing in to vrchat.com as the bot account, two-factor and all, just to press one button. Checked only when somebody is waiting anyway — never on a timer, which would be far too much load on VRChat.
+The bot notices by itself when the group opens a lobby and posts a card in the channel you pick: world name (clickable), world image, head count, **join button**, optional role ping, and your own text (`{world}`, `{count}`, `{group}`, `{link}`, `{name}`). The count keeps updating while the lobby runs. VRChat knows three states, each with its own heading and text:
 
-**Discord role → VRChat group role.** In the same section you map Discord roles to VRChat group roles: hold the one in Discord, get the other in the group — granted as soon as they link, then kept in step at the interval you set (`0` = only on linking). Lose the Discord role and the VRChat role goes too. The bot account needs the group's permission to manage roles, and its own role has to sit above the one it hands out.
+- **open** — the card as described
+- **closed** (shut to new arrivals, the people inside stay) — recognised only with **Look closer** on, which costs one extra VRChat request per open lobby per run, five at most; the card turns orange and loses its join button
+- **ended** — gone from the group listing: the card becomes a **farewell text** (`{duration}`) and, if you want, deletes itself after a delay you set
 
-The sync compares against the state it last wrote: with nothing changed in Discord, a run costs **no VRChat request at all**, even across a hundred members. The flip side, stated plainly: a role changed by hand inside VRChat is not noticed until something else about that member changes. This syncs Discord → VRChat, not the other way.
+The first run only records what is already open, so switching the feature on does not drop every running lobby into the channel at once, and each lobby is announced exactly once. A run costs **one** VRChat request for the whole server; only *Look closer* adds more. Deleting cards needs "Manage Messages".
 
-**Announce open instances.** Under the *Instances* sub-tab you pick a channel and an interval in minutes: as soon as the group opens an instance, the bot posts a card there with the world name (clickable), a large world image, the head count and a **join button** underneath — optionally with a role ping and your own text (`{world}`, `{count}`, `{group}`, `{link}`); the button caption is yours to choose. With no role selected it is still posted, just quietly. Once the instance has **ended** — gone from the group listing with nobody left inside — the announcement is rewritten to a **farewell text** (yours to write, with `{duration}` for how long it was open) and the join button goes away. The bot can then clear it away entirely — a checkbox plus a delay in minutes before it disappears (`0` = straight away, and then without a farewell). By default everything stays; deleting needs “Manage Messages”. Optionally the **head count is kept up to date** while the instance is open — that costs no extra VRChat request and only edits the message when the number actually changed. On the **first run** it only records what is open and announces nothing, or switching the feature on would drop every currently open instance into the channel at once. Each instance is announced exactly once; once it has ended, the same world can be announced again later.
+**Debug report.** One button prints, ready to copy, everything the bot can see on the VRChat side: the settings in force, the bot account (without password, secret or session cookie), the group, its roles and your mappings, every open lobby raw, a separate lookup per lobby with the state and name fields pulled out, the bot's own stored state, and how many members are linked. It only reads and changes nothing.
 
-**The three states.** VRChat keeps an instance in three conditions, and the bot now knows all three. *Open* is the normal case. *Closed* means shut to new arrivals while the people inside stay — the instance is still running. *Ended* means it is gone and empty. Open and ended are visible in the group listing; **closed is not** — it shows only in a separate lookup per instance, as a `closedAt` timestamp. That lookup is a switch, **Look closer**, off by default: it costs one VRChat request per open instance per run, five at most, on top of the single request the run already makes. Switched on, a closed instance gets its own text block (own heading, own message, orange card, join button gone, head count still updated) and the announcement stays up until the instance really ends, at which point it is rewritten a second time to the farewell text. The same lookup reveals the **name somebody gave the instance**, available as `{name}` in every text. Left off, everything behaves exactly as before: one request per run, and a closure is noticed only when the instance disappears entirely.
-
-**Debug report.** Below the instance settings sits a button that gathers, in one press, everything the bot can say about the VRChat side: the settings in force, the bot account (without password, secret or session cookie), the group, its roles and your role mappings, every open instance whole and raw, a separate lookup per instance — which usually carries more fields than the group listing, with anything that looks like a state or name field pulled out — the bot's own stored state, and how many members are linked. It is plain text with a copy button, meant to be passed on when something is off: an instance that goes unnoticed, a world without a name, a head count of zero. It only reads and changes nothing, and costs a handful of VRChat requests per press. This costs **one** VRChat request per run for the whole server, not per member — so short intervals are fine.
-
-The tab is split into two sub-tabs: **Linking** carries everything described above, **Instances** only the announcements. Saving still saves everything, whichever one is open.
-
-**Link validity** is set under the *Linking* sub-tab, in minutes (1 to 1440, default 60). A background check once a minute puts back a role or nickname that went missing; it deliberately makes **no** VRChat requests, because re-reading every profile every minute is exactly what gets an account rate-limited and banned. A VRChat-side rename is picked up by the member's own "Refresh link" button or by "Refresh all" on the dashboard — the latter really does re-read every profile, one request per member, which is why it sits behind a button and on no timer.
-
-**When rights change, they change on both sides.** A Discord role added or taken away is pushed to VRChat the moment it happens, without waiting for an interval; adding or deleting a role mapping is applied to everybody it concerns right away; and somebody who leaves the Discord server — voluntarily, kicked or banned — loses the VRChat group roles the bot gave them, while their link stays on record so a return restores everything. Unlinking, whether by the member, by `/vrc-unlink` or by a moderator deleting the entry, takes the VRChat group roles with it too. All of this only calls VRChat where something actually differs from what the bot last wrote, so the normal case costs nothing.
-
-The link address is taken from whatever address you have this dashboard open at — the same way the invite link in the user administration works, nothing to configure. A **base URL** under *Settings → Email/SMTP* overrides it if you need something else. On Discord's side the bot needs **Manage Roles** and **Manage Nicknames**.
+The link address is taken from the address you have the dashboard open at — the same way the invite link in the user administration works, so there is nothing to configure. A **base address** set in the settings wins over it.
 
 ---
 
@@ -735,32 +729,36 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 
 ### Bot-Funktionen
 
-| Feature | Details |
+Die Kurzfassung — was der Bot kann. Alles unterhalb dieser Tabelle ist die lange: Einstellungen, Grenzen und die Gründe dahinter.
+
+| Funktion | Was sie kann |
 |---|---|
-| **Moderation** | `/kick` `/ban` `/unban` `/timeout` `/warn` `/warnings` `/clearwarns` `/clear` |
-| **Leveling / XP** | `/rank` `/leaderboard` `/setxp` — getrennte Text- und Voice-XP mit unabhängig einstellbaren Kurven, XP auf bestimmte Kanäle einschränkbar, automatische Rollenvergabe pro Level, optionaler eigener Belohnungstext |
-| **Willkommen** | Automatische Beitrittsnachrichten, Verlassensnachrichten, Auto-Rolle, **generierte Willkommenskarte** mit anpassbaren Farben, eigenem Hintergrundbild, transparentem Overlay (vorgefertigt oder eigenes Bild), frei editierbarer Überschrift/Untertitel und 5 Avatar-Formen/3 Layouts |
-| **Auto-Moderation** | Einstellbare Spam-Schwelle/-Zeitfenster, Link-Filter, Wort-Filter mit bearbeitbaren Schnellauswahl-Kategorien, einstellbare Aktion (warn/timeout/kick/ban) |
-| **Reaction Roles** | Über das Dashboard einrichten oder `/reactionrole-add` `/reactionrole-remove` `/reactionrole-list` |
-| **Event-Logging** | Beitritt/Verlassen, Bans, Rollen, Nachrichten, Voice — **zeigt wer eine Nachricht gelöscht hat** via Audit-Log, Massenlöschungs-Erkennung, Kanäle ausschließen |
-| **Eigene Commands** | Über das Dashboard verwalten oder `/addcommand` `/delcommand` `/commands` |
-| **Tickets** | Button-basiertes Ticket-System mit Panels — Support-Rolle, Kategorie, eigener Button-/Schließen-Text, optionale Archiv-Kategorie statt Löschen beim Schließen, `/ticket-close` |
-| **Giveaways** | Über das Dashboard starten/beenden/neu ziehen oder `/giveaway-start` `/giveaway-end` `/giveaway-reroll` — Neu-Ziehen schließt bisherige Gewinner aus, Gewinner bekommen zusätzlich zur Kanal-Ankündigung eine DM |
-| **Twitch-Benachrichtigungen** | Go-Live-Alerts mit Embed (Spiel, Zuschauer, Thumbnail) |
-| **Free Stuff & Deals** | Automatische Meldung kostenloser Spiele + konfigurierbare Angebote + Test-Button |
-| **Auto-Delete** | Nachrichten in gewählten Kanälen automatisch nach konfigurierbarer Zeit löschen, optional auch bot-eigene Nachrichten (standardmäßig aus) |
-| **Auto-Thread** | Öffnet in gewählten Kanälen automatisch zu jeder Nachricht einen Thread — Thread-Name als Vorlage (`{user}` / `{text}` / `{date}`), Archivierungsdauer, optionale Startnachricht im Thread, optional nur bei Nachrichten mit Anhang |
-| **VRC-Link** | Verknüpft VRChat-Konten mit Discord-Konten — Mitglieder öffnen einen persönlichen Link, weisen über einen Code in ihrer VRChat-Statusmeldung nach, dass ihnen das Konto gehört, und bekommen eine Rolle plus ihren VRChat-Namen als Discord-Spitznamen |
-| **Temp Voice** | Join-to-Create temporäre Voice-Kanäle — automatisch erstellt beim Beitritt, automatisch gelöscht wenn leer |
-| **Geplante Nachrichten** | Nachrichten zu einem bestimmten Datum und Uhrzeit in jeden Kanal planen |
-| **Geburtstags-System** | `!<eigenes Wort> TT.MM` — die Befehlswörter sind **pro Server** einstellbar, auch mehrere gleichzeitig für mehrsprachige Server; tägliche Glückwünsche um 8 Uhr, konfigurierbarer Kanal und Text |
-| **Discord-Events** | Native Discord-Events (Voice oder extern) direkt im Dashboard erstellen/bearbeiten, mit optionalen Erinnerungen und Start-/Ende-Ankündigungen in einem Kanal; optional wiederkehrend (täglich/wöchentlich/monatlich), pausierbar/fortsetzbar |
-| **CrossVerification** | "Wenn ein Mitglied Rollen hat/nicht hat, dann …"-Regeln mit beliebig vielen per UND verketteten Aktionen (Rolle A geben **und** Rolle B nehmen in einer Regel), live oder in einstellbarem Intervall, optional auf einem anderen Server, legt eine gelöschte Zielrolle aus einem gespeicherten Schnappschuss neu an, inkl. Test-Sandbox |
-| **Umfragen** | `/poll-create` `/poll-end` — Einzel- oder Mehrfachauswahl, Bild/Link pro Option, geplanter Start, Live-Rangliste, nachträglich vollständig bearbeitbar |
-| **Bewertungen** | `/bewerten` `/bewertungen` — eine dauerhafte 1-5-Sterne-Liste (Maps, Spiele, Server, alles), jederzeit bewertbar, optional mit Sternauswahl in einem Kanal gepostet |
-| **Gameserver (AMP)** | `/gameserver-status` `/gameserver-start` `/gameserver-stop` `/gameserver-restart` — steuert [CubeCoders AMP](https://cubecoders.com/AMP)-Gameserver, erkennt jede Instanz automatisch als eigene Kachel, mit optionalen eigenen Slash-Befehlen pro Instanz |
-| **Auto-Kick** | Kickt Mitglieder, die nach einer einstellbaren Frist noch eine "noch nicht verifiziert"-Rolle tragen, mit beliebig vielen Erinnerungs-DMs davor |
-| **Embed-Nachrichten** | Komplett frei gestaltete, mehrteilige Embed-Nachrichten (inkl. Foren-Kanäle) aus dem Dashboard posten — Bild, Footer, Tags, nachträglich bearbeitbar |
+| **Moderation** | Kicken, bannen, timeouten, verwarnen — aus Discord oder dem Dashboard, mit einer Verwarnungs-Historie, die bleibt |
+| **Leveling / XP** | Mitglieder sammeln XP fürs Schreiben und fürs Zusammensitzen im Voice, steigen Level auf und bekommen Rollen dafür |
+| **Willkommen** | Begrüßt jeden Neuen mit einer selbst erzeugten Willkommenskarte — deine Farben, dein Hintergrund, deine Worte |
+| **Auto-Moderation** | Fängt Spam, Links und Wörter ab, die du nicht lesen willst, und verwarnt, stummschaltet, kickt oder bannt von allein |
+| **Reaction Roles** | Mitglieder holen sich ihre Rollen selbst — ein Klick auf ein Emoji genügt |
+| **Event-Logging** | Schreibt mit, was auf dem Server passiert — und zeigt, wer eine Nachricht gelöscht hat |
+| **Eigene Commands** | Deine eigenen Befehle, ohne eine Zeile Code |
+| **Tickets** | Ein Knopf macht aus einer Frage einen privaten Ticket-Kanal — Support-Rolle, Kategorie, Archiv beim Schließen |
+| **Giveaways** | Verlosung mit einem Klick; der Bot zieht, verkündet und schreibt den Gewinnern eine DM |
+| **Twitch-Benachrichtigungen** | Sagt deinem Kanal Bescheid, sobald einer deiner Streamer live geht |
+| **Free Stuff & Deals** | Postet kostenlose Spiele und die Angebote, die dich interessieren — von selbst |
+| **Auto-Delete** | Hält gewählte Kanäle sauber und räumt Nachrichten nach einer Zeit deiner Wahl weg |
+| **Auto-Thread** | Gibt jeder Nachricht in einem Kanal ihren eigenen Thread, benannt wie du willst |
+| **VRC-Link** | Mitglieder verknüpfen ihr VRChat-Konto, weisen nach, dass es wirklich ihres ist, und tragen ihren VRChat-Namen auf Discord |
+| **VRChat-Gruppe** | Sieht, wer in deiner Gruppe ist, vergibt die passende Discord-Rolle und verschickt Einladungen auf Zuruf |
+| **VRChat-Instanzen** | Erkennt jede Lobby, die deine Gruppe aufmacht, und meldet sie — mitlaufende Personenzahl, Beitritts-Knopf, deine Worte |
+| **Temp Voice** | Einen Kanal betreten und den eigenen bekommen; er verschwindet, wenn der Letzte geht |
+| **Geplante Nachrichten** | Jetzt schreiben, später posten lassen — in jedem Kanal |
+| **Geburtstags-System** | Mitglieder werfen ihren Geburtstag in den Chat, der Bot gratuliert am Tag |
+| **Discord-Events** | Plant echte Discord-Events aus dem Dashboard — Erinnerungen, Ankündigungen und auf Wunsch Wiederholungen |
+| **CrossVerification** | Regeln nach dem Muster „hat diese Rolle → bekommt jene“, auch auf einen anderen Server |
+| **Umfragen** | Umfragen mit Bildern, Live-Rangliste und Startzeit |
+| **Bewertungen** | Eine Sterne-Liste, die deine Mitglieder immer weiter bewerten — Maps, Spiele, Server, was du willst |
+| **Gameserver (AMP)** | Deine Gameserver starten, stoppen und im Blick behalten, ohne Discord zu verlassen |
+| **Auto-Kick** | Zeigt weiterhin unverifizierten Mitgliedern nach einer Frist die Tür — vorher mit Erinnerungen |
+| **Embed-Nachrichten** | Eine schön gesetzte Ankündigung im Dashboard bauen und überall posten |
 
 ### Web-Dashboard
 
@@ -896,50 +894,40 @@ Der Bot braucht im Kanal die Berechtigung **Öffentliche Threads erstellen**. Be
 
 ## VRC-Link (VRChat)
 
-Verknüpft das **VRChat-Konto eines Mitglieds mit seinem Discord-Konto**: Es bekommt dafür eine Rolle, und sein Discord-Spitzname wird auf den VRChat-Namen gesetzt, damit dieselbe Person an beiden Orten wiederzuerkennen ist.
+Verknüpft das **VRChat-Konto eines Mitglieds mit seinem Discord-Konto** und verbindet den Server von dort aus mit der VRChat-**Gruppe** und ihren **Lobbys**. Ein verknüpftes Mitglied bekommt dafür eine Rolle und trägt seinen VRChat-Namen als Discord-Spitznamen.
 
-**Einmalig für den ganzen Bot:** Unter **Einstellungen → VRC Account Link** verbindest du ein VRChat-Konto, mit dem sich der Bot anmeldet. Nimm dafür ein **eigenes Konto, nicht dein Hauptkonto** — VRChat hat keine offene Schnittstelle, automatisierte Anmeldungen verstoßen gegen die Nutzungsbedingungen, und das Konto kann dafür gesperrt werden. Das Passwort liegt in der Datenbank dieses Bots und ist bewusst **nicht** Teil eines Server-Backups.
+**Einmalig für den ganzen Bot:** Unter **Einstellungen → VRC Account Link** verbindest du das Konto, mit dem sich der Bot anmeldet — ein **eigenes Konto, nicht dein Hauptkonto**, denn VRChats Schnittstelle ist inoffiziell, und ein Konto, das sie strapaziert, kann gesperrt werden. Zwei-Faktor geht: Der Bot fragt einen Einmalcode ab und behält die Sitzung (etwa einen Monat), das Geheimnis muss also nie gespeichert werden. Die Seite zeigt die letzte Prüfung und den letzten Fehler, falls es einen gab.
 
-**Pro Server**, unter **Server → 🔗 VRC-Link**:
+Alles Weitere steht unter **Server → 🔗 VRC-Link**, in zwei Unterreitern.
 
-- **Rolle für verknüpfte Mitglieder** und eine **Spitznamen-Vorlage** (`{vrchatName}`, `{discordName}`) mit Live-Vorschau
-- **Automatisch freigeben** — standardmäßig aus, jede Verknüpfung wartet also auf die Moderation
-- **Knopf zum Verknüpfen** — der Bot postet in einem Kanal deiner Wahl eine Nachricht mit einem Knopf; Überschrift, Text und Beschriftung schreibst du selbst. Das ist der Weg, den Mitglieder tatsächlich nutzen, und er wirkt sofort
-- **DM beim Beitritt** — neuen Mitgliedern den Link optional direkt schicken
-- **Eigentum nachweisen lassen** — standardmäßig an. Ausgeschaltet genügt der eingetippte Name und die Verknüpfung entsteht sofort; solche Einträge bekommen kein „Eigentum bestätigt“ und werden in der Liste entsprechend geführt, du siehst also auf einen Blick, welche nie nachgewiesen wurden
+### Verknüpfung
 
-**So verknüpft sich ein Mitglied:**
+- **Rolle** für verknüpfte Mitglieder und eine **Spitznamen-Vorlage** (`{vrchatName}`, `{discordName}`) mit Live-Vorschau, gekappt auf Discords 32 Zeichen
+- **Knopf zum Verknüpfen** — der Bot postet in einem Kanal deiner Wahl eine Nachricht mit Knopf; Überschrift, Text und Beschriftung schreibst du. `/vrc-link` tut dasselbe, und neue Mitglieder bekommen ihren Link auf Wunsch **per DM beim Beitritt**
+- **Eigentum nachweisen** (standardmäßig an) — das Mitglied trägt einen kurzen Code wie `PHOBOS-K7M2QD` in seine **VRChat-Statusmeldung** ein. Ausgeschaltet genügt der eingetippte Name, und die Verknüpfung trägt kein „Eigentum bestätigt“
+- **Automatisch freigeben** (standardmäßig aus) — sonst wartet jede Verknüpfung auf die Moderation
+- **Gültigkeit der Links** in Minuten, 1 bis 1440, Standard 60
+- **VRChat-Profil prüfen** — ein reines Nachschlagen: was VRChat zu einem Namen zurückgibt und welchen Text die Eigentumsprüfung liest. Damit sehen „der Code steht doch da“ und „der Bot sieht dieses Feld gar nicht“ nicht mehr gleich aus
 
-1. Es klickt auf den Knopf (oder nutzt `/vrc-link`) und bekommt einen **persönlichen Link**, eine Stunde gültig und nur für es selbst. Die Seite setzt **keine Cookies**: ab dem ersten Bildschirm reist der Schlüssel in den Formularen mit und taucht in keinem Proxy-Protokoll, keinem Verlauf und keinem `Referer` mehr auf. Ein Countdown zeigt, wie lange die Tür noch offen steht; nach der Stunde macht die Seite sich selbst zu, und einen neuen Link gibt es mit einem Klick in Discord.
-2. Auf der Seite trägt es seinen VRChat-Anzeigenamen ein; der Bot schlägt ihn nach und übernimmt VRChats eigene Schreibweise.
-3. Es bekommt einen kurzen Code wie `PHOBOS-K7M2QD`, trägt ihn in seine **VRChat-Statusmeldung** ein und klickt auf „Jetzt prüfen“. Der Bot liest das Profil zurück und vergleicht — das ist der Eigentumsnachweis. Danach kann der Code sofort wieder weg.
-4. Rolle und Spitzname werden vergeben, sofort oder nach der Freigabe durch die Moderation.
+**So verknüpft sich ein Mitglied:** Knopf oder `/vrc-link` → ein **persönlicher Link**, der nur für es gilt → es trägt seinen VRChat-Namen ein (der Bot übernimmt VRChats Schreibweise) → Code in die Statusmeldung, „Jetzt prüfen“ → Rolle und Spitzname folgen, sofort oder nach der Freigabe. Die Seite **setzt keine Cookies**: Der Schlüssel reist in den Formularen und nie in der Adresse, bleibt also aus Proxy-Logs, Verlauf und `Referer` heraus; ein Countdown zeigt, wie lange die Tür offen steht. Die Seite fragt **nie nach einem VRChat-Passwort** — wer das tut, betreibt Phishing, egal als wer er sich ausgibt. Nach der Verknüpfung zeigt sie die Abzeichen des Kontos (Eigentum bestätigt, 18+, VRChat+, Vertrauensrang) und bietet Auffrischen und Lösen an.
 
-Die Seite fragt **nie nach einem VRChat-Passwort**. Wer das tut, betreibt Phishing — egal, als wer er sich ausgibt.
+**VRChat-Gruppe (optional).** Trägst du eine **Gruppen-ID** (`grp_…`) ein, prüft der Bot nach jeder Bestätigung und jedem Auffrischen, ob das verknüpfte Konto in der Gruppe ist — auf Wunsch mit eigener Discord-Rolle dafür, die beim Austritt wieder wegfällt. Mitglieder können sich eine **Einladung** von ihrer Seite aus anfordern. Das Bot-Konto muss selbst in der Gruppe sein und dort das Einladungsrecht haben, und Rechte bekommt es erst, wenn es drin ist: *Status prüfen* und *Gruppe beitreten* erledigen das aus dem Dashboard (offene Gruppen nehmen es sofort, anfragebasierte stellen einen Antrag, reine Einladungsgruppen müssen es zuerst einladen). Geprüft wird nur, wenn ohnehin jemand wartet — nie auf einer Zeitschaltuhr.
 
-**VRChat-Profil prüfen.** Eine reine Abfrage im Unterreiter *Verknüpfung*: Name eingeben und sehen, was VRChat für ihn tatsächlich herausgibt — Anzeigename, 18+, Vertrauensstufe, und ob Statusmeldung und Bio überhaupt ankommen. Gebaut, weil „der Code steht nicht im Status“ und „der Bot bekommt das Feld gar nicht“ von außen gleich aussehen; das trennt beides in einer Abfrage. Gespeichert wird nichts.
+**Discord-Rolle → VRChat-Gruppenrolle.** Ordne die eine der anderen zu: Wer die Discord-Rolle hat, bekommt die Gruppenrolle. Änderungen wirken sofort und in beide Richtungen — Rolle vergeben oder entzogen, Zuordnung angelegt oder gelöscht, Verknüpfung gelöst oder Server verlassen; das Intervall (`0` = nur beim Verknüpfen) ist ein Netz, nicht der Mechanismus. Der Abgleich vergleicht gegen den zuletzt gesetzten Stand: hat sich nichts geändert, gibt es auch keine VRChat-Anfrage. **Zwei Discord-Server auf einer Gruppe** — etwa NA und GER — kommen sich nicht in die Quere: keiner nimmt eine Rolle weg, die der andere noch hält. Das Bot-Konto braucht in der Gruppe das Recht, Rollen zu verwalten, und seine eigene Rolle über den vergebenen.
 
-Nach der Verknüpfung zeigt die Seite das Konto mit seinen VRChat-Abzeichen (Eigentum bestätigt, 18+ verifiziert, VRChat+, Vertrauensstufe); das Mitglied kann die Verknüpfung dort selbst auffrischen oder lösen.
+### Instanzen
 
-**VRChat-Gruppe (optional).** Trägst du unter *Server → 🔗 VRC-Link* eine **Gruppen-ID** ein (`grp_…`), prüft der Bot nach jeder Bestätigung und bei jedem Auffrischen, ob das verknüpfte VRChat-Konto in dieser Gruppe ist — und vergibt dafür wahlweise eine eigene Discord-Rolle, die er wieder entzieht, sobald jemand nicht mehr dabei ist. Optional bekommen Mitglieder auf ihrer Seite einen Knopf, mit dem sie sich eine **Gruppeneinladung** schicken lassen. Dafür muss das Bot-Konto selbst in der Gruppe sein, und zum Einladen braucht es dort zusätzlich das Recht, Einladungen zu verschicken — **Rechte lassen sich erst vergeben, wenn der Bot drin ist**. Genau dafür stehen im selben Abschnitt zwei Knöpfe: *Status prüfen* zeigt, wie die Gruppe heißt und ob das Bot-Konto Mitglied ist, *Gruppe beitreten* tritt bei. Offene Gruppen nehmen den Bot sofort auf; nimmt die Gruppe nur auf Anfrage auf, wird eine Beitrittsanfrage gestellt, die ihr in VRChat noch bestätigt; nimmt sie nur auf Einladung auf, ladet das Bot-Konto dort ein und drückt erneut. Das erspart die Anmeldung auf vrchat.com als Bot-Konto samt Zwei-Faktor, nur um einen Knopf zu drücken. Geprüft wird nur, wenn ohnehin jemand wartet — nicht im Minutentakt, das wäre zu viel Last für VRChat.
+Der Bot merkt von selbst, wenn die Gruppe eine Lobby aufmacht, und postet eine Karte in den gewählten Kanal: Weltname (anklickbar), Weltbild, Personenzahl, **Beitritts-Knopf**, optionaler Rollen-Ping und dein eigener Text (`{world}`, `{count}`, `{group}`, `{link}`, `{name}`). Die Zahl läuft mit, solange die Lobby offen ist. VRChat kennt drei Zustände, jeder mit eigener Überschrift und eigenem Text:
 
-**Discord-Rolle → VRChat-Gruppenrolle.** Im selben Abschnitt ordnest du Discord-Rollen VRChat-Gruppenrollen zu: Wer auf Discord die eine hat, bekommt in der Gruppe die andere — vergeben, sobald verknüpft wird, und danach im eingestellten Abstand (`0` = nur beim Verknüpfen). Fällt die Discord-Rolle weg, wird die VRChat-Rolle wieder entzogen. Dafür braucht das Bot-Konto in der Gruppe das Recht, Rollen zu verwalten, und seine eigene Rolle muss über der vergebenen stehen.
+- **offen** — die Karte wie beschrieben
+- **geschlossen** (keiner kommt mehr rein, die Drinnen bleiben) — nur mit **Genauer nachsehen** erkennbar, was eine zusätzliche VRChat-Anfrage je offener Lobby und Durchlauf kostet, höchstens fünf; die Karte wird orange und verliert den Beitritts-Knopf
+- **beendet** — aus der Gruppenliste verschwunden: die Karte wird zum **Abschiedstext** (`{duration}`) und löscht sich auf Wunsch nach einer Frist deiner Wahl selbst
 
-Der Abgleich vergleicht gegen den zuletzt gesetzten Stand: hat sich auf Discord nichts geändert, kostet ein Durchlauf **keine einzige VRChat-Anfrage**, auch bei hundert Mitgliedern. Umgekehrt heißt das: eine in VRChat von Hand geänderte Rolle merkt der Bot erst, wenn sich sonst etwas an diesem Mitglied ändert. Die Richtung ist Discord → VRChat, nicht zurück.
+Beim ersten Durchlauf wird nur mitgeschrieben, damit beim Einschalten nicht jede laufende Lobby auf einmal in den Kanal fällt; jede Lobby wird genau einmal gemeldet. Ein Durchlauf kostet **eine** VRChat-Anfrage für den ganzen Server, mehr nur mit *Genauer nachsehen*. Fürs Löschen braucht der Bot „Nachrichten verwalten“.
 
-**Offene Instanzen melden.** Im Unterreiter *Instanzen* wählst du einen Kanal und einen Abstand in Minuten: Sobald die Gruppe eine Instanz öffnet, postet der Bot dort eine Karte mit Weltname (anklickbar), großem Weltbild, Anzahl der Leute und einem **Knopf zum Beitreten** darunter — optional mit Rollen-Ping und eigenem Text (`{world}`, `{count}`, `{group}`, `{link}`); die Beschriftung des Knopfes ist frei wählbar. Ohne gewählte Rolle wird trotzdem gepostet, nur eben lautlos. Ist die Instanz **beendet** — also aus der Gruppenliste verschwunden und niemand mehr drin —, wird die Meldung auf einen **Abschieds-Text** umgeschrieben (frei wählbar, mit `{duration}` für die Dauer) und der Beitritts-Knopf verschwindet. Auf Wunsch räumt der Bot sie danach ganz weg — Haken plus eine Frist in Minuten, nach der sie verschwindet (`0` = sofort, dann ohne Abschied). Standardmäßig bleibt alles stehen; fürs Löschen braucht der Bot „Nachrichten verwalten“. Optional wird die **Personenzahl laufend nachgezogen**, solange die Instanz offen ist — das kostet keine zusätzliche VRChat-Anfrage und bearbeitet die Nachricht nur, wenn sich die Zahl wirklich geändert hat. Beim **ersten Einschalten** wird nur mitgeschrieben und nichts gemeldet, sonst fielen alle gerade offenen Instanzen auf einmal in den Kanal. Jede Instanz wird genau einmal gemeldet; ist sie beendet, kann dieselbe Welt später wieder gemeldet werden.
+**Debug-Bericht.** Ein Knopf gibt fertig zum Kopieren aus, was der Bot auf der VRChat-Seite sieht: die geltenden Einstellungen, das Bot-Konto (ohne Passwort, Geheimnis und Sitzungs-Keks), die Gruppe, ihre Rollen und deine Zuordnungen, jede offene Lobby roh, je Lobby eine eigene Abfrage mit herausgestellten Zustands- und Namensfeldern, den eigenen gespeicherten Stand und die Zahl der Verknüpfungen. Liest nur, ändert nichts.
 
-**Die drei Zustände.** Eine Instanz kennt bei VRChat drei Lagen, und der Bot erkennt inzwischen alle drei. *Offen* ist der Normalfall. *Geschlossen* heißt: zu für neue Leute, die Drinnen bleiben — die Instanz läuft also weiter. *Beendet* heißt: weg und leer. Offen und beendet stehen in der Gruppenliste; **geschlossen steht dort nicht** — das zeigt sich erst in einer eigenen Abfrage je Instanz, als Zeitstempel `closedAt`. Diese Abfrage ist ein Schalter, **Genauer nachsehen**, standardmäßig aus: sie kostet eine VRChat-Anfrage je offener Instanz und Durchlauf, höchstens fünf, zusätzlich zu der einen, die ohnehin anfällt. Eingeschaltet bekommt die geschlossene Instanz einen eigenen Textblock (eigene Überschrift, eigener Text, orange Karte, Beitritts-Knopf weg, Personenzahl wird weiter nachgezogen), und die Meldung bleibt stehen, bis die Instanz wirklich endet — dann wird sie ein zweites Mal umgeschrieben, auf den Abschiedstext. Dieselbe Abfrage verrät auch den **Namen, den jemand der Instanz gegeben hat**; er steht als `{name}` in allen Texten zur Verfügung. Bleibt der Schalter aus, verhält sich alles wie zuvor: eine Anfrage pro Durchlauf, und geschlossen fällt erst auf, wenn die Instanz ganz verschwindet.
-
-**Debug-Bericht.** Unter den Instanz-Einstellungen sitzt ein Knopf, der auf einen Druck alles zusammenträgt, was der Bot über die VRChat-Seite sagen kann: die geltenden Einstellungen, das Bot-Konto (ohne Passwort, Geheimnis und Sitzungs-Keks), die Gruppe, ihre Rollen samt deinen Zuordnungen, jede offene Instanz vollständig und roh, dazu pro Instanz eine eigene Abfrage — die trägt meist mehr Felder als die Gruppenliste, und was nach Zustand oder Name aussieht, wird eigens herausgestellt —, den eigenen gespeicherten Stand und die Zahl der verknüpften Mitglieder. Reiner Text mit Kopier-Knopf, gedacht zum Weitergeben, wenn etwas nicht stimmt: eine Instanz, die nicht erkannt wird, eine Welt ohne Namen, eine Personenzahl von null. Liest nur, ändert nichts, kostet ein paar VRChat-Anfragen pro Druck. Das kostet **eine** VRChat-Anfrage pro Durchlauf für den ganzen Server, nicht pro Mitglied — kurze Abstände sind hier also unproblematisch.
-
-Der Reiter ist in zwei Unterreiter geteilt: **Verknüpfung** trägt alles bisher Beschriebene, **Instanzen** nur die Meldungen. Gespeichert wird weiterhin alles zusammen, egal welcher gerade offen ist.
-
-Die **Gültigkeit der Links** stellst du im Unterreiter *Verknüpfung* in Minuten ein (1 bis 1440, Standard 60). Eine Prüfung im Minutentakt setzt eine verlorene Rolle oder einen geänderten Spitznamen zurück; sie stellt bewusst **keine** VRChat-Anfragen, denn jedes Profil jede Minute neu zu lesen ist genau das, wofür Konten gedrosselt und gesperrt werden. Eine Umbenennung auf VRChat-Seite holt das Mitglied mit „Verknüpfung auffrischen“ oder du mit „Alle auffrischen“ im Dashboard — Letzteres liest die Profile wirklich neu ein, eine Anfrage pro Mitglied, und sitzt genau deshalb hinter einem Knopf und auf keiner Zeitschaltuhr.
-
-**Ändern sich Rechte, ändern sie sich auf beiden Seiten.** Eine Discord-Rolle, die dazukommt oder wegfällt, wird sofort nach VRChat durchgereicht, ohne auf ein Intervall zu warten; eine Zuordnung, die du anlegst oder löschst, wird gleich bei allen Betroffenen angewendet; und wer den Discord-Server verlässt — freiwillig, gekickt oder gebannt —, verliert die VRChat-Gruppenrollen, die der Bot vergeben hat, während die Verknüpfung als Historie stehen bleibt und eine Rückkehr alles wiederherstellt. Auch das Lösen nimmt die VRChat-Rollen mit, egal ob das Mitglied selbst, `/vrc-unlink` oder ein Moderator den Eintrag entfernt. All das ruft VRChat nur dort an, wo sich wirklich etwas von dem unterscheidet, was der Bot zuletzt geschrieben hat — der Normalfall kostet nichts.
-
-Die Adresse für die Links nimmt der Bot von dort, wo du dieses Dashboard gerade aufhast — genau wie der Einladungslink in der Benutzerverwaltung, einzustellen ist dafür nichts. Eine **Basis-URL** unter *Einstellungen → E-Mail/SMTP* geht vor, falls du eine andere brauchst. Auf Discord-Seite braucht der Bot **Rollen verwalten** und **Nicknames verwalten**.
+Die Adresse für die Links nimmt der Bot von dort, wo du dieses Dashboard geöffnet hast — genau wie der Einladungslink in der Benutzerverwaltung, es ist also nichts einzurichten. Eine in den Einstellungen gesetzte **Basis-Adresse** hat Vorrang.
 
 ---
 

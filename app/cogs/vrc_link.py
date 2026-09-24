@@ -375,6 +375,45 @@ async def desired_vrc_roles(guild_id, member: discord.Member) -> set:
     return {r["vrc_role_id"] for r in rows if r["discord_role_id"] in have}
 
 
+async def _woanders_vergeben(guild_id, group_id: str, vrc_user_id: str, role_id: str) -> bool:
+    """Ob ein ANDERER Discord-Server derselben VRChat-Gruppe dieselbe Rolle vergeben hat.
+
+    Zwei Server auf eine Gruppe ist kein Sonderfall - eine Community mit einem NA- und einem
+    GER-Server ist genau das. Beide verknuepfen dieselben Leute mit denselben VRChat-Konten,
+    und beide fuehren ihren eigenen Merker darueber, welche Rollen SIE vergeben haben.
+
+    Ohne diese Pruefung nimmt Server A eine Rolle weg, die Server B gerade vergeben hat: fuer
+    A stimmt "Soll == Ist" danach, fuer B auch - der gemerkte Stand sagt ja weiterhin
+    "vergeben" -, und niemand repariert es je wieder. Das Mitglied steht ohne Rolle da, und in
+    keiner der beiden Datenbanken sieht man, warum.
+
+    Also: wegnehmen nur, was kein anderer noch haelt. Nur Server derselben Gruppe zaehlen.
+    """
+    if not vrc_user_id or not role_id:
+        return False
+    try:
+        rows = await db_rows(
+            "SELECT guild_id, vrc_group_roles FROM vrc_links WHERE vrc_user_id=? AND "
+            "guild_id!=? AND status=?",
+            (vrc_user_id, str(guild_id), VRC_STATE_APPROVED),
+        )
+    except Exception as e:
+        print(f"[vrc_link] konnte andere Server nicht pruefen: {e}")
+        return False
+    for row in rows:
+        try:
+            if role_id not in set(json.loads(row["vrc_group_roles"] or "[]")):
+                continue
+        except (ValueError, TypeError):
+            continue
+        if not str(row["guild_id"]).isdigit():
+            continue
+        andere = (await get_guild_config(int(row["guild_id"]), "vrc_group_id") or "").strip()
+        if andere and andere == group_id:
+            return True
+    return False
+
+
 async def sync_vrc_roles(guild, member: discord.Member, link) -> list:
     """Bring this member's VRChat group roles in line with their Discord roles.
 
@@ -420,6 +459,13 @@ async def sync_vrc_roles(guild, member: discord.Member, link) -> list:
             # it forever.
             print(f"[vrc_link] could not add VRChat role {role_id} to {link['vrc_user_id']}: {e}")
     for role_id in sorted(had - want):
+        if await _woanders_vergeben(guild.id, group_id, link["vrc_user_id"], role_id):
+            # Ein anderer Server derselben Gruppe haelt sie noch. Aus unserem Merker faellt
+            # sie trotzdem raus - wir haben sie nicht mehr vergeben.
+            now_have.discard(role_id)
+            print(f"[vrc_link] VRChat-Rolle {role_id} bleibt {link['vrc_user_id']}: "
+                  f"ein anderer Server haelt sie")
+            continue
         try:
             await remove_member_role(group_id, link["vrc_user_id"], role_id,
                                      session["auth_cookie"], session["two_factor_cookie"])
@@ -569,6 +615,10 @@ async def strip_vrc_roles(guild_id, link) -> int:
     from vrchat import remove_member_role
     weg = 0
     for role_id in sorted(hatte):
+        if await _woanders_vergeben(guild_id, group_id, link["vrc_user_id"], role_id):
+            print(f"[vrc_link] VRChat-Rolle {role_id} bleibt {link['vrc_user_id']}: "
+                  f"ein anderer Server haelt sie")
+            continue
         try:
             await remove_member_role(group_id, link["vrc_user_id"], role_id,
                                      session["auth_cookie"], session["two_factor_cookie"])
@@ -1156,7 +1206,26 @@ async def _announce_instances(bot, guild) -> int:
             print(f"[vrc_link] no permission to post instances in {channel_id} ({guild.id})")
             return posted
         except (discord.HTTPException, OSError) as e:
-            print(f"[vrc_link] could not announce instance {inst['location']}: {e}")
+            # Eine 400 nimmt Discord auch beim tausendsten Versuch nicht an - das liegt an
+            # dieser Meldung, nicht an der Verbindung. Ohne die Unterscheidung wurde dieselbe
+            # Instanz bei JEDEM Durchlauf erneut geschickt und erneut abgelehnt, im Minutentakt,
+            # bis sie von selbst verschwand. Also merken, dass wir sie gesehen haben, und in
+            # Ruhe lassen; alles andere (Zeitueberschreitung, 500er) bleibt ein Wiederholungsfall.
+            if getattr(e, "status", 0) == 400:
+                print(f"[vrc_link] Discord lehnt die Meldung fuer {inst['location']} ab, "
+                      f"kein weiterer Versuch: {e}")
+                try:
+                    await db_exec(
+                        "INSERT OR IGNORE INTO vrc_instances (guild_id, location, world_name, "
+                        "first_seen, message_id, last_count, inst_name) VALUES (?,?,?,?,'',?,?)",
+                        (str(guild.id), inst["location"], inst["world_name"],
+                         datetime.datetime.utcnow().isoformat(), int(inst["count"]),
+                         inst.get("name", "")),
+                    )
+                except Exception as e2:
+                    print(f"[vrc_link] konnte {inst['location']} nicht vermerken: {e2}")
+            else:
+                print(f"[vrc_link] could not announce instance {inst['location']}: {e}")
             continue
         try:
             # Written AFTER the message went out, not before: a failed send must be retried

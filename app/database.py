@@ -1247,7 +1247,11 @@ def vrc_nickname(fmt: str, vrchat_name: str, discord_name: str) -> str:
     text = fmt if (fmt or "").strip() else DEFAULT_VRC_NICKNAME_FORMAT
     text = text.replace("{vrchatName}", vrchat_name or "").replace("{discordName}", discord_name or "")
     text = " ".join(text.split()).strip()
-    return text[:MAX_NICKNAME]
+    # Nach dem Kappen noch einmal: schneidet die Grenze mitten in einem Leerzeichen, bliebe
+    # eines am Ende stehen. Discord speichert den Spitznamen dann ohne - und apply_link()
+    # vergleicht danach "Name " mit "Name", findet ewig einen Unterschied und schickt jede
+    # Minute dieselbe Aenderung los, die nichts aendert.
+    return text[:MAX_NICKNAME].strip()
 
 
 DEFAULT_TEMPVOICE_LABELS = {
