@@ -678,6 +678,37 @@ async def init_db():
                 priority INTEGER NOT NULL DEFAULT 100,
                 enabled INTEGER NOT NULL DEFAULT 1
             )""",
+            # Kooperationen mit FREMDEN Phobos-Installationen. Bewusst neben den role_rules
+            # und nicht darin: eine Regel wirkt innerhalb dieser Installation, eine
+            # Kooperation reicht ueber sie hinaus zu jemandem, dem man vertraut, aber den man
+            # nicht verwaltet. Beides zu vermischen haette die bestehenden Regeln angefasst -
+            # und die laufen.
+            #
+            # Eine Zeile beschreibt BEIDE Richtungen derselben Partnerschaft, weil eine
+            # Kooperation genau das ist: was ich hergebe und was ich anerkenne.
+            #   share_role_ids  - meine Rollen, die dem Partner als "geprueft" gelten
+            #   key_in_hash     - der Schluessel, mit dem der Partner mich fragen darf.
+            #                     GEHASHT, wie jedes andere reine Vergleichs-Geheimnis hier:
+            #                     wer die Datenbank liest, kann damit keine Anfragen stellen.
+            #   base_url/key_out- wohin ICH frage und womit. Der Schluessel des Partners liegt
+            #                     im Klartext, weil er mitgeschickt werden muss.
+            #   grant_role_ids  - was jemand bei mir bekommt, wenn der Partner "ja" sagt
+            """CREATE TABLE IF NOT EXISTS coop_partners (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                share_role_ids TEXT NOT NULL DEFAULT '',
+                key_in_hash TEXT NOT NULL DEFAULT '',
+                base_url TEXT NOT NULL DEFAULT '',
+                key_out TEXT NOT NULL DEFAULT '',
+                grant_role_ids TEXT NOT NULL DEFAULT '',
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT '',
+                last_in TEXT NOT NULL DEFAULT '',
+                last_out TEXT NOT NULL DEFAULT '',
+                note TEXT NOT NULL DEFAULT ''
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_coop_guild ON coop_partners(guild_id)",
             # Opt-in per-channel flag: when set, Auto-Delete also deletes messages posted BY
             # THE BOT ITSELF in that channel (not other bots) - off by default, since the
             # existing "message.author.bot" early-return in on_message has always exempted

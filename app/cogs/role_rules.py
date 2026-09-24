@@ -512,6 +512,75 @@ class RoleRules(commands.Cog):
             await self._evaluate_member(guild, fresh, hop_budget - 1)
 
     @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        """Wer neu dazukommt, wird bei den Kooperations-Partnern angefragt.
+
+        Der eigentliche Zweck der ganzen Kooperation: jemand ist auf dem Partner-Server schon
+        geprueft worden und soll das hier nicht ein zweites Mal durchlaufen muessen.
+
+        Bewusst getrennt von der Regel-Auswertung darueber - die kennt nur diese Installation
+        und soll von einer fremden, langsamen oder gerade nicht erreichbaren Gegenstelle nicht
+        aufgehalten werden.
+        """
+        try:
+            if member.bot:
+                return
+            await self._kooperationen_pruefen(member)
+        except Exception as e:
+            self._log(f"Kooperations-Pruefung fuer {member.id} fehlgeschlagen: {e}")
+
+    async def _kooperationen_pruefen(self, member) -> list:
+        """Fragt jeden eingetragenen Partner und vergibt, was zugesagt ist. Gibt zurueck, was
+        vergeben wurde.
+
+        Ein Nein, ein Zeitablauf und ein Partner, der gerade nicht antwortet, sind dasselbe:
+        es passiert nichts. Eine Rolle zu vergeben, weil eine Anfrage unklar ausging, waere
+        das Gegenteil dessen, wofuer eine Pruefung da ist.
+        """
+        fragen = getattr(self.bot, "coop_ask", None)
+        if fragen is None:
+            return []
+        try:
+            partner = await db_rows(
+                "SELECT * FROM coop_partners WHERE guild_id=? AND enabled=1",
+                (str(member.guild.id),))
+        except Exception as e:
+            self._log(f"Kooperationen nicht lesbar: {e}")
+            return []
+        vergeben = []
+        for row in partner:
+            if not (row["base_url"] or "").strip() or not (row["key_out"] or "").strip():
+                continue          # nur eingehende Seite eingerichtet - wir fragen hier nicht
+            rollen_ids = [r.strip() for r in (row["grant_role_ids"] or "").split(",") if r.strip()]
+            if not rollen_ids:
+                continue
+            rollen = [member.guild.get_role(int(r)) for r in rollen_ids if r.isdigit()]
+            rollen = [r for r in rollen if r and r not in member.roles]
+            if not rollen:
+                continue
+            try:
+                if not await fragen(row, member.id):
+                    continue
+            except Exception as e:
+                self._log(f"Partner {row['name']!r} nicht erreichbar: {e}")
+                continue
+            try:
+                await member.add_roles(*rollen, reason=f"Kooperation: {row['name']}"[:100])
+                vergeben.extend(r.name for r in rollen)
+                self._log(f"{member.id} ueber Kooperation {row['name']!r} freigegeben: "
+                          f"{', '.join(r.name for r in rollen)}")
+            except discord.Forbidden:
+                self._log(f"darf {member.id} die Kooperations-Rollen nicht geben")
+            except (discord.HTTPException, OSError) as e:
+                self._log(f"Rollenvergabe fuer {member.id} fehlgeschlagen: {e}")
+            try:
+                await db_exec("UPDATE coop_partners SET last_out=? WHERE id=?",
+                              (datetime.datetime.utcnow().isoformat(), row["id"]))
+            except Exception as e:
+                self._log(f"Zeitstempel der Kooperation nicht gesetzt: {e}")
+        return vergeben
+
+    @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         if before.roles == after.roles:
             return

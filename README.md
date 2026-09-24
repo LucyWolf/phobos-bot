@@ -83,7 +83,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **Scheduled Messages** | Write it now, let the bot post it later, in any channel |
 | **Birthday System** | Members drop their birthday in chat, the bot congratulates them on the day |
 | **Discord Events** | Plans real Discord events from the dashboard — reminders, announcements, and repeats if you want |
-| **CrossVerification** | Rules of the shape "has this role → gets that one", even onto another server |
+| **CrossVerification** | Rules of the shape "has this role → gets that one", even onto another server — and cooperations with partner communities running their own Phobos: whoever they vetted is let through here automatically |
 | **Polls** | Polls with pictures, a live ranking and a start time |
 | **Ratings** | A star list your members keep rating — maps, games, servers, anything |
 | **Gameserver (AMP)** | Start, stop and watch your game servers without leaving Discord |
@@ -270,6 +270,14 @@ Under **Server → CrossVerification** you can define "IF a member has/lacks cer
 
 ---
 
+
+**Cooperations with other installations.** Two communities work together, each running their own Phobos: whoever was vetted over there should not have to go through the same check again here. Under *CrossVerification* you set up a **cooperation** — independently on each side, endable at any time.
+
+Each side decides two things for itself: **what it gives** (which of its own roles count as "vetted" for the partner) and **what it accepts** (which roles somebody gets here when the partner says yes). When a new member joins, the bot asks the partner once; a no, a timeout or a partner that is briefly unreachable all mean the same — nothing happens. A role is never granted on an unclear answer.
+
+What travels is a single yes or no about one Discord ID. No names, no roles, no member lists, and a "no" says nothing about whether that person is even on the partner's server. The partner identifies itself with a key your side generates and can withdraw at any moment; it is stored as a checksum only, so it is shown exactly once. The interface is rate-limited, because "is this person one of yours" is an answer in itself and should not be askable a thousand times a minute. Internal addresses are refused, and cooperation keys stay out of backups.
+
+The existing rules are untouched by all this — a rule works inside this installation, a cooperation reaches somebody you trust but do not administer.
 ## Polls
 
 Under **Server → 🗳️ Polls** or `/poll-create` in Discord: single- or multiple-choice polls with live vote bars. Optional extras: an image and/or link per option (combined into one shared result image, with links listed as clickable text below it), a live-updating ranking of options by vote count, and either a fixed auto-end duration or a specific end date — a poll can even be scheduled to start at a future time, so it can be fully prepared in advance. Everything (question, options, images, links) stays editable after posting; edits update the live message in place.
@@ -728,7 +736,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **Geplante Nachrichten** | Jetzt schreiben, später posten lassen — in jedem Kanal |
 | **Geburtstags-System** | Mitglieder werfen ihren Geburtstag in den Chat, der Bot gratuliert am Tag |
 | **Discord-Events** | Plant echte Discord-Events aus dem Dashboard — Erinnerungen, Ankündigungen und auf Wunsch Wiederholungen |
-| **CrossVerification** | Regeln nach dem Muster „hat diese Rolle → bekommt jene“, auch auf einen anderen Server |
+| **CrossVerification** | Regeln nach dem Muster „hat diese Rolle → bekommt jene“, auch auf einen anderen Server — dazu Kooperationen mit Partner-Communitys, die einen eigenen Phobos betreiben: wen die geprüft haben, kommt hier automatisch durch |
 | **Umfragen** | Umfragen mit Bildern, Live-Rangliste und Startzeit |
 | **Bewertungen** | Eine Sterne-Liste, die deine Mitglieder immer weiter bewerten — Maps, Spiele, Server, was du willst |
 | **Gameserver (AMP)** | Deine Gameserver starten, stoppen und im Blick behalten, ohne Discord zu verlassen |
@@ -915,6 +923,14 @@ Unter **Server → CrossVerification** lassen sich "Wenn ein Mitglied bestimmte 
 
 ---
 
+
+**Kooperationen mit anderen Installationen.** Zwei Communitys arbeiten zusammen, jede betreibt ihren eigenen Phobos: Wer drüben schon geprüft wurde, soll hier nicht noch einmal durch dieselbe Prüfung. Unter *CrossVerification* richtest du dafür eine **Kooperation** ein — jede Seite unabhängig, jederzeit kündbar.
+
+Jede Seite legt zwei Dinge für sich fest: **was sie hergibt** (welche eigenen Rollen dem Partner als „geprüft“ gelten) und **was sie anerkennt** (welche Rollen jemand hier bekommt, wenn der Partner ja sagt). Kommt jemand neu dazu, fragt der Bot einmal beim Partner nach; ein Nein, ein Zeitablauf und ein Partner, der gerade nicht antwortet, bedeuten dasselbe — es passiert nichts. Auf eine unklare Antwort hin wird nie eine Rolle vergeben.
+
+Übertragen wird ein einziges Ja oder Nein zu einer Discord-ID. Keine Namen, keine Rollen, keine Mitgliederlisten — und ein Nein sagt nicht einmal, ob die Person auf dem Partner-Server überhaupt ist. Der Partner weist sich mit einem Schlüssel aus, den deine Seite erzeugt und jederzeit zurückziehen kann; gespeichert ist nur seine Prüfsumme, angezeigt wird er genau einmal. Die Schnittstelle ist gebremst, denn „gehört dieser Mensch zu euch“ ist für sich schon eine Auskunft und soll nicht tausendmal pro Minute abfragbar sein. Interne Adressen werden abgelehnt, und Kooperations-Schlüssel landen in keinem Backup.
+
+Die bestehenden Regeln bleiben davon unberührt — eine Regel wirkt innerhalb dieser Installation, eine Kooperation reicht zu jemandem, dem man vertraut, den man aber nicht verwaltet.
 ## Umfragen
 
 Unter **Server → 🗳️ Umfragen** oder `/poll-create` in Discord: Umfragen mit Einzel- oder Mehrfachauswahl und live aktualisierten Stimmbalken. Optionale Extras: ein Bild und/oder Link pro Option (zu einem gemeinsamen Ergebnisbild zusammengefasst, Links darunter als klickbarer Text aufgelistet), eine live aktualisierte Rangliste der Optionen nach Stimmen, sowie entweder eine feste Auto-Ende-Dauer oder ein festes Enddatum — eine Umfrage kann sogar für einen zukünftigen Startzeitpunkt geplant werden, um sie komplett im Voraus vorzubereiten. Frage, Optionen, Bilder und Links bleiben nach dem Posten vollständig bearbeitbar; Änderungen aktualisieren die bereits gepostete Nachricht direkt.

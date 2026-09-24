@@ -4997,6 +4997,135 @@ function updateAmpCmdPreview(id, action, value) {
   <button type="button" class="btn btn-secondary" onclick="testRoleRules()">{{ tr.rolerules_sandbox_btn_run }}</button>
   <div id="rr-sandbox-result" style="margin-top:0.9rem;font-size:0.85rem;"></div>
 </div>
+
+{# ── Kooperationen ──────────────────────────────────────────────────────────────
+   Bewusst eine eigene Karte unter den Regeln und keine Erweiterung davon: eine Regel
+   wirkt innerhalb dieser Installation, eine Kooperation reicht zu jemandem, dem man
+   vertraut, den man aber nicht verwaltet. Die Regeln oben bleiben unangetastet. #}
+<div class="card">
+  <div class="feat-header">{{ tr.coop_heading }}</div>
+  <p class="hint" style="margin-bottom:0.4rem;">{{ tr.coop_hint }}</p>
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.coop_privacy }}</p>
+
+  {% if coop_new_key %}
+  <div style="border:1px solid #f59e0b;background:rgba(245,158,11,0.08);border-radius:0.6rem;padding:0.8rem;margin-bottom:1rem;">
+    <div style="font-weight:600;font-size:0.85rem;margin-bottom:0.3rem;">🔑 {{ tr.coop_key_new_title }}{% if coop_new_name %} — {{ coop_new_name }}{% endif %}</div>
+    <code style="display:block;word-break:break-all;background:var(--bg);border-radius:0.4rem;padding:0.5rem;font-size:0.8rem;">{{ coop_new_key }}</code>
+    <div style="font-size:0.72rem;color:var(--muted);margin-top:0.35rem;">{{ tr.coop_key_new_hint }}</div>
+  </div>
+  {% endif %}
+
+  {% if not coops %}<p class="hint">{{ tr.coop_none }}</p>{% endif %}
+
+  {% for c in coops %}
+  <form method="post" action="/servers/{{ guild.id }}/coop/{{ c.id }}/save"
+        style="border:1px solid var(--border);border-radius:0.6rem;padding:0.8rem;margin-bottom:0.8rem;">
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;">
+      <div style="flex:1;min-width:200px;">
+        <label>{{ tr.coop_name_label }}</label>
+        <input type="text" name="name" maxlength="80" value="{{ c.name }}" style="margin:0;">
+      </div>
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;">
+        <input type="checkbox" name="enabled" value="1" {% if c.enabled %}checked{% endif %} style="margin:0;">
+        {{ tr.coop_enabled_label }}
+      </label>
+    </div>
+
+    <div style="font-weight:600;font-size:0.8rem;margin:0.8rem 0 0.2rem;">{{ tr.coop_share_heading }}</div>
+    <div class="hint" style="margin-bottom:0.4rem;">{{ tr.coop_share_hint }}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:0.4rem 0.9rem;">
+      {% for r in roles %}
+      <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.78rem;font-weight:400;">
+        <input type="checkbox" name="share_role_ids" value="{{ r.id }}" style="margin:0;"
+               {% if r.id in (c.share_role_ids or '').split(',') %}checked{% endif %}>
+        {{ r.name }}
+      </label>
+      {% endfor %}
+    </div>
+
+    <div style="font-weight:600;font-size:0.8rem;margin:0.9rem 0 0.2rem;">{{ tr.coop_accept_heading }}</div>
+    <div class="hint" style="margin-bottom:0.4rem;">{{ tr.coop_accept_hint }}</div>
+    <div class="grid-2" style="gap:0.8rem;">
+      <div>
+        <label>{{ tr.coop_url_label }}</label>
+        <input type="text" name="base_url" maxlength="300" value="{{ c.base_url }}"
+               placeholder="https://partner.example" style="margin:0;">
+        <div style="font-size:0.7rem;color:var(--muted);margin-top:0.2rem;">{{ tr.coop_url_hint }}</div>
+      </div>
+      <div>
+        <label>{{ tr.coop_keyout_label }}</label>
+        <input type="password" name="key_out" maxlength="200" value="{{ c.key_out }}" style="margin:0;">
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:0.4rem 0.9rem;margin-top:0.5rem;">
+      {% for r in roles %}
+      <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.78rem;font-weight:400;">
+        <input type="checkbox" name="grant_role_ids" value="{{ r.id }}" style="margin:0;"
+               {% if r.id in (c.grant_role_ids or '').split(',') %}checked{% endif %}>
+        {{ r.name }}
+      </label>
+      {% endfor %}
+    </div>
+
+    <div style="margin-top:0.7rem;">
+      <label>{{ tr.coop_note_label }}</label>
+      <input type="text" name="note" maxlength="300" value="{{ c.note }}" style="margin:0;">
+    </div>
+
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-top:0.8rem;">
+      <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
+      <input type="text" id="coop-test-{{ c.id }}" placeholder="Discord-ID" maxlength="20"
+             style="width:170px;margin:0;">
+      <button type="button" class="btn btn-secondary" onclick="coopTest({{ c.id }})">{{ tr.coop_test_btn }}</button>
+      <span id="coop-out-{{ c.id }}" style="font-size:0.78rem;color:var(--muted);"></span>
+    </div>
+    <div style="font-size:0.7rem;color:var(--muted);margin-top:0.3rem;">
+      {{ tr.coop_test_hint }} ·
+      {{ tr.coop_last_in }}: {{ c.last_in or tr.coop_never }} ·
+      {{ tr.coop_last_out }}: {{ c.last_out or tr.coop_never }}
+    </div>
+  </form>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:-0.4rem 0 1rem;">
+    <form method="post" action="/servers/{{ guild.id }}/coop/{{ c.id }}/newkey" style="margin:0;">
+      <button type="submit" class="btn btn-secondary">{{ tr.coop_newkey_btn }}</button>
+    </form>
+    <form method="post" action="/servers/{{ guild.id }}/coop/{{ c.id }}/delete" style="margin:0;"
+          onsubmit="return confirm('{{ tr.coop_delete_confirm }}');">
+      <button type="submit" class="btn btn-danger">{{ tr.coop_delete_btn }}</button>
+    </form>
+  </div>
+  {% endfor %}
+
+  <form method="post" action="/servers/{{ guild.id }}/coop/add"
+        style="border-top:1px solid var(--border);padding-top:0.9rem;">
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;">
+      <div style="flex:1;min-width:220px;">
+        <label>{{ tr.coop_name_label }}</label>
+        <input type="text" name="name" maxlength="80" placeholder="Paniczone GER" style="margin:0;">
+      </div>
+      <button type="submit" class="btn btn-primary">{{ tr.coop_add_btn }}</button>
+    </div>
+  </form>
+</div>
+
+<script>
+// Antwort immer ueber textContent: was zurueckkommt, stammt von einer fremden Installation.
+function coopTest(id) {
+  const feld = document.getElementById('coop-test-' + id);
+  const out = document.getElementById('coop-out-' + id);
+  out.textContent = '…';
+  const daten = new URLSearchParams();
+  daten.append('user_id', feld ? feld.value.trim() : '');
+  fetch('/servers/{{ guild.id }}/coop/' + id + '/test', {method: 'POST', body: daten})
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d.error) { out.textContent = '⚠️ ' + d.error; return; }
+      out.textContent = (d.verified ? '✅ ' : '❌ ') + d.user_id;
+    })
+    .catch(function () { out.textContent = '⚠️'; });
+}
+</script>
+
 </div>
 
 <script>

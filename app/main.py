@@ -468,6 +468,11 @@ async def _run_single_bot(token_id: int, token: str):
             async with instance:
                 for cog in COGS:
                     try:
+                        # Die Kooperations-Anfrage haengt am Bot statt im Cog: die Cogs
+                        # importieren main.py bewusst nie (sie werden VON hier geladen, ein
+                        # Rueckimport waere ein Kreis), brauchen aber dieselbe Pruefung auf
+                        # oeffentliche Adressen wie die Weboberflaeche. Also durchgereicht.
+                        instance.coop_ask = coop_frage_partner
                         await instance.load_extension(cog)
                     except Exception as e:
                         print(f"[Token-ID {token_id}] Fehler beim Laden von {cog}: {e}")
@@ -5650,6 +5655,245 @@ async def vrc_public_unlink(request: Request, lang: str = Form(""), t: str = For
     return await _vrc_page(request, row, lang, success=tr["vrcp_ok_unlinked"])
 
 
+# ── Kooperationen zwischen zwei Phobos-Installationen ─────────────────────────
+# Zwei Communities arbeiten zusammen, jede betreibt ihren eigenen Bot. Wer drueben schon
+# geprueft wurde, soll hier nicht noch einmal durch dieselbe Pruefung. Genau dafuer ist das
+# hier - und fuer nichts sonst: uebertragen wird eine einzige Antwort, ja oder nein, zu einer
+# einzigen Discord-ID. Keine Mitgliederlisten, keine Namen, keine Rollen.
+
+# Wie oft ein Partner fragen darf, bevor gebremst wird. Ohne Bremse waere die Schnittstelle
+# ein Werkzeug, um reihenweise Discord-IDs durchzuprobieren - "ist dieser Mensch bei euch?"
+# ist fuer sich genommen schon eine Auskunft.
+_COOP_MAX_PER_MINUTE = 60
+_coop_anfragen: dict = {}
+
+
+def _coop_gebremst(schluessel_hash: str) -> bool:
+    """True, wenn dieser Partner sein Minutenkontingent ausgeschoepft hat."""
+    jetzt = time.monotonic()
+    fenster = _coop_anfragen.setdefault(schluessel_hash, [])
+    while fenster and jetzt - fenster[0] > 60:
+        fenster.pop(0)
+    if len(fenster) >= _COOP_MAX_PER_MINUTE:
+        return True
+    fenster.append(jetzt)
+    if len(_coop_anfragen) > 500:
+        for k in [k for k, v in _coop_anfragen.items() if not v or jetzt - v[-1] > 300]:
+            _coop_anfragen.pop(k, None)
+    return False
+
+
+@web.post("/coop/check")
+async def coop_check(request: Request):
+    """Beantwortet einem Partner, ob eine Discord-ID hier als geprueft gilt.
+
+    Die einzige Route dieses Bereichs ohne Anmeldung - sie gehoert keinem Menschen, sondern
+    der anderen Installation. Ausgewiesen wird sie durch den Kooperations-Schluessel, den
+    diese Seite selbst erzeugt hat und jederzeit zuruecknehmen kann.
+
+    Die Antwort ist absichtlich duenn: {"verified": true|false}. Kein Name, keine Rollen,
+    kein Hinweis darauf, ob die Person hier ueberhaupt Mitglied ist - ein Nein bedeutet
+    "nicht geprueft" und sonst nichts. Wer den Schluessel hat, soll Verifizierungen
+    anerkennen koennen, nicht die Mitgliederliste abtasten.
+    """
+    form = await request.form()
+    schluessel = (form.get("key") or "").strip()
+    user_id = (form.get("user_id") or "").strip()
+    if not schluessel or not user_id.isdigit():
+        return JSONResponse({"verified": False}, status_code=400)
+
+    digest = _token_hash(schluessel)
+    if _coop_gebremst(digest):
+        return JSONResponse({"verified": False, "error": "too many requests"}, status_code=429)
+
+    row = await db_one(
+        "SELECT * FROM coop_partners WHERE key_in_hash=? AND enabled=1", (digest,))
+    if not row:
+        # Derselbe Wortlaut wie bei einer abgelehnten Person: ein falscher Schluessel darf
+        # sich nicht von "kenne ich nicht" unterscheiden lassen.
+        return JSONResponse({"verified": False}, status_code=403)
+
+    geteilt = {r for r in (row["share_role_ids"] or "").split(",") if r.strip()}
+    if not geteilt:
+        return JSONResponse({"verified": False})
+
+    b = bot._bot_for_guild(int(row["guild_id"])) if str(row["guild_id"]).isdigit() else None
+    guild = b.get_guild(int(row["guild_id"])) if b else None
+    member = guild.get_member(int(user_id)) if guild else None
+    verifiziert = bool(member and {str(r.id) for r in member.roles} & geteilt)
+
+    try:
+        await db_exec("UPDATE coop_partners SET last_in=? WHERE id=?",
+                      (datetime.datetime.utcnow().isoformat(), row["id"]))
+    except Exception as e:
+        print(f"[coop] konnte den Zeitstempel nicht setzen: {e}")
+    return JSONResponse({"verified": verifiziert})
+
+
+async def coop_frage_partner(row, user_id) -> bool:
+    """Fragt EINEN Partner, ob diese Discord-ID bei ihm geprueft ist.
+
+    Gibt nur bei einem klaren Ja True zurueck. Jeder andere Ausgang - Netz weg, Schluessel
+    zurueckgezogen, Partner gerade neu gestartet - ist ein Nein: eine Rolle zu vergeben, weil
+    eine Anfrage unklar ausging, waere genau das Gegenteil dessen, wofuer die Pruefung da ist.
+    """
+    ziel = (row["base_url"] or "").strip().rstrip("/")
+    schluessel = (row["key_out"] or "").strip()
+    if not ziel or not schluessel:
+        return False
+    if not _is_public_http_url(ziel):
+        # Dieselbe Schranke wie beim Umfrage-Vorschaubild: der Server steht im Netz und
+        # erreicht Dinge, die die fragende Person nie erreichen wuerde.
+        print(f"[coop] Adresse {ziel[:60]} ist keine oeffentliche - Anfrage unterbleibt")
+        return False
+    try:
+        timeout = aiohttp.ClientTimeout(total=8)
+        async with aiohttp.ClientSession(timeout=timeout) as sitzung:
+            async with sitzung.post(f"{ziel}/coop/check",
+                                    data={"key": schluessel, "user_id": str(user_id)}) as antwort:
+                if antwort.status != 200:
+                    return False
+                daten = await antwort.json(content_type=None)
+    except Exception as e:
+        print(f"[coop] Anfrage an {ziel[:60]} fehlgeschlagen: {e}")
+        return False
+    return bool(isinstance(daten, dict) and daten.get("verified") is True)
+
+
+def _coop_rollen(form, feld: str, guild) -> str:
+    """Die angekreuzten Rollen als Liste, gegen die echten Rollen des Servers geprueft."""
+    echte = {str(r.id) for r in guild.roles if not r.is_default()} if guild else set()
+    return ",".join(r for r in form.getlist(feld) if r in echte)
+
+
+@web.post("/servers/{guild_id}/coop/add")
+async def coop_add(request: Request, guild_id: int):
+    """Legt eine Kooperation an und erzeugt den Schluessel, mit dem der Partner hier fragen darf.
+
+    Der Schluessel wird EINMAL angezeigt und nur gehasht gespeichert - wie ein Passwort. Er
+    wandert dafuer durch die Sitzung und nicht durch die Adresszeile: dort stuende er im
+    Verlauf, im Proxy-Log und in jedem Referer.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    b = bot._bot_for_guild(guild_id)
+    guild = b.get_guild(guild_id) if b else None
+    form = await request.form()
+    name = " ".join((form.get("name") or "").split())[:80] or "Partner"
+    base_url = (form.get("base_url") or "").strip().rstrip("/")[:300]
+    key_out = (form.get("key_out") or "").strip()[:200]
+    if base_url and not base_url.startswith(("http://", "https://")):
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=rolerules&error=Die+Partner-Adresse+muss+mit+http+beginnen",
+            status_code=302)
+    schluessel = secrets.token_urlsafe(32)
+    try:
+        await db_exec(
+            "INSERT INTO coop_partners (guild_id, name, share_role_ids, key_in_hash, base_url, "
+            "key_out, grant_role_ids, enabled, created_at, note) VALUES (?,?,?,?,?,?,?,1,?,?)",
+            (str(guild_id), name, _coop_rollen(form, "share_role_ids", guild),
+             _token_hash(schluessel), base_url, key_out,
+             _coop_rollen(form, "grant_role_ids", guild),
+             datetime.datetime.utcnow().isoformat(), (form.get("note") or "").strip()[:300]),
+        )
+    except Exception as e:
+        print(f"[coop] anlegen fehlgeschlagen: {e}")
+        return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error=Konnte+nicht+angelegt+werden",
+                                status_code=302)
+    request.session["coop_new_key"] = schluessel
+    request.session["coop_new_name"] = name
+    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Kooperation+angelegt",
+                            status_code=302)
+
+
+@web.post("/servers/{guild_id}/coop/{coop_id}/save")
+async def coop_save(request: Request, guild_id: int, coop_id: int):
+    """Aendert eine bestehende Kooperation - ohne den Schluessel anzufassen."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    b = bot._bot_for_guild(guild_id)
+    guild = b.get_guild(guild_id) if b else None
+    form = await request.form()
+    base_url = (form.get("base_url") or "").strip().rstrip("/")[:300]
+    if base_url and not base_url.startswith(("http://", "https://")):
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=rolerules&error=Die+Partner-Adresse+muss+mit+http+beginnen",
+            status_code=302)
+    # guild_id in der Bedingung, nicht nur die id: sonst liesse sich die Kooperation eines
+    # fremden Servers durch Raten der Nummer aendern.
+    await db_exec(
+        "UPDATE coop_partners SET name=?, share_role_ids=?, base_url=?, key_out=?, "
+        "grant_role_ids=?, enabled=?, note=? WHERE id=? AND guild_id=?",
+        (" ".join((form.get("name") or "").split())[:80] or "Partner",
+         _coop_rollen(form, "share_role_ids", guild), base_url,
+         (form.get("key_out") or "").strip()[:200],
+         _coop_rollen(form, "grant_role_ids", guild),
+         1 if form.get("enabled") else 0, (form.get("note") or "").strip()[:300],
+         coop_id, str(guild_id)),
+    )
+    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Gespeichert", status_code=302)
+
+
+@web.post("/servers/{guild_id}/coop/{coop_id}/newkey")
+async def coop_newkey(request: Request, guild_id: int, coop_id: int):
+    """Zieht den alten Schluessel zurueck und gibt einen neuen aus.
+
+    Der alte ist damit sofort wertlos - genau das, was man braucht, wenn eine Kooperation
+    endet oder der Schluessel in falsche Haende geraten ist.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    row = await db_one("SELECT name FROM coop_partners WHERE id=? AND guild_id=?",
+                       (coop_id, str(guild_id)))
+    if not row:
+        return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error=Nicht+gefunden",
+                                status_code=302)
+    schluessel = secrets.token_urlsafe(32)
+    await db_exec("UPDATE coop_partners SET key_in_hash=? WHERE id=? AND guild_id=?",
+                  (_token_hash(schluessel), coop_id, str(guild_id)))
+    request.session["coop_new_key"] = schluessel
+    request.session["coop_new_name"] = row["name"]
+    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Neuer+Schlüssel+erzeugt",
+                            status_code=302)
+
+
+@web.post("/servers/{guild_id}/coop/{coop_id}/delete")
+async def coop_delete(request: Request, guild_id: int, coop_id: int):
+    """Beendet eine Kooperation. Vergebene Rollen bleiben - die gehoeren den Mitgliedern."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    await db_exec("DELETE FROM coop_partners WHERE id=? AND guild_id=?", (coop_id, str(guild_id)))
+    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Kooperation+beendet",
+                            status_code=302)
+
+
+@web.post("/servers/{guild_id}/coop/{coop_id}/test")
+async def coop_test(request: Request, guild_id: int, coop_id: int, user_id: str = Form("")):
+    """Fragt den Partner testweise nach einer Discord-ID und zeigt, was zurueckkommt.
+
+    Gebaut, weil sich sonst nur an einem echten Beitritt zeigt, ob Adresse und Schluessel
+    stimmen - und dann zur falschen Zeit.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return JSONResponse({"error": "Kein Zugriff"}, status_code=403)
+    row = await db_one("SELECT * FROM coop_partners WHERE id=? AND guild_id=?",
+                       (coop_id, str(guild_id)))
+    if not row:
+        return JSONResponse({"error": "Nicht gefunden"}, status_code=404)
+    if not (row["base_url"] or "").strip():
+        return JSONResponse({"error": "Für diese Kooperation ist keine Partner-Adresse eingetragen."})
+    ziel = (user_id or "").strip() or str(request.session.get("user_id") or "")
+    if not ziel.isdigit():
+        return JSONResponse({"error": "Bitte eine Discord-ID angeben."})
+    verifiziert = await coop_frage_partner(row, ziel)
+    return JSONResponse({"verified": bool(verifiziert), "user_id": ziel})
+
+
 # ── Auto-Thread ───────────────────────────────────────────────────────────────
 # One thread per message in the configured channels - see cogs/auto_thread.py.
 
@@ -7659,12 +7903,22 @@ async def server_config(
                 amp_instances_error = listing["error"]
                 amp_status = await amp_cog._fetch_status(amp_cfg)
 
+    _coops = await db_rows(
+        "SELECT * FROM coop_partners WHERE guild_id=? ORDER BY id", (str(guild_id),))
+    _coop_key_einmal = request.session.pop("coop_new_key", "")
+    _coop_name_einmal = request.session.pop("coop_new_name", "")
     return templates.TemplateResponse("server_config.html", {
         **session(request), "request": request,
         "guild": {"id": str(guild.id), "name": guild.name,
                   "icon": str(guild.icon.url) if guild.icon else None},
         "cfg": cfg, "channels": channels, "embed_channels": embed_channels,
         "role_rules": role_rules, "all_guild_roles": _all_guild_roles,
+        # Kooperationen mit fremden Installationen - eigener Abschnitt, eigene Tabelle, die
+        # bestehenden Regeln oben bleiben davon unberuehrt.
+        "coops": _coops,
+        # Ein frisch erzeugter Schluessel wird genau einmal gezeigt und dabei aus der Sitzung
+        # genommen: gespeichert ist nur sein Hash, ein zweites Mal gibt es ihn nicht.
+        "coop_new_key": _coop_key_einmal, "coop_new_name": _coop_name_einmal,
         "role_rule_target_guilds": role_rule_target_guilds,
         "role_rule_target_roles": role_rule_target_roles,
         "role_rules_interval": role_rules_interval,
