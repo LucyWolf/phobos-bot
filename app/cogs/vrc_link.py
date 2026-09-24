@@ -26,6 +26,7 @@ carries the whole weight of deciding whether somebody owns an account.
 Configured via main.py's "VRC-Link" tab (guild_configs keys vrc_* plus the vrc_links table);
 the pages themselves live in main.py under /vrc/{token}.
 """
+import asyncio
 import datetime
 import json
 import secrets
@@ -66,6 +67,12 @@ MAX_INSTANCE_POSTS = 5
 # ist. Jede kostet eine eigene VRChat-Anfrage; bei einem Abstand von einer Minute waeren
 # es ohne Deckel bei zehn offenen Lobbys zehn Anfragen pro Minute, nur fuer die Zustaende.
 MAX_INSTANCE_DETAIL = 5
+# Discord zaehlt Ueberschrift, Text, Feldnamen, Feldwerte und Fusszeile ZUSAMMEN und
+# lehnt die ganze Karte ab, sobald 6000 Zeichen ueberschritten sind. Die Einzelgrenzen
+# allein reichen nicht: 256 + 4000 + 256 + 2048 sind schon 6560. Wer sich lange Texte
+# schreibt, bekam dann eine 400 - bei der Eroeffnungsmeldung hiess das, dass die
+# Instanz bei JEDEM Durchlauf erneut versucht und erneut abgelehnt wurde.
+MAX_EMBED_TOTAL = 6000
 
 
 async def link_base_url() -> str:
@@ -635,6 +642,19 @@ async def _update_instance_count(guild, channel, zeile, inst) -> None:
         print(f"[vrc_link] Zahlstand von {zeile['id']} nicht gespeichert: {e}")
 
 
+def _passt_in_embed(text: str, *rest: str) -> str:
+    """Kuerzt den Beschreibungstext so, dass die ganze Karte unter die Gesamtgrenze passt.
+
+    Gekuerzt wird der lange Text, nicht die Ueberschrift oder die Fusszeile: die sind kurz,
+    tragen die Orientierung, und von ihnen ein Stueck abzuschneiden faellt sofort auf.
+    """
+    rest_laenge = sum(len(x or "") for x in rest)
+    platz = max(0, MAX_EMBED_TOTAL - rest_laenge)
+    if len(text) <= platz:
+        return text
+    return text[:max(0, platz - 1)] + "…" if platz else ""
+
+
 def _spalte(zeile, name: str, standard=""):
     """Ein Feld aus einer Datenbankzeile, das es vielleicht noch nicht gibt.
 
@@ -644,12 +664,12 @@ def _spalte(zeile, name: str, standard=""):
     """
     try:
         wert = zeile[name]
-    except (IndexError, KeyError):
+    except (IndexError, KeyError, TypeError):
         return standard
     return standard if wert is None else wert
 
 
-async def _lock_instance_post(guild, channel, zeile, texte: dict, jetzt, anzahl) -> None:
+async def _lock_instance_post(guild, channel, zeile, texte: dict, jetzt, anzahl) -> bool:
     """Schreibt die Meldung um, wenn die Instanz GESCHLOSSEN wurde - aber noch laeuft.
 
     Der Unterschied zum Ende: es sind noch Leute drin, die Instanz existiert weiter, nur
@@ -661,7 +681,7 @@ async def _lock_instance_post(guild, channel, zeile, texte: dict, jetzt, anzahl)
     """
     nachricht_id = str(zeile["message_id"] or "")
     if not nachricht_id.isdigit():
-        return
+        return True
     try:
         dauer = human_duration(
             (jetzt - datetime.datetime.fromisoformat(zeile["first_seen"])).total_seconds())
@@ -674,24 +694,28 @@ async def _lock_instance_post(guild, channel, zeile, texte: dict, jetzt, anzahl)
     try:
         nachricht = await channel.fetch_message(int(nachricht_id))
     except discord.NotFound:
-        return
+        return True             # die Nachricht gibt es nicht mehr - da ist nichts nachzuholen
     except (discord.Forbidden, discord.HTTPException, OSError) as e:
         print(f"[vrc_link] Meldung {nachricht_id} nicht erreichbar: {e}")
-        return
+        return False
+    titel = (f(texte["dicht_titel"]) or welt)[:256]
+    feld = (f(texte["zahl"]) or "\u200b")[:256]
+    wert = f"👥 {anzahl}"
+    fuss = f(texte["fuss"])[:2048]
     embed = discord.Embed(
-        title=(f(texte["dicht_titel"]) or welt)[:256],
-        description=f(texte["dicht_text"])[:4000] or None,
+        title=titel,
+        description=_passt_in_embed(f(texte["dicht_text"])[:4000], titel, feld, wert, fuss) or None,
         color=0xF59E0B,          # orange: zu, aber noch nicht vorbei
     )
-    embed.add_field(name=(f(texte["zahl"]) or "\u200b")[:256],
-                    value=f"👥 {anzahl}", inline=True)
-    fuss = f(texte["fuss"])
+    embed.add_field(name=feld, value=wert, inline=True)
     if fuss:
-        embed.set_footer(text=fuss[:2048])
+        embed.set_footer(text=fuss)
     try:
         await nachricht.edit(content=None, embed=embed, view=None)
     except (discord.Forbidden, discord.HTTPException, OSError) as e:
         print(f"[vrc_link] Meldung {nachricht_id} nicht auf geschlossen umgeschrieben: {e}")
+        return False
+    return True
 
 
 async def _close_instance_post(guild, channel, zeile, texte: dict, jetzt) -> None:
@@ -721,14 +745,15 @@ async def _close_instance_post(guild, channel, zeile, texte: dict, jetzt) -> Non
     except (discord.Forbidden, discord.HTTPException, OSError) as e:
         print(f"[vrc_link] Abschieds-Meldung {nachricht_id} nicht erreichbar: {e}")
         return
+    titel = (f(texte["zu_titel"]) or welt)[:256]
+    fuss = f(texte["fuss"])[:2048]
     embed = discord.Embed(
-        title=(f(texte["zu_titel"]) or welt)[:256],
-        description=text[:4000] or None,
+        title=titel,
+        description=_passt_in_embed(text[:4000], titel, fuss) or None,
         color=0x4B5563,          # grau statt violett: auf einen Blick "vorbei"
     )
-    fuss = f(texte["fuss"])
     if fuss:
-        embed.set_footer(text=fuss[:2048])
+        embed.set_footer(text=fuss)
     try:
         # view=None nimmt den Beitritts-Knopf weg.
         await nachricht.edit(content=None, embed=embed, view=None)
@@ -736,7 +761,23 @@ async def _close_instance_post(guild, channel, zeile, texte: dict, jetzt) -> Non
         print(f"[vrc_link] Meldung {nachricht_id} nicht umgeschrieben: {e}")
 
 
+# Ein Riegel je Server. Der Meldelauf liest zu Beginn, was schon gemeldet ist, und schreibt
+# erst am Ende; laufen zwei gleichzeitig, halten beide dieselbe Instanz fuer neu und melden
+# sie doppelt. Genau das ist erreichbar, weil "Jetzt nachsehen" im Dashboard dieselbe Routine
+# aufruft wie die Zeitschaltuhr - ein Klick im falschen Moment genuegt.
+_ANNOUNCE_LOCKS: dict = {}
+
+
 async def announce_instances(bot, guild) -> int:
+    """Meldet neue Instanzen - aber immer nur einmal gleichzeitig je Server."""
+    riegel = _ANNOUNCE_LOCKS.get(guild.id)
+    if riegel is None:
+        riegel = _ANNOUNCE_LOCKS[guild.id] = asyncio.Lock()
+    async with riegel:
+        return await _announce_instances(bot, guild)
+
+
+async def _announce_instances(bot, guild) -> int:
     """Post a message for every group instance that has newly opened. Returns how many.
 
     One VRChat request per server per run, never one per member - which is what makes this
@@ -766,14 +807,29 @@ async def announce_instances(bot, guild) -> int:
         print(f"[vrc_link] instance check for guild {guild.id} failed: {e}")
         return 0
 
+    alle = await db_rows("SELECT * FROM vrc_instances WHERE guild_id=?", (str(guild.id),))
+    # Nur die noch offenen gelten als "schon gemeldet". Eine beendete Zeile wartet nur
+    # noch darauf, dass ihre Nachricht weggeraeumt wird, und darf nicht verhindern, dass
+    # dieselbe Welt inzwischen wieder aufmacht und erneut gemeldet wird.
+    # (closed_at heisst aus Bestandsgruenden so, gemeint ist "beendet" - siehe unten.)
+    known = {r["location"]: r for r in alle if not r["closed_at"]}
+    wartet = [r for r in alle if r["closed_at"]]
+    open_now = {i["location"] for i in instances}
+
     # Genauer nachsehen. Die Gruppenliste sagt nur, DASS eine Instanz da ist - ob sie
     # geschlossen wurde und wie sie heisst, steht ausschliesslich in der Einzelansicht
     # (siehe vrchat.instance_state()). Das kostet eine Anfrage je Instanz und Durchlauf,
     # deshalb ein Schalter und ein Deckel. Aus heisst: alles genau wie vorher, eine Anfrage.
+    #
+    # Wer schon als geschlossen vermerkt ist, wird uebersprungen: da ist nichts mehr zu
+    # erfahren, und sonst haette eine einzige zugegangene Instanz einen der fuenf Plaetze
+    # dauerhaft belegt und die anderen ausgehungert.
     zustand = {}
     if (await get_guild_config(guild.id, "vrc_instance_detail") or "0") == "1":
         from vrchat import get_instance, instance_state
-        for inst in instances[:MAX_INSTANCE_DETAIL]:
+        offen_zu_pruefen = [i for i in instances
+                            if not _spalte(known.get(i["location"]) or {}, "locked_at")]
+        for inst in offen_zu_pruefen[:MAX_INSTANCE_DETAIL]:
             try:
                 details = await get_instance(inst["location"], session["auth_cookie"],
                                              session["two_factor_cookie"])
@@ -787,15 +843,6 @@ async def announce_instances(bot, guild) -> int:
                 zustand[inst["location"]] = lage
                 if lage["name"]:
                     inst["name"] = lage["name"]
-
-    alle = await db_rows("SELECT * FROM vrc_instances WHERE guild_id=?", (str(guild.id),))
-    # Nur die noch offenen gelten als "schon gemeldet". Eine beendete Zeile wartet nur
-    # noch darauf, dass ihre Nachricht weggeraeumt wird, und darf nicht verhindern, dass
-    # dieselbe Welt inzwischen wieder aufmacht und erneut gemeldet wird.
-    # (closed_at heisst aus Bestandsgruenden so, gemeint ist "beendet" - siehe unten.)
-    known = {r["location"]: r for r in alle if not r["closed_at"]}
-    wartet = [r for r in alle if r["closed_at"]]
-    open_now = {i["location"] for i in instances}
 
     # Gone from VRChat's list means the instance is over for good - not merely closed to new
     # joins, which VRChat does not tell us apart. Forgetting them is what lets the same world
@@ -862,6 +909,22 @@ async def announce_instances(bot, guild) -> int:
         if zeile["location"] in open_now:
             # Dieselbe Adresse ist wieder offen - die alte Zeile hat sich erledigt, die neue
             # Meldung kommt weiter unten durch den normalen Weg.
+            #
+            # Vorher verschwand hier nur die Zeile, und die Abschieds-Meldung blieb fuer
+            # immer stehen, obwohl Aufraeumen eingeschaltet war: mit der Zeile ging die
+            # einzige Spur zu ihrer Nachrichten-ID verloren. Also erst wegraeumen, dann
+            # vergessen.
+            nachricht_id = str(zeile["message_id"] or "")
+            if aufraeumen and nachricht_id.isdigit():
+                try:
+                    nachricht = await channel.fetch_message(int(nachricht_id))
+                    await nachricht.delete()
+                except discord.NotFound:
+                    pass
+                except discord.Forbidden:
+                    print(f"[vrc_link] darf in {channel_id} nichts loeschen ({guild.id})")
+                except (discord.HTTPException, OSError) as e:
+                    print(f"[vrc_link] Meldung {nachricht_id} nicht geloescht: {e}")
             try:
                 await db_exec("DELETE FROM vrc_instances WHERE id=?", (zeile["id"],))
             except Exception as e:
@@ -932,6 +995,7 @@ async def announce_instances(bot, guild) -> int:
     # Gerade GESCHLOSSEN, aber noch da: die Meldung einmal umschreiben und das vermerken.
     # Ohne locked_at liefe das jede Minute erneut, solange die Instanz noch in der Liste
     # steht. Verschwindet sie spaeter, greift weiter oben der Abschiedstext.
+    zu_gemacht = set()
     for location, lage in zustand.items():
         zeile = known.get(location)
         if not zeile or not lage["closed_at"] or _spalte(zeile, "locked_at"):
@@ -939,7 +1003,13 @@ async def announce_instances(bot, guild) -> int:
         if str(zeile["message_id"] or "") == "":
             continue
         anzahl = lage["count"] if lage["known"] else zeile["last_count"]
-        await _lock_instance_post(guild, channel, zeile, texte, jetzt, anzahl)
+        # Nur vermerken, wenn die Meldung tatsaechlich umgeschrieben wurde. Fehlt dem Bot
+        # gerade das Recht dazu oder ist Discord kurz weg, soll der naechste Durchlauf es
+        # erneut versuchen - sonst bliebe die Karte fuer immer auf "offen" stehen, obwohl
+        # laengst niemand mehr hineinkommt.
+        if not await _lock_instance_post(guild, channel, zeile, texte, jetzt, anzahl):
+            continue
+        zu_gemacht.add(location)
         try:
             await db_exec("UPDATE vrc_instances SET locked_at=?, last_count=? WHERE id=?",
                           (jetzt.isoformat(), int(anzahl or 0), zeile["id"]))
@@ -965,6 +1035,12 @@ async def announce_instances(bot, guild) -> int:
             zeile = known.get(inst["location"])
             if not zeile or str(zeile["message_id"] or "") == "":
                 continue
+            # Eine geschlossene Instanz nicht mehr anfassen. In dem Durchlauf, in dem sie
+            # zugeht, ist die Meldung bereits umgeschrieben worden - die Zeile hier stammt
+            # aber noch vom Anfang des Durchlaufs und traegt die ALTE Zahl. Ohne das hier
+            # wurde dieselbe Nachricht zweimal hintereinander bearbeitet.
+            if _spalte(zeile, "locked_at") or inst["location"] in zu_gemacht:
+                continue
             if str(zeile["last_count"]) == str(inst["count"]):
                 continue
             await _update_instance_count(guild, channel, zeile, inst)
@@ -989,16 +1065,19 @@ async def announce_instances(bot, guild) -> int:
         # sehr langen Beitritts-Adresse als nackte Zeile ueber einer kleinen Karte, und der
         # Weltname doppelt - einmal im Text, einmal als Titel. Jetzt traegt die Nachricht
         # selbst nur noch die Rollen-Erwaehnung, falls eine eingestellt ist.
+        # Faellt die frei geschriebene Ueberschrift leer aus, steht der Weltname da -
+        # eine Karte ganz ohne Titel sieht kaputt aus.
+        titel = (f(texte["titel"]) or welt)[:256]
+        feld = (f(texte["zahl"]) or "\u200b")[:256]
+        wert = f"👥 {inst['count']}"
+        fuss = f(texte["fuss"])[:2048]
         embed = discord.Embed(
-            # Faellt die frei geschriebene Ueberschrift leer aus, steht der Weltname da -
-            # eine Karte ganz ohne Titel sieht kaputt aus.
-            title=(f(texte["titel"]) or welt)[:256],
+            title=titel,
             url=link or None,          # macht die Ueberschrift anklickbar
-            description=text[:4000] or None,
+            description=_passt_in_embed(text[:4000], titel, feld, wert, fuss) or None,
             color=0x8B5CF6,
         )
-        embed.add_field(name=(f(texte["zahl"]) or "\u200b")[:256],
-                        value=f"👥 {inst['count']}", inline=True)
+        embed.add_field(name=feld, value=wert, inline=True)
         # Das GROSSE Bild, nicht das briefmarkengrosse Vorschaubild rechts - das war der
         # Hauptgrund, warum die Meldung mickrig aussah.
         #
@@ -1007,9 +1086,8 @@ async def announce_instances(bot, guild) -> int:
         # scheiterte jedes Mal.
         if inst["world_image"].startswith(("http://", "https://")):
             embed.set_image(url=inst["world_image"])
-        fuss = f(texte["fuss"])
         if fuss:
-            embed.set_footer(text=fuss[:2048])
+            embed.set_footer(text=fuss)
 
         # Ein Bild in einer Karte kann bei Discord nicht selbst auf eine Adresse zeigen -
         # ein Klick darauf oeffnet nur das Bild. Der Knopf ist das, was dem am naechsten
@@ -1177,7 +1255,16 @@ class VRCLink(commands.Cog):
                     last = self._instances_last.get(guild.id, 0.0)
                     if time.monotonic() - last >= every_inst * 60:
                         self._instances_last[guild.id] = time.monotonic()
-                        await announce_instances(self.bot, guild)
+                        # Eigenes Netz: die Instanz-Meldung haengt an VRChat und an Discord,
+                        # der Mitglieder-Abgleich darunter an keinem von beidem. Faellt sie
+                        # aus, hat das den Rest dieses Servers bisher mitgerissen - Rollen
+                        # und Spitznamen blieben eine Minute lang unangetastet, ohne dass
+                        # daran etwas kaputt war.
+                        try:
+                            await announce_instances(self.bot, guild)
+                        except Exception as e:
+                            print(f"[vrc_link] Instanz-Meldung fuer {guild.id} "
+                                  f"fehlgeschlagen: {e}")
                 rows = await db_rows(
                     "SELECT * FROM vrc_links WHERE guild_id=? AND status=?",
                     (str(guild.id), VRC_STATE_APPROVED),

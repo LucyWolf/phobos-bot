@@ -721,9 +721,15 @@ def _zahl_drin(entry: dict) -> int:
 
 
 def _parse_group_instances(data) -> list:
+    """Die Gruppenliste in das, was der Bot braucht - jede Adresse hoechstens einmal.
+
+    Doppelte Adressen sind nicht bloss unschoen: der Meldelauf prueft gegen den Stand, den er
+    zu Beginn aus der Datenbank gelesen hat, und den aktualisiert er waehrenddessen nicht.
+    Stuende dieselbe Instanz zweimal in der Antwort, ginge die Meldung zweimal raus.
+    """
     if not isinstance(data, list):
         return []
-    out = []
+    out, gesehen = [], set()
     for entry in data:
         if not isinstance(entry, dict):
             continue
@@ -740,8 +746,9 @@ def _parse_group_instances(data) -> list:
             instance_id = location.split(":", 1)[1]
         if not location and world_id and instance_id:
             location = f"{world_id}:{instance_id}"
-        if not location:
+        if not location or location in gesehen:
             continue
+        gesehen.add(location)
         out.append({
             "location": location,
             "instance_id": instance_id,
@@ -780,8 +787,14 @@ def instance_state(details: dict) -> dict:
         return {"closed_at": "", "hard_close": None, "name": "", "count": 0, "known": False}
     nummer = str(details.get("name") or "").strip()
     eigener = str(details.get("displayName") or "").strip()
+    # Nur ein echter Zeitstempel gilt als "geschlossen". Stuende dort eines Tages ein
+    # Wahrheitswert oder eine Zahl, wuerde str() daraus "True" oder "0" machen - und damit
+    # waere je nach Fall JEDE Instanz sofort geschlossen oder keine mehr. Lieber nichts
+    # erkennen als alle Meldungen auf einmal umschreiben.
+    roh_zu = details.get("closedAt")
+    zu = roh_zu.strip() if isinstance(roh_zu, str) and len(roh_zu.strip()) >= 8 else ""
     return {
-        "closed_at": str(details.get("closedAt") or "").strip(),
+        "closed_at": zu,
         "hard_close": details.get("hardClose") if isinstance(details.get("hardClose"), bool) else None,
         "name": eigener if eigener and eigener != nummer else "",
         "count": _zahl_drin(details),
