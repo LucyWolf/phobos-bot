@@ -8068,8 +8068,18 @@ async def server_config(
                 amp_instances_error = listing["error"]
                 amp_status = await amp_cog._fetch_status(amp_cfg)
 
-    _coops = await db_rows(
+    # Fuer die Uebersichtstabelle werden die Rollen-IDs zu Namen aufgeloest - eine Zeile
+    # mit "100,200" sagt niemandem etwas.
+    _coop_rows = await db_rows(
         "SELECT * FROM coop_partners WHERE guild_id=? ORDER BY id", (str(guild_id),))
+    _rollen_namen = {str(r.id): r.name for r in guild.roles} if guild else {}
+    _coops = []
+    for _r in _coop_rows:
+        _d = dict(_r)
+        for _feld, _ziel in (("share_role_ids", "share_names"), ("grant_role_ids", "grant_names")):
+            _d[_ziel] = [_rollen_namen.get(x.strip(), x.strip())
+                         for x in (_d.get(_feld) or "").split(",") if x.strip()]
+        _coops.append(_d)
     # Die eigene Adresse zum Weitergeben: der Partner braucht sie zusammen mit dem
     # Schluessel, um hier anfragen zu koennen.
     _coop_eigene_adresse = await link_base_url()
