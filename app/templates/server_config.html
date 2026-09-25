@@ -4954,10 +4954,11 @@ function updateAmpCmdPreview(id, action, value) {
   {% for target in role_rule_target_guilds %}
   <div class="rr-target-name" data-guild="{{ target.id }}" data-name="{{ target.name }}"></div>
   {% endfor %}
-</div>
 
-
-<div class="card" style="margin-bottom:1.25rem;">
+{# Ab hier Abschnitte DERSELBEN Karte statt eigener Kaesten. Inhaltlich ist nichts
+   angefasst: jedes Formular, jeder Speichern-Knopf und jeder Hinweis steht unveraendert
+   da, nur die Rahmen dazwischen sind weg. #}
+<div style="padding:1rem 1.25rem;border-top:1px solid var(--border);">
   <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.5rem;">{{ tr.rolerules_interval_title }}</div>
   <form method="post" action="/servers/{{ guild.id }}/role-rules/save-interval" style="display:flex;gap:0.6rem;align-items:flex-end;flex-wrap:wrap;">
     <div style="flex:1;min-width:160px;">
@@ -4970,7 +4971,7 @@ function updateAmpCmdPreview(id, action, value) {
   <div style="font-size:0.72rem;color:var(--muted);margin-top:0.4rem;">{{ tr.rolerules_interval_hint }}</div>
 </div>
 
-<div class="card" style="margin-bottom:1.25rem;">
+<div style="padding:1rem 1.25rem;border-top:1px solid var(--border);">
   <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.5rem;">{{ tr.rolerules_autocreate_title }}</div>
   <form method="post" action="/servers/{{ guild.id }}/role-rules/save-autocreate" style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
     <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.85rem;margin:0;flex:1;min-width:200px;">
@@ -4983,7 +4984,7 @@ function updateAmpCmdPreview(id, action, value) {
   <div style="font-size:0.72rem;color:var(--muted);margin-top:0.3rem;">{{ tr.rolerules_autocreate_note }}</div>
 </div>
 
-<div class="card">
+<div style="padding:1rem 1.25rem;border-top:1px solid var(--border);">
   <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.5rem;">{{ tr.rolerules_sandbox_title }}</div>
   <p class="hint" style="margin-bottom:0.75rem;">{{ tr.rolerules_sandbox_hint }}</p>
   <label>{{ tr.rolerules_sandbox_roles_label }}</label>
@@ -4996,6 +4997,7 @@ function updateAmpCmdPreview(id, action, value) {
   </div>
   <button type="button" class="btn btn-secondary" onclick="testRoleRules()">{{ tr.rolerules_sandbox_btn_run }}</button>
   <div id="rr-sandbox-result" style="margin-top:0.9rem;font-size:0.85rem;"></div>
+</div>
 </div>
 
 {# ── Kooperationen ──────────────────────────────────────────────────────────────
