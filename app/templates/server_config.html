@@ -5078,6 +5078,11 @@ function updateAmpCmdPreview(id, action, value) {
             {% for n in c.grant_names %}<span class="badge badge-moderator">{{ n }}</span> {% else %}<span style="color:var(--muted);">—</span>{% endfor %}
           </td>
           <td style="white-space:nowrap;">
+            {# Abgleichen direkt in der Zeile - der haeufigste Handgriff soll nicht hinter
+               dem Zahnrad liegen. #}
+            <button type="button" class="btn btn-secondary" onclick="coopSync({{ c.id }})"
+                    style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.coop_sync_btn }}">⟳</button>
+            <span id="coop-syncrow-{{ c.id }}" style="font-size:0.72rem;color:var(--muted);"></span>
             <button type="button" class="btn btn-secondary" onclick="toggleCoopEdit({{ c.id }})"
                     style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_settings }}">⚙</button>
             <form method="post" action="/servers/{{ guild.id }}/coop/{{ c.id }}/delete"
@@ -5270,7 +5275,12 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 // Holt nach, was beim Beitritt nicht passieren konnte: alle, die schon da sind.
 function coopSync(id) {
-  const out = document.getElementById('coop-sync-' + id);
+  // Zwei moegliche Anzeigeorte: die Zeile selbst und der aufgeklappte Bereich. Beide
+  // bedienen, damit die Rueckmeldung dort steht, wo gerade hingeschaut wird.
+  const ziele = [document.getElementById('coop-syncrow-' + id),
+                 document.getElementById('coop-sync-' + id)].filter(Boolean);
+  const schreiben = function (text) { ziele.forEach(function (z) { z.textContent = text; }); };
+  const out = {set textContent(t) { schreiben(t); }};
   out.textContent = '…';
   fetch('/servers/{{ guild.id }}/coop/' + id + '/sync', {method: 'POST'})
     .then(function (r) { return r.json(); })

@@ -5667,6 +5667,23 @@ async def vrc_public_unlink(request: Request, lang: str = Form(""), t: str = For
 _COOP_MAX_PER_MINUTE = 60
 _coop_anfragen: dict = {}
 
+# Wie viel wir von einer Partner-Antwort ueberhaupt einlesen. Ein Ja oder Nein braucht
+# zwanzig Zeichen, eine Liste geteilter Rollennamen ein paar hundert. Ohne Grenze haengt das
+# eigene Gedaechtnis daran, dass die Gegenseite sich benimmt - und Dashboard und Bot teilen
+# sich einen Prozess.
+_COOP_MAX_ANTWORT = 64 * 1024
+
+
+async def _coop_antwort_lesen(antwort):
+    """Liest hoechstens _COOP_MAX_ANTWORT Bytes und macht JSON daraus, oder None."""
+    roh = await antwort.content.read(_COOP_MAX_ANTWORT + 1)
+    if len(roh) > _COOP_MAX_ANTWORT:
+        raise ValueError("Antwort des Partners ist unverhältnismäßig groß.")
+    try:
+        return _djson.loads(roh.decode("utf-8", "replace"))
+    except Exception:
+        return None
+
 
 def _coop_gebremst(schluessel_hash: str) -> bool:
     """True, wenn dieser Partner sein Minutenkontingent ausgeschoepft hat."""
@@ -5794,7 +5811,7 @@ async def coop_frage_info(row) -> dict:
                     return {"ok": False, "error": "Der Partner bremst gerade zu viele Anfragen."}
                 if antwort.status != 200:
                     return {"ok": False, "error": f"Der Partner antwortete mit Status {antwort.status}."}
-                daten = await antwort.json(content_type=None)
+                daten = await _coop_antwort_lesen(antwort)
     except Exception as e:
         return {"ok": False, "error": f"Nicht erreichbar: {str(e)[:120]}"}
     if not isinstance(daten, dict) or not daten.get("ok"):
@@ -5826,7 +5843,7 @@ async def coop_frage_partner(row, user_id) -> bool:
                                     data={"key": schluessel, "user_id": str(user_id)}) as antwort:
                 if antwort.status != 200:
                     return False
-                daten = await antwort.json(content_type=None)
+                daten = await _coop_antwort_lesen(antwort)
     except Exception as e:
         print(f"[coop] Anfrage an {ziel[:60]} fehlgeschlagen: {e}")
         return False

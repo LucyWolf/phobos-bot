@@ -277,6 +277,8 @@ Each side decides two things for itself: **what it gives** (which of its own rol
 
 What travels is a single yes or no about one Discord ID. No names, no roles, no member lists, and a "no" says nothing about whether that person is even on the partner's server. The partner identifies itself with a key your side generates and can withdraw at any moment; it is stored as a checksum only, so it is shown exactly once. The interface is rate-limited, because "is this person one of yours" is an answer in itself and should not be askable a thousand times a minute. Internal addresses are refused, and cooperation keys stay out of backups.
 
+**Existing members are caught up.** On join the bot asks straight away — but everybody already on the server when you set this up, which at first is everybody, is only reached by the sync. That comes as a button on each partner row (⟳) and as an interval in minutes you choose yourself (default 15, `0` = off). Only those who do not have the role yet are asked about; a limited number per pass, then it continues where it left off. If the connection drops mid-pass the skipped ones are not lost, and a partner that takes its time does not hold the bot up — after twenty seconds the pass ends and the rest follows next time.
+
 The existing rules are untouched by all this — a rule works inside this installation, a cooperation reaches somebody you trust but do not administer.
 ## Polls
 
@@ -929,6 +931,8 @@ Unter **Server → CrossVerification** lassen sich "Wenn ein Mitglied bestimmte 
 Jede Seite legt zwei Dinge für sich fest: **was sie hergibt** (welche eigenen Rollen dem Partner als „geprüft“ gelten) und **was sie anerkennt** (welche Rollen jemand hier bekommt, wenn der Partner ja sagt). Kommt jemand neu dazu, fragt der Bot einmal beim Partner nach; ein Nein, ein Zeitablauf und ein Partner, der gerade nicht antwortet, bedeuten dasselbe — es passiert nichts. Auf eine unklare Antwort hin wird nie eine Rolle vergeben.
 
 Übertragen wird ein einziges Ja oder Nein zu einer Discord-ID. Keine Namen, keine Rollen, keine Mitgliederlisten — und ein Nein sagt nicht einmal, ob die Person auf dem Partner-Server überhaupt ist. Der Partner weist sich mit einem Schlüssel aus, den deine Seite erzeugt und jederzeit zurückziehen kann; gespeichert ist nur seine Prüfsumme, angezeigt wird er genau einmal. Die Schnittstelle ist gebremst, denn „gehört dieser Mensch zu euch“ ist für sich schon eine Auskunft und soll nicht tausendmal pro Minute abfragbar sein. Interne Adressen werden abgelehnt, und Kooperations-Schlüssel landen in keinem Backup.
+
+**Bestehende Mitglieder werden nachgeholt.** Beim Beitritt fragt der Bot sofort — aber wer beim Einrichten schon auf dem Server ist, und das sind anfangs alle, wird nur über den Abgleich erreicht. Den gibt es als Knopf in jeder Partner-Zeile (⟳) und als Takt in Minuten, den du selbst wählst (Standard 15, `0` = aus). Gefragt wird nur, wer die Rolle noch nicht hat; pro Durchgang eine begrenzte Zahl, danach wird dort weitergemacht, wo aufgehört wurde. Bricht die Verbindung mittendrin ab, gehen die Übersprungenen nicht verloren, und ein Partner, der lange braucht, hält den Bot nicht auf — nach zwanzig Sekunden ist Schluss und der Rest folgt beim nächsten Mal.
 
 Die bestehenden Regeln bleiben davon unberührt — eine Regel wirkt innerhalb dieser Installation, eine Kooperation reicht zu jemandem, dem man vertraut, den man aber nicht verwaltet.
 ## Umfragen

@@ -31,6 +31,10 @@ from database import db_exec, db_rows, get_guild_config, role_rule_actions
 # rule chain is expected to converge in a handful of hops at most.
 MAX_HOP_BUDGET = 8
 
+# Wie lange ein Kooperations-Durchgang je Partnerschaft hoechstens dauern darf. Danach wird
+# abgebrochen und beim naechsten Mal dort weitergemacht - der Zeiger steht ja.
+KOOP_ZEITBUDGET = 20.0
+
 # Enough to cover several test attempts across multiple guilds without growing unbounded -
 # this is purely an in-memory ring buffer for the dashboard debug view, not persisted anywhere.
 DEBUG_LOG_MAXLEN = 200
@@ -534,7 +538,34 @@ class RoleRules(commands.Cog):
         except Exception as e:
             self._log(f"Kooperations-Pruefung fuer {member.id} fehlgeschlagen: {e}")
 
-    async def kooperations_durchgang(self, guild, coop_id=None, limit: int = 25) -> dict:
+    @staticmethod
+    def _kann_vergeben(guild, rolle) -> bool:
+        """Ob der Bot diese Rolle ueberhaupt vergeben KANN.
+
+        Eine Rolle ueber der eigenen bekommt er nie vergeben. Ohne diese Pruefung fragt der
+        Abgleich trotzdem bei jedem Durchgang beim Partner nach - fuer jedes Mitglied, das
+        die Rolle nie bekommen wird, endlos. Das kostet das Kontingent des Partners und
+        aendert nie etwas.
+
+        Im Zweifel True: kennt der Bot seinen eigenen Rang gerade nicht, soll er es versuchen
+        und den Fehlschlag wie bisher wegstecken.
+        """
+        ich = getattr(guild, "me", None)
+        if ich is None:
+            return True
+        rechte = getattr(ich, "guild_permissions", None)
+        if rechte is not None and not getattr(rechte, "manage_roles", True):
+            return False
+        oben = getattr(ich, "top_role", None)
+        if oben is None:
+            return True
+        try:
+            return rolle < oben
+        except TypeError:
+            return True
+
+    async def kooperations_durchgang(self, guild, coop_id=None, limit: int = 25,
+                                     nur_member=None) -> dict:
         """Geht die Mitglieder durch und holt nach, was beim Beitritt nicht passiert ist.
 
         Der Beitritts-Listener greift nur bei NEUEN Leuten. Wer schon auf dem Server ist -
@@ -570,22 +601,47 @@ class RoleRules(commands.Cog):
             rollen = [r for r in rollen if r]
             if not rollen:
                 continue
+            unmoeglich = [r for r in rollen if not self._kann_vergeben(guild, r)]
+            if unmoeglich:
+                self._log(f"Kooperation {row['name']!r}: {', '.join(r.name for r in unmoeglich)} "
+                          f"steht ueber der Bot-Rolle - kein Abgleich, das waere nur Last "
+                          f"beim Partner fuer nichts")
+                continue
             # Nur wer die Rolle noch NICHT hat, muss gefragt werden - alle anderen kosten
             # nur eine Anfrage fuer eine Antwort, die nichts aendert.
-            kandidaten = [m for m in guild.members
+            # nur_member: derselbe Weg fuer den Beitritt eines Einzelnen. Frueher stand
+            # dafuer eine zweite, fast gleiche Schleife daneben - und als die Rangpruefung
+            # dazukam, hatte sie nur eine der beiden.
+            grundmenge = [nur_member] if nur_member is not None else guild.members
+            kandidaten = [m for m in grundmenge
                           if not m.bot and not all(r in m.roles for r in rollen)]
             merker = f"{guild.id}:{row['id']}"
             start = self._coop_zeiger.get(merker, 0) % max(1, len(kandidaten))
             reihe = kandidaten[start:] + kandidaten[:start]
             offen += max(0, len(kandidaten) - limit)
+            bearbeitet = 0
+            # Zeitbudget. Jede Frage darf acht Sekunden brauchen; 25 davon waeren mehr als
+            # drei Minuten, und die haengen in derselben Minuten-Schleife, die auch die
+            # Regeln aller anderen Server abarbeitet. Lieber weniger je Durchgang als ein
+            # Bot, der wegen eines lahmen Partners stillsteht.
+            frist = time.monotonic() + KOOP_ZEITBUDGET
             for member in reihe[:limit]:
-                gefragt += 1
+                if time.monotonic() > frist:
+                    self._log(f"Kooperation {row['name']!r}: Zeitbudget aufgebraucht, "
+                              f"{bearbeitet} erledigt - der Rest folgt beim naechsten Durchgang")
+                    break
                 try:
-                    if not await fragen(row, member.id):
-                        continue
+                    antwort = await fragen(row, member.id)
                 except Exception as e:
+                    # Abbruch, ohne den Zeiger ueber die Uebersprungenen hinwegzuschieben -
+                    # sonst kaemen genau die erst nach einer ganzen Runde wieder dran, und
+                    # ausgerechnet wegen eines Fehlers, den sie nicht zu verantworten haben.
                     self._log(f"Partner {row['name']!r} nicht erreichbar: {e}")
                     break
+                gefragt += 1
+                bearbeitet += 1
+                if not antwort:
+                    continue
                 fehlt = [r for r in rollen if r not in member.roles]
                 try:
                     await member.add_roles(*fehlt, reason=f"Kooperation: {row['name']}"[:100])
@@ -595,7 +651,11 @@ class RoleRules(commands.Cog):
                     self._log(f"darf {member.id} die Kooperations-Rollen nicht geben")
                 except (discord.HTTPException, OSError) as e:
                     self._log(f"Rollenvergabe fuer {member.id} fehlgeschlagen: {e}")
-            self._coop_zeiger[merker] = start + min(limit, len(reihe))
+            if nur_member is None:
+                # Nur der Reihum-Durchgang fuehrt den Zeiger. Ein einzelner Beitritt wuerde
+                # ihn sonst auf den Anfang zuruecksetzen und den Abgleich immer wieder bei
+                # denselben Leuten anfangen lassen.
+                self._coop_zeiger[merker] = start + bearbeitet
             try:
                 await db_exec("UPDATE coop_partners SET last_out=? WHERE id=?",
                               (datetime.datetime.utcnow().isoformat(), row["id"]))
@@ -604,55 +664,16 @@ class RoleRules(commands.Cog):
         return {"gefragt": gefragt, "vergeben": vergeben, "offen": offen}
 
     async def _kooperationen_pruefen(self, member) -> list:
-        """Fragt jeden eingetragenen Partner und vergibt, was zugesagt ist. Gibt zurueck, was
-        vergeben wurde.
+        """Der Beitritts-Fall: genau ein Mitglied, sonst derselbe Weg wie beim Abgleich.
 
-        Ein Nein, ein Zeitablauf und ein Partner, der gerade nicht antwortet, sind dasselbe:
-        es passiert nichts. Eine Rolle zu vergeben, weil eine Anfrage unklar ausging, waere
-        das Gegenteil dessen, wofuer eine Pruefung da ist.
+        Bewusst kein eigener Code mehr. Die beiden Wege sind auseinandergelaufen, kaum dass
+        es sie beide gab: die Pruefung, ob der Bot die Rolle ueberhaupt vergeben darf, kam
+        nur in den Abgleich, nicht hierher.
         """
-        fragen = getattr(self.bot, "coop_ask", None)
-        if fragen is None:
-            return []
-        try:
-            partner = await db_rows(
-                "SELECT * FROM coop_partners WHERE guild_id=? AND enabled=1",
-                (str(member.guild.id),))
-        except Exception as e:
-            self._log(f"Kooperationen nicht lesbar: {e}")
-            return []
-        vergeben = []
-        for row in partner:
-            if not (row["base_url"] or "").strip() or not (row["key_out"] or "").strip():
-                continue          # nur eingehende Seite eingerichtet - wir fragen hier nicht
-            rollen_ids = [r.strip() for r in (row["grant_role_ids"] or "").split(",") if r.strip()]
-            if not rollen_ids:
-                continue
-            rollen = [member.guild.get_role(int(r)) for r in rollen_ids if r.isdigit()]
-            rollen = [r for r in rollen if r and r not in member.roles]
-            if not rollen:
-                continue
-            try:
-                if not await fragen(row, member.id):
-                    continue
-            except Exception as e:
-                self._log(f"Partner {row['name']!r} nicht erreichbar: {e}")
-                continue
-            try:
-                await member.add_roles(*rollen, reason=f"Kooperation: {row['name']}"[:100])
-                vergeben.extend(r.name for r in rollen)
-                self._log(f"{member.id} ueber Kooperation {row['name']!r} freigegeben: "
-                          f"{', '.join(r.name for r in rollen)}")
-            except discord.Forbidden:
-                self._log(f"darf {member.id} die Kooperations-Rollen nicht geben")
-            except (discord.HTTPException, OSError) as e:
-                self._log(f"Rollenvergabe fuer {member.id} fehlgeschlagen: {e}")
-            try:
-                await db_exec("UPDATE coop_partners SET last_out=? WHERE id=?",
-                              (datetime.datetime.utcnow().isoformat(), row["id"]))
-            except Exception as e:
-                self._log(f"Zeitstempel der Kooperation nicht gesetzt: {e}")
-        return vergeben
+        # limit=1: die Grenze gilt je Partnerschaft, und hier steht je Partnerschaft
+        # hoechstens dieses eine Mitglied zur Auswahl.
+        ergebnis = await self.kooperations_durchgang(member.guild, limit=1, nur_member=member)
+        return ["vergeben"] * ergebnis.get("vergeben", 0)
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
