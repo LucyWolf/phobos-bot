@@ -5015,6 +5015,19 @@ function updateAmpCmdPreview(id, action, value) {
   </div>
   {% endif %}
 
+  {# Wie oft nachgeholt wird. Der Beitritts-Listener erfasst nur NEUE Leute - alle, die
+     beim Einrichten schon da sind, kommen ueber diesen Takt dran. #}
+  <form method="post" action="/servers/{{ guild.id }}/coop/interval"
+        style="display:flex;gap:0.5rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1rem;">
+    <div>
+      <label>{{ tr.coop_interval_label }}</label>
+      <input type="number" name="minutes" min="0" max="1440" style="width:120px;margin:0;"
+             value="{{ cfg.get('coop_interval_minutes', '15') }}">
+    </div>
+    <button type="submit" class="btn btn-secondary">{{ tr.btn_save }}</button>
+    <div style="flex:1;min-width:240px;font-size:0.72rem;color:var(--muted);">{{ tr.coop_interval_hint }}</div>
+  </form>
+
   {# Was der Partner von UNS braucht: Adresse und Schluessel. Beides zusammen, damit man
      es in einem Rutsch hinuebergeben kann. #}
   <div style="border:1px solid var(--border);border-radius:0.6rem;padding:0.7rem 0.8rem;margin-bottom:1rem;background:var(--bg);">
@@ -5121,6 +5134,11 @@ function updateAmpCmdPreview(id, action, value) {
       <button type="button" class="btn btn-secondary" onclick="coopTest({{ c.id }})">{{ tr.coop_test_btn }}</button>
       <span id="coop-out-{{ c.id }}" style="font-size:0.78rem;color:var(--muted);"></span>
     </div>
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-top:0.5rem;">
+      <button type="button" class="btn btn-primary" onclick="coopSync({{ c.id }})">{{ tr.coop_sync_btn }}</button>
+      <span id="coop-sync-{{ c.id }}" style="font-size:0.78rem;color:var(--muted);"></span>
+    </div>
+    <div style="font-size:0.72rem;color:var(--muted);margin-top:0.3rem;">{{ tr.coop_sync_hint }}</div>
     <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-top:0.4rem;">
       <span style="font-size:0.72rem;color:var(--muted);">{{ tr.coop_selected_id }}:</span>
       <code id="coop-id-{{ c.id }}" style="font-size:0.75rem;background:var(--bg);border-radius:0.3rem;padding:0.2rem 0.4rem;">—</code>
@@ -5159,6 +5177,7 @@ function updateAmpCmdPreview(id, action, value) {
 
 <script>
 const COOP_SHARES = {{ tr.coop_partner_shares | tojson }};
+const COOP_SYNC_DONE = {{ tr.coop_sync_done | tojson }};
 // Antwort immer ueber textContent: was zurueckkommt, stammt von einer fremden Installation.
 function coopKopieren(id, knopf) {
   const text = document.getElementById(id).textContent.trim();
@@ -5208,6 +5227,20 @@ document.addEventListener('DOMContentLoaded', function () {
     coopZeigeId(w.id.replace('coop-test-', ''));
   });
 });
+// Holt nach, was beim Beitritt nicht passieren konnte: alle, die schon da sind.
+function coopSync(id) {
+  const out = document.getElementById('coop-sync-' + id);
+  out.textContent = '…';
+  fetch('/servers/{{ guild.id }}/coop/' + id + '/sync', {method: 'POST'})
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d.ok) { out.textContent = '⚠️ ' + (d.error || ''); return; }
+      out.textContent = COOP_SYNC_DONE
+        .replace('{gefragt}', d.gefragt).replace('{vergeben}', d.vergeben)
+        .replace('{offen}', d.offen);
+    })
+    .catch(function () { out.textContent = '⚠️'; });
+}
 function coopTest(id) {
   const feld = document.getElementById('coop-test-' + id);
   const out = document.getElementById('coop-out-' + id);

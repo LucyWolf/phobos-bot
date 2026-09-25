@@ -5993,6 +5993,46 @@ async def coop_status(request: Request, guild_id: int, coop_id: int):
     return JSONResponse(info)
 
 
+@web.post("/servers/{guild_id}/coop/interval")
+async def coop_interval_save(request: Request, guild_id: int, minutes: str = Form("")):
+    """Wie oft der Bot die Mitglieder mit den Partnern abgleicht. 0 = nur beim Beitritt."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    try:
+        wert = max(0, min(1440, int((minutes or "").strip() or 0)))
+    except ValueError:
+        wert = 15
+    await set_guild_config(guild_id, "coop_interval_minutes", str(wert))
+    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Gespeichert",
+                            status_code=302)
+
+
+@web.post("/servers/{guild_id}/coop/{coop_id}/sync")
+async def coop_sync(request: Request, guild_id: int, coop_id: int):
+    """Gleicht sofort ab, statt auf das Intervall zu warten.
+
+    Gebraucht, weil der Beitritts-Listener nur NEUE Mitglieder erfasst. Beim Einrichten ist
+    aber jeder schon da - ohne diesen Knopf passiert sichtbar nichts, obwohl alles richtig
+    eingestellt ist. Genau so ist es dem Nutzer ergangen: der Partner sagte ja, die Rolle
+    kam trotzdem nicht.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return JSONResponse({"ok": False, "error": "Kein Zugriff"}, status_code=403)
+    b = bot._bot_for_guild(guild_id)
+    guild = b.get_guild(guild_id) if b else None
+    cog = b.cogs.get("RoleRules") if b else None
+    if not guild or not cog:
+        return JSONResponse({"ok": False, "error": "Der Bot ist auf diesem Server gerade nicht erreichbar."})
+    try:
+        ergebnis = await cog.kooperations_durchgang(guild, coop_id=coop_id, limit=50)
+    except Exception as e:
+        print(f"[coop] Abgleich fehlgeschlagen: {e}")
+        return JSONResponse({"ok": False, "error": str(e)[:160]})
+    return JSONResponse({"ok": True, **ergebnis})
+
+
 @web.post("/servers/{guild_id}/coop/{coop_id}/test")
 async def coop_test(request: Request, guild_id: int, coop_id: int, user_id: str = Form("")):
     """Fragt den Partner testweise nach einer Discord-ID und zeigt, was zurueckkommt.

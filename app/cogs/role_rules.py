@@ -61,6 +61,11 @@ class RoleRules(commands.Cog):
         # see there).
         self._processing: set[tuple[int, int]] = set()
         self._last_run: dict[int, float] = {}
+        # Wo der letzte Kooperations-Durchgang je Partnerschaft aufgehoert hat, und wann er
+        # zuletzt lief. Im Arbeitsspeicher: geht beides beim Neustart verloren, faengt der
+        # naechste Durchgang vorne an - das kostet ein paar Anfragen, mehr nicht.
+        self._coop_zeiger: dict[str, int] = {}
+        self._coop_last: dict[int, float] = {}
         self._debug_log: collections.deque = collections.deque(maxlen=DEBUG_LOG_MAXLEN)
         # (guild_id, role_id) -> time.monotonic() of the last FAILED auto-create, see
         # AUTOCREATE_RETRY_SECONDS.
@@ -529,6 +534,75 @@ class RoleRules(commands.Cog):
         except Exception as e:
             self._log(f"Kooperations-Pruefung fuer {member.id} fehlgeschlagen: {e}")
 
+    async def kooperations_durchgang(self, guild, coop_id=None, limit: int = 25) -> dict:
+        """Geht die Mitglieder durch und holt nach, was beim Beitritt nicht passiert ist.
+
+        Der Beitritts-Listener greift nur bei NEUEN Leuten. Wer schon auf dem Server ist -
+        und das sind beim Einrichten erst einmal alle - wird nie gefragt. Genau daran ist der
+        erste Versuch gescheitert: der Partner sagte ja, und trotzdem bekam niemand die Rolle.
+
+        `limit` deckelt, wie viele Mitglieder je Durchgang gefragt werden. Jede Frage ist eine
+        Anfrage beim Partner, und der bremst ab 60 in der Minute - mit Recht. Wer nicht
+        drankommt, kommt beim naechsten Durchgang dran; gemerkt wird, wo aufgehoert wurde.
+        """
+        fragen = getattr(self.bot, "coop_ask", None)
+        if fragen is None:
+            return {"gefragt": 0, "vergeben": 0, "offen": 0}
+        try:
+            if coop_id is None:
+                partner = await db_rows(
+                    "SELECT * FROM coop_partners WHERE guild_id=? AND enabled=1",
+                    (str(guild.id),))
+            else:
+                partner = await db_rows(
+                    "SELECT * FROM coop_partners WHERE guild_id=? AND id=? AND enabled=1",
+                    (str(guild.id), coop_id))
+        except Exception as e:
+            self._log(f"Kooperationen nicht lesbar: {e}")
+            return {"gefragt": 0, "vergeben": 0, "offen": 0}
+
+        gefragt = vergeben = offen = 0
+        for row in partner:
+            if not (row["base_url"] or "").strip() or not (row["key_out"] or "").strip():
+                continue
+            rollen_ids = [r.strip() for r in (row["grant_role_ids"] or "").split(",") if r.strip()]
+            rollen = [guild.get_role(int(r)) for r in rollen_ids if r.isdigit()]
+            rollen = [r for r in rollen if r]
+            if not rollen:
+                continue
+            # Nur wer die Rolle noch NICHT hat, muss gefragt werden - alle anderen kosten
+            # nur eine Anfrage fuer eine Antwort, die nichts aendert.
+            kandidaten = [m for m in guild.members
+                          if not m.bot and not all(r in m.roles for r in rollen)]
+            merker = f"{guild.id}:{row['id']}"
+            start = self._coop_zeiger.get(merker, 0) % max(1, len(kandidaten))
+            reihe = kandidaten[start:] + kandidaten[:start]
+            offen += max(0, len(kandidaten) - limit)
+            for member in reihe[:limit]:
+                gefragt += 1
+                try:
+                    if not await fragen(row, member.id):
+                        continue
+                except Exception as e:
+                    self._log(f"Partner {row['name']!r} nicht erreichbar: {e}")
+                    break
+                fehlt = [r for r in rollen if r not in member.roles]
+                try:
+                    await member.add_roles(*fehlt, reason=f"Kooperation: {row['name']}"[:100])
+                    vergeben += 1
+                    self._log(f"{member.id} ueber Kooperation {row['name']!r} freigegeben")
+                except discord.Forbidden:
+                    self._log(f"darf {member.id} die Kooperations-Rollen nicht geben")
+                except (discord.HTTPException, OSError) as e:
+                    self._log(f"Rollenvergabe fuer {member.id} fehlgeschlagen: {e}")
+            self._coop_zeiger[merker] = start + min(limit, len(reihe))
+            try:
+                await db_exec("UPDATE coop_partners SET last_out=? WHERE id=?",
+                              (datetime.datetime.utcnow().isoformat(), row["id"]))
+            except Exception as e:
+                self._log(f"Zeitstempel der Kooperation nicht gesetzt: {e}")
+        return {"gefragt": gefragt, "vergeben": vergeben, "offen": offen}
+
     async def _kooperationen_pruefen(self, member) -> list:
         """Fragt jeden eingetragenen Partner und vergibt, was zugesagt ist. Gibt zurueck, was
         vergeben wurde.
@@ -629,6 +703,26 @@ class RoleRules(commands.Cog):
                         self._log(f"FEHLER: Periodische Prüfung für {member.id} in Guild {guild.id} fehlgeschlagen: {e}")
             except Exception as e:
                 self._log(f"FEHLER: Periodische Prüfung für Guild {guild.id} fehlgeschlagen: {e}")
+
+            # Der Kooperations-Abgleich laeuft auf seiner EIGENEN Uhr, unabhaengig von den
+            # Regeln darueber: er kostet Anfragen bei einer fremden Installation, die Regeln
+            # kosten gar nichts. Wer die Regeln jede Minute prueft, will deswegen nicht
+            # jede Minute beim Partner anklopfen.
+            try:
+                roh = await get_guild_config(guild.id, "coop_interval_minutes")
+                coop_takt = int(roh) if roh and str(roh).strip().lstrip("-").isdigit() else 15
+            except Exception:
+                coop_takt = 15
+            if coop_takt > 0 and now - self._coop_last.get(guild.id, 0) >= coop_takt * 60:
+                self._coop_last[guild.id] = now
+                try:
+                    ergebnis = await self.kooperations_durchgang(guild)
+                    if ergebnis["gefragt"]:
+                        self._log(f"Kooperations-Abgleich in Guild {guild.id}: "
+                                  f"{ergebnis['gefragt']} gefragt, {ergebnis['vergeben']} vergeben, "
+                                  f"{ergebnis['offen']} bleiben fuer den naechsten Durchgang")
+                except Exception as e:
+                    self._log(f"FEHLER: Kooperations-Abgleich in Guild {guild.id}: {e}")
 
     @_periodic.before_loop
     async def _before_periodic(self):
