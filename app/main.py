@@ -5886,11 +5886,17 @@ async def coop_add(request: Request, guild_id: int):
             f"/servers/{guild_id}?tab=rolerules&error=Die+Partner-Adresse+muss+mit+http+beginnen",
             status_code=302)
     schluessel = secrets.token_urlsafe(32)
+    # Die Freigabe gilt serverweit: ein neuer Partner bekommt dieselbe wie die bestehenden,
+    # sonst antwortet die frische Kooperation auf jede Frage mit Nein.
+    _vorhanden = await db_one(
+        "SELECT share_role_ids FROM coop_partners WHERE guild_id=? AND share_role_ids!='' LIMIT 1",
+        (str(guild_id),))
+    freigabe = (_vorhanden or {}).get("share_role_ids", "") if _vorhanden else ""
     try:
         await db_exec(
             "INSERT INTO coop_partners (guild_id, name, share_role_ids, key_in_hash, base_url, "
             "key_out, grant_role_ids, enabled, created_at, note) VALUES (?,?,?,?,?,?,?,1,?,?)",
-            (str(guild_id), name, _coop_rollen(form, "share_role_ids", guild),
+            (str(guild_id), name, freigabe,
              _token_hash(schluessel), base_url, key_out,
              _coop_rollen(form, "grant_role_ids", guild),
              datetime.datetime.utcnow().isoformat(), (form.get("note") or "").strip()[:300]),
@@ -5923,11 +5929,14 @@ async def coop_save(request: Request, guild_id: int, coop_id: int):
                              (coop_id, str(guild_id)))
     # guild_id in der Bedingung, nicht nur die id: sonst liesse sich die Kooperation eines
     # fremden Servers durch Raten der Nummer aendern.
+    # share_role_ids fehlt hier absichtlich: die Freigabe wird einmal fuer den ganzen
+    # Server gesetzt (/coop/share) und nicht je Partner. Stuende sie im UPDATE, wuerde
+    # jedes Speichern hier sie leeren, weil dieses Formular das Feld nicht mehr schickt.
     await db_exec(
-        "UPDATE coop_partners SET name=?, share_role_ids=?, base_url=?, key_out=?, "
+        "UPDATE coop_partners SET name=?, base_url=?, key_out=?, "
         "grant_role_ids=?, enabled=?, note=? WHERE id=? AND guild_id=?",
         (" ".join((form.get("name") or "").split())[:80] or "Partner",
-         _coop_rollen(form, "share_role_ids", guild), base_url,
+         base_url,
          # Leer heisst "unveraendert lassen" - wie beim SMTP- und beim VRChat-Passwort.
          # Der Schluessel wird nicht mehr ins Formular zurueckgeschrieben, also darf ein
          # leeres Feld ihn nicht loeschen.
@@ -5936,6 +5945,26 @@ async def coop_save(request: Request, guild_id: int, coop_id: int):
          1 if form.get("enabled") else 0, (form.get("note") or "").strip()[:300],
          coop_id, str(guild_id)),
     )
+    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Gespeichert", status_code=302)
+
+
+@web.post("/servers/{guild_id}/coop/share")
+async def coop_share(request: Request, guild_id: int):
+    """Setzt einmal fuer den ganzen Server, welche Rollen hier als Pruefung gelten.
+
+    Frueher stand das je Partner in einer Tabelle mit einem Kaestchen pro Rolle - bei drei
+    Partnern dreimal dieselbe Auswahl. Die Frage "was zaehlt bei uns als geprueft" haengt
+    aber an diesem Server und nicht daran, wer fragt. Geschrieben wird weiterhin in die
+    Spalte jedes Partners, damit /coop/check und /coop/info unveraendert bleiben.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    b = bot._bot_for_guild(guild_id)
+    guild = b.get_guild(guild_id) if b else None
+    form = await request.form()
+    await db_exec("UPDATE coop_partners SET share_role_ids=? WHERE guild_id=?",
+                  (_coop_rollen(form, "share_role_ids", guild), str(guild_id)))
     return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Gespeichert", status_code=302)
 
 
@@ -8109,7 +8138,22 @@ async def server_config(
         for _feld, _ziel in (("share_role_ids", "share_names"), ("grant_role_ids", "grant_names")):
             _d[_ziel] = [_rollen_namen.get(x.strip(), x.strip())
                          for x in (_d.get(_feld) or "").split(",") if x.strip()]
+        # Fuer die Auswahlreihe im Formular: id UND Name zusammen. Ueber zwei getrennte
+        # Listen zu laufen und darauf zu bauen, dass die Reihenfolge passt, geht irgendwann
+        # schief - eine Rolle, die es nicht mehr gibt, verschiebt sonst alles.
+        _d["grant_list"] = [{"id": x.strip(), "name": _rollen_namen.get(x.strip(), x.strip())}
+                            for x in (_d.get("grant_role_ids") or "").split(",") if x.strip()]
         _coops.append(_d)
+    # Welche Rollen bei uns als Pruefung gelten, ist eine Eigenschaft DIESES Servers und
+    # nicht des einzelnen Partners - die Oberflaeche fragt sie deshalb nur einmal ab. In der
+    # Datenbank steht sie weiterhin je Partner (Schema unveraendert); hier wird daraus die
+    # Vereinigung, damit eine aeltere Einrichtung mit abweichenden Saetzen nichts verliert.
+    _coop_share_ids = []
+    for _d in _coops:
+        for _x in (_d.get("share_role_ids") or "").split(","):
+            if _x.strip() and _x.strip() not in _coop_share_ids:
+                _coop_share_ids.append(_x.strip())
+    _coop_share = [{"id": _x, "name": _rollen_namen.get(_x, _x)} for _x in _coop_share_ids]
     # Die eigene Adresse zum Weitergeben: der Partner braucht sie zusammen mit dem
     # Schluessel, um hier anfragen zu koennen.
     _coop_eigene_adresse = await link_base_url()
@@ -8134,7 +8178,7 @@ async def server_config(
         "role_rules": role_rules, "all_guild_roles": _all_guild_roles,
         # Kooperationen mit fremden Installationen - eigener Abschnitt, eigene Tabelle, die
         # bestehenden Regeln oben bleiben davon unberuehrt.
-        "coops": _coops,
+        "coops": _coops, "coop_share": _coop_share,
         # Ein frisch erzeugter Schluessel wird genau einmal gezeigt und dabei aus der Sitzung
         # genommen: gespeichert ist nur sein Hash, ein zweites Mal gibt es ihn nicht.
         "coop_new_key": _coop_key_einmal, "coop_new_name": _coop_name_einmal,
