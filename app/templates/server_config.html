@@ -4753,7 +4753,13 @@ function updateAmpCmdPreview(id, action, value) {
   {% endif %}
 </div>
 
+{# Die vier Bereiche in EINEM Rahmen. Bewusst als zusaetzliche Umhuellung, statt die
+   inneren Karten aufzuloesen: dort laufen {% if %}-Zweige quer durch die
+   Verschachtelung, und wer da eine Klammer verschiebt, haengt den halben Reiter
+   in die ausgeklappte Info-Box - die traegt display:none, man saehe also gar
+   nichts mehr. Genau das ist in v1.17.52 passiert. #}
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:1.25rem;">
+<div style="padding:0;overflow:hidden;">
   <div style="padding:0.85rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
     <div style="font-weight:700;font-size:0.95rem;">{{ tr.rolerules_title }} <span style="font-weight:400;color:var(--muted);font-size:0.8rem;">{{ role_rules|length }} {{ tr.rolerules_total }}</span></div>
     <button class="btn btn-primary" style="font-size:0.78rem;padding:0.3rem 0.75rem;" onclick="const b=document.getElementById('create-rolerule-box');b.style.display=b.style.display==='none'?'':'none';">{{ tr.rolerules_btn_new }}</button>
@@ -4954,10 +4960,9 @@ function updateAmpCmdPreview(id, action, value) {
   {% for target in role_rule_target_guilds %}
   <div class="rr-target-name" data-guild="{{ target.id }}" data-name="{{ target.name }}"></div>
   {% endfor %}
+</div>
 
-{# Ab hier Abschnitte DERSELBEN Karte statt eigener Kaesten. Inhaltlich ist nichts
-   angefasst: jedes Formular, jeder Speichern-Knopf und jeder Hinweis steht unveraendert
-   da, nur die Rahmen dazwischen sind weg. #}
+
 <div style="padding:1rem 1.25rem;border-top:1px solid var(--border);">
   <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.5rem;">{{ tr.rolerules_interval_title }}</div>
   <form method="post" action="/servers/{{ guild.id }}/role-rules/save-interval" style="display:flex;gap:0.6rem;align-items:flex-end;flex-wrap:wrap;">
