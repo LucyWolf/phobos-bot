@@ -10264,8 +10264,18 @@ async def role_rule_toggle(request: Request, guild_id: int, rule_id: int):
     return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Aktualisiert", status_code=303)
 
 
-@web.post("/servers/{guild_id}/role-rules/save-interval")
-async def role_rule_save_interval(request: Request, guild_id: int):
+@web.post("/servers/{guild_id}/role-rules/save-settings")
+async def role_rule_save_settings(request: Request, guild_id: int):
+    """Intervall und Rollen-Nachbau in einem Rutsch.
+
+    Vorher zwei Routen mit zwei Formularen und zwei Speichern-Knoepfen, jeder in einer
+    eigenen Karte. Aus Sicht der Nutzerin ist das eine Einstellungsseite, kein Dutzend -
+    also auch ein Knopf. Die Werte selbst bleiben, wie sie waren, und eine bestehende
+    Installation merkt vom Zusammenlegen nichts.
+
+    Der Nachbau fehlender Rollen ist ohne den Schluessel AN (das war so gewuenscht) - hier
+    wird deshalb ausdruecklich "0" geschrieben, wenn der Haken fehlt.
+    """
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
@@ -10275,24 +10285,14 @@ async def role_rule_save_interval(request: Request, guild_id: int):
         if not (0 <= interval <= 1440):
             raise ValueError
     except ValueError:
-        return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error=Ungültiges+Intervall+(0-1440)", status_code=302)
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=rolerules&error=Ungültiges+Intervall+(0-1440)",
+            status_code=303)
     await set_guild_config(guild_id, "role_rules_interval_minutes", str(interval))
-    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Intervall+gespeichert", status_code=303)
-
-
-@web.post("/servers/{guild_id}/role-rules/save-autocreate")
-async def role_rule_save_autocreate(request: Request, guild_id: int):
-    """Whether cogs/role_rules.py may recreate an action role that no longer exists on the
-    target server. Stored as "1"/"0" with an ABSENT key meaning on - the behaviour was
-    user-requested as what the feature should simply do, so an install that never touches this
-    switch gets it, and only an explicit opt-out writes "0"."""
-    if r := auth_redirect(request): return r
-    if not await _guild_access(request, guild_id):
-        return RedirectResponse("/servers", status_code=302)
-    form = await request.form()
     await set_guild_config(guild_id, "role_rules_autocreate",
                            "1" if form.get("autocreate") == "1" else "0")
-    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Gespeichert", status_code=303)
+    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Gespeichert",
+                            status_code=303)
 
 
 # ── Server User Access ────────────────────────────────────────────────────────
