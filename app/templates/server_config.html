@@ -5119,7 +5119,11 @@ function updateAmpCmdPreview(id, action, value) {
                 </div>
                 <div>
                   <label>{{ tr.coop_keyout_label }}</label>
-                  <input type="password" name="key_out" maxlength="200" value="{{ c.key_out }}" style="margin:0;">
+                  {# Ohne value: type="password" verbirgt den Wert nur optisch, im
+                     Seitenquelltext staende er trotzdem. Leer lassen heisst "unveraendert"
+                     - dieselbe Regel wie beim SMTP- und beim VRChat-Passwort. #}
+                  <input type="password" name="key_out" maxlength="200" value=""
+                         placeholder="{{ tr.coop_key_kept if c.key_out else '' }}" style="margin:0;">
                   <div style="font-size:0.7rem;color:var(--muted);margin-top:0.2rem;">{{ tr.coop_keyout_hint }}</div>
                 </div>
               </div>

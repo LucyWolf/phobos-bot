@@ -5804,7 +5804,13 @@ async def coop_frage_info(row) -> dict:
     try:
         timeout = aiohttp.ClientTimeout(total=8)
         async with aiohttp.ClientSession(timeout=timeout) as sitzung:
-            async with sitzung.post(f"{ziel}/coop/info", data={"key": schluessel}) as antwort:
+            # allow_redirects=False ist hier KEINE Feinheit, sondern der halbe Schutz:
+            # geprueft wird die Adresse, die wir anrufen. Folgt die Verbindung danach einer
+            # Umleitung, landet sie ungeprueft irgendwo - und "irgendwo" heisst bei einem
+            # Server im eigenen Netz eben auch 127.0.0.1 oder der Metadaten-Dienst des
+            # Anbieters. aiohttp folgt von sich aus bis zu zehn Umleitungen.
+            async with sitzung.post(f"{ziel}/coop/info", data={"key": schluessel},
+                                    allow_redirects=False) as antwort:
                 if antwort.status == 403:
                     return {"ok": False, "error": "Der Partner lehnt diesen Schlüssel ab."}
                 if antwort.status == 429:
@@ -5839,8 +5845,10 @@ async def coop_frage_partner(row, user_id) -> bool:
     try:
         timeout = aiohttp.ClientTimeout(total=8)
         async with aiohttp.ClientSession(timeout=timeout) as sitzung:
+            # Keine Umleitungen - siehe coop_frage_info().
             async with sitzung.post(f"{ziel}/coop/check",
-                                    data={"key": schluessel, "user_id": str(user_id)}) as antwort:
+                                    data={"key": schluessel, "user_id": str(user_id)},
+                                    allow_redirects=False) as antwort:
                 if antwort.status != 200:
                     return False
                 daten = await _coop_antwort_lesen(antwort)
@@ -5911,6 +5919,8 @@ async def coop_save(request: Request, guild_id: int, coop_id: int):
         return RedirectResponse(
             f"/servers/{guild_id}?tab=rolerules&error=Die+Partner-Adresse+muss+mit+http+beginnen",
             status_code=302)
+    bestehend = await db_one("SELECT key_out FROM coop_partners WHERE id=? AND guild_id=?",
+                             (coop_id, str(guild_id)))
     # guild_id in der Bedingung, nicht nur die id: sonst liesse sich die Kooperation eines
     # fremden Servers durch Raten der Nummer aendern.
     await db_exec(
@@ -5918,7 +5928,10 @@ async def coop_save(request: Request, guild_id: int, coop_id: int):
         "grant_role_ids=?, enabled=?, note=? WHERE id=? AND guild_id=?",
         (" ".join((form.get("name") or "").split())[:80] or "Partner",
          _coop_rollen(form, "share_role_ids", guild), base_url,
-         (form.get("key_out") or "").strip()[:200],
+         # Leer heisst "unveraendert lassen" - wie beim SMTP- und beim VRChat-Passwort.
+         # Der Schluessel wird nicht mehr ins Formular zurueckgeschrieben, also darf ein
+         # leeres Feld ihn nicht loeschen.
+         (form.get("key_out") or "").strip()[:200] or (bestehend or {}).get("key_out", ""),
          _coop_rollen(form, "grant_role_ids", guild),
          1 if form.get("enabled") else 0, (form.get("note") or "").strip()[:300],
          coop_id, str(guild_id)),
