@@ -5058,17 +5058,27 @@ function updateAmpCmdPreview(id, action, value) {
           style="margin:0.9rem 0 0;border-top:1px solid var(--border);padding-top:0.7rem;">
       <div style="font-weight:600;font-size:0.8rem;margin-bottom:0.2rem;">🤝 {{ tr.coop_share_heading }}</div>
       <div class="hint" style="margin-bottom:0.45rem;">{{ tr.coop_share_hint }}</div>
+      {% set share_gewaehlt = coop_share|map(attribute='id')|list %}
       <div id="coop-share-chips" style="display:flex;flex-wrap:wrap;gap:0.3rem;align-items:center;min-height:1.6rem;">
         {% for r in coop_share %}
-        <span class="badge badge-moderator">{{ r.name }}<input type="hidden" name="share_role_ids" value="{{ r.id }}"><button type="button" onclick="coopChipWeg(this)" title="{{ tr.coop_role_remove }}" style="background:none;border:0;color:inherit;cursor:pointer;margin-left:0.3rem;padding:0;font-size:0.85em;">✕</button></span>
+        <span class="badge badge-moderator">{{ r.name }}<button type="button" onclick="coopChipWeg(this, 'pool-share-{{ r.id }}')" title="{{ tr.coop_role_remove }}" style="background:none;border:0;color:inherit;cursor:pointer;margin-left:0.3rem;padding:0;font-size:0.85em;">✕</button><input type="hidden" name="share_role_ids" value="{{ r.id }}"></span>
         {% endfor %}
       </div>
+      {# Der Vorrat klappt auf und bleibt offen: eine Rolle anklicken wandert nach oben, die
+         naechste ist einen Klick entfernt. Ein Klappfeld sprang nach jeder Wahl zurueck. #}
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-top:0.5rem;">
-        <select onchange="coopChipDazu(this, 'coop-share-chips', 'share_role_ids')" style="margin:0;max-width:260px;">
-          <option value="">{{ tr.coop_role_add }}</option>
-          {% for r in roles %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
-        </select>
+        <button type="button" class="btn btn-secondary" onclick="coopPoolZeigen('pool-share')"
+                style="font-size:0.78rem;padding:0.25rem 0.7rem;">＋ {{ tr.coop_role_add }}</button>
         <button type="submit" class="btn btn-secondary">{{ tr.btn_save }}</button>
+      </div>
+      <div id="pool-share" style="display:none;flex-wrap:wrap;gap:0.3rem;margin-top:0.5rem;padding:0.5rem;border:1px solid var(--border);border-radius:0.5rem;background:var(--bg);">
+        {% for r in roles %}
+        <button type="button" id="pool-share-{{ r.id }}" class="btn btn-secondary"
+                style="font-size:0.75rem;padding:0.2rem 0.55rem;{% if r.id in share_gewaehlt %}display:none;{% endif %}"
+                data-id="{{ r.id }}" data-name="{{ r.name }}"
+                onclick="coopPoolWahl(this, 'coop-share-chips', 'share_role_ids')">{{ r.name }}</button>
+        {% endfor %}
+        <span class="hint" style="width:100%;margin:0.3rem 0 0;">{{ tr.coop_role_pool_hint }}</span>
       </div>
     </form>
     {% endif %}
@@ -5172,16 +5182,24 @@ function updateAmpCmdPreview(id, action, value) {
                  Die Freigabe ("gilt als geprueft") steht oben einmal fuer den Server. #}
               <div style="font-weight:600;font-size:0.8rem;margin:1rem 0 0.2rem;">{{ tr.coop_step2 }}</div>
               <div class="hint" style="margin-bottom:0.5rem;">{{ tr.coop_roles_hint }}</div>
+              {% set grant_gewaehlt = c.grant_list|map(attribute='id')|list %}
               <div id="coop-grant-chips-{{ c.id }}" style="display:flex;flex-wrap:wrap;gap:0.3rem;align-items:center;min-height:1.6rem;">
                 {% for r in c.grant_list %}
-                <span class="badge badge-moderator">{{ r.name }}<input type="hidden" name="grant_role_ids" value="{{ r.id }}"><button type="button" onclick="coopChipWeg(this)" title="{{ tr.coop_role_remove }}" style="background:none;border:0;color:inherit;cursor:pointer;margin-left:0.3rem;padding:0;font-size:0.85em;">✕</button></span>
+                <span class="badge badge-moderator">{{ r.name }}<button type="button" onclick="coopChipWeg(this, 'pool-grant-{{ c.id }}-{{ r.id }}')" title="{{ tr.coop_role_remove }}" style="background:none;border:0;color:inherit;cursor:pointer;margin-left:0.3rem;padding:0;font-size:0.85em;">✕</button><input type="hidden" name="grant_role_ids" value="{{ r.id }}"></span>
                 {% endfor %}
               </div>
               <div style="margin:0.5rem 0 0.9rem;">
-                <select onchange="coopChipDazu(this, 'coop-grant-chips-{{ c.id }}', 'grant_role_ids')" style="margin:0;max-width:260px;">
-                  <option value="">{{ tr.coop_role_add }}</option>
-                  {% for r in roles %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
-                </select>
+                <button type="button" class="btn btn-secondary" onclick="coopPoolZeigen('pool-grant-{{ c.id }}')"
+                        style="font-size:0.78rem;padding:0.25rem 0.7rem;">＋ {{ tr.coop_role_add }}</button>
+                <div id="pool-grant-{{ c.id }}" style="display:none;flex-wrap:wrap;gap:0.3rem;margin-top:0.5rem;padding:0.5rem;border:1px solid var(--border);border-radius:0.5rem;background:var(--bg);">
+                  {% for r in roles %}
+                  <button type="button" id="pool-grant-{{ c.id }}-{{ r.id }}" class="btn btn-secondary"
+                          style="font-size:0.75rem;padding:0.2rem 0.55rem;{% if r.id in grant_gewaehlt %}display:none;{% endif %}"
+                          data-id="{{ r.id }}" data-name="{{ r.name }}"
+                          onclick="coopPoolWahl(this, 'coop-grant-chips-{{ c.id }}', 'grant_role_ids')">{{ r.name }}</button>
+                  {% endfor %}
+                  <span class="hint" style="width:100%;margin:0.3rem 0 0;">{{ tr.coop_role_pool_hint }}</span>
+                </div>
               </div>
 
               <div>
@@ -5262,33 +5280,36 @@ function coopKopieren(id, knopf) {
 }
 // Rollen-Chips: eine Reihe statt einer Tabelle voller Kaestchen. Jeder Chip traegt das
 // versteckte Feld, das frueher das Kaestchen war - Route und Datenbank bleiben gleich.
-function coopChipWeg(knopf) {
+// Der Vorrat darunter bleibt beim Anklicken offen, damit mehrere Rollen hintereinander
+// hineinwandern koennen; eine gewaehlte Rolle verschwindet dort und kommt beim Entfernen
+// zurueck, sonst haette man sie zweimal.
+function coopPoolZeigen(id) {
+  const pool = document.getElementById(id);
+  if (pool) pool.style.display = (pool.style.display === 'none' ? 'flex' : 'none');
+}
+function coopChipWeg(knopf, poolId) {
   const chip = knopf.parentNode;
   if (chip && chip.parentNode) chip.parentNode.removeChild(chip);
+  if (poolId) {
+    const zurueck = document.getElementById(poolId);
+    if (zurueck) zurueck.style.display = '';
+  }
 }
-function coopChipDazu(wahl, behaelter, feld) {
-  const id = wahl.value;
-  // Den Namen holen, SOLANGE die Auswahl noch steht - nach dem Zuruecksetzen steht dort
-  // wieder "Rolle hinzufuegen".
-  const name = wahl.options[wahl.selectedIndex].textContent;
-  wahl.selectedIndex = 0;
-  if (!id) return;
+function coopPoolWahl(knopf, behaelter, feld) {
   const box = document.getElementById(behaelter);
   if (!box) return;
-  // Zweimal dieselbe Rolle waere zweimal dasselbe versteckte Feld - stillschweigend nichts tun.
-  const schon = box.querySelectorAll('input[type="hidden"]');
-  for (let i = 0; i < schon.length; i++) { if (schon[i].value === id) return; }
+  knopf.style.display = 'none';
   const chip = document.createElement('span');
   chip.className = 'badge badge-moderator';
   // textContent, nicht innerHTML: der Rollenname kommt von Discord und darf kein Markup sein.
-  chip.textContent = name;
-  const feldchen = document.createElement('input');
-  feldchen.type = 'hidden'; feldchen.name = feld; feldchen.value = id;
+  chip.textContent = knopf.dataset.name;
   const weg = document.createElement('button');
-  weg.type = 'button'; weg.textContent = '✕';
+  weg.type = 'button'; weg.textContent = '\u2715';
   weg.style.cssText = 'background:none;border:0;color:inherit;cursor:pointer;margin-left:0.3rem;padding:0;font-size:0.85em;';
-  weg.onclick = function () { coopChipWeg(weg); };
-  chip.appendChild(feldchen); chip.appendChild(weg);
+  weg.onclick = function () { coopChipWeg(weg, knopf.id); };
+  const feldchen = document.createElement('input');
+  feldchen.type = 'hidden'; feldchen.name = feld; feldchen.value = knopf.dataset.id;
+  chip.appendChild(weg); chip.appendChild(feldchen);
   box.appendChild(chip);
 }
 function coopMarkieren(id) {
