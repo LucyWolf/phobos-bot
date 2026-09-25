@@ -21,6 +21,17 @@ EPIC_URL = (
 
 GAMERPOWER_URL = "https://www.gamerpower.com/api/giveaways"
 
+# CheapShark rechnet in US-Dollar. Steam verlangt in Deutschland aber eigene Preise, die dem
+# Wechselkurs NICHT folgen - live nachgemessen: 13.62 $ -> 15.49 EUR (drueber), 17.49 $ ->
+# 15.99 EUR (drunter). Wer "hoechstens 20 EUR" einstellt, bekam deshalb Spiele gemeldet, die
+# hier ueber 20 EUR kosten. Dieser Endpunkt gibt den echten Euro-Preis, ohne Schluessel und
+# fuer mehrere Spiele in einem Aufruf.
+STEAM_PRICE_URL = "https://store.steampowered.com/api/appdetails"
+STEAM_PRICE_CHUNK = 40
+# Beim Abruf etwas ueber die Grenze hinausgreifen: ein Spiel fuer 21 $ kann hier 19 EUR
+# kosten und soll nicht verloren gehen. Aussortiert wird danach am echten Euro-Preis.
+DEAL_FETCH_PUFFER = 1.3
+
 PLATFORMS = {
     "epic":      {"name": "Epic Games",      "icon": "🎮", "color": 0x313131, "cs_id": None,  "gp": None,     "gp_match": None},
     "steam":     {"name": "Steam",           "icon": "🖥️", "color": 0x1B2838, "cs_id": "1",   "gp": None,     "gp_match": None},
@@ -74,6 +85,18 @@ def _epic_extract(elements: list) -> list:
         except Exception:
             continue
     return out
+
+
+def _preis_text(usd: float, eur: float | None) -> str:
+    """Beide Waehrungen, wo wir beide kennen - sonst ehrlich nur die, die wir haben.
+
+    CheapShark rechnet in Dollar. Frueher stand hinter dieser Zahl ein Eurozeichen; wer
+    "hoechstens 20 EUR" eingestellt hatte, bekam damit Spiele gemeldet, die hier ueber
+    20 EUR kosten.
+    """
+    if eur is not None:
+        return f"{eur:.2f} \u20ac ({usd:.2f} $)"
+    return f"{usd:.2f} $"
 
 
 class FreeStuff(commands.Cog):
@@ -187,7 +210,54 @@ class FreeStuff(commands.Cog):
         for r in results:
             if isinstance(r, list):
                 out.extend(r)
+        # Auch bei den Gratis-Spielen den Normalpreis in Euro nachschlagen: im selben Kanal
+        # einmal "59.99 $" und einmal "49,99 EUR" zu lesen, wuerde nur verwirren.
+        eur = await self._steam_eur([g["steam_app_id"] for g in out
+                                     if g["platform"] == "steam" and g.get("steam_app_id")])
+        for g in out:
+            treffer = eur.get(str(g.get("steam_app_id") or "")) if g["platform"] == "steam" else None
+            if treffer:
+                g["sale_eur"], g["original_eur"] = treffer
         return out
+
+    async def _steam_eur(self, app_ids: list) -> dict:
+        """Holt zu Steam-IDs den echten Preis in Euro: {app_id: (angebot, normal)}.
+
+        Faellt der Abruf aus oder kennt Steam ein Spiel nicht (F2P, nicht im Land
+        erhaeltlich), fehlt der Eintrag einfach - der Aufrufer rechnet dann weiter in
+        Dollar, statt gar nichts zu melden.
+        """
+        raus = {}
+        eindeutig = [str(a) for a in dict.fromkeys(app_ids) if str(a).isdigit()]
+        for i in range(0, len(eindeutig), STEAM_PRICE_CHUNK):
+            block = eindeutig[i:i + STEAM_PRICE_CHUNK]
+            url = (f"{STEAM_PRICE_URL}?appids={','.join(block)}"
+                   f"&cc=de&l=german&filters=price_overview")
+
+            def _get():
+                req = urllib.request.Request(url, headers={"User-Agent": "PhobosBot/1.0"})
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    return json.loads(r.read())
+
+            try:
+                daten = await asyncio.to_thread(_get)
+            except Exception as e:
+                print(f"[FreeStuff] Steam-Preise ({len(block)} IDs): {e}")
+                continue
+            if not isinstance(daten, dict):
+                continue
+            for app_id, eintrag in daten.items():
+                if not isinstance(eintrag, dict) or not eintrag.get("success"):
+                    continue
+                preis = (eintrag.get("data") or {}).get("price_overview") or {}
+                if preis.get("currency") != "EUR":
+                    continue
+                jetzt, vorher = preis.get("final"), preis.get("initial")
+                if not jetzt:
+                    continue
+                raus[str(app_id)] = (jetzt / 100.0,
+                                     (vorher / 100.0) if vorher else None)
+        return raus
 
     async def _fetch_deals(self, platforms: set, max_price: float, min_disc: int) -> list:
         fetch_tasks = []
@@ -195,14 +265,32 @@ class FreeStuff(commands.Cog):
             if key in platforms and info["cs_id"]:
                 fetch_tasks.append(self._fetch_cheapshark(
                     info["cs_id"], key,
-                    upper=max_price, lower=0.01,
+                    upper=round(max_price * DEAL_FETCH_PUFFER, 2), lower=0.01,
                     min_disc=min_disc,
                 ))
         results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
-        out = []
+        roh = []
         for r in results:
             if isinstance(r, list):
-                out.extend(r)
+                roh.extend(r)
+
+        # Zu den Steam-Angeboten den echten Euro-Preis holen. Nur fuer Steam: bei GOG,
+        # Humble, Fanatical und GMG waere es der Preis eines anderen Ladens.
+        eur = await self._steam_eur([g["steam_app_id"] for g in roh
+                                     if g["platform"] == "steam" and g.get("steam_app_id")])
+        out = []
+        for g in roh:
+            if g["platform"] == "steam":
+                treffer = eur.get(str(g.get("steam_app_id") or ""))
+                if treffer:
+                    g["sale_eur"], g["original_eur"] = treffer
+            # Selbst nachpruefen, statt dem Filter der fremden Schnittstelle zu glauben.
+            # Massgeblich ist der Euro-Preis, wo wir ihn kennen; sonst bleibt es beim
+            # Dollarpreis - dann steht im Kaestchen auch ein Dollarzeichen.
+            preis = g["sale_eur"] if g.get("sale_eur") is not None else g["sale_price"]
+            if preis > max_price:
+                continue
+            out.append(g)
         return out
 
     async def _fetch_epic(self) -> list:
@@ -347,6 +435,10 @@ class FreeStuff(commands.Cog):
                         "end_date": "",
                         "original_price": normal,
                         "sale_price": sale,
+                        # Bleibt None, solange niemand den Euro-Preis nachgeschlagen hat.
+                        "sale_eur": None,
+                        "original_eur": None,
+                        "steam_app_id": steam_id,
                         "discount": int(savings),
                         "platform": platform,
                     })
@@ -391,8 +483,11 @@ class FreeStuff(commands.Cog):
             # Also applies to free games sourced via CheapShark (Steam/GOG/Humble/Fanatical/
             # GMG going to 100% off) - those carry a real original_price just like a deal
             # would, only Epic/GamerPower-sourced free games leave it at None.
-            embed.add_field(name="Normalpreis", value=f"{orig:.2f} €", inline=True)
-            embed.add_field(name="Angebotspreis", value=f"{sale:.2f} €" if sale > 0 else "Gratis", inline=True)
+            embed.add_field(name="Normalpreis",
+                            value=_preis_text(orig, game.get("original_eur")), inline=True)
+            embed.add_field(name="Angebotspreis",
+                            value=_preis_text(sale, game.get("sale_eur")) if sale > 0 else "Gratis",
+                            inline=True)
             embed.add_field(name="Rabatt", value=f"-{disc}%", inline=True)
         elif game.get("end_date"):
             embed.add_field(name="Verfügbar bis", value=game["end_date"], inline=True)
