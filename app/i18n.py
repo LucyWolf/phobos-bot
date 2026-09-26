@@ -1106,9 +1106,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "rolerules_dm_label":     "Nachricht an das Mitglied",
         "rolerules_dm_placeholder": "Hallo {user}, auf {server} hast du jetzt: {rollen}",
         "rolerules_dm_hint":      "Ohne Haken wird nichts gesendet, der Text bleibt aber stehen. Platzhalter: {user}, {mention}, {server}, {rollen}. Entfernt eine Regel nur Rollen, kommt keine Nachricht.",
-        "rolerules_rule_dm_label": "Nachricht für diese Regel",
-        "rolerules_rule_dm_placeholder": "Leer = der Text weiter unten gilt",
-        "rolerules_rule_dm_hint": "Nur für diese eine Regel. Leer lassen heißt: es gilt der Text, der weiter unten für alle Regeln steht. Platzhalter: {user}, {mention}, {server}, {rollen}.",
+        "rolerules_rule_dm_label": "Dem Mitglied eine Nachricht schicken, wenn diese Regel greift",
+        "rolerules_rule_dm_placeholder": "Hallo {user}, auf {server} hast du jetzt: {rollen}",
+        "rolerules_rule_dm_hint": "Gilt nur für diese Regel — jede Regel hat ihre eigene Nachricht. Ohne Haken oder ohne Text wird nichts geschickt. Platzhalter: {user}, {mention}, {server}, {rollen}. Entfernt die Regel nur Rollen, kommt keine Nachricht.",
         # Die Namen der Reiter in der Seitenleiste. Sie standen frueher hart in
         # _server_subnav.html und in zwei Tabellen in main.py - auf einer englisch
         # gestellten Oberflaeche stand deshalb "Willkommen" neben "Tickets".
@@ -2376,9 +2376,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "rolerules_dm_label":     "Message to the member",
         "rolerules_dm_placeholder": "Hi {user}, on {server} you now have: {rollen}",
         "rolerules_dm_hint":      "Without the tick nothing is sent, but the text stays. Placeholders: {user}, {mention}, {server}, {rollen}. A rule that only removes roles sends nothing.",
-        "rolerules_rule_dm_label": "Message for this rule",
-        "rolerules_rule_dm_placeholder": "Empty = the text further down applies",
-        "rolerules_rule_dm_hint": "For this one rule only. Leaving it empty means the text further down, the one for all rules, applies. Placeholders: {user}, {mention}, {server}, {rollen}.",
+        "rolerules_rule_dm_label": "Send the member a message when this rule applies",
+        "rolerules_rule_dm_placeholder": "Hi {user}, on {server} you now have: {rollen}",
+        "rolerules_rule_dm_hint": "Applies to this rule only — every rule has its own message. Without the tick, or without a text, nothing is sent. Placeholders: {user}, {mention}, {server}, {rollen}. A rule that only removes roles sends nothing.",
         # Die Namen der Reiter in der Seitenleiste. Sie standen frueher hart in
         # _server_subnav.html und in zwei Tabellen in main.py - auf einer englisch
         # gestellten Oberflaeche stand deshalb "Willkommen" neben "Tickets".

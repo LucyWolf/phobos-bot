@@ -1212,6 +1212,12 @@ async def init_db():
             # Text, der fuer den ganzen Server hinterlegt ist - so bleibt eine bestehende
             # Einrichtung genau so, wie sie war.
             "ALTER TABLE role_rules ADD COLUMN dm_text TEXT NOT NULL DEFAULT ''",
+            # Der Schalter gehoert zur Regel, nicht zum Server ("instead there should be an
+            # option that a message get send to an user for each rule"). Eine Regel, die
+            # aus v1.17.63 schon einen Text traegt, bekommt ihn dabei angeschaltet - sonst
+            # verstummte sie beim Update, ohne dass jemand etwas geaendert haette.
+            "ALTER TABLE role_rules ADD COLUMN dm_enabled INTEGER NOT NULL DEFAULT 0",
+            "UPDATE role_rules SET dm_enabled=1 WHERE TRIM(dm_text) != ''",
         ]:
             try:
                 await db.execute(col)

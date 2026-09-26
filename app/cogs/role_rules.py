@@ -377,7 +377,8 @@ class RoleRules(commands.Cog):
                             # Regel wie oben: holt eine spaetere Regel die Rolle wieder
                             # heran, gilt auch ihr Text.
                             for rid in action_ids:
-                                text_je_rolle[rid] = (rule.get("dm_text") or "").strip()
+                                text_je_rolle[rid] = ((rule.get("dm_text") or "").strip()
+                                                      if rule.get("dm_enabled") else "")
                     else:
                         # Grouped by target guild (not a flat list of per-rule actions) and
                         # merged with the same "later action wins" semantics as the same-guild
@@ -403,7 +404,8 @@ class RoleRules(commands.Cog):
                             bucket["add"] |= action_ids
                             bucket["remove"] -= action_ids
                             for rid in action_ids:
-                                texte[rid] = (rule.get("dm_text") or "").strip()
+                                texte[rid] = ((rule.get("dm_text") or "").strip()
+                                              if rule.get("dm_enabled") else "")
             except (ValueError, TypeError) as e:
                 # actions is printed alongside action_role_ids: since a rule can carry several
                 # action blocks, the legacy column shows only the FIRST one, so a rule whose
@@ -695,38 +697,29 @@ class RoleRules(commands.Cog):
     async def _regel_pm(self, member, rollen, texte: dict | None = None):
         """Schreibt dem Mitglied, dass eine Regel ihm Rollen gegeben hat.
 
-        Der Text steht an der einzelnen Regel; leer heisst, dass der Text des Servers gilt.
+        Text UND Schalter stehen an der einzelnen Regel: bei mehreren Regeln will man je
+        Anlass etwas anderes schreiben - und die eine melden, die andere nicht. Eine Regel
+        ohne Haken oder ohne Text schweigt, unabhaengig von allen anderen.
+
         Haben zwei Regeln in einem Durchgang verschiedene Texte geschrieben, gibt es auch
         zwei Nachrichten - je eine mit den Rollen, die zu ihr gehoeren. Alles in eine zu
         werfen wuerde beide Texte falsch machen.
 
         Getrennt von _koop_pm: eine Regel wirkt innerhalb dieser Installation, eine
-        Kooperation reicht zu jemandem, dem man vertraut - das sind zwei verschiedene
-        Anlaesse, und wer nur den einen melden will, soll den anderen abschalten koennen.
-
-        Der Haken entscheidet, nicht der leere Text: so bleibt ein geschriebener Satz
-        erhalten, wenn man die Nachricht eine Weile ausstellt.
+        Kooperation reicht zu jemandem, dem man vertraut - zwei verschiedene Anlaesse.
         """
         if not rollen:
             return
-        try:
-            an = (await get_guild_config(member.guild.id, "rolerules_dm_enabled") or "0") == "1"
-            server_text = (await get_guild_config(member.guild.id, "rolerules_dm_text") or "").strip()
-        except Exception as e:
-            self._log(f"PM-Einstellung nicht lesbar: {e}")
-            return
-        if not an:
-            return
-
         # Nach Text gruppieren, damit jede Nachricht genau die Rollen nennt, die zu ihr
-        # gehoeren. Ohne eigenen Text der Regel gilt der des Servers; fehlt auch der,
-        # bleibt diese Gruppe stumm.
+        # gehoeren. Rollen, deren Regel nichts schreiben will, tragen hier gar keinen Text.
         texte = texte or {}
         gruppen: dict = {}
         for rolle in rollen:
-            vorlage = (texte.get(rolle.id) or "").strip() or server_text
+            vorlage = (texte.get(rolle.id) or "").strip()
             if vorlage:
                 gruppen.setdefault(vorlage, []).append(rolle)
+        if not gruppen:
+            return
 
         for vorlage, gruppe in gruppen.items():
             ersatz = {
