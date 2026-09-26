@@ -47,7 +47,10 @@
 <div class="card" style="margin-bottom:1.25rem;">
   <div class="feat-header" style="margin-bottom:0.5rem;">🗣️ {{ tr.bot_lang_title }}</div>
   <p class="hint" style="margin-bottom:0.85rem;">{{ tr.bot_lang_hint }}</p>
-  <form method="post" action="/servers/{{ guild.id }}/save">
+  {# Die Reiter-Speicherroute ist POST /servers/<id> - ohne /save. Mit dem erfundenen
+     Pfad antwortete FastAPI mit "Not Found", und die Einstellung liess sich gar nicht
+     speichern. #}
+  <form method="post" action="/servers/{{ guild.id }}">
     <input type="hidden" name="tab" value="config">
     <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:flex-end;">
       <div style="min-width:200px;">
