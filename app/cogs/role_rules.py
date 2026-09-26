@@ -14,6 +14,11 @@ docker-logs-only trace, main.py's dashboard reads this directly (via bot._bot_fo
 .get_cog("RoleRules")._debug_log) to show it right on the CrossVerification tab, since asking a
 self-hoster to run docker exec commands for every troubleshooting round doesn't scale.
 """
+# Chaquopy bringt sein eigenes Python 3.8 mit (siehe android/README.md): dict[str, int]
+# und X | Y in einer Annotation sind dort keine Hinweise, sondern Ausdruecke, die beim
+# IMPORT ausgewertet werden - das Modul wirft einen TypeError, bevor irgendetwas laeuft.
+# Diese Zeile macht alle Annotationen zu Zeichenketten, die nie ausgewertet werden.
+from __future__ import annotations
 import collections
 import datetime
 import json

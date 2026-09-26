@@ -2,6 +2,11 @@
 a configurable grace period, sending one or more reminder DMs beforehand (auto_kick_reminders/
 auto_kick_sent). Only applies to members who joined after the feature was enabled. Configured
 via main.py's "Auto-Kick reminders" section."""
+# Chaquopy bringt sein eigenes Python 3.8 mit (siehe android/README.md): dict[str, int]
+# und X | Y in einer Annotation sind dort keine Hinweise, sondern Ausdruecke, die beim
+# IMPORT ausgewertet werden - das Modul wirft einen TypeError, bevor irgendetwas laeuft.
+# Diese Zeile macht alle Annotationen zu Zeichenketten, die nie ausgewertet werden.
+from __future__ import annotations
 import datetime
 import re
 

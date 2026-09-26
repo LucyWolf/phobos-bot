@@ -5,6 +5,11 @@ When the trigger is configured for it (temp_voice_config.panel_enabled), a contr
 posted into the new channel so its owner can rename it, limit it, lock or hide it and manage
 who may join - all without leaving Discord. The panel's title and text are the server's own.
 """
+# Chaquopy bringt sein eigenes Python 3.8 mit (siehe android/README.md): dict[str, int]
+# und X | Y in einer Annotation sind dort keine Hinweise, sondern Ausdruecke, die beim
+# IMPORT ausgewertet werden - das Modul wirft einen TypeError, bevor irgendetwas laeuft.
+# Diese Zeile macht alle Annotationen zu Zeichenketten, die nie ausgewertet werden.
+from __future__ import annotations
 import datetime
 import time
 
@@ -92,7 +97,11 @@ class TempVoicePanelView(ui.View):
         # cogs/tickets.py can register one close-button view for every ticket panel there is.
         if labels:
             for child in self.children:
-                key = (getattr(child, "custom_id", "") or "").removeprefix("tv:")
+                # str.removeprefix() gibt es erst ab Python 3.9 - Chaquopy liefert 3.8.
+                # Anders als eine Annotation faellt das erst beim Aufruf auf, also genau
+                # dann, wenn jemand auf dem Handy sein Sprachkanal-Panel oeffnet.
+                _cid = getattr(child, "custom_id", "") or ""
+                key = _cid[len("tv:"):] if _cid.startswith("tv:") else _cid
                 if key in labels:
                     child.label = labels[key]
 

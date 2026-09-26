@@ -1,6 +1,11 @@
 """Admin-defined "!trigger" -> response text commands, manageable via /addcommand, /delcommand,
 /commands, or the "Custom Commands" dashboard tab. Trigger can't collide with a real bot
 command (checked dynamically against self.bot.commands)."""
+# Chaquopy bringt sein eigenes Python 3.8 mit (siehe android/README.md): dict[str, int]
+# und X | Y in einer Annotation sind dort keine Hinweise, sondern Ausdruecke, die beim
+# IMPORT ausgewertet werden - das Modul wirft einen TypeError, bevor irgendetwas laeuft.
+# Diese Zeile macht alle Annotationen zu Zeichenketten, die nie ausgewertet werden.
+from __future__ import annotations
 import discord
 from discord import app_commands
 from discord.ext import commands

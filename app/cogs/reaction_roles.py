@@ -1,6 +1,11 @@
 """Reaction-role messages: react with an emoji on a tracked message to get/lose a role.
 Managed via /reactionrole-add/-remove/-list or the dashboard "Reaction Roles" tab - adding one
 also actually places the reaction on the Discord message, not just a DB row."""
+# Chaquopy bringt sein eigenes Python 3.8 mit (siehe android/README.md): dict[str, int]
+# und X | Y in einer Annotation sind dort keine Hinweise, sondern Ausdruecke, die beim
+# IMPORT ausgewertet werden - das Modul wirft einen TypeError, bevor irgendetwas laeuft.
+# Diese Zeile macht alle Annotationen zu Zeichenketten, die nie ausgewertet werden.
+from __future__ import annotations
 import discord
 from discord import app_commands
 from discord.ext import commands

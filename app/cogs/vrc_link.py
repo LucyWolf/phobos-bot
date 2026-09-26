@@ -26,6 +26,11 @@ carries the whole weight of deciding whether somebody owns an account.
 Configured via main.py's "VRC-Link" tab (guild_configs keys vrc_* plus the vrc_links table);
 the pages themselves live in main.py under /vrc/{token}.
 """
+# Chaquopy bringt sein eigenes Python 3.8 mit (siehe android/README.md): dict[str, int]
+# und X | Y in einer Annotation sind dort keine Hinweise, sondern Ausdruecke, die beim
+# IMPORT ausgewertet werden - das Modul wirft einen TypeError, bevor irgendetwas laeuft.
+# Diese Zeile macht alle Annotationen zu Zeichenketten, die nie ausgewertet werden.
+from __future__ import annotations
 import asyncio
 import datetime
 import json

@@ -4,6 +4,11 @@ either deletes the channel or moves it to an archive category, shared by the in-
 button, /ticket-close, and the dashboard's close route. _parse_ticket_blocks() here mirrors
 main.py's copy of the same function (kept separate to avoid a circular import, since main.py
 already imports from this module)."""
+# Chaquopy bringt sein eigenes Python 3.8 mit (siehe android/README.md): dict[str, int]
+# und X | Y in einer Annotation sind dort keine Hinweise, sondern Ausdruecke, die beim
+# IMPORT ausgewertet werden - das Modul wirft einen TypeError, bevor irgendetwas laeuft.
+# Diese Zeile macht alle Annotationen zu Zeichenketten, die nie ausgewertet werden.
+from __future__ import annotations
 import json
 import re
 
