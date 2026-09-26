@@ -1207,6 +1207,11 @@ async def init_db():
             # nicht loeschen, weil ein versehentlich neu erzeugter Schluessel drueben sonst
             # beide Seiten zur Neueinrichtung zwingen wuerde.
             "ALTER TABLE coop_partners ADD COLUMN getrennt_at TEXT NOT NULL DEFAULT ''",
+            # Eine eigene Nachricht je Regel ("das soll einzelnt sein also wen mann eine
+            # erstelt dass mann dan darin den text angeben kann"). Leer heisst: nimm den
+            # Text, der fuer den ganzen Server hinterlegt ist - so bleibt eine bestehende
+            # Einrichtung genau so, wie sie war.
+            "ALTER TABLE role_rules ADD COLUMN dm_text TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

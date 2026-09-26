@@ -4867,6 +4867,15 @@ function updateAmpCmdPreview(id, action, value) {
           </label>
         </div>
       </div>
+      {# Die Nachricht gehoert zur einzelnen Regel: bei mehreren Regeln will man je Anlass
+         etwas anderes schreiben koennen. Leer heisst, dass der Text des Servers weiter
+         unten gilt - eine bestehende Einrichtung aendert sich dadurch nicht. #}
+      <label>{{ tr.rolerules_rule_dm_label }}</label>
+      <textarea name="dm_text" rows="2" maxlength="1800" placeholder="{{ tr.rolerules_rule_dm_placeholder }}"
+        style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;
+               padding:0.6rem 0.8rem;color:var(--text);font-size:0.85rem;font-family:inherit;
+               line-height:1.5;resize:vertical;outline:none;"></textarea>
+      <div style="font-size:0.72rem;color:var(--muted);margin:0.2rem 0 0.75rem;">{{ tr.rolerules_rule_dm_hint }}</div>
       <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.rolerules_btn_create }}</button>
     </form>
   </div>
@@ -4957,6 +4966,12 @@ function updateAmpCmdPreview(id, action, value) {
                   </label>
                 </div>
               </div>
+              <label>{{ tr.rolerules_rule_dm_label }}</label>
+              <textarea name="dm_text" rows="2" maxlength="1800" placeholder="{{ tr.rolerules_rule_dm_placeholder }}"
+                style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;
+               padding:0.6rem 0.8rem;color:var(--text);font-size:0.85rem;font-family:inherit;
+               line-height:1.5;resize:vertical;outline:none;">{{ rr.dm_text or '' }}</textarea>
+              <div style="font-size:0.72rem;color:var(--muted);margin:0.2rem 0 0.75rem;">{{ tr.rolerules_rule_dm_hint }}</div>
               <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
             </form>
           </td>

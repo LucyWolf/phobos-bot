@@ -1749,8 +1749,8 @@ _BACKUP_TBL_INSERT = {
         "INSERT INTO rating_items (guild_id,label,url,recommended,created_at,image_url,image_data,image_filename) "
         "VALUES (:guild_id,:label,:url,:recommended,:created_at,:image_url,:image_data,:image_filename)",
     "role_rules":
-        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,actions,priority,enabled) "
-        "VALUES (:guild_id,:name,:match_type,:match_role_ids,:action,:action_guild_id,:action_role_ids,:action_role_meta,:actions,:priority,:enabled)",
+        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,actions,priority,enabled,dm_text) "
+        "VALUES (:guild_id,:name,:match_type,:match_role_ids,:action,:action_guild_id,:action_role_ids,:action_role_meta,:actions,:priority,:enabled,:dm_text)",
 }
 
 
@@ -2156,7 +2156,7 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...),
                     # dashboard (which refreshes it); losing the rule outright costs everything.
                     if tbl == "role_rules":
                         # Same trap for both columns a pre-existing backup cannot know about.
-                        row = {"action_role_meta": "", "actions": "", **row}
+                        row = {"action_role_meta": "", "actions": "", "dm_text": "", **row}
                     # Ditto for the VRC-Link columns: a backup taken before the ownership check
                     # existed has neither key, and the named-parameter INSERT would drop the
                     # whole link rather than just the missing field.
@@ -2358,7 +2358,7 @@ async def server_backup_restore(request: Request, guild_id: int,
                         merged["ticket_message"] = row.get("description", "")
                     if tbl == "role_rules":
                         # Same fallback as the full-backup path for older backups.
-                        merged = {"action_role_meta": "", "actions": "", **merged}
+                        merged = {"action_role_meta": "", "actions": "", "dm_text": "", **merged}
                         # Self-references have to be rehomed BEFORE guild_id is lost - see
                         # _rehome_role_rule(); `row` still carries the exported guild id.
                         #
@@ -10339,6 +10339,10 @@ async def _role_rule_form_data(request: Request, guild: discord.Guild, form) -> 
         "action": action, "action_guild_id": action_guild_id,
         "action_role_ids": ",".join(action_role_ids), "action_role_meta": action_role_meta,
         "actions": _djson.dumps(actions), "priority": priority, "enabled": enabled,
+        # Die Nachricht, die DIESE Regel schickt. Leer heisst: der Text des Servers gilt.
+        # 1800 statt 2000, weil die Platzhalter erst beim Senden eingesetzt werden und den
+        # Text laenger machen koennen, als er hier aussieht.
+        "dm_text": (form.get("dm_text") or "").strip()[:1800],
     }, None
 
 
@@ -10355,11 +10359,11 @@ async def role_rule_add(request: Request, guild_id: int):
     if error:
         return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error={error}", status_code=302)
     await db_exec(
-        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,actions,priority,enabled) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,actions,priority,enabled,dm_text) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         (str(guild_id), data["name"], data["match_type"], data["match_role_ids"], data["action"],
          data["action_guild_id"], data["action_role_ids"], data["action_role_meta"],
-         data["actions"], data["priority"], data["enabled"]),
+         data["actions"], data["priority"], data["enabled"], data["dm_text"]),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Regel+hinzugefügt", status_code=303)
 
@@ -10378,10 +10382,12 @@ async def role_rule_edit(request: Request, guild_id: int, rule_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error={error}", status_code=302)
     await db_exec(
         "UPDATE role_rules SET name=?, match_type=?, match_role_ids=?, action=?, action_guild_id=?, "
-        "action_role_ids=?, action_role_meta=?, actions=?, priority=?, enabled=? WHERE id=? AND guild_id=?",
+        "action_role_ids=?, action_role_meta=?, actions=?, priority=?, enabled=?, dm_text=? "
+        "WHERE id=? AND guild_id=?",
         (data["name"], data["match_type"], data["match_role_ids"], data["action"],
          data["action_guild_id"], data["action_role_ids"], data["action_role_meta"],
-         data["actions"], data["priority"], data["enabled"], rule_id, str(guild_id)),
+         data["actions"], data["priority"], data["enabled"], data["dm_text"],
+         rule_id, str(guild_id)),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Regel+gespeichert", status_code=303)
 

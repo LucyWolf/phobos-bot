@@ -315,6 +315,11 @@ class RoleRules(commands.Cog):
         # because cross_by_guild deliberately merges rules into ONE edit per target guild (see
         # there), which loses track of which rule an individual role id came from.
         meta_local: dict = {}
+        # Welche Regel welche Rolle gibt - Rollen-ID -> Text dieser Regel ("" heisst: der
+        # Text des Servers gilt). Wird gebraucht, weil unten EIN member.edit() aus mehreren
+        # Regeln entsteht und die Zuordnung sonst verloren waere.
+        text_je_rolle: dict = {}
+        text_je_rolle_fremd: dict = {}  # Ziel-Server-ID -> {Rollen-ID: Text}
         meta_by_guild: dict = {}
         for rule in rules:
             # Everything in this iteration is wrapped so a single malformed rule (e.g. a
@@ -362,9 +367,17 @@ class RoleRules(commands.Cog):
                         if block["action"] == "remove":
                             to_remove |= action_ids
                             to_add -= action_ids
+                            for rid in action_ids:
+                                text_je_rolle.pop(rid, None)
                         else:
                             to_add |= action_ids
                             to_remove -= action_ids
+                            # Welche Regel diese Rolle gibt, entscheidet spaeter, welcher
+                            # Text dazu geschrieben wird. Dieselbe "die letzte gewinnt"-
+                            # Regel wie oben: holt eine spaetere Regel die Rolle wieder
+                            # heran, gilt auch ihr Text.
+                            for rid in action_ids:
+                                text_je_rolle[rid] = (rule.get("dm_text") or "").strip()
                     else:
                         # Grouped by target guild (not a flat list of per-rule actions) and
                         # merged with the same "later action wins" semantics as the same-guild
@@ -380,12 +393,17 @@ class RoleRules(commands.Cog):
                         # single atomic edit rather than two that can race each other.
                         bucket = cross_by_guild.setdefault(block["guild_id"], {"add": set(), "remove": set()})
                         meta_by_guild.setdefault(block["guild_id"], {}).update(block["meta"])
+                        texte = text_je_rolle_fremd.setdefault(block["guild_id"], {})
                         if block["action"] == "remove":
                             bucket["remove"] |= action_ids
                             bucket["add"] -= action_ids
+                            for rid in action_ids:
+                                texte.pop(rid, None)
                         else:
                             bucket["add"] |= action_ids
                             bucket["remove"] -= action_ids
+                            for rid in action_ids:
+                                texte[rid] = (rule.get("dm_text") or "").strip()
             except (ValueError, TypeError) as e:
                 # actions is printed alongside action_role_ids: since a rule can carry several
                 # action blocks, the legacy column shows only the FIRST one, so a rule whose
@@ -427,7 +445,8 @@ class RoleRules(commands.Cog):
                     changed = True
                     # Nur das, was wirklich DAZUGEKOMMEN ist - eine Regel, die nur eine
                     # Rolle entfernt, ist keine Nachricht wert.
-                    await self._regel_pm(member, [r for r in add_roles if r.id not in current])
+                    await self._regel_pm(member, [r for r in add_roles if r.id not in current],
+                                         text_je_rolle)
                 except (discord.HTTPException, OSError) as e:
                     # OSError alongside HTTPException: discord.py's own http.py re-raises a bare
                     # OSError (not wrapped into HTTPException) for a genuine network-level
@@ -493,7 +512,8 @@ class RoleRules(commands.Cog):
                     # Gefragt wird die Einstellung des ZIEL-Servers: dort bekommt die Person
                     # die Rolle, und dort haengt der Text.
                     await self._regel_pm(target_member,
-                                         [r for r in t_add_roles if r.id not in t_current])
+                                         [r for r in t_add_roles if r.id not in t_current],
+                                         text_je_rolle_fremd.get(action_guild_id, {}))
                 except (discord.HTTPException, OSError) as e:
                     self._log(f"FEHLER: Cross-Server-Anwenden auf {target_guild.id} fehlgeschlagen: {e}")
                     continue
@@ -672,8 +692,13 @@ class RoleRules(commands.Cog):
                 self._log(f"Zeitstempel der Kooperation nicht gesetzt: {e}")
         return {"gefragt": gefragt, "vergeben": vergeben, "offen": offen}
 
-    async def _regel_pm(self, member, rollen):
+    async def _regel_pm(self, member, rollen, texte: dict | None = None):
         """Schreibt dem Mitglied, dass eine Regel ihm Rollen gegeben hat.
+
+        Der Text steht an der einzelnen Regel; leer heisst, dass der Text des Servers gilt.
+        Haben zwei Regeln in einem Durchgang verschiedene Texte geschrieben, gibt es auch
+        zwei Nachrichten - je eine mit den Rollen, die zu ihr gehoeren. Alles in eine zu
+        werfen wuerde beide Texte falsch machen.
 
         Getrennt von _koop_pm: eine Regel wirkt innerhalb dieser Installation, eine
         Kooperation reicht zu jemandem, dem man vertraut - das sind zwei verschiedene
@@ -686,27 +711,42 @@ class RoleRules(commands.Cog):
             return
         try:
             an = (await get_guild_config(member.guild.id, "rolerules_dm_enabled") or "0") == "1"
-            vorlage = (await get_guild_config(member.guild.id, "rolerules_dm_text") or "").strip()
+            server_text = (await get_guild_config(member.guild.id, "rolerules_dm_text") or "").strip()
         except Exception as e:
             self._log(f"PM-Einstellung nicht lesbar: {e}")
             return
-        if not an or not vorlage:
+        if not an:
             return
-        ersatz = {
-            "{user}": member.display_name,
-            "{mention}": member.mention,
-            "{server}": member.guild.name,
-            "{rollen}": ", ".join(r.name for r in rollen) or "-",
-        }
-        text = re.sub("|".join(re.escape(k) for k in ersatz),
-                      lambda m: ersatz[m.group(0)], vorlage)[:2000]
-        try:
-            await member.send(text)
-        except discord.HTTPException:
-            # Geschlossene Direktnachrichten sind eine Einstellung, kein Fehler.
-            self._log(f"Regel-PM an {member.id} nicht zustellbar")
-        except Exception as e:
-            self._log(f"Regel-PM an {member.id} fehlgeschlagen: {e}")
+
+        # Nach Text gruppieren, damit jede Nachricht genau die Rollen nennt, die zu ihr
+        # gehoeren. Ohne eigenen Text der Regel gilt der des Servers; fehlt auch der,
+        # bleibt diese Gruppe stumm.
+        texte = texte or {}
+        gruppen: dict = {}
+        for rolle in rollen:
+            vorlage = (texte.get(rolle.id) or "").strip() or server_text
+            if vorlage:
+                gruppen.setdefault(vorlage, []).append(rolle)
+
+        for vorlage, gruppe in gruppen.items():
+            ersatz = {
+                "{user}": member.display_name,
+                "{mention}": member.mention,
+                "{server}": member.guild.name,
+                "{rollen}": ", ".join(r.name for r in gruppe) or "-",
+            }
+            text = re.sub("|".join(re.escape(k) for k in ersatz),
+                          lambda m: ersatz[m.group(0)], vorlage)[:2000]
+            try:
+                await member.send(text)
+            except discord.HTTPException:
+                # Geschlossene Direktnachrichten sind eine Einstellung, kein Fehler - und
+                # weitere Gruppen braucht man dann auch nicht mehr zu versuchen.
+                self._log(f"Regel-PM an {member.id} nicht zustellbar")
+                return
+            except Exception as e:
+                self._log(f"Regel-PM an {member.id} fehlgeschlagen: {e}")
+                return
 
     async def _koop_pm(self, member, rollen, row):
         """Schreibt dem Mitglied, dass es ueber eine Kooperation eine Rolle bekommen hat.
