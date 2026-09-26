@@ -163,6 +163,9 @@ from database import (
     DEFAULT_VRC_INSTANCE_LOCKED_TITLE,
     VRC_TOKEN_TTL_MINUTES, VRC_STATE_UNVERIFIED, VRC_STATE_PENDING, VRC_STATE_APPROVED,
     vrc_verify_code,
+    # Was der Bot sagt, wenn ein Server nichts eigenes geschrieben hat - nach Sprache. Die
+    # DEFAULT_*-Konstanten darueber bleiben das Deutsch daraus und werden weiter gebraucht.
+    bot_text, bot_labels, bot_worte, bot_sprachen,
 )
 import totp
 
