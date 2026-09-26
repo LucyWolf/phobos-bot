@@ -46,7 +46,7 @@ from database import (db_rows, db_one, db_exec, get_config, get_guild_config,
                       DEFAULT_VRC_INSTANCE_TITLE, DEFAULT_VRC_INSTANCE_CLOSED_TITLE,
                       DEFAULT_VRC_INSTANCE_COUNT_LABEL, DEFAULT_VRC_INSTANCE_FOOTER,
                       DEFAULT_VRC_INSTANCE_LOCKED, DEFAULT_VRC_INSTANCE_LOCKED_TITLE,
-                      human_duration,
+                      human_duration, bot_text, bot_lang,
                       VRC_ACCOUNT_KEY, VRC_TOKEN_TTL_MINUTES,
                       VRC_STATE_UNVERIFIED, VRC_STATE_PENDING, VRC_STATE_APPROVED)
 
@@ -688,19 +688,26 @@ def _fuelle(vorlage: str, *, welt: str = "", anzahl="", gruppe: str = "",
 
 
 async def _instance_texte(guild) -> dict:
-    """Die frei schreibbaren Bausteine dieses Servers, leere auf den Standard gesetzt."""
-    async def hol(schluessel, standard):
+    """Die frei schreibbaren Bausteine dieses Servers, leere auf den Standard gesetzt.
+
+    Der Standard kommt in der Sprache, die dieser Server fuer seinen Bot eingestellt hat -
+    die Bausteine gehen an die Mitglieder, nicht an die Verwaltung.
+    """
+    sprache = await bot_lang(guild.id)
+    async def hol(schluessel):
         """Ein Baustein aus den Einstellungen; leer oder nur Leerzeichen heisst: Standard nehmen."""
-        return (await get_guild_config(guild.id, schluessel) or "").strip() or standard
+        return ((await get_guild_config(guild.id, schluessel) or "").strip()
+                or bot_text(schluessel, sprache))
     return {
-        "titel": await hol("vrc_instance_title", DEFAULT_VRC_INSTANCE_TITLE),
-        "text": await hol("vrc_instance_message", DEFAULT_VRC_INSTANCE_MESSAGE),
-        "zahl": await hol("vrc_instance_count_label", DEFAULT_VRC_INSTANCE_COUNT_LABEL),
-        "fuss": await hol("vrc_instance_footer", DEFAULT_VRC_INSTANCE_FOOTER),
-        "zu_titel": await hol("vrc_instance_closed_title", DEFAULT_VRC_INSTANCE_CLOSED_TITLE),
-        "zu_text": await hol("vrc_instance_closed_message", DEFAULT_VRC_INSTANCE_CLOSED),
-        "dicht_titel": await hol("vrc_instance_locked_title", DEFAULT_VRC_INSTANCE_LOCKED_TITLE),
-        "dicht_text": await hol("vrc_instance_locked_message", DEFAULT_VRC_INSTANCE_LOCKED),
+        "titel": await hol("vrc_instance_title"),
+        "text": await hol("vrc_instance_message"),
+        "zahl": await hol("vrc_instance_count_label"),
+        "fuss": await hol("vrc_instance_footer"),
+        "zu_titel": await hol("vrc_instance_closed_title"),
+        "zu_text": await hol("vrc_instance_closed_message"),
+        "dicht_titel": await hol("vrc_instance_locked_title"),
+        "dicht_text": await hol("vrc_instance_locked_message"),
+        "sprache": sprache,
     }
 
 
@@ -785,7 +792,8 @@ async def _lock_instance_post(guild, channel, zeile, texte: dict, jetzt, anzahl)
         return True
     try:
         dauer = human_duration(
-            (jetzt - datetime.datetime.fromisoformat(zeile["first_seen"])).total_seconds())
+            (jetzt - datetime.datetime.fromisoformat(zeile["first_seen"])).total_seconds(),
+            texte.get("sprache", "de"))
     except ValueError:
         dauer = "?"
     welt = zeile["world_name"] or "Unbekannte Welt"
@@ -832,7 +840,8 @@ async def _close_instance_post(guild, channel, zeile, texte: dict, jetzt) -> Non
         return
     try:
         dauer = human_duration(
-            (jetzt - datetime.datetime.fromisoformat(zeile["first_seen"])).total_seconds())
+            (jetzt - datetime.datetime.fromisoformat(zeile["first_seen"])).total_seconds(),
+            texte.get("sprache", "de"))
     except ValueError:
         dauer = "?"
     welt = zeile["world_name"] or "Unbekannte Welt"
@@ -1198,8 +1207,8 @@ async def _announce_instances(bot, guild) -> int:
         # kommt: gross, eindeutig, und auf dem Handy genauso gut zu treffen.
         view = None
         if link:
-            knopf = (await get_guild_config(guild.id, "vrc_instance_button") or "").strip() \
-                or DEFAULT_VRC_INSTANCE_BUTTON
+            knopf = ((await get_guild_config(guild.id, "vrc_instance_button") or "").strip()
+                     or bot_text("vrc_instance_button", texte.get("sprache", "de")))
             view = discord.ui.View(timeout=None)
             view.add_item(discord.ui.Button(label=knopf[:MAX_BUTTON_LABEL], emoji="🌍",
                                             style=discord.ButtonStyle.link, url=link))
@@ -1323,9 +1332,13 @@ async def send_personal_link(interaction: discord.Interaction) -> None:
 async def post_panel(bot, guild: discord.Guild, channel: discord.TextChannel) -> discord.Message:
     """Post the server's link panel. Raises on failure so the dashboard can show the reason -
     a panel that silently never appears is the worst of the possible outcomes here."""
-    title = (await get_guild_config(guild.id, "vrc_panel_title") or "").strip() or DEFAULT_VRC_PANEL_TITLE
-    text = (await get_guild_config(guild.id, "vrc_panel_text") or "").strip() or DEFAULT_VRC_PANEL_TEXT
-    label = (await get_guild_config(guild.id, "vrc_panel_button") or "").strip() or DEFAULT_VRC_PANEL_BUTTON
+    sprache = await bot_lang(guild.id)
+    title = ((await get_guild_config(guild.id, "vrc_panel_title") or "").strip()
+             or bot_text("vrc_panel_title", sprache))
+    text = ((await get_guild_config(guild.id, "vrc_panel_text") or "").strip()
+            or bot_text("vrc_panel_text", sprache))
+    label = ((await get_guild_config(guild.id, "vrc_panel_button") or "").strip()
+             or bot_text("vrc_panel_button", sprache))
     embed = discord.Embed(
         title=title[:256],
         description=text.replace("{server}", guild.name)[:4000],
@@ -1574,10 +1587,11 @@ class VRCLink(commands.Cog):
             url = await personal_link(member.guild.id, member.id)
             if not url:
                 return
-            text = (await get_guild_config(member.guild.id, "vrc_dm_text") or "").strip() \
-                or DEFAULT_VRC_PANEL_TEXT
+            sprache = await bot_lang(member.guild.id)
+            text = ((await get_guild_config(member.guild.id, "vrc_dm_text") or "").strip()
+                    or bot_text("vrc_panel_text", sprache))
             view = discord.ui.View(timeout=None)
-            view.add_item(discord.ui.Button(label="VRChat verknüpfen", emoji="🔗",
+            view.add_item(discord.ui.Button(label=bot_text("vrc_panel_button", sprache), emoji="🔗",
                                             style=discord.ButtonStyle.link, url=url))
             try:
                 await member.send(text.replace("{server}", member.guild.name)[:2000], view=view)

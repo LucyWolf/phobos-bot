@@ -1482,24 +1482,151 @@ DEFAULT_VRC_INSTANCE_COUNT_LABEL = "Gerade drin"
 DEFAULT_VRC_INSTANCE_FOOTER = "{group}"
 
 
-def human_duration(seconds: float) -> str:
+def human_duration(seconds: float, lang: str = "de") -> str:
     """Eine Dauer, wie ein Mensch sie sagt: "3 Min", "2 Std 15 Min", "1 Tag 4 Std".
 
     Keine Sekunden ab einer Minute und keine Minuten ab einem Tag - wer liest, wie lange eine
     Instanz offen war, will eine Groessenordnung, keine Stoppuhr.
+
+    lang="en" sagt dasselbe auf Englisch ("3 min", "2 hrs 15 min", "1 day 4 hrs"). Die Sprache
+    kommt vom Server (bot_lang), nicht vom Dashboard: die Dauer steht in einer Nachricht an
+    die Mitglieder, nicht in der Verwaltungsoberflaeche.
     """
     seconds = max(0, int(seconds))
+    en = str(lang).lower().startswith("en")
+    sek, mn, std = ("sec", "min", "hrs") if en else ("Sek", "Min", "Std")
     if seconds < 60:
-        return f"{seconds} Sek"
+        return f"{seconds} {sek}"
     minuten = seconds // 60
     if minuten < 60:
-        return f"{minuten} Min"
+        return f"{minuten} {mn}"
     stunden, minuten = divmod(minuten, 60)
     if stunden < 24:
-        return f"{stunden} Std {minuten} Min" if minuten else f"{stunden} Std"
+        return f"{stunden} {std} {minuten} {mn}" if minuten else f"{stunden} {std}"
     tage, stunden = divmod(stunden, 24)
-    return f"{tage} Tag{'e' if tage != 1 else ''} {stunden} Std" if stunden else \
-        f"{tage} Tag{'e' if tage != 1 else ''}"
+    tag = (("day" if tage == 1 else "days") if en else ("Tag" if tage == 1 else "Tage"))
+    return f"{tage} {tag} {stunden} {std}" if stunden else f"{tage} {tag}"
+
+
+# ── Was der Bot sagt, wenn ein Server nichts eigenes geschrieben hat ──────────────
+#
+# Dieselben Texte wie in den DEFAULT_*-Konstanten oben, nur nach Sprache sortiert. Die
+# Konstanten bleiben unveraendert und sind weiterhin das Deutsch daraus - jeder bestehende
+# Import laeuft also unveraendert weiter.
+#
+# Die Sprache haengt am SERVER (guild_configs/bot_lang), nicht am Dashboard: diese Texte
+# gehen an die Mitglieder. Ein deutscher Server, dessen Verwalter das Dashboard auf Englisch
+# fuehrt, soll seinen Leuten weiter auf Deutsch schreiben. Ohne Eintrag gilt "de" - damit
+# aendert sich fuer bestehende Installationen nichts.
+#
+# Die Schluessel heissen wie die Felder in guild_configs, damit an der Stelle, wo ein
+# geschriebener Text geholt wird, derselbe Name fuer den Standard steht.
+BOT_TEXTE = {
+    "de": {
+        "vrc_panel_title":            DEFAULT_VRC_PANEL_TITLE,
+        "vrc_panel_text":             DEFAULT_VRC_PANEL_TEXT,
+        "vrc_panel_button":           DEFAULT_VRC_PANEL_BUTTON,
+        "vrc_instance_message":       DEFAULT_VRC_INSTANCE_MESSAGE,
+        "vrc_instance_button":        DEFAULT_VRC_INSTANCE_BUTTON,
+        "vrc_instance_title":         DEFAULT_VRC_INSTANCE_TITLE,
+        "vrc_instance_closed_message": DEFAULT_VRC_INSTANCE_CLOSED,
+        "vrc_instance_closed_title":  DEFAULT_VRC_INSTANCE_CLOSED_TITLE,
+        "vrc_instance_locked_message": DEFAULT_VRC_INSTANCE_LOCKED,
+        "vrc_instance_locked_title":  DEFAULT_VRC_INSTANCE_LOCKED_TITLE,
+        "vrc_instance_count_label":   DEFAULT_VRC_INSTANCE_COUNT_LABEL,
+        "vrc_instance_footer":        DEFAULT_VRC_INSTANCE_FOOTER,
+        "birthday_reply_saved":       DEFAULT_BIRTHDAY_REPLY_SAVED,
+        "birthday_reply_deleted":     DEFAULT_BIRTHDAY_REPLY_DELETED,
+        "birthday_reply_error":       DEFAULT_BIRTHDAY_REPLY_ERROR,
+        "tempvoice_panel_title":      DEFAULT_TEMPVOICE_PANEL_TITLE,
+        "tempvoice_panel_text":       DEFAULT_TEMPVOICE_PANEL_TEXT,
+    },
+    "en": {
+        "vrc_panel_title":            "\U0001f517 Link your VRChat account",
+        "vrc_panel_text": (
+            "Connect your VRChat account to your Discord account on **{server}**.\n\n"
+            "Hit the button below \u2014 you get a personal link that only works for you. "
+            "Everything else happens on that page."
+        ),
+        "vrc_panel_button":           "Link VRChat",
+        "vrc_instance_message":       "A group instance is open \u2014 come and join!",
+        "vrc_instance_button":        "Open in VRChat",
+        "vrc_instance_title":         "{world}",
+        "vrc_instance_closed_message": "\U0001f3c1 This instance has ended. It was open for {duration} \u2014 see you next time!",
+        "vrc_instance_closed_title":  "{world}",
+        "vrc_instance_locked_message": ("\U0001f512 This instance is closed \u2014 nobody new gets in, "
+                                        "everyone inside stays. Open for {duration}."),
+        "vrc_instance_locked_title":  "{world}",
+        "vrc_instance_count_label":   "Currently inside",
+        "vrc_instance_footer":        "{group}",
+        "birthday_reply_saved":       "\u2705 Birthday saved: **{date}**",
+        "birthday_reply_deleted":     "\u2705 Birthday cleared.",
+        "birthday_reply_error": (
+            "\u274c Format: `{command} DD.MM` (e.g. `{command} 15.06`) \u00b7 to clear: `{command} {delete}`"
+        ),
+        "tempvoice_panel_title":      "\U0001f50a Your temporary voice channel",
+        "tempvoice_panel_text": (
+            "{user}, this channel is yours for as long as you are in it.\n\n"
+            "The buttons below let you rename it, set a member limit, lock or hide it, "
+            "and let individual people in or throw them out.\n\n"
+            "Once the channel is empty it disappears by itself."
+        ),
+    },
+}
+
+# Die Knopfbeschriftungen des Temp-Voice-Panels - eigenes Woerterbuch, weil sie als Objekt
+# zusammengehoeren (parse_panel_labels fuellt Fehlendes auf).
+BOT_LABELS = {
+    "de": DEFAULT_TEMPVOICE_LABELS,
+    "en": {"rename": "Rename", "limit": "Limit", "lock": "Lock",
+           "hide": "Hide", "permit": "Allow", "kick": "Kick out"},
+}
+
+# Die Befehlswoerter, auf die der Geburtstags-Befehl hoert. Auf einem englischen Server ist
+# "geburtstag" kein Wort, das jemand tippt.
+BOT_WORTE = {
+    "de": {"birthday_commands": DEFAULT_BIRTHDAY_TRIGGERS,
+           "birthday_delete_words": DEFAULT_BIRTHDAY_DELETE_WORDS},
+    "en": {"birthday_commands": ["birthday"],
+           "birthday_delete_words": ["delete", "remove", "clear"]},
+}
+
+
+def bot_sprachen() -> list:
+    """Die Sprachen, die der Bot sprechen kann - dieselben wie das Dashboard."""
+    return ["de", "en"]
+
+
+def bot_text(schluessel: str, lang: str = "de") -> str:
+    """Der Standardtext zu einem Feld in der Sprache dieses Servers.
+
+    Faellt auf Deutsch zurueck, wenn die Sprache unbekannt ist oder ein Text dort (noch)
+    fehlt - lieber ein deutscher Satz als ein leeres Feld.
+    """
+    sprache = BOT_TEXTE.get((lang or "de").lower(), BOT_TEXTE["de"])
+    return sprache.get(schluessel) or BOT_TEXTE["de"].get(schluessel, "")
+
+
+def bot_labels(lang: str = "de") -> dict:
+    """Die sechs Knopfbeschriftungen des Temp-Voice-Panels."""
+    return dict(BOT_LABELS.get((lang or "de").lower(), BOT_LABELS["de"]))
+
+
+def bot_worte(schluessel: str, lang: str = "de") -> list:
+    """Die Standard-Befehlswoerter zu einem Feld."""
+    sprache = BOT_WORTE.get((lang or "de").lower(), BOT_WORTE["de"])
+    return list(sprache.get(schluessel) or BOT_WORTE["de"].get(schluessel, []))
+
+
+async def bot_lang(guild_id) -> str:
+    """Die Sprache, in der der Bot auf DIESEM Server schreibt.
+
+    Getrennt von der Sprache des Dashboards: die eine richtet sich an die Verwaltung, die
+    andere an die Mitglieder. Ohne Eintrag Deutsch, damit ein Update nichts umstellt, was
+    niemand umgestellt hat.
+    """
+    wert = (await get_guild_config(guild_id, "bot_lang") or "").strip().lower()
+    return wert if wert in BOT_TEXTE else "de"
 
 
 def role_rule_actions(rule) -> list:

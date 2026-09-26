@@ -7764,6 +7764,12 @@ async def server_config(
 
     token_set = await _token_configured()
     cfg = await get_all_guild_config(guild_id)
+    # In welcher Sprache dieser Server seinen Bot sprechen laesst. Getrennt von der
+    # Sprache des Dashboards: die eine richtet sich an die Mitglieder, die andere an
+    # die Verwaltung. Ohne Eintrag Deutsch - ein Update stellt nichts um.
+    _bot_sprache = (cfg.get("bot_lang") or "de").strip().lower()
+    if _bot_sprache not in bot_sprachen():
+        _bot_sprache = "de"
     channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
     voice_channels = [{"id": str(c.id), "name": c.name} for c in guild.voice_channels]
     # Embed-Nachrichten-only channel picker (text channels + forums) - deliberately kept
@@ -8297,22 +8303,27 @@ async def server_config(
         # error. Normally it is simply the address this dashboard is open at - see
         # link_base_url() - so this is only ever empty on a brand-new install.
         "vrc_link_base": await link_base_url(),
-        "vrc_panel_title_default": DEFAULT_VRC_PANEL_TITLE,
-        "vrc_panel_text_default": DEFAULT_VRC_PANEL_TEXT,
-        "vrc_panel_button_default": DEFAULT_VRC_PANEL_BUTTON,
+        # Die Standardtexte hinter den leeren Feldern in der Sprache, die DIESER SERVER fuer
+        # seinen Bot eingestellt hat (_bot_sprache oben) - nicht in der des Dashboards. Im
+        # Feld soll stehen, was tatsaechlich herausgeht, wenn man es leer laesst.
+        "bot_sprache": _bot_sprache,
+        "bot_sprachen": bot_sprachen(),
+        "vrc_panel_title_default": bot_text("vrc_panel_title", _bot_sprache),
+        "vrc_panel_text_default": bot_text("vrc_panel_text", _bot_sprache),
+        "vrc_panel_button_default": bot_text("vrc_panel_button", _bot_sprache),
         # Only show the group column when this server actually uses a group - an extra column
         # of dashes tells nobody anything.
         "vrc_group_on": bool((cfg.get("vrc_group_id") or "").strip()),
         "vrc_role_map": _vrc_role_map_rows,
-        "vrc_instance_default": DEFAULT_VRC_INSTANCE_MESSAGE,
-        "vrc_instance_button_default": DEFAULT_VRC_INSTANCE_BUTTON,
-        "vrc_instance_closed_default": DEFAULT_VRC_INSTANCE_CLOSED,
-        "vrc_instance_title_default": DEFAULT_VRC_INSTANCE_TITLE,
-        "vrc_instance_closed_title_default": DEFAULT_VRC_INSTANCE_CLOSED_TITLE,
-        "vrc_instance_count_default": DEFAULT_VRC_INSTANCE_COUNT_LABEL,
-        "vrc_instance_footer_default": DEFAULT_VRC_INSTANCE_FOOTER,
-        "vrc_instance_locked_default": DEFAULT_VRC_INSTANCE_LOCKED,
-        "vrc_instance_locked_title_default": DEFAULT_VRC_INSTANCE_LOCKED_TITLE,
+        "vrc_instance_default": bot_text("vrc_instance_message", _bot_sprache),
+        "vrc_instance_button_default": bot_text("vrc_instance_button", _bot_sprache),
+        "vrc_instance_closed_default": bot_text("vrc_instance_closed_message", _bot_sprache),
+        "vrc_instance_title_default": bot_text("vrc_instance_title", _bot_sprache),
+        "vrc_instance_closed_title_default": bot_text("vrc_instance_closed_title", _bot_sprache),
+        "vrc_instance_count_default": bot_text("vrc_instance_count_label", _bot_sprache),
+        "vrc_instance_footer_default": bot_text("vrc_instance_footer", _bot_sprache),
+        "vrc_instance_locked_default": bot_text("vrc_instance_locked_message", _bot_sprache),
+        "vrc_instance_locked_title_default": bot_text("vrc_instance_locked_title", _bot_sprache),
         # Names for the live example under the format field. A real linked pair if there is
         # one - seeing the format applied to somebody who is actually on the server says more
         # than a made-up name - otherwise a stand-in, so the example is never empty.
@@ -8340,14 +8351,14 @@ async def server_config(
         # Defaults handed to the template so an empty field can show the text that is actually
         # being sent, rather than an empty box next to a bot that clearly answers something.
         "tempvoice_panel_defaults": {
-            "title": DEFAULT_TEMPVOICE_PANEL_TITLE,
-            "text": DEFAULT_TEMPVOICE_PANEL_TEXT,
-            "labels": DEFAULT_TEMPVOICE_LABELS,
+            "title": bot_text("tempvoice_panel_title", _bot_sprache),
+            "text": bot_text("tempvoice_panel_text", _bot_sprache),
+            "labels": bot_labels(_bot_sprache),
         },
         "birthday_reply_defaults": {
-            "saved": DEFAULT_BIRTHDAY_REPLY_SAVED,
-            "deleted": DEFAULT_BIRTHDAY_REPLY_DELETED,
-            "error": DEFAULT_BIRTHDAY_REPLY_ERROR,
+            "saved": bot_text("birthday_reply_saved", _bot_sprache),
+            "deleted": bot_text("birthday_reply_deleted", _bot_sprache),
+            "error": bot_text("birthday_reply_error", _bot_sprache),
         },
         "events_list": sorted(guild.scheduled_events, key=lambda e: e.start_time),
         "event_reminders": await _event_reminders_by_event(guild_id),
@@ -8361,11 +8372,10 @@ async def server_config(
 # key regardless of which form was submitted would silently blank out every OTHER tab's
 # settings on every single save (e.g. saving Leveling would reset Auto-Mod/Welcome to empty).
 _TAB_TEXT_KEYS = {
-    # Config itself owns no text fields anymore - the welcome/leave/autorole/card settings
-    # moved to their own "welcome" tab (see below), leaving config with only the always-visible
-    # feature-toggle and server-backup cards which don't go through this per-tab save loop at
-    # all. The key still has to exist (server_config_save() indexes into it unconditionally).
-    "config": [],
+    # Config owns exactly one text field: die Sprache, in der der Bot auf diesem Server mit
+    # den Mitgliedern spricht. Die uebrigen Karten dieses Reiters (Funktionen an/aus,
+    # Sicherung) gehen nicht durch diese Schleife.
+    "config": ["bot_lang"],
     "welcome": [
         "welcome_channel", "welcome_message", "leave_channel", "leave_message", "autorole",
         "welcome_card_circle_color", "welcome_card_text_color", "welcome_card_username_color",

@@ -40,6 +40,29 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="tab-pane" id="pane-config">
 
+{# Die Sprache, in der der Bot mit den MITGLIEDERN spricht - nicht die des Dashboards. Ein
+   deutscher Server, dessen Verwalter die Oberflaeche auf Englisch fuehrt, soll seinen Leuten
+   weiter auf Deutsch antworten. Betrifft alle Texte, die ein Server nicht selbst geschrieben
+   hat, und die Zeitangaben darin. #}
+<div class="card" style="margin-bottom:1.25rem;">
+  <div class="feat-header" style="margin-bottom:0.5rem;">🗣️ {{ tr.bot_lang_title }}</div>
+  <p class="hint" style="margin-bottom:0.85rem;">{{ tr.bot_lang_hint }}</p>
+  <form method="post" action="/servers/{{ guild.id }}/save">
+    <input type="hidden" name="tab" value="config">
+    <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:flex-end;">
+      <div style="min-width:200px;">
+        <label>{{ tr.bot_lang_label }}</label>
+        <select name="bot_lang" style="margin:0;">
+          <option value="de" {% if bot_sprache == 'de' %}selected{% endif %}>{{ tr.bot_lang_de }}</option>
+          <option value="en" {% if bot_sprache == 'en' %}selected{% endif %}>{{ tr.bot_lang_en }}</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
+    </div>
+    <div style="font-size:0.72rem;color:var(--muted);margin-top:0.5rem;">{{ tr.bot_lang_note }}</div>
+  </form>
+</div>
+
 {% if role == 'admin' %}
 <div class="card" style="margin-bottom:1.25rem;">
   <div class="feat-header" style="margin-bottom:0.5rem;">{{ tr.features_title }}</div>

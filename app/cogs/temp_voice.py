@@ -12,7 +12,8 @@ import discord
 from discord import ui
 from discord.ext import commands
 from database import (db_rows, db_exec, db_one, DEFAULT_TEMPVOICE_PANEL_TITLE,
-                      DEFAULT_TEMPVOICE_PANEL_TEXT, parse_panel_labels)
+                      DEFAULT_TEMPVOICE_PANEL_TEXT, parse_panel_labels,
+                      bot_text, bot_lang)
 
 # Discord allows a channel to be renamed only TWICE per 10 minutes, and discord.py answers a
 # breach by sleeping until the bucket frees up - which would leave the owner staring at a
@@ -464,10 +465,13 @@ class TempVoice(commands.Cog):
                         # sitting in - the outer except would delete it right back out from
                         # under them.
                         try:
+                            sprache = await bot_lang(member.guild.id)
                             embed = discord.Embed(
-                                title=_panel_text(cfg["panel_title"], DEFAULT_TEMPVOICE_PANEL_TITLE,
+                                title=_panel_text(cfg["panel_title"],
+                                                  bot_text("tempvoice_panel_title", sprache),
                                                   member, ch, as_title=True),
-                                description=_panel_text(cfg["panel_text"], DEFAULT_TEMPVOICE_PANEL_TEXT,
+                                description=_panel_text(cfg["panel_text"],
+                                                        bot_text("tempvoice_panel_text", sprache),
                                                         member, ch),
                                 color=0xff73fa,
                             )

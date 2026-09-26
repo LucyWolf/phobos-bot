@@ -6,7 +6,76 @@ import asyncio
 import datetime
 import discord
 from discord.ext import commands
-from database import get_guild_config, db_exec
+from database import get_guild_config, db_exec, bot_lang
+
+
+# Die Ereignistexte auf Englisch, nachgeschlagen ueber den deutschen Wortlaut.
+#
+# Absichtlich so herum: die fuenfzehn Listener unten schreiben ihre Titel und Feldnamen
+# weiter im Klartext hin, und uebersetzt wird an EINER Stelle, kurz bevor das Ereignis
+# herausgeht (_log). Der Umbau auf Schluessel haette jede dieser Methoden angefasst, ohne
+# dass eine davon etwas anderes tut als vorher.
+#
+# Was hier fehlt, bleibt deutsch stehen - ein neues Ereignis faellt damit nicht aus, es
+# spricht nur noch nicht Englisch. test_logsprache.py haelt die Tabelle vollstaendig.
+LOG_EN = {
+    # Titel
+    "📥 Member beigetreten":  "📥 Member joined",
+    "📤 Member verlassen":    "📤 Member left",
+    "🏷️ Rollen aktualisiert": "🏷️ Roles updated",
+    "✏️ Nickname geändert":   "✏️ Nickname changed",
+    "⏱️ Timeout verhängt":    "⏱️ Timeout issued",
+    "✅ Timeout aufgehoben":  "✅ Timeout lifted",
+    "🔨 Member gebannt":      "🔨 Member banned",
+    "✅ Member entbannt":     "✅ Member unbanned",
+    "🔊 Voice beigetreten":   "🔊 Voice joined",
+    "🔇 Voice verlassen":     "🔇 Voice left",
+    "🔀 Voice gewechselt":    "🔀 Voice switched",
+    "🗑️ Nachricht gelöscht":  "🗑️ Message deleted",
+    "🗑️ Massenlöschung":      "🗑️ Bulk delete",
+    "✏️ Nachricht bearbeitet": "✏️ Message edited",
+    "📁 Kanal erstellt":      "📁 Channel created",
+    "🗑️ Kanal gelöscht":      "🗑️ Channel deleted",
+    "✏️ Kanal umbenannt":     "✏️ Channel renamed",
+    "💎 Server-Boost":        "💎 Server boost",
+    # Feldnamen
+    "Nutzer":         "Member",
+    "Kanal":          "Channel",
+    "ID":             "ID",
+    "Vorher":         "Before",
+    "Nachher":        "After",
+    "Gelöscht von":   "Deleted by",
+    "Autor":          "Author",
+    "Name":           "Name",
+    "Typ":            "Type",
+    "Account-Alter":  "Account age",
+    "Hatte Rollen":   "Had roles",
+    "➕ Hinzugefügt": "➕ Added",
+    "➖ Entfernt":    "➖ Removed",
+    "Bis":            "Until",
+    "Von":            "From",
+    "Nach":           "To",
+    "Inhalt":         "Content",
+    "Hinweis":        "Note",
+    "Nachrichten":    "Messages",
+    "Link":           "Link",
+    "Boosts gesamt":  "Boosts total",
+    "Level":          "Level",
+}
+
+
+def _ins_englische(embed: discord.Embed) -> discord.Embed:
+    """Titel und Feldnamen einer Ereignis-Karte auf Englisch, soweit bekannt.
+
+    Die WERTE bleiben unangetastet: darin stehen Namen, Erwaehnungen und Inhalte, die
+    niemandem gehoeren ausser dem Server selbst.
+    """
+    if embed.title and embed.title in LOG_EN:
+        embed.title = LOG_EN[embed.title]
+    for i, feld in enumerate(list(embed.fields)):
+        if feld.name in LOG_EN:
+            embed.set_field_at(i, name=LOG_EN[feld.name], value=feld.value, inline=feld.inline)
+    return embed
 
 
 class Logging(commands.Cog):
@@ -47,6 +116,10 @@ class Logging(commands.Cog):
         # one sub-entry leaves the rest of the category running.
         if category and (category in disabled or (sub and f"{category}.{sub}" in disabled)):
             return
+        # Erst hier uebersetzen, nach dem Filter: ein Ereignis, das dieser Server gar nicht
+        # protokolliert, muss auch nicht nachgeschlagen werden.
+        if await bot_lang(guild_id) == "en":
+            embed = _ins_englische(embed)
         embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
         title = embed.title or ""
         icon = title.split()[0] if title else "📋"

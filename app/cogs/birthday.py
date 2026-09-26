@@ -8,7 +8,8 @@ from discord.ext import commands, tasks
 from database import (db_rows, db_exec, db_exec_rowcount, get_guild_config,
                       parse_command_triggers, DEFAULT_BIRTHDAY_TRIGGERS,
                       DEFAULT_BIRTHDAY_DELETE_WORDS, DEFAULT_BIRTHDAY_REPLY_SAVED,
-                      DEFAULT_BIRTHDAY_REPLY_DELETED, DEFAULT_BIRTHDAY_REPLY_ERROR)
+                      DEFAULT_BIRTHDAY_REPLY_DELETED, DEFAULT_BIRTHDAY_REPLY_ERROR,
+                      bot_text, bot_worte, bot_lang)
 from cogs.log_utils import log_bot_event
 
 try:
@@ -109,9 +110,13 @@ class Birthday(commands.Cog):
         parts = content[1:].split()
         if not parts:
             return
+        # Auf einem englisch gefuehrten Server tippt niemand "!geburtstag" - die Standard-
+        # woerter kommen deshalb in der Sprache, die dieser Server fuer seinen Bot gewaehlt
+        # hat. Eigene Woerter gelten wie immer vorrangig.
+        sprache = await bot_lang(message.guild.id)
         triggers = parse_command_triggers(
             await get_guild_config(message.guild.id, "birthday_commands") or "",
-            DEFAULT_BIRTHDAY_TRIGGERS,
+            bot_worte("birthday_commands", sprache),
         )
         word = parts[0].lower()
         if word not in triggers:
@@ -119,7 +124,7 @@ class Birthday(commands.Cog):
         datum = parts[1] if len(parts) > 1 else ""
         delete_words = parse_command_triggers(
             await get_guild_config(message.guild.id, "birthday_delete_words") or "",
-            DEFAULT_BIRTHDAY_DELETE_WORDS,
+            bot_worte("birthday_delete_words", sprache),
         )
         # Echoed back in every reply below instead of a hard-coded "!geburtstag": telling
         # someone on an English server that the format is "!geburtstag TT.MM" right after they
@@ -141,7 +146,7 @@ class Birthday(commands.Cog):
                 "DELETE FROM birthdays WHERE user_id=? AND guild_id=?",
                 (str(message.author.id), str(message.guild.id)),
             )
-            await answer("birthday_reply_deleted", DEFAULT_BIRTHDAY_REPLY_DELETED)
+            await answer("birthday_reply_deleted", bot_text("birthday_reply_deleted", sprache))
             return
 
         try:
@@ -152,7 +157,7 @@ class Birthday(commands.Cog):
             datetime.date(2000, month, day)  # prüft ob Datum wirklich existiert (z.B. kein 30.02)
             bday = f"{month:02d}-{day:02d}"
         except (ValueError, IndexError):
-            await answer("birthday_reply_error", DEFAULT_BIRTHDAY_REPLY_ERROR)
+            await answer("birthday_reply_error", bot_text("birthday_reply_error", sprache))
             return
 
         await db_exec(
@@ -166,7 +171,7 @@ class Birthday(commands.Cog):
             "DELETE FROM birthday_sent WHERE user_id=? AND guild_id=? AND year=?",
             (str(message.author.id), str(message.guild.id), datetime.datetime.now().year),
         )
-        await answer("birthday_reply_saved", DEFAULT_BIRTHDAY_REPLY_SAVED,
+        await answer("birthday_reply_saved", bot_text("birthday_reply_saved", sprache),
                      date=f"{day:02d}.{month:02d}")
 
     @staticmethod
