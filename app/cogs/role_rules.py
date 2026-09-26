@@ -57,6 +57,22 @@ AUTOCREATE_RETRY_SECONDS = 300
 CREATED_ROLE_CACHE_SECONDS = 60
 
 
+def _feld(zeile, name: str, standard=None):
+    """Ein Feld aus einer Datenbankzeile, egal ob sie ein dict oder eine sqlite3.Row ist.
+
+    db_rows() gibt dicts zurueck, aber nicht jeder Aufrufer muss das tun - eine Row kennt
+    kein .get() und wirft bei einem unbekannten Namen einen IndexError. Genau darueber ist
+    die Auswertung gestolpert, als die Debug-Zeile anfing, bei JEDEM Durchgang ein Feld
+    nachzuschlagen: der einzige .get()-Zugriff davor sass in einem Fehlerpfad, der fast nie
+    laeuft.
+    """
+    try:
+        wert = zeile[name]
+    except (KeyError, IndexError):
+        return standard
+    return standard if wert is None else wert
+
+
 class RoleRules(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -306,7 +322,7 @@ class RoleRules(commands.Cog):
         rules = await self._get_rules(guild.id)
         # Der Zustand der Nachricht gehoert in dieselbe Zeile: bleibt eine PM aus, ist die
         # erste Frage immer, ob die Regel ueberhaupt eine schicken soll.
-        _pm = [f"#{r['id']}:" + ("an" if r.get("dm_enabled") and (r.get("dm_text") or "").strip()
+        _pm = [f"#{r['id']}:" + ("an" if _feld(r, "dm_enabled") and str(_feld(r, "dm_text", "")).strip()
                                  else "aus") for r in rules]
         self._log(f"Guild {guild.id} ({guild.name}): {len(rules)} aktive Regel(n) geladen für "
                   f"Mitglied {member.id} · Nachricht je Regel: {', '.join(_pm) or '—'}")
@@ -382,8 +398,8 @@ class RoleRules(commands.Cog):
                             # Regel wie oben: holt eine spaetere Regel die Rolle wieder
                             # heran, gilt auch ihr Text.
                             for rid in action_ids:
-                                text_je_rolle[rid] = ((rule.get("dm_text") or "").strip()
-                                                      if rule.get("dm_enabled") else "")
+                                text_je_rolle[rid] = (str(_feld(rule, "dm_text", "")).strip()
+                                                      if _feld(rule, "dm_enabled") else "")
                     else:
                         # Grouped by target guild (not a flat list of per-rule actions) and
                         # merged with the same "later action wins" semantics as the same-guild
@@ -409,8 +425,8 @@ class RoleRules(commands.Cog):
                             bucket["add"] |= action_ids
                             bucket["remove"] -= action_ids
                             for rid in action_ids:
-                                texte[rid] = ((rule.get("dm_text") or "").strip()
-                                              if rule.get("dm_enabled") else "")
+                                texte[rid] = (str(_feld(rule, "dm_text", "")).strip()
+                                              if _feld(rule, "dm_enabled") else "")
             except (ValueError, TypeError) as e:
                 # actions is printed alongside action_role_ids: since a rule can carry several
                 # action blocks, the legacy column shows only the FIRST one, so a rule whose
@@ -418,7 +434,7 @@ class RoleRules(commands.Cog):
                 # everything printed looked perfectly fine.
                 self._log(f"FEHLER: Regel #{rule['id']} ({rule['name'] or '—'}) hat fehlerhafte Daten "
                           f"(match_roles={rule['match_role_ids']!r}, "
-                          f"action_roles={rule['action_role_ids']!r}, actions={rule.get('actions')!r}) "
+                          f"action_roles={rule['action_role_ids']!r}, actions={_feld(rule, 'actions')!r}) "
                           f"und wird übersprungen: {e}")
                 continue
         # Read once per pass, and only when there is actually something to apply - the periodic
