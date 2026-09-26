@@ -430,6 +430,13 @@ class RoleRules(commands.Cog):
             add_roles, remap = await self._resolve_add_roles(guild, to_add, meta_local, autocreate)
             if remap:
                 await self._persist_remap(guild.id, remap)
+                # Eine neu angelegte oder unter gleichem Namen wiedergefundene Rolle traegt
+                # eine ANDERE ID als die in der Regel. Die Textzuordnung haengt an der ID -
+                # ohne diesen Nachzug faende sie nichts, und die Nachricht bliebe aus,
+                # ausgerechnet beim Anlegen, wo sie am meisten gebraucht wird.
+                for alt_id, neu_id in remap.items():
+                    if int(alt_id) in text_je_rolle:
+                        text_je_rolle[int(neu_id)] = text_je_rolle.pop(int(alt_id))
             new_roles = [r for r in member.roles if r.id not in to_remove]
             for role in add_roles:
                 if role not in new_roles:
@@ -492,6 +499,10 @@ class RoleRules(commands.Cog):
                 target_guild, bucket["add"], meta_by_guild.get(action_guild_id, {}), autocreate)
             if t_remap:
                 await self._persist_remap(target_guild.id, t_remap)
+                ziel_texte = text_je_rolle_fremd.setdefault(action_guild_id, {})
+                for alt_id, neu_id in t_remap.items():
+                    if int(alt_id) in ziel_texte:
+                        ziel_texte[int(neu_id)] = ziel_texte.pop(int(alt_id))
             # Built from Role OBJECTS rather than by resolving an id set through
             # target_guild.get_role(): a role _resolve_add_roles just created is not in
             # guild._roles until the GUILD_ROLE_CREATE gateway event lands, so a get_role()
@@ -719,6 +730,11 @@ class RoleRules(commands.Cog):
             if vorlage:
                 gruppen.setdefault(vorlage, []).append(rolle)
         if not gruppen:
+            # Im Debug-Bericht nachvollziehbar machen, warum nichts kam: entweder hat keine
+            # der Regeln den Haken, oder ihr Textfeld ist leer.
+            self._log(f"keine Regel-PM an {member.id}: "
+                      f"{len(rollen)} neue Rolle(n), aber keine davon mit Text "
+                      f"(Haken gesetzt und Text gefuellt?)")
             return
 
         for vorlage, gruppe in gruppen.items():
@@ -732,6 +748,8 @@ class RoleRules(commands.Cog):
                           lambda m: ersatz[m.group(0)], vorlage)[:2000]
             try:
                 await member.send(text)
+                self._log(f"Regel-PM an {member.id} geschickt "
+                          f"({', '.join(r.name for r in gruppe)})")
             except discord.HTTPException:
                 # Geschlossene Direktnachrichten sind eine Einstellung, kein Fehler - und
                 # weitere Gruppen braucht man dann auch nicht mehr zu versuchen.
