@@ -6110,11 +6110,13 @@ async def coop_interval_save(request: Request, guild_id: int, minutes: str = For
 
 
 @web.post("/servers/{guild_id}/coop/dm")
-async def coop_dm_save(request: Request, guild_id: int, text: str = Form("")):
+async def coop_dm_save(request: Request, guild_id: int, text: str = Form(""),
+                       enabled: str = Form("")):
     """Was jemand per Direktnachricht liest, der ueber eine Kooperation eine Rolle bekommt.
 
-    Leer heisst: keine Nachricht. Das ist der Zustand nach dem Update, damit keine
-    bestehende Installation ungefragt anfaengt, ihren Mitgliedern zu schreiben.
+    Der Haken entscheidet, nicht der leere Text: wer die Nachricht eine Weile ausstellen
+    will, soll seinen Satz dabei nicht verlieren. Ein leerer Text sendet trotzdem nichts -
+    das ist der Zustand nach dem Update.
     """
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
@@ -6122,6 +6124,25 @@ async def coop_dm_save(request: Request, guild_id: int, text: str = Form("")):
     # 1800 statt 2000: die Platzhalter werden erst beim Senden ersetzt und koennen den Text
     # laenger machen als er hier aussieht. Discord schneidet bei 2000 hart ab.
     await set_guild_config(guild_id, "coop_dm_text", (text or "").strip()[:1800])
+    await set_guild_config(guild_id, "coop_dm_enabled", "1" if enabled else "0")
+    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Gespeichert",
+                            status_code=302)
+
+
+@web.post("/servers/{guild_id}/rolerules/dm")
+async def rolerules_dm_save(request: Request, guild_id: int, text: str = Form(""),
+                            enabled: str = Form("")):
+    """Dasselbe fuer die Regeln oben: eine Nachricht, wenn eine Regel Rollen vergibt.
+
+    Eigene Einstellung und nicht dieselbe wie bei den Kooperationen: eine Regel wirkt
+    innerhalb dieser Installation, eine Kooperation reicht zu jemandem, dem man vertraut.
+    Wer nur den einen Anlass melden will, kann den anderen ausschalten.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    await set_guild_config(guild_id, "rolerules_dm_text", (text or "").strip()[:1800])
+    await set_guild_config(guild_id, "rolerules_dm_enabled", "1" if enabled else "0")
     return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Gespeichert",
                             status_code=302)
 

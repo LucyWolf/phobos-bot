@@ -5028,6 +5028,30 @@ function updateAmpCmdPreview(id, action, value) {
 </div>
 </div>
 
+{# Eine Nachricht, wenn eine REGEL Rollen vergeben hat. Eigene Einstellung und nicht
+   dieselbe wie bei den Kooperationen darunter: eine Regel wirkt innerhalb dieser
+   Installation, eine Kooperation reicht zu jemandem, dem man vertraut. #}
+<div class="card">
+  <div class="feat-header">{{ tr.rolerules_dm_heading }}</div>
+  <p class="hint" style="margin-bottom:0.6rem;">{{ tr.rolerules_dm_intro }}</p>
+  <form method="post" action="/servers/{{ guild.id }}/rolerules/dm">
+    <label>{{ tr.rolerules_dm_label }}</label>
+    <textarea name="text" rows="3" maxlength="1800" placeholder="{{ tr.rolerules_dm_placeholder }}"
+      style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;
+             padding:0.6rem 0.8rem;color:var(--text);font-size:0.85rem;font-family:inherit;
+             line-height:1.5;resize:vertical;outline:none;margin-bottom:0.35rem;">{{ cfg.get('rolerules_dm_text', '') }}</textarea>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin:0;">
+        <input type="checkbox" name="enabled" value="1" style="margin:0;width:auto;"
+               {% if cfg.get('rolerules_dm_enabled', '0') == '1' %}checked{% endif %}>
+        {{ tr.dm_enabled_label }}
+      </label>
+      <button type="submit" class="btn btn-secondary">{{ tr.btn_save }}</button>
+      <div style="flex:1;min-width:240px;font-size:0.72rem;color:var(--muted);">{{ tr.rolerules_dm_hint }}</div>
+    </div>
+  </form>
+</div>
+
 {# ── Kooperationen ──────────────────────────────────────────────────────────────
    Bewusst eine eigene Karte unter den Regeln und keine Erweiterung davon: eine Regel
    wirkt innerhalb dieser Installation, eine Kooperation reicht zu jemandem, dem man
@@ -5072,6 +5096,14 @@ function updateAmpCmdPreview(id, action, value) {
              padding:0.6rem 0.8rem;color:var(--text);font-size:0.85rem;font-family:inherit;
              line-height:1.5;resize:vertical;outline:none;margin-bottom:0.35rem;">{{ cfg.get('coop_dm_text', '') }}</textarea>
     <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin:0;">
+        {# Der Haken entscheidet, nicht der leere Text - so bleibt ein geschriebener Satz
+           erhalten, wenn man die Nachricht eine Weile ausstellt. Ohne Eintrag an, damit
+           eine Installation, die den Text schon hat, nicht stillschweigend verstummt. #}
+        <input type="checkbox" name="enabled" value="1" style="margin:0;width:auto;"
+               {% if cfg.get('coop_dm_enabled', '1') == '1' %}checked{% endif %}>
+        {{ tr.dm_enabled_label }}
+      </label>
       <button type="submit" class="btn btn-secondary">{{ tr.btn_save }}</button>
       <div style="flex:1;min-width:240px;font-size:0.72rem;color:var(--muted);">{{ tr.coop_dm_hint }}</div>
     </div>

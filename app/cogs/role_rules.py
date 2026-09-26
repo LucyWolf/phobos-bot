@@ -425,6 +425,9 @@ class RoleRules(commands.Cog):
                     # source rather than assumed.
                     updated_member = await member.edit(roles=new_roles, reason="CrossVerification")
                     changed = True
+                    # Nur das, was wirklich DAZUGEKOMMEN ist - eine Regel, die nur eine
+                    # Rolle entfernt, ist keine Nachricht wert.
+                    await self._regel_pm(member, [r for r in add_roles if r.id not in current])
                 except (discord.HTTPException, OSError) as e:
                     # OSError alongside HTTPException: discord.py's own http.py re-raises a bare
                     # OSError (not wrapped into HTTPException) for a genuine network-level
@@ -487,6 +490,10 @@ class RoleRules(commands.Cog):
                     # edit we just made) for the recursion below, not the pre-edit target_member.
                     target_member = await target_member.edit(roles=t_new_roles, reason="CrossVerification (cross-server)") or target_member
                     self._log(f"member.edit() auf Guild {target_guild.id} erfolgreich gesendet")
+                    # Gefragt wird die Einstellung des ZIEL-Servers: dort bekommt die Person
+                    # die Rolle, und dort haengt der Text.
+                    await self._regel_pm(target_member,
+                                         [r for r in t_add_roles if r.id not in t_current])
                 except (discord.HTTPException, OSError) as e:
                     self._log(f"FEHLER: Cross-Server-Anwenden auf {target_guild.id} fehlgeschlagen: {e}")
                     continue
@@ -665,6 +672,42 @@ class RoleRules(commands.Cog):
                 self._log(f"Zeitstempel der Kooperation nicht gesetzt: {e}")
         return {"gefragt": gefragt, "vergeben": vergeben, "offen": offen}
 
+    async def _regel_pm(self, member, rollen):
+        """Schreibt dem Mitglied, dass eine Regel ihm Rollen gegeben hat.
+
+        Getrennt von _koop_pm: eine Regel wirkt innerhalb dieser Installation, eine
+        Kooperation reicht zu jemandem, dem man vertraut - das sind zwei verschiedene
+        Anlaesse, und wer nur den einen melden will, soll den anderen abschalten koennen.
+
+        Der Haken entscheidet, nicht der leere Text: so bleibt ein geschriebener Satz
+        erhalten, wenn man die Nachricht eine Weile ausstellt.
+        """
+        if not rollen:
+            return
+        try:
+            an = (await get_guild_config(member.guild.id, "rolerules_dm_enabled") or "0") == "1"
+            vorlage = (await get_guild_config(member.guild.id, "rolerules_dm_text") or "").strip()
+        except Exception as e:
+            self._log(f"PM-Einstellung nicht lesbar: {e}")
+            return
+        if not an or not vorlage:
+            return
+        ersatz = {
+            "{user}": member.display_name,
+            "{mention}": member.mention,
+            "{server}": member.guild.name,
+            "{rollen}": ", ".join(r.name for r in rollen) or "-",
+        }
+        text = re.sub("|".join(re.escape(k) for k in ersatz),
+                      lambda m: ersatz[m.group(0)], vorlage)[:2000]
+        try:
+            await member.send(text)
+        except discord.HTTPException:
+            # Geschlossene Direktnachrichten sind eine Einstellung, kein Fehler.
+            self._log(f"Regel-PM an {member.id} nicht zustellbar")
+        except Exception as e:
+            self._log(f"Regel-PM an {member.id} fehlgeschlagen: {e}")
+
     async def _koop_pm(self, member, rollen, row):
         """Schreibt dem Mitglied, dass es ueber eine Kooperation eine Rolle bekommen hat.
 
@@ -676,11 +719,14 @@ class RoleRules(commands.Cog):
         Abgleich nicht anhalten, und die Rolle hat er ja bereits.
         """
         try:
+            # Ohne Eintrag an: eine Installation, die den Text bereits geschrieben hat,
+            # soll nach dem Update weiter schreiben und nicht stillschweigend verstummen.
+            an = (await get_guild_config(member.guild.id, "coop_dm_enabled") or "1") == "1"
             vorlage = (await get_guild_config(member.guild.id, "coop_dm_text") or "").strip()
         except Exception as e:
             self._log(f"PM-Text nicht lesbar: {e}")
             return
-        if not vorlage:
+        if not an or not vorlage:
             return
         ersatz = {
             "{user}": member.display_name,

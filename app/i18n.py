@@ -1100,6 +1100,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "coop_dm_label":          "Nachricht an das Mitglied, wenn es eine Rolle bekommt",
         "coop_dm_placeholder":    "Willkommen! Weil du auf {partner} geprüft bist, hast du auf {server} jetzt: {rollen}",
         "coop_dm_hint":           "Leer lassen heißt: keine Nachricht. Platzhalter: {user}, {mention}, {server}, {rollen}, {partner}. Wer seine Direktnachrichten geschlossen hat, bekommt nichts — die Rolle trotzdem.",
+        "dm_enabled_label":       "Nachricht senden",
+        "rolerules_dm_heading":   "✉️ Nachricht bei vergebenen Rollen",
+        "rolerules_dm_intro":     "Wenn eine Regel oben jemandem Rollen gibt, kann der Bot ihm das per Direktnachricht sagen. Das ist getrennt von den Kooperationen weiter unten — ihr könnt das eine melden und das andere nicht.",
+        "rolerules_dm_label":     "Nachricht an das Mitglied",
+        "rolerules_dm_placeholder": "Hallo {user}, auf {server} hast du jetzt: {rollen}",
+        "rolerules_dm_hint":      "Ohne Haken wird nichts gesendet, der Text bleibt aber stehen. Platzhalter: {user}, {mention}, {server}, {rollen}. Entfernt eine Regel nur Rollen, kommt keine Nachricht.",
         # Die Namen der Reiter in der Seitenleiste. Sie standen frueher hart in
         # _server_subnav.html und in zwei Tabellen in main.py - auf einer englisch
         # gestellten Oberflaeche stand deshalb "Willkommen" neben "Tickets".
@@ -2361,6 +2367,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "coop_dm_label":          "Message to the member when they get a role",
         "coop_dm_placeholder":    "Welcome! Because you are vetted on {partner}, you now have on {server}: {rollen}",
         "coop_dm_hint":           "Leave empty for no message. Placeholders: {user}, {mention}, {server}, {rollen}, {partner}. Anybody with direct messages closed gets nothing — the role all the same.",
+        "dm_enabled_label":       "Send message",
+        "rolerules_dm_heading":   "✉️ Message when roles are granted",
+        "rolerules_dm_intro":     "When a rule above gives somebody roles, the bot can tell them so by direct message. This is separate from the cooperations further down — you can announce one and not the other.",
+        "rolerules_dm_label":     "Message to the member",
+        "rolerules_dm_placeholder": "Hi {user}, on {server} you now have: {rollen}",
+        "rolerules_dm_hint":      "Without the tick nothing is sent, but the text stays. Placeholders: {user}, {mention}, {server}, {rollen}. A rule that only removes roles sends nothing.",
         # Die Namen der Reiter in der Seitenleiste. Sie standen frueher hart in
         # _server_subnav.html und in zwei Tabellen in main.py - auf einer englisch
         # gestellten Oberflaeche stand deshalb "Willkommen" neben "Tickets".
