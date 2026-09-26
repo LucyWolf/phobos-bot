@@ -1109,6 +1109,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "rolerules_rule_dm_label": "Dem Mitglied eine Nachricht schicken, wenn diese Regel greift",
         "rolerules_rule_dm_placeholder": "Hallo {user}, auf {server} hast du jetzt: {rollen}",
         "rolerules_rule_dm_hint": "Gilt nur für diese Regel — jede Regel hat ihre eigene Nachricht. Ohne Haken oder ohne Text wird nichts geschickt. Platzhalter: {user}, {mention}, {server}, {rollen}. Entfernt die Regel nur Rollen, kommt keine Nachricht.",
+        "rolerules_dm_on":        "Diese Regel schickt eine Nachricht",
+        "rolerules_dm_half":      "Unvollständig: es fehlt der Haken oder der Text — so wird nichts geschickt",
         # Die Namen der Reiter in der Seitenleiste. Sie standen frueher hart in
         # _server_subnav.html und in zwei Tabellen in main.py - auf einer englisch
         # gestellten Oberflaeche stand deshalb "Willkommen" neben "Tickets".
@@ -2379,6 +2381,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "rolerules_rule_dm_label": "Send the member a message when this rule applies",
         "rolerules_rule_dm_placeholder": "Hi {user}, on {server} you now have: {rollen}",
         "rolerules_rule_dm_hint": "Applies to this rule only — every rule has its own message. Without the tick, or without a text, nothing is sent. Placeholders: {user}, {mention}, {server}, {rollen}. A rule that only removes roles sends nothing.",
+        "rolerules_dm_on":        "This rule sends a message",
+        "rolerules_dm_half":      "Incomplete: the tick or the text is missing — nothing will be sent",
         # Die Namen der Reiter in der Seitenleiste. Sie standen frueher hart in
         # _server_subnav.html und in zwei Tabellen in main.py - auf einer englisch
         # gestellten Oberflaeche stand deshalb "Willkommen" neben "Tickets".

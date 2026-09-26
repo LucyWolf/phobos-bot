@@ -304,7 +304,12 @@ class RoleRules(commands.Cog):
             self._log(f"Auswertung abgebrochen: hop_budget={hop_budget}, member={member}")
             return
         rules = await self._get_rules(guild.id)
-        self._log(f"Guild {guild.id} ({guild.name}): {len(rules)} aktive Regel(n) geladen für Mitglied {member.id}")
+        # Der Zustand der Nachricht gehoert in dieselbe Zeile: bleibt eine PM aus, ist die
+        # erste Frage immer, ob die Regel ueberhaupt eine schicken soll.
+        _pm = [f"#{r['id']}:" + ("an" if r.get("dm_enabled") and (r.get("dm_text") or "").strip()
+                                 else "aus") for r in rules]
+        self._log(f"Guild {guild.id} ({guild.name}): {len(rules)} aktive Regel(n) geladen für "
+                  f"Mitglied {member.id} · Nachricht je Regel: {', '.join(_pm) or '—'}")
         if not rules:
             return
         current = {r.id for r in member.roles}

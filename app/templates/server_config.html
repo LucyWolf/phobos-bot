@@ -4890,7 +4890,16 @@ function updateAmpCmdPreview(id, action, value) {
         {% for rr in role_rules %}
         <tr>
           <td>
-            <div style="font-weight:600;font-size:0.88rem;">{{ rr.name or '—' }}</div>
+            <div style="font-weight:600;font-size:0.88rem;">{{ rr.name or '—' }}
+              {# Auf einen Blick sehen, ob diese Regel eine Nachricht schickt. Ohne das
+                 muss man jede Regel einzeln aufklappen, um einen fehlenden Haken zu
+                 finden - genau daran ist die Suche einmal haengen geblieben. #}
+              {% if rr.dm_enabled and (rr.dm_text or '').strip() %}
+              <span title="{{ tr.rolerules_dm_on }}" style="font-size:0.8rem;">✉️</span>
+              {% elif rr.dm_enabled or (rr.dm_text or '').strip() %}
+              <span title="{{ tr.rolerules_dm_half }}" style="font-size:0.8rem;opacity:0.5;">✉️</span>
+              {% endif %}
+            </div>
             <div style="font-size:0.72rem;color:var(--muted);">
               {% if rr.match_type == 'all' %}{{ tr.rolerules_match_all }}{% elif rr.match_type == 'none' %}{{ tr.rolerules_match_none }}{% else %}{{ tr.rolerules_match_any }}{% endif %}:
               {% for n in rr.match_role_names %}@{{ n }}{% if not loop.last %}, {% endif %}{% endfor %}
