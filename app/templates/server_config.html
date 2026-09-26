@@ -5042,8 +5042,12 @@ function updateAmpCmdPreview(id, action, value) {
      ohne Gegenwert. Leer = keine Nachricht. #}
   <form method="post" action="/servers/{{ guild.id }}/coop/dm" style="margin-bottom:1rem;">
     <label>{{ tr.coop_dm_label }}</label>
-    <textarea name="text" rows="3" maxlength="1800" style="margin-bottom:0.35rem;"
-              placeholder="{{ tr.coop_dm_placeholder }}">{{ cfg.get('coop_dm_text', '') }}</textarea>
+    {# base.html stylt input und select, aber NICHT textarea - ohne eigenen Block steht hier
+       ein weisser Kasten quer im dunklen Reiter. #}
+    <textarea name="text" rows="3" maxlength="1800" placeholder="{{ tr.coop_dm_placeholder }}"
+      style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;
+             padding:0.6rem 0.8rem;color:var(--text);font-size:0.85rem;font-family:inherit;
+             line-height:1.5;resize:vertical;outline:none;margin-bottom:0.35rem;">{{ cfg.get('coop_dm_text', '') }}</textarea>
     <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
       <button type="submit" class="btn btn-secondary">{{ tr.btn_save }}</button>
       <div style="flex:1;min-width:240px;font-size:0.72rem;color:var(--muted);">{{ tr.coop_dm_hint }}</div>
