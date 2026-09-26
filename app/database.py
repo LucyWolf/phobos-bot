@@ -1199,6 +1199,14 @@ async def init_db():
             "ALTER TABLE coop_partners ADD COLUMN partner_name TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE coop_partners ADD COLUMN partner_roles TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE coop_partners ADD COLUMN partner_checked TEXT NOT NULL DEFAULT ''",
+            # Wann die Gegenseite unseren Schluessel zurueckgewiesen hat (HTTP 403). Leer
+            # heisst "nichts bekannt" - der Normalfall. Gesetzt wird es dort, wo wir es
+            # erfahren: beim Abgleich und beim Verbindungstest. Die Kooperation wird dann
+            # stillgelegt (enabled=0), womit auch der Schluessel, den der Partner von uns
+            # hat, nicht mehr durchkommt: /coop/check verlangt enabled=1. Stilllegen und
+            # nicht loeschen, weil ein versehentlich neu erzeugter Schluessel drueben sonst
+            # beide Seiten zur Neueinrichtung zwingen wuerde.
+            "ALTER TABLE coop_partners ADD COLUMN getrennt_at TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

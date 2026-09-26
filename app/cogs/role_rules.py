@@ -17,6 +17,7 @@ self-hoster to run docker exec commands for every troubleshooting round doesn't 
 import collections
 import datetime
 import json
+import re
 import time
 
 import discord
@@ -647,6 +648,7 @@ class RoleRules(commands.Cog):
                     await member.add_roles(*fehlt, reason=f"Kooperation: {row['name']}"[:100])
                     vergeben += 1
                     self._log(f"{member.id} ueber Kooperation {row['name']!r} freigegeben")
+                    await self._koop_pm(member, fehlt, row)
                 except discord.Forbidden:
                     self._log(f"darf {member.id} die Kooperations-Rollen nicht geben")
                 except (discord.HTTPException, OSError) as e:
@@ -662,6 +664,40 @@ class RoleRules(commands.Cog):
             except Exception as e:
                 self._log(f"Zeitstempel der Kooperation nicht gesetzt: {e}")
         return {"gefragt": gefragt, "vergeben": vergeben, "offen": offen}
+
+    async def _koop_pm(self, member, rollen, row):
+        """Schreibt dem Mitglied, dass es ueber eine Kooperation eine Rolle bekommen hat.
+
+        Der Text steht je Server in coop_dm_text. Leer heisst: keine Nachricht - das ist
+        auch der Zustand jeder bestehenden Installation nach dem Update, es faengt also
+        niemand ungefragt an, seinen Mitgliedern zu schreiben.
+
+        Fehlschlaege bleiben folgenlos: wer seine Direktnachrichten zu hat, soll den
+        Abgleich nicht anhalten, und die Rolle hat er ja bereits.
+        """
+        try:
+            vorlage = (await get_guild_config(member.guild.id, "coop_dm_text") or "").strip()
+        except Exception as e:
+            self._log(f"PM-Text nicht lesbar: {e}")
+            return
+        if not vorlage:
+            return
+        ersatz = {
+            "{user}": member.display_name,
+            "{mention}": member.mention,
+            "{server}": member.guild.name,
+            "{rollen}": ", ".join(r.name for r in rollen) or "-",
+            "{partner}": row["name"] or "-",
+        }
+        text = re.sub("|".join(re.escape(k) for k in ersatz),
+                      lambda m: ersatz[m.group(0)], vorlage)[:2000]
+        try:
+            await member.send(text)
+        except discord.HTTPException:
+            # Geschlossene Direktnachrichten sind kein Fehler, sondern eine Einstellung.
+            self._log(f"PM an {member.id} nicht zustellbar")
+        except Exception as e:
+            self._log(f"PM an {member.id} fehlgeschlagen: {e}")
 
     async def _kooperationen_pruefen(self, member) -> list:
         """Der Beitritts-Fall: genau ein Mitglied, sonst derselbe Weg wie beim Abgleich.

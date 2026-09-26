@@ -28,7 +28,7 @@
 </style>
 
 {% from '_server_subnav.html' import server_subnav %}
-{{ server_subnav(guild.id, request.query_params.get('tab', 'config'), enabled_features, user_allowed_tabs) }}
+{{ server_subnav(guild.id, request.query_params.get('tab', 'config'), enabled_features, user_allowed_tabs, tr) }}
 
 {% if saved %}<div class="alert alert-success">✅ Einstellungen gespeichert.</div>{% endif %}
 {% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
@@ -49,7 +49,7 @@
       {% for key, label in toggleable_features.items() %}
       <label style="display:flex;align-items:center;gap:0.5rem;font-weight:400;margin-bottom:0;">
         <input type="checkbox" name="features" value="{{ key }}" style="width:auto;margin:0;" {% if key in enabled_features %}checked{% endif %}>
-        {{ label }}
+        {{ tr.get('tab_' ~ key, label) }}
       </label>
       {% endfor %}
     </div>
@@ -2170,7 +2170,7 @@ document.addEventListener('click', function(e) {
         {% for key, label in moderator_restrictable_tabs.items() %}
         <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;font-weight:400;">
           <input type="checkbox" name="tabs" value="{{ key }}" style="width:auto;margin:0;" {% if not allowed or key in allowed %}checked{% endif %}>
-          {{ label }}
+          {{ tr.get('tab_' ~ key, label) }}
         </label>
         {% endfor %}
       </div>
@@ -5014,7 +5014,9 @@ function updateAmpCmdPreview(id, action, value) {
   <p class="hint" style="margin-bottom:0.4rem;">{{ tr.coop_hint }}</p>
   <p class="hint" style="margin-bottom:1rem;">{{ tr.coop_privacy }}</p>
 
-  {% if coop_new_key %}
+  {# Nach einer Trennung waere der frisch angezeigte Schluessel eine Luege: die Zeile ist
+     stillgelegt, der Partner kaeme damit nicht durch. #}
+  {% if coop_new_key and not coop_getrennt %}
   <div style="border:1px solid #f59e0b;background:rgba(245,158,11,0.08);border-radius:0.6rem;padding:0.8rem;margin-bottom:1rem;">
     <div style="font-weight:600;font-size:0.85rem;margin-bottom:0.3rem;">🔑 {{ tr.coop_key_new_title }}{% if coop_new_name %} — {{ coop_new_name }}{% endif %}</div>
     <code style="display:block;word-break:break-all;background:var(--bg);border-radius:0.4rem;padding:0.5rem;font-size:0.8rem;">{{ coop_new_key }}</code>
@@ -5033,6 +5035,19 @@ function updateAmpCmdPreview(id, action, value) {
     </div>
     <button type="submit" class="btn btn-secondary">{{ tr.btn_save }}</button>
     <div style="flex:1;min-width:240px;font-size:0.72rem;color:var(--muted);">{{ tr.coop_interval_hint }}</div>
+  </form>
+
+  {# Was das Mitglied zu lesen bekommt, wenn es ueber eine Kooperation eine Rolle erhaelt.
+     Ein Text fuer alle Partner: derselbe Satz je Kooperation neu zu pflegen waere Arbeit
+     ohne Gegenwert. Leer = keine Nachricht. #}
+  <form method="post" action="/servers/{{ guild.id }}/coop/dm" style="margin-bottom:1rem;">
+    <label>{{ tr.coop_dm_label }}</label>
+    <textarea name="text" rows="3" maxlength="1800" style="margin-bottom:0.35rem;"
+              placeholder="{{ tr.coop_dm_placeholder }}">{{ cfg.get('coop_dm_text', '') }}</textarea>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+      <button type="submit" class="btn btn-secondary">{{ tr.btn_save }}</button>
+      <div style="flex:1;min-width:240px;font-size:0.72rem;color:var(--muted);">{{ tr.coop_dm_hint }}</div>
+    </div>
   </form>
 
   {# Was der Partner von UNS braucht: Adresse und Schluessel. Beides zusammen, damit man
@@ -5108,7 +5123,12 @@ function updateAmpCmdPreview(id, action, value) {
             {% if c.note %}<div style="font-size:0.7rem;color:var(--muted);">{{ c.note }}</div>{% endif %}
           </td>
           <td style="color:var(--muted);font-size:0.78rem;">
-            {% if c.partner_name %}✅ {{ c.partner_name }}
+            {# Getrennt schlaegt alles andere: dass der Partner frueher einmal geantwortet
+               hat, ist genau dann nicht mehr die Auskunft, die jemand sucht. #}
+            {% if c.getrennt_at %}
+            <span style="color:var(--danger);font-weight:600;">⛔ {{ tr.coop_col_disconnected }}</span>
+            <div style="font-size:0.7rem;color:var(--danger);">{{ tr.coop_disconnected_hint }}</div>
+            {% elif c.partner_name %}✅ {{ c.partner_name }}
             {% elif c.base_url %}⏳ {{ tr.coop_col_unchecked }}
             {% else %}—{% endif %}
           </td>
@@ -5240,6 +5260,13 @@ function updateAmpCmdPreview(id, action, value) {
               {{ tr.coop_last_in }}: {{ c.last_in or tr.coop_never }} ·
               {{ tr.coop_last_out }}: {{ c.last_out or tr.coop_never }}
             </div>
+            {% if c.getrennt_at %}
+            <div style="margin-top:0.6rem;border:1px solid var(--danger);border-radius:0.5rem;padding:0.6rem 0.7rem;">
+              <div style="color:var(--danger);font-weight:600;font-size:0.82rem;">⛔ {{ tr.coop_disconnected_title }}</div>
+              <div style="font-size:0.75rem;color:var(--muted);margin-top:0.25rem;">{{ tr.coop_disconnected_long }}</div>
+              <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.coop_disconnected_since }}: {{ c.getrennt_at[:16]|replace('T', ' ') }}</div>
+            </div>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

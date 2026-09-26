@@ -5787,6 +5787,32 @@ async def coop_info(request: Request):
     return JSONResponse({"ok": True, "server": guild.name if guild else "", "roles": namen})
 
 
+async def coop_trennung_merken(row, getrennt: bool):
+    """Haelt fest, ob die Gegenseite unseren Schluessel noch annimmt.
+
+    Ein 403 vom Partner heisst: er kennt diesen Schluessel nicht mehr. Damit ist die
+    Kooperation einseitig tot - wir fragen ins Leere, und es gibt keinen Grund, IHN weiter
+    bei uns fragen zu lassen. Also wird die Zeile stillgelegt; der Schluessel, den er von
+    uns hat, faellt damit sofort durch (/coop/check verlangt enabled=1).
+
+    Geloescht wird der Vermerk, sobald wieder eine normale Antwort kommt - allerdings ohne
+    die Kooperation von selbst wieder anzuschalten. Das bleibt eine Entscheidung von Hand:
+    wer getrennt wurde, soll das sehen und nicht davon ueberrascht werden, dass die
+    Verbindung nachts von allein wieder stand.
+    """
+    try:
+        if getrennt:
+            if (row["getrennt_at"] or "").strip():
+                return
+            await db_exec("UPDATE coop_partners SET getrennt_at=?, enabled=0 WHERE id=?",
+                          (datetime.datetime.utcnow().isoformat(), row["id"]))
+            print(f"[coop] Partner {row['name']!r} weist unseren Schluessel zurueck - stillgelegt")
+        elif (row["getrennt_at"] or "").strip():
+            await db_exec("UPDATE coop_partners SET getrennt_at='' WHERE id=?", (row["id"],))
+    except Exception as e:
+        print(f"[coop] Trennung konnte nicht vermerkt werden: {e}")
+
+
 async def coop_frage_info(row) -> dict:
     """Holt beim Partner, wie er heisst und welche Rollen er mit uns teilt.
 
@@ -5812,6 +5838,7 @@ async def coop_frage_info(row) -> dict:
             async with sitzung.post(f"{ziel}/coop/info", data={"key": schluessel},
                                     allow_redirects=False) as antwort:
                 if antwort.status == 403:
+                    await coop_trennung_merken(row, True)
                     return {"ok": False, "error": "Der Partner lehnt diesen Schlüssel ab."}
                 if antwort.status == 429:
                     return {"ok": False, "error": "Der Partner bremst gerade zu viele Anfragen."}
@@ -5822,6 +5849,7 @@ async def coop_frage_info(row) -> dict:
         return {"ok": False, "error": f"Nicht erreichbar: {str(e)[:120]}"}
     if not isinstance(daten, dict) or not daten.get("ok"):
         return {"ok": False, "error": "Unerwartete Antwort vom Partner."}
+    await coop_trennung_merken(row, False)
     return {"ok": True, "server": str(daten.get("server") or "")[:100],
             "roles": [str(r)[:60] for r in (daten.get("roles") or [])][:40]}
 
@@ -5849,9 +5877,16 @@ async def coop_frage_partner(row, user_id) -> bool:
             async with sitzung.post(f"{ziel}/coop/check",
                                     data={"key": schluessel, "user_id": str(user_id)},
                                     allow_redirects=False) as antwort:
+                if antwort.status == 403:
+                    # Nicht "gerade nicht erreichbar", sondern "diesen Schluessel kenne ich
+                    # nicht mehr" - der einzige Status, der eine Aussage ueber die
+                    # Partnerschaft selbst macht.
+                    await coop_trennung_merken(row, True)
+                    return False
                 if antwort.status != 200:
                     return False
                 daten = await _coop_antwort_lesen(antwort)
+                await coop_trennung_merken(row, False)
     except Exception as e:
         print(f"[coop] Anfrage an {ziel[:60]} fehlgeschlagen: {e}")
         return False
@@ -5932,9 +5967,12 @@ async def coop_save(request: Request, guild_id: int, coop_id: int):
     # share_role_ids fehlt hier absichtlich: die Freigabe wird einmal fuer den ganzen
     # Server gesetzt (/coop/share) und nicht je Partner. Stuende sie im UPDATE, wuerde
     # jedes Speichern hier sie leeren, weil dieses Formular das Feld nicht mehr schickt.
+    # Wer die Kooperation von Hand wieder anschaltet, nimmt sie damit wieder auf - der
+    # Trennungsvermerk gehoert dann weg, sonst stuende die Zeile fuer immer rot da.
     await db_exec(
         "UPDATE coop_partners SET name=?, base_url=?, key_out=?, "
-        "grant_role_ids=?, enabled=?, note=? WHERE id=? AND guild_id=?",
+        "grant_role_ids=?, enabled=?, note=?, "
+        "getrennt_at=CASE WHEN ?=1 THEN '' ELSE getrennt_at END WHERE id=? AND guild_id=?",
         (" ".join((form.get("name") or "").split())[:80] or "Partner",
          base_url,
          # Leer heisst "unveraendert lassen" - wie beim SMTP- und beim VRChat-Passwort.
@@ -5943,6 +5981,7 @@ async def coop_save(request: Request, guild_id: int, coop_id: int):
          (form.get("key_out") or "").strip()[:200] or (bestehend or {}).get("key_out", ""),
          _coop_rollen(form, "grant_role_ids", guild),
          1 if form.get("enabled") else 0, (form.get("note") or "").strip()[:300],
+         1 if form.get("enabled") else 0,
          coop_id, str(guild_id)),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Gespeichert", status_code=302)
@@ -6063,6 +6102,23 @@ async def coop_interval_save(request: Request, guild_id: int, minutes: str = For
     except ValueError:
         wert = 15
     await set_guild_config(guild_id, "coop_interval_minutes", str(wert))
+    return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Gespeichert",
+                            status_code=302)
+
+
+@web.post("/servers/{guild_id}/coop/dm")
+async def coop_dm_save(request: Request, guild_id: int, text: str = Form("")):
+    """Was jemand per Direktnachricht liest, der ueber eine Kooperation eine Rolle bekommt.
+
+    Leer heisst: keine Nachricht. Das ist der Zustand nach dem Update, damit keine
+    bestehende Installation ungefragt anfaengt, ihren Mitgliedern zu schreiben.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    # 1800 statt 2000: die Platzhalter werden erst beim Senden ersetzt und koennen den Text
+    # laenger machen als er hier aussieht. Discord schneidet bei 2000 hart ab.
+    await set_guild_config(guild_id, "coop_dm_text", (text or "").strip()[:1800])
     return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Gespeichert",
                             status_code=302)
 
@@ -8182,6 +8238,10 @@ async def server_config(
         # Ein frisch erzeugter Schluessel wird genau einmal gezeigt und dabei aus der Sitzung
         # genommen: gespeichert ist nur sein Hash, ein zweites Mal gibt es ihn nicht.
         "coop_new_key": _coop_key_einmal, "coop_new_name": _coop_name_einmal,
+        # Ein frisch erzeugter Schluessel fuer eine stillgelegte Kooperation wuerde
+        # nichts oeffnen - dann wird er auch nicht angezeigt.
+        "coop_getrennt": any((d.get("getrennt_at") or "") and d.get("name") == _coop_name_einmal
+                             for d in _coops),
         "coop_eigene_adresse": _coop_eigene_adresse, "coop_members": _coop_members,
         "coop_owner_id": str(getattr(guild, "owner_id", "") or ""),
         "role_rule_target_guilds": role_rule_target_guilds,
@@ -8195,7 +8255,12 @@ async def server_config(
         "active": f"server_{guild_id}",
         "guilds": await _guild_list(request),
         "tab": tab, "error": error, "success": success,
-        "tab_label": _SERVER_CONFIG_TAB_LABELS.get(tab, _SERVER_CONFIG_TAB_LABELS["config"]),
+        # Seitentitel in der Sprache der Oberflaeche. tr gibt es in dieser Funktion nicht -
+        # der Basiskontext aus session() bringt es erst spaeter dazu -, also wird es hier
+        # ueber die Sprache der Sitzung geholt. Das Woerterbuch bleibt als Rueckfall, falls
+        # ein Reiter dort steht, aber noch keinen i18n-Text hat.
+        "tab_label": get_tr(request.session.get("lang", "de")).get(
+            "tab_" + tab, _SERVER_CONFIG_TAB_LABELS.get(tab, _SERVER_CONFIG_TAB_LABELS["config"])),
         "rr_list": rr_list, "cmd_list": cmd_list,
         "leaderboard": lb, "warn_groups": warn_groups,
         "ticket_panels": ticket_panels, "ticket_list": ticket_list, "ga_list": ga_list,
