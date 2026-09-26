@@ -10,7 +10,59 @@ import re
 import discord
 from discord import app_commands, ui
 from discord.ext import commands
-from database import db_exec, db_one, db_rows
+from database import db_exec, db_one, db_rows, bot_lang
+
+
+# Was der Bot rund um Tickets sagt, nach Sprache des Servers (Config-Reiter, bot_lang).
+# Nur die Texte, die ein Mitglied zu sehen bekommt - was in den Log geht, traegt log_utils
+# ohnehin schon uebersetzt weiter.
+TICKET_TEXTE = {
+    "de": {
+        "close_btn":      "Ticket schließen",
+        "open_btn":       "Ticket öffnen",
+        "close_this":     "Dieses Ticket schließen",
+        "already_closed": "Dieses Ticket ist bereits geschlossen.",
+        "closing":        "Ticket wird geschlossen...",
+        "closed_by":      "Ticket geschlossen von {wer}",
+        "in_progress":    "Dein Ticket wird bereits erstellt, bitte warten.",
+        "panel_gone":     "Panel nicht gefunden.",
+        "panel_off":      "Dieses Panel ist aktuell nicht aktiv.",
+        "already_open":   "Du hast bereits ein offenes Ticket: {kanal}",
+        "created_reason": "Ticket von {wer} – Panel: {panel}",
+        "created":        "Ticket erstellt: {kanal}",
+        "failed":         "Ticket konnte nicht erstellt werden. Bitte kontaktiere einen Admin.",
+        "not_a_ticket":   "Dieser Kanal ist kein offenes Ticket.",
+        "ticket_intro":   "Beschreibe dein Anliegen und wir helfen dir so schnell wie möglich.",
+    },
+    "en": {
+        "close_btn":      "Close ticket",
+        "open_btn":       "Open ticket",
+        "close_this":     "Close this ticket",
+        "already_closed": "This ticket is already closed.",
+        "closing":        "Closing the ticket...",
+        "closed_by":      "Ticket closed by {wer}",
+        "in_progress":    "Your ticket is already being created, one moment.",
+        "panel_gone":     "Panel not found.",
+        "panel_off":      "This panel is currently inactive.",
+        "already_open":   "You already have an open ticket: {kanal}",
+        "created_reason": "Ticket from {wer} – panel: {panel}",
+        "created":        "Ticket created: {kanal}",
+        "failed":         "The ticket could not be created. Please contact an admin.",
+        "not_a_ticket":   "This channel is not an open ticket.",
+        "ticket_intro":   "Describe your issue and we'll help as soon as possible.",
+    },
+}
+
+
+async def tt(guild_id, schluessel: str, **werte) -> str:
+    """Ein Ticket-Text in der Sprache dieses Servers, mit eingesetzten Werten.
+
+    Faellt auf Deutsch zurueck, wenn die Sprache unbekannt ist oder ein Text dort fehlt -
+    lieber ein deutscher Satz als eine leere Antwort auf einen Knopfdruck.
+    """
+    sprache = TICKET_TEXTE.get(await bot_lang(guild_id), TICKET_TEXTE["de"])
+    text = sprache.get(schluessel) or TICKET_TEXTE["de"].get(schluessel, "")
+    return text.format(**werte) if werte else text
 from cogs.log_utils import log_bot_event
 
 
@@ -92,14 +144,17 @@ class _CloseTicketButton(ui.Button):
             # second click needs a real "already closed" response instead of blindly retrying,
             # which the pre-archive code never had to guard against since the channel (and with
             # it, the button) was always gone after the first successful close.
-            await interaction.response.send_message("Dieses Ticket ist bereits geschlossen.", ephemeral=True)
+            await interaction.response.send_message(
+                await tt(interaction.guild_id, "already_closed"), ephemeral=True)
             return
-        await interaction.response.send_message("Ticket wird geschlossen...", ephemeral=True)
+        await interaction.response.send_message(
+            await tt(interaction.guild_id, "closing"), ephemeral=True)
         panel = await db_one(
             "SELECT archive_category_id FROM ticket_panels WHERE id=?", (ticket["panel_id"],)
         ) if ticket.get("panel_id") else None
         if not await close_ticket_channel(
-            interaction.channel, interaction.guild, panel, f"Ticket geschlossen von {interaction.user}"
+            interaction.channel, interaction.guild, panel,
+            await tt(interaction.guild_id, "closed_by", wer=interaction.user)
         ):
             return
         await db_exec("UPDATE tickets SET status='closed' WHERE channel_id=?", (interaction.channel_id,))
@@ -134,7 +189,7 @@ class PanelButton(ui.Button):
         lock_key = (guild.id, interaction.user.id, panel_id)
         if lock_key in PanelButton._in_progress:
             await interaction.response.send_message(
-                "Dein Ticket wird bereits erstellt, bitte warten.", ephemeral=True
+                await tt(interaction.guild_id, "in_progress"), ephemeral=True
             )
             return
         PanelButton._in_progress.add(lock_key)
@@ -146,14 +201,14 @@ class PanelButton(ui.Button):
     async def _create_ticket(self, interaction: discord.Interaction, guild: discord.Guild, panel_id: int):
         panel = await db_one("SELECT * FROM ticket_panels WHERE id=?", (panel_id,))
         if not panel:
-            await interaction.response.send_message("Panel nicht gefunden.", ephemeral=True)
+            await interaction.response.send_message(await tt(interaction.guild_id, "panel_gone"), ephemeral=True)
             return
         if panel.get("status") != "published":
             # Belt-and-suspenders: unpublishing deletes the live message so this button
             # shouldn't be clickable anymore at all, but if that deletion ever failed (missing
             # permission, message already gone) or raced with a click, don't let a stale
             # button still create a ticket for a panel the admin explicitly deactivated.
-            await interaction.response.send_message("Dieses Panel ist aktuell nicht aktiv.", ephemeral=True)
+            await interaction.response.send_message(await tt(interaction.guild_id, "panel_off"), ephemeral=True)
             return
 
         existing = await db_one(
@@ -164,7 +219,7 @@ class PanelButton(ui.Button):
             ch = guild.get_channel(existing["channel_id"])
             if ch:
                 await interaction.response.send_message(
-                    f"Du hast bereits ein offenes Ticket: {ch.mention}", ephemeral=True
+                    await tt(interaction.guild_id, "already_open", kanal=ch.mention), ephemeral=True
                 )
                 return
             # Channel wurde extern gelöscht — altes Ticket bereinigen
@@ -200,7 +255,8 @@ class PanelButton(ui.Button):
                 f"ticket-{slug}-{interaction.user.name[:10]}",
                 overwrites=overwrites,
                 category=category,
-                reason=f"Ticket von {interaction.user} – Panel: {panel['name']}",
+                reason=await tt(interaction.guild_id, "created_reason",
+                                wer=interaction.user, panel=panel["name"]),
             )
             await db_exec(
                 "INSERT INTO tickets (guild_id, channel_id, user_id, panel_id) VALUES (?,?,?,?)",
@@ -215,7 +271,7 @@ class PanelButton(ui.Button):
             # while a real description exists.
             blocks = (_parse_ticket_blocks(panel.get("ticket_message"))
                       or _parse_ticket_blocks(panel.get("description"))
-                      or ["Beschreibe dein Anliegen und wir helfen dir so schnell wie möglich."])
+                      or [await tt(guild.id, "ticket_intro")])
             embeds = []
             for i, block in enumerate(blocks[:10]):
                 # User-reported ("Hallo @Zerafi! {user}, your ticket has been created." - the
@@ -241,13 +297,14 @@ class PanelButton(ui.Button):
             ping = interaction.user.mention
             if support_role:
                 ping += f" {support_role.mention}"
-            close_label = panel.get("close_button_label") or "Ticket schließen"
+            close_label = panel.get("close_button_label") or await tt(guild.id, "close_btn")
             await channel.send(content=ping, embeds=embeds, view=CloseTicketView(close_label))
             await log_bot_event(
                 interaction.client, guild.id, "🎫", "Ticket erstellt", "ticket",
                 plain=f"{interaction.user.display_name} · Panel: {panel['name']} · #{channel.name}",
             )
-            await interaction.response.send_message(f"Ticket erstellt: {channel.mention}", ephemeral=True)
+            await interaction.response.send_message(
+                await tt(interaction.guild_id, "created", kanal=channel.mention), ephemeral=True)
         except Exception as e:
             # If channel creation itself fails (missing "Manage Channels" permission, guild
             # hit Discord's 500-channel cap, invalid category) the interaction would otherwise
@@ -267,7 +324,7 @@ class PanelButton(ui.Button):
                     pass
             if not interaction.response.is_done():
                 await interaction.response.send_message(
-                    "Ticket konnte nicht erstellt werden. Bitte kontaktiere einen Admin.", ephemeral=True
+                    await tt(interaction.guild_id, "failed"), ephemeral=True
                 )
 
 
@@ -284,12 +341,14 @@ class Tickets(commands.Cog):
     async def cog_load(self):
         self.bot.add_view(CloseTicketView())
         panels = await db_rows(
-            "SELECT id, button_label, emoji FROM ticket_panels WHERE status='published'"
+            # guild_id kommt mit, weil die Standardbeschriftung in der Sprache DIESES
+            # Servers steht - ohne die Spalte gaebe es hier einen KeyError beim Start.
+            "SELECT id, guild_id, button_label, emoji FROM ticket_panels WHERE status='published'"
         )
         for p in panels:
             self.bot.add_view(OpenTicketView(
                 p["id"],
-                p.get("button_label") or "Ticket öffnen",
+                p.get("button_label") or await tt(p["guild_id"], "open_btn"),
                 p.get("emoji") or "🎫",
             ))
 
@@ -300,14 +359,15 @@ class Tickets(commands.Cog):
             (interaction.channel_id,),
         )
         if not ticket:
-            await interaction.response.send_message("Dieser Kanal ist kein offenes Ticket.", ephemeral=True)
+            await interaction.response.send_message(await tt(interaction.guild_id, "not_a_ticket"), ephemeral=True)
             return
-        await interaction.response.send_message("Ticket wird geschlossen...")
+        await interaction.response.send_message(await tt(interaction.guild_id, "closing"))
         panel = await db_one(
             "SELECT archive_category_id FROM ticket_panels WHERE id=?", (ticket["panel_id"],)
         ) if ticket.get("panel_id") else None
         if not await close_ticket_channel(
-            interaction.channel, interaction.guild, panel, f"Ticket geschlossen von {interaction.user}"
+            interaction.channel, interaction.guild, panel,
+            await tt(interaction.guild_id, "closed_by", wer=interaction.user)
         ):
             return
         await db_exec("UPDATE tickets SET status='closed' WHERE channel_id=?", (interaction.channel_id,))
