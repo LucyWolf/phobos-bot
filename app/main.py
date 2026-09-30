@@ -3076,7 +3076,7 @@ async def check_latest_version(force: bool = False) -> str | None:
     # Nach einem abgewiesenen Versuch eine Weile Ruhe geben: GitHub laesst ohne Anmeldung
     # 60 Abfragen je Stunde und IP zu, und weiteres Anklopfen verlaengert die Sperre nur.
     letzter_fehler = _UPDATE_CACHE.get("fehler_at")
-    if letzter_fehler and (now - letzter_fehler).total_seconds() < 1800:
+    if not force and letzter_fehler and (now - letzter_fehler).total_seconds() < 1800:
         return _UPDATE_CACHE["latest"]
     try:
         ref = UPDATE_KANAELE.get(await update_kanal(), "main")

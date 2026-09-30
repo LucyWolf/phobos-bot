@@ -3511,7 +3511,7 @@ async function vrcInstRaw() {
     if (d.einzelansicht) {
       z.push('── Einzelansicht (' + d.einzelansicht.ort + ') ──');
       if (d.einzelansicht.fehler) {
-        z.push('Fehler: ' + d.einzelansicht.fehler);
+        z.push({{ tr.err_prefix | js }} + d.einzelansicht.fehler);
       } else {
         z.push('Felder: ' + d.einzelansicht.felder.join(', '));
         z.push(JSON.stringify(d.einzelansicht.inhalt, null, 2));
@@ -3609,7 +3609,7 @@ async function vrcLoadGroupRoles() {
       o.textContent = role.name + (role.management ? ' (Verwaltung)' : '');
       sel.appendChild(o);
     });
-    out.textContent = (d.roles || []).length + ' Rollen geladen.';
+    out.textContent = (d.roles || []).length + ' ' + {{ tr.vrc_roles_loaded | js }};
   } catch (e) {
     out.textContent = '❌ ' + e;
   }
@@ -3679,7 +3679,7 @@ async function vrcProbe() {
       'Vertrauensstufe: ' + d.trust,
       '18+: ' + (d.age ? 'ja' : 'nein'),
       '  gelieferte 18+-Felder: ' + (Object.keys(d.age_fields).length
-          ? JSON.stringify(d.age_fields) : '— keine —'),
+          ? JSON.stringify(d.age_fields) : {{ tr.none_dash | js }}),
       '  18+-Merkmal in tags: ' + (d.age_tag ? 'ja' : 'nein'),
       'VRChat+: ' + (d.supporter ? 'ja' : 'nein'),
       'Textfelder fuer den Nachweis:'

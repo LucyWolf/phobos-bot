@@ -158,7 +158,7 @@
       .then(applyVersionData)
       .catch(() => {
         document.getElementById('status-badge').className = 'status-badge badge-check';
-        document.getElementById('status-badge').textContent = '⚠️ Fehler beim Abrufen';
+        document.getElementById('status-badge').textContent = '⚠️ ' + {{ tr.upd_check_failed | js }};
         resetSearchBtn();
       });
   }
@@ -212,23 +212,30 @@
       latestEl.style.color = 'var(--success)';
       if (arrow) arrow.style.display = 'none';
       badge.className = 'status-badge badge-ok';
-      badge.textContent = '✅ Aktuell';
+      badge.textContent = '✅ ' + {{ tr.upd_up_to_date | js }};
       form.style.display = 'none';
       note.style.display = 'none';
     }
 
-    if (data.checked_at) {
-      document.getElementById('checked-at').textContent = {{ tr.upd_last_checked | js }} + ': ' + data.checked_at + ' UTC';
-      // Woher die Zahl stammt, und ob sie ueberhaupt frisch ist.
-      const kh = document.getElementById('kanal-hinweis');
-      if (kh) kh.textContent = data.kanal === 'beta' ? {{ tr.upd_from_beta | js }} : '';
-      const ca = document.getElementById('checked-at');
-      if (ca && data.fehler) {
-        ca.textContent += ' · ' + {{ tr.upd_check_failed | js }};
+    // Woher die Zahl stammt - unabhaengig davon, ob es einen Zeitstempel gibt.
+    const kh = document.getElementById('kanal-hinweis');
+    if (kh) kh.textContent = data.kanal === 'beta' ? {{ tr.upd_from_beta | js }} : '';
+
+    // Der ganze Block stand bis v1.17.80 in "if (data.checked_at)". War die Abfrage noch
+    // NIE erfolgreich, gibt es keinen Zeitstempel - und damit stand hier gar nichts, auch
+    // kein Hinweis auf den Fehlschlag. Gemeldet als "der Suchknopf hat keine Funktion mehr".
+    const ca = document.getElementById('checked-at');
+    if (ca) {
+      let text = data.checked_at
+        ? {{ tr.upd_last_checked | js }} + ': ' + data.checked_at + ' UTC'
+        : '';
+      if (data.fehler) {
+        text = (text ? text + ' · ' : '') + {{ tr.upd_check_failed | js }};
         ca.style.color = '#f59e0b';
-      } else if (ca) {
+      } else {
         ca.style.color = '';
       }
+      ca.textContent = text;
     }
     resetSearchBtn();
   }
