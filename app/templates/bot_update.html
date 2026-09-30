@@ -58,7 +58,13 @@
       <span class="spinner" id="search-spin"></span>
       <span id="search-txt">🔍 {{ tr.upd_search_now }}</span>
     </button>
-    <form method="post" action="/bot/update/apply" id="apply-form" style="display:none;" onsubmit="startApply()">
+    {# Sichtbarkeit entscheidet der SERVER, nicht das Skript. Vorher stand hier
+       display:none und JavaScript blendete den Knopf ein - ein Fehler im Skript nahm damit
+       die Faehigkeit mit, sich per Oberflaeche zu aktualisieren. Ausgerechnet dann, wenn
+       man es am noetigsten braucht. Versteckt wird er nur, wenn der Server SICHER weiss,
+       dass nichts anliegt; weiss er es nicht (Abfrage gescheitert), bleibt er da. #}
+    <form method="post" action="/bot/update/apply" id="apply-form" onsubmit="startApply()"
+          {% if latest_version and not update_available %}style="display:none;"{% endif %}>
       <button type="submit" class="btn btn-primary" id="apply-btn">
         <span class="spinner" id="apply-spin"></span>
         <span id="apply-txt">⬇️ {{ tr.upd_apply_now }}</span>
@@ -188,12 +194,13 @@
     // nicht, ob gerade gesucht wird oder ob die Abfrage gescheitert ist. GitHub laesst
     // ohne Anmeldung 60 Abfragen je Stunde und IP zu, danach ist genau das der Fall.
     if (!data.latest) {
+      // Der Knopf bleibt stehen: ohne verlaessliche Auskunft ist "kein Update" eine
+      // Behauptung, keine Information - und wer updaten will, soll es koennen.
       latestEl.textContent = '—';
       latestEl.style.color = 'var(--muted)';
       if (arrow) arrow.style.display = 'none';
       badge.className = 'status-badge badge-check';
       badge.textContent = '⚠️ ' + {{ tr.upd_check_failed | jsraw }};
-      form.style.display = 'none';
       note.style.display = 'none';
       return;
     }
