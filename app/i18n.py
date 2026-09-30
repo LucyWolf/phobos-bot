@@ -841,6 +841,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "polls_btn_create": "🗳️ Umfrage starten",
         "polls_preview_label": "Vorschau",
         "polls_preview_empty": "Die Vorschau erscheint hier, sobald du eine Frage oder eine Option einträgst.",
+        "polls_preview_image_loading": "Bild wird vom Link geholt …",
+        "polls_preview_image_none":    "Unter diesem Link wurde kein Bild gefunden.",
+        "polls_preview_image_failed":  "Die Seite gibt ihr Bild nicht heraus — die Umfrage zeigt es trotzdem, weil der Bot es selbst lädt.",
         "polls_preview_placeholder_question": "Deine Frage",
         "polls_edit_heading": "Umfrage bearbeiten",
         # Ratings
@@ -2320,6 +2323,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "polls_btn_create": "🗳️ Start Poll",
         "polls_preview_label": "Preview",
         "polls_preview_empty": "The preview appears here once you enter a question or an option.",
+        "polls_preview_image_loading": "Fetching the link's image …",
+        "polls_preview_image_none":    "No image was found behind this link.",
+        "polls_preview_image_failed":  "This site won't serve its image here — the poll will still show it, because the bot downloads it itself.",
         "polls_preview_placeholder_question": "Your question",
         "polls_edit_heading": "Edit Poll",
         # Ratings

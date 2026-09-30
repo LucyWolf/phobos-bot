@@ -1404,6 +1404,7 @@ document.addEventListener('click', function(e) {
   .poll-preview-option:last-child { margin-bottom:0; }
   .poll-preview-option-row { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.25rem; }
   .poll-preview-option-large-img { display:block; width:100%; max-height:160px; object-fit:cover; border-radius:4px; margin:0.3rem 0 0.4rem; }
+  .poll-preview-imgnote { font-size:0.72rem; color:var(--muted); font-style:italic; margin:0.3rem 0 0.4rem; }
   .poll-preview-option b { color:#f2f3f5; }
   .poll-preview-progress-track { display:inline-block; width:140px; height:8px; background:#40444b; border-radius:4px; vertical-align:middle; margin-right:0.5rem; overflow:hidden; }
   .poll-preview-progress-fill { display:block; height:100%; border-radius:4px; }
@@ -1736,6 +1737,20 @@ function pollPreviewEscapeAttr(s) {
 // Und nur echte Web-Adressen: eine Bildquelle, die mit javascript: anfaengt, waere ein
 // Klick vom naechsten Problem entfernt. Die Zeichenkette kommt teils von fremden Seiten
 // (og:image des verlinkten Servers), nicht nur aus dem eigenen Formular.
+const POLL_PREVIEW_TEXTE = {
+  holt:    {{ tr.polls_preview_image_loading | jsraw }},
+  keins:   {{ tr.polls_preview_image_none | jsraw }},
+  fehler:  {{ tr.polls_preview_image_failed | jsraw }},
+};
+// Ein Bild, das die fremde Seite nicht herausgibt, verschwand bisher spurlos - von "kein
+// Bild gefunden" war das nicht zu unterscheiden, und genau daran haben wir uns die Zaehne
+// ausgebissen. Jetzt steht da, was los ist.
+function pollPreviewImageFailed(img) {
+  const note = document.createElement('div');
+  note.className = 'poll-preview-imgnote';
+  note.textContent = POLL_PREVIEW_TEXTE.fehler;
+  if (img.parentNode) img.parentNode.replaceChild(note, img);
+}
 function pollPreviewSafeUrl(s) {
   s = String(s === null || s === undefined ? '' : s).trim();
   // blob: gehoert dazu - pollPreviewFileUrl() macht daraus die Adresse einer gerade
@@ -1826,7 +1841,16 @@ function renderPollPreview(form) {
     }
     const customWidth = widthInput
       ? Math.max(50, Math.min(2000, parseInt(widthInput.value, 10) || 300)) : 0;
-    options.push({label: label, image: image, customWidth: customWidth});
+    // Steht ein Link da, aber (noch) kein Bild? Dann laeuft entweder die Abfrage - oder sie
+    // ist zurueckgekommen und hat nichts gefunden. Beides ist eine Auskunft wert.
+    const linkWert = linkInput ? linkInput.value.trim() : '';
+    const versucht = linkWert ? _pollPreviewAutoFetched.get(row) : null;
+    const pending = !image && !!linkWert && linkWert.startsWith('http')
+                    && !(versucht && versucht.link === linkWert);
+    const noImage = !image && !!linkWert && !!versucht && versucht.link === linkWert
+                    && !versucht.image;
+    options.push({label: label, image: image, customWidth: customWidth,
+                  pending: pending, noImage: noImage});
   });
   if (!question && options.length === 0) {
     box.innerHTML = '<div class="poll-preview-empty">{{ tr.polls_preview_empty }}</div>';
@@ -1854,7 +1878,13 @@ function renderPollPreview(form) {
       // is explicitly an approximation, not a pixel-exact mockup (see renderPollPreview()'s doc
       // comment above).
       var widthStyle = opt.customWidth ? ' style="width:' + opt.customWidth + 'px;max-width:100%;"' : '';
-      html += '<img class="poll-preview-option-large-img" src="' + pollPreviewEscapeAttr(pollPreviewSafeUrl(opt.image)) + '"' + widthStyle + ' onerror="this.remove()">';
+      html += '<img class="poll-preview-option-large-img" src="' + pollPreviewEscapeAttr(pollPreviewSafeUrl(opt.image)) + '"' + widthStyle
+        + ' referrerpolicy="no-referrer"'
+        + ' onerror="pollPreviewImageFailed(this)">';
+    } else if (opt.pending) {
+      html += '<div class="poll-preview-imgnote">' + pollPreviewEscapeHtml(POLL_PREVIEW_TEXTE.holt) + '</div>';
+    } else if (opt.noImage) {
+      html += '<div class="poll-preview-imgnote">' + pollPreviewEscapeHtml(POLL_PREVIEW_TEXTE.keins) + '</div>';
     }
     html += '<span class="poll-preview-progress-track"><span class="poll-preview-progress-fill" style="width:0%;background:' + barColor + ';"></span></span>'
       + '<span class="poll-preview-pct">0% (0)</span></div>';
