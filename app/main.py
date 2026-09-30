@@ -11359,7 +11359,7 @@ async def poll_create_web(request: Request, guild_id: int):
     pid = await db_insert(
         "INSERT INTO polls (guild_id,channel_id,question,multiple_choice,ends_at,created_by,"
         "image_url,image_data,image_filename,bar_color,starts_at,duration_minutes,show_started,show_ranking,layout_spalten) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (str(guild_id), str(channel.id), question, int(multiple), ends_at, request.session.get("user_id") or 0,
          final_image_url, final_image_data, final_image_filename, bar_color, starts_at_store,
          duration_minutes_store, int(show_started), int(show_ranking), layout_spalten),
