@@ -52,9 +52,20 @@ class PhobosService : Service() {
         // the screen is off, which can make the dashboard (port 8080) unreachable from OTHER
         // devices even though the bot process itself is still fine - the wake lock above only
         // keeps the CPU running, not the WiFi radio at full power.
+        //
+        // WIFI_MODE_FULL_HIGH_PERF stand hier bis v1.17.71 - und hielt auf keinem halbwegs
+        // aktuellen Geraet irgendetwas: Android 10 (API 29) hat den Modus fuer wirkungslos
+        // erklaert, er wird stillschweigend ignoriert. Gemeldet wurde genau das, was dieser
+        // Lock haette verhindern sollen: "nach einer Zeit ist die Bot-Seite nicht mehr
+        // erreichbar, einmal auf den Power-Knopf und sie ist wieder da".
         val wifiManager = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
-        @Suppress("DEPRECATION")
-        wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "PhobosBot::WifiLock")
+        val modus = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+        } else {
+            @Suppress("DEPRECATION")
+            WifiManager.WIFI_MODE_FULL_HIGH_PERF
+        }
+        wifiLock = wifiManager.createWifiLock(modus, "PhobosBot::WifiLock")
         wifiLock?.acquire()
     }
 
