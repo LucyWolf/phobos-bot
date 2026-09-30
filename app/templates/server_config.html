@@ -1499,7 +1499,7 @@ document.addEventListener('click', function(e) {
                   <div style="display:flex;gap:0.4rem;">
                     <input type="url" name="option_image" placeholder="{{ tr.polls_option_image_placeholder }}" value="{{ opt.image_url }}" style="margin:0;flex:1;font-size:0.78rem;">
                     <input type="file" name="option_image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin:0;flex:1;font-size:0.72rem;">
-                    <input type="number" name="option_image_width" min="50" max="2000" value="{{ opt.image_width or 300 }}" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;">
+                    <input type="number" name="option_image_width" min="50" max="1100" value="{{ opt.image_width or 1100 }}" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;">
                   </div>
                   {% if opt.image_url or opt.image_filename %}
                   <div style="display:flex;align-items:center;gap:0.5rem;">
@@ -1575,7 +1575,7 @@ document.addEventListener('click', function(e) {
         <div style="display:flex;gap:0.4rem;">
           <input type="url" name="option_image" placeholder="{{ tr.polls_option_image_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
           <input type="file" name="option_image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin:0;flex:1;font-size:0.72rem;">
-          <input type="number" name="option_image_width" min="50" max="2000" value="300" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;">
+          <input type="number" name="option_image_width" min="50" max="1100" value="1100" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;">
         </div>
         <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;font-size:0.78rem;">
       </div>
@@ -1584,7 +1584,7 @@ document.addEventListener('click', function(e) {
         <div style="display:flex;gap:0.4rem;">
           <input type="url" name="option_image" placeholder="{{ tr.polls_option_image_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
           <input type="file" name="option_image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin:0;flex:1;font-size:0.72rem;">
-          <input type="number" name="option_image_width" min="50" max="2000" value="300" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;">
+          <input type="number" name="option_image_width" min="50" max="1100" value="1100" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;">
         </div>
         <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;font-size:0.78rem;">
       </div>
@@ -1729,7 +1729,7 @@ function addPollOption(containerId) {
   imageFileInput.style.cssText = 'margin:0;flex:1;font-size:0.72rem;';
   const widthInput = document.createElement('input');
   widthInput.type = 'number'; widthInput.name = 'option_image_width';
-  widthInput.min = '50'; widthInput.max = '2000'; widthInput.value = '300';
+  widthInput.min = '50'; widthInput.max = '1100'; widthInput.value = '1100';
   widthInput.placeholder = '{{ tr.polls_image_width_placeholder }}';
   widthInput.title = '{{ tr.polls_image_width_label }}';
   widthInput.style.cssText = 'margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;';

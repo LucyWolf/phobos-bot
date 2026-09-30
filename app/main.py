@@ -127,6 +127,7 @@ from cogs.welcome import _make_card as _welcome_make_card, fill as _welcome_fill
 from cogs.polls import (
     build_poll_embed as _build_poll_embed, PollView as _PollView,
     DEFAULT_BAR_COLOR as _DEFAULT_BAR_COLOR, BILD_VERHAELTNISSE as _BILD_VERHAELTNISSE,
+    MAX_SPALTENBREITE as MAX_BILD_BREITE,
 )
 from cogs.ratings import (
     build_ratings_embed as _build_ratings_embed, RatingsListView as _RatingsListView,
@@ -9824,17 +9825,22 @@ async def _resolve_poll_option_image(
 
 
 def _clamp_poll_image_width(raw_width: str) -> int:
-    """Sanitizes the submitted custom-width field to a safe pixel range (50-2000) - defends
-    against a manipulated raw POST as much as it validates real input; a value outside this
-    range is silently clamped rather than rejecting the whole save, since it's a minor cosmetic
-    knob, not something worth failing the entire poll save over."""
+    """Bringt die eingetragene Breite in einen brauchbaren Bereich (50 bis MAX_BILD_BREITE).
+
+    Faengt ebenso einen manipulierten POST ab wie einen Vertipper; ein Wert ausserhalb wird
+    stillschweigend zurechtgerueckt, statt das ganze Speichern scheitern zu lassen - es geht
+    um ein Aussehen, nicht um Daten.
+
+    Die Obergrenze ist kein runder Wunschwert: Discord zeigt ein Embed-Bild rund 520-550
+    Punkte breit an, darueber verkleinert es beim Anzeigen wieder. Das Doppelte lohnt noch
+    fuer die Schaerfe, alles weitere kostet nur Dateigroesse."""
     try:
         w = int(raw_width)
     except (TypeError, ValueError):
         return 0
     if w <= 0:
         return 0
-    return max(50, min(2000, w))
+    return max(50, min(MAX_BILD_BREITE, w))
 
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")

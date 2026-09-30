@@ -65,10 +65,12 @@ def _pct_line(label: str, n: int, total: int) -> tuple:
 
 # Breite einer Spalte im kombinierten Bild, wenn nichts anderes danach verlangt.
 STANDARD_SPALTENBREITE = 440
-# Nach oben gedeckelt: Discord zeigt ein Embed-Bild ohnehin nur so breit an, wie das Embed
-# ist - mehr Punkte machen es schaerfer, nicht groesser. Und 25 Optionen mal voller Breite
-# waeren ein Bild, das weder schnell gebaut noch angenommen wird.
-MAX_SPALTENBREITE = 1400
+# Nach oben gedeckelt, und zwar da, wo es aufhoert etwas zu bringen: Discord zeigt ein
+# Embed-Bild rund 520-550 Punkte breit an. Darueber wird es beim Anzeigen wieder
+# verkleinert - mehr Punkte machen es also schaerfer, nicht groesser. Das Doppelte der
+# Anzeigebreite lohnt noch (hochaufloesende Schirme, und beim Anklicken im Vollbild),
+# alles weitere kostet nur Dateigroesse und Bauzeit.
+MAX_SPALTENBREITE = 1100
 # Damit ein Bild bei vielen Optionen nicht ins Unermessliche waechst: reicht die Flaeche
 # darueber hinaus, wird die Spalte schmaler, bis es passt.
 MAX_BILD_PIXEL = 24_000_000
