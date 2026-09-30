@@ -420,9 +420,9 @@
         <div class="user-role">{{ role }}</div>
       </div>
     </a>
-    <a href="/logout" class="logout-btn" title="{% if lang == 'en' %}Sign out{% else %}Abmelden{% endif %}">
+    <a href="/logout" class="logout-btn" title="{{ tr.btn_logout }}">
       <span style="font-size:1rem;flex-shrink:0">🚪</span>
-      <span class="label">{% if lang == 'en' %}Sign out{% else %}Abmelden{% endif %}</span>
+      <span class="label">{{ tr.btn_logout }}</span>
     </a>
   </div>
 </div>

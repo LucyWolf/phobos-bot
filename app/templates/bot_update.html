@@ -4,8 +4,8 @@
    _do_git_update()/_do_android_update() and IS_ANDROID). #}
 {% extends "base.html" %}
 
-{% block title %}{{ app_name }} – Updates{% endblock %}
-{% block page_title %}🔄 Updates{% endblock %}
+{% block title %}{{ app_name }} – {{ tr.nav_updates }}{% endblock %}
+{% block page_title %}🔄 {{ tr.nav_updates }}{% endblock %}
 
 {% block content %}
 <style>
@@ -43,7 +43,7 @@
 
   <div class="version-row">
     <div class="version-box">
-      <div class="version-label">Installiert</div>
+      <div class="version-label">{{ tr.upd_installed }}</div>
       <div class="version-val" style="color:var(--text);">v{{ current_version }}</div>
     </div>
     <div class="version-arrow" id="version-arrow">→</div>

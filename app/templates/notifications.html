@@ -3,8 +3,8 @@
    (client ID/secret) is managed separately, admin-only, in notif_settings.html. #}
 {% extends "base.html" %}
 
-{% block title %}{{ app_name }} – Streaming{% endblock %}
-{% block page_title %}📡 Streaming{% endblock %}
+{% block title %}{{ app_name }} – {{ tr.notif_page_title }}{% endblock %}
+{% block page_title %}📡 {{ tr.notif_page_title }}{% endblock %}
 
 {% block content %}
 {% from '_server_subnav.html' import server_subnav %}

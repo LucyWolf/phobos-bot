@@ -4,8 +4,8 @@
    "Server User Access" tab instead. #}
 {% extends "base.html" %}
 
-{% block title %}{{ app_name }} – Benutzerverwaltung{% endblock %}
-{% block page_title %}👥 Benutzerverwaltung{% endblock %}
+{% block title %}{{ app_name }} – {{ tr.usr_page_title }}{% endblock %}
+{% block page_title %}👥 {{ tr.usr_page_title }}{% endblock %}
 
 {% block content %}
 {% if error %}<div class="alert alert-error">❌ {{ meldung(error, lang) }}</div>{% endif %}
@@ -18,8 +18,8 @@
     {{ tr.usr_invite_hint }}
   </p>
   <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-    <button class="btn btn-primary" onclick="genInvite()" id="gen-btn">🔗 Link generieren</button>
-    <button class="btn btn-danger" onclick="revokeInvite(this)" id="revoke-btn" style="display:none;font-size:0.82rem;padding:0.38rem 0.8rem;">⛔ Stopp</button>
+    <button class="btn btn-primary" onclick="genInvite()" id="gen-btn">🔗 {{ tr.usr_invite_generate }}</button>
+    <button class="btn btn-danger" onclick="revokeInvite(this)" id="revoke-btn" style="display:none;font-size:0.82rem;padding:0.38rem 0.8rem;">⛔ {{ tr.usr_invite_stop }}</button>
   </div>
 
   <div id="invite-result" style="display:none;margin-top:1rem;">
@@ -27,7 +27,7 @@
                 padding:0.65rem 0.9rem;font-family:monospace;font-size:0.8rem;
                 word-break:break-all;color:#a78bfa;" id="invite-url"></div>
     <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.6rem;flex-wrap:wrap;">
-      <button class="btn btn-secondary" onclick="copyInvite(this)" style="font-size:0.78rem;padding:0.28rem 0.7rem;">📋 Kopieren</button>
+      <button class="btn btn-secondary" onclick="copyInvite(this)" style="font-size:0.78rem;padding:0.28rem 0.7rem;">📋 {{ tr.btn_copy_short }}</button>
       <span id="invite-timer" style="font-size:0.82rem;font-family:monospace;color:var(--muted);"></span>
     </div>
   </div>
@@ -37,7 +37,7 @@
 <div class="card" style="margin-bottom:1.25rem;">
   <div style="font-size:0.95rem;font-weight:700;margin-bottom:0.5rem;">🔒 {{ tr.usr_sessions_heading }}</div>
   <p style="font-size:0.82rem;color:var(--muted);margin-bottom:1rem;">
-    Meldet sofort JEDEN eingeloggten Nutzer ab (dich selbst eingeschlossen) - jeder muss sich danach neu einloggen.
+    {{ tr.usr_sessions_warning }}
     {{ tr.usr_sessions_hint }}
   </p>
   <form method="post" action="/admin/logout-all"
@@ -51,7 +51,7 @@
   <form method="post" action="/users/create?next=/users">
     <div class="grid-2">
       <div>
-        <label>Benutzername</label>
+        <label>{{ tr.usr_col_name }}</label>
         <input type="text" name="username" required>
       </div>
       <div>
@@ -205,7 +205,7 @@
     <input type="password" name="password" autocomplete="new-password"
            placeholder="{{ tr.usr_restore_pw }}"
            style="margin-bottom:1rem;">
-    <button type="submit" class="btn btn-primary">📂 Backup einspielen</button>
+    <button type="submit" class="btn btn-primary">📂 {{ tr.usr_restore_button }}</button>
   </form>
 </div>
 

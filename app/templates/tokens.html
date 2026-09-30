@@ -49,7 +49,7 @@
       <input type="text" name="label" value="{{ t.label }}" id="tok-input-{{ t.id }}"
              style="display:none;margin:0;padding:0.25rem 0.5rem;font-size:0.9rem;font-weight:700;flex:1;min-width:0;">
       <button type="button" id="tok-edit-{{ t.id }}" class="btn btn-secondary"
-              style="padding:0.25rem 0.55rem;font-size:0.78rem;flex-shrink:0;" title="Bezeichnung bearbeiten"
+              style="padding:0.25rem 0.55rem;font-size:0.78rem;flex-shrink:0;" title="{{ tr.tok_label_edit }}"
               onclick="startRename({{ t.id }})">✏️</button>
       <button type="submit" id="tok-save-{{ t.id }}" class="btn btn-primary"
               style="display:none;padding:0.25rem 0.55rem;font-size:0.78rem;flex-shrink:0;" title="{{ tr.btn_save }}">✓</button>
@@ -117,7 +117,7 @@
   <form method="post" action="/settings/tokens/add">
     <div style="display:grid;grid-template-columns:1fr 2fr;gap:0.75rem;margin-bottom:0.75rem;">
       <div>
-        <label>Bezeichnung</label>
+        <label>{{ tr.tok_label }}</label>
         <input type="text" name="label" value="Bot" placeholder="z.B. Hauptbot" style="margin-bottom:0;">
       </div>
       <div>

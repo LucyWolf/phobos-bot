@@ -69,12 +69,12 @@
   <div class="card">
     <div class="feat-header">🌐 {{ tr.profile_prefs }}</div>
     <form method="post" action="/profile/preferences">
-      <label>Sprache / Language</label>
+      <label>{{ tr.prof_language }}</label>
       <div class="lang-radio" style="margin-bottom:1rem;">
         <label><input type="radio" name="lang" value="de" {% if lang == 'de' %}checked{% endif %}> 🇩🇪 Deutsch</label>
         <label><input type="radio" name="lang" value="en" {% if lang == 'en' %}checked{% endif %}> 🇬🇧 English</label>
       </div>
-      <label>Zeitzone</label>
+      <label>{{ tr.prof_timezone }}</label>
       <select name="timezone" style="margin-bottom:1rem;">
         {% for tz in tzones %}
         <option value="{{ tz }}" {% if user_tz == tz %}selected{% endif %}>{{ tz }}</option>
@@ -131,34 +131,32 @@
 
   <!-- ── Datensicherung ── -->
   <div class="card" style="grid-column:1/-1;">
-    <div class="feat-header">💾 Datensicherung</div>
+    <div class="feat-header">💾 {{ tr.prof_backup_heading }}</div>
     <p style="font-size:0.82rem;color:var(--muted);margin-bottom:1rem;">
-      Exportiert dein Benutzerkonto, deine Bot-Tokens und alle Server-Konfigurationen als JSON-Datei.
-      Diese Datei kann auf einer anderen Instanz über die Admin-Benutzerverwaltung wieder eingespielt werden.
+      {{ tr.prof_backup_hint }}
     </p>
     <form method="post" action="/backup/export" style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;margin:0;">
-      <button type="submit" class="btn btn-secondary">💾 Meine Daten sichern</button>
+      <button type="submit" class="btn btn-secondary">💾 {{ tr.prof_backup_button }}</button>
       <input type="password" name="password" autocomplete="new-password"
              placeholder="Passwort (optional)" style="margin:0;max-width:210px;">
     </form>
     <p style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem;">
-      Mit Passwort verlässt die Datei deinen Server verschlüsselt — ohne das Passwort ist sie
-      nicht wiederherstellbar. Leer lassen speichert wie bisher im Klartext.
+      {{ tr.prof_backup_pw_hint }}
     </p>
   </div>
 
   <!-- ── Konto löschen ── -->
   <div class="card" style="border-color:rgba(239,68,68,0.3);">
-    <div class="feat-header" style="color:#ef4444;">🗑 Konto löschen</div>
+    <div class="feat-header" style="color:#ef4444;">🗑 {{ tr.prof_delete_heading }}</div>
     <p style="font-size:0.82rem;color:var(--muted);margin-bottom:1rem;">
-      Dein Konto wird dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.
+      {{ tr.prof_delete_hint }}
     </p>
-    <form method="post" action="/profile/delete" onsubmit="return confirm('Konto wirklich permanent löschen?')">
-      <label>Passwort eingeben</label>
+    <form method="post" action="/profile/delete" onsubmit="return confirm({{ tr.prof_delete_confirm | js }})">
+      <label>{{ tr.prof_pw_enter }}</label>
       <input type="password" name="pw1" required autocomplete="current-password" placeholder="Passwort">
-      <label>Passwort bestätigen</label>
-      <input type="password" name="pw2" required autocomplete="current-password" placeholder="Passwort wiederholen">
-      <button type="submit" class="btn btn-danger" style="margin-top:0.25rem;">🗑 Konto endgültig löschen</button>
+      <label>{{ tr.prof_pw_repeat }}</label>
+      <input type="password" name="pw2" required autocomplete="current-password" placeholder="{{ tr.prof_pw_repeat }}">
+      <button type="submit" class="btn btn-danger" style="margin-top:0.25rem;">🗑 {{ tr.prof_delete_button }}</button>
     </form>
   </div>
 
