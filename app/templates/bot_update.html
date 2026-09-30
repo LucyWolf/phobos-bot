@@ -13,6 +13,7 @@
   .version-row { display:flex; align-items:center; gap:1.25rem; flex-wrap:wrap; margin-bottom:1.25rem; }
   .version-box { flex:1; min-width:110px; }
   .version-label { font-size:0.68rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.07em; margin-bottom:0.3rem; }
+  .other-channel { margin-top:0.9rem; padding:0.6rem 0.8rem; border:1px solid var(--border); border-radius:0.5rem; background:var(--bg); font-size:0.8rem; color:var(--muted); }
   .version-val { font-size:1.6rem; font-weight:700; font-family:monospace; }
   .version-arrow { font-size:1.3rem; color:var(--muted); }
   .status-badge { display:inline-flex; align-items:center; gap:0.4rem; border-radius:999px; padding:0.3rem 0.85rem; font-size:0.8rem; font-weight:700; margin-bottom:1.1rem; }
@@ -48,10 +49,22 @@
     </div>
     <div class="version-arrow" id="version-arrow">→</div>
     <div class="version-box">
-      <div class="version-label">{{ tr.upd_available_on }} <span id="kanal-hinweis" style="color:var(--accent);"></span></div>
+      <div class="version-label">{{ tr.upd_available_on }}
+        <span style="color:var(--accent);">{% if is_android %}{{ tr.upd_from_apk }}{% elif update_kanal == 'beta' %}{{ tr.upd_from_beta }}{% else %}{{ tr.upd_from_stable }}{% endif %}</span>
+      </div>
       <div class="version-val" id="latest-val" style="color:var(--muted);">…</div>
     </div>
   </div>
+
+  {# Was im jeweils anderen Kanal liegt. Ohne das sagt die Seite "verfuegbar: 1.17.93" und
+     verschweigt, dass es 1.17.96 gibt - nur eben im anderen Zweig. Genau daran ist eine
+     ganze Fehlersuche vorbeigelaufen. #}
+  {% if anderer_kanal and anderer_kanal_version %}
+  <div class="other-channel">
+    {% if anderer_kanal_version != current_version %}⚠️{% else %}ℹ️{% endif %}
+    {{ tr.upd_other_channel.replace('{kanal}', tr['update_channel_' ~ anderer_kanal]).replace('{version}', anderer_kanal_version) }}
+  </div>
+  {% endif %}
 
   <div class="btn-row">
     <button class="btn-search" id="search-btn" onclick="doCheck(true)">
@@ -225,8 +238,7 @@
     }
 
     // Woher die Zahl stammt - unabhaengig davon, ob es einen Zeitstempel gibt.
-    const kh = document.getElementById('kanal-hinweis');
-    if (kh) kh.textContent = data.kanal === 'beta' ? {{ tr.upd_from_beta | jsraw }} : '';
+    // Den Kanal schreibt der Server in die Seite, nicht mehr dieses Skript.
 
     // Der ganze Block stand bis v1.17.80 in "if (data.checked_at)". War die Abfrage noch
     // NIE erfolgreich, gibt es keinen Zeitstempel - und damit stand hier gar nichts, auch
