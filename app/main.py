@@ -3048,6 +3048,17 @@ _UPDATE_CACHE: dict = {"latest": None, "at": None}
 # frequent version bumps, the update check could stay stuck on a stale VERSION for minutes
 # after every single push. The Contents API caches for only 60s and reflects new commits fast.
 _GITHUB_VERSION_URL = "https://api.github.com/repos/LucyWolf/phobos-bot/contents/app/VERSION?ref=main"
+# Zwei Zweige im selben Repo: "stable" ist main, "beta" der Vorablauf. Der Kanal steht in
+# der globalen Konfiguration, nicht je Server - es geht um die Installation selbst.
+UPDATE_KANAELE = {"stable": "main", "beta": "beta"}
+_GITHUB_VERSION_TPL = "https://api.github.com/repos/LucyWolf/phobos-bot/contents/app/VERSION?ref={ref}"
+_GITHUB_TAGS_URL = "https://api.github.com/repos/LucyWolf/phobos-bot/tags?per_page=100"
+
+
+async def update_kanal() -> str:
+    """Welchem Zweig diese Installation folgt. Ohne Eintrag der stabile."""
+    wert = (await get_config("update_kanal") or "").strip().lower()
+    return wert if wert in UPDATE_KANAELE else "stable"
 
 
 def _ver_tuple(v: str):
@@ -3063,9 +3074,11 @@ async def check_latest_version(force: bool = False) -> str | None:
     if not force and cached_at and (now - cached_at).total_seconds() < 300:
         return _UPDATE_CACHE["latest"]
     try:
+        ref = UPDATE_KANAELE.get(await update_kanal(), "main")
+
         def _fetch():
             req = urllib.request.Request(
-                _GITHUB_VERSION_URL,
+                _GITHUB_VERSION_TPL.format(ref=ref),
                 headers={"Accept": "application/vnd.github.v3+json"},
             )
             with urllib.request.urlopen(req, timeout=5) as r:
@@ -3212,6 +3225,37 @@ async def register_submit(
     )
 
 
+_TAGS_CACHE = {"at": None, "tags": []}
+
+
+async def verfuegbare_versionen() -> list:
+    """Die Versionen, auf die sich zurueckspringen laesst - aus den Tags des Repos.
+
+    Getaggt ist ab v1.16.0. Weiter zurueck fuehrt kein sinnvoller Weg: die Datenbank hat
+    seitdem Dutzende Migrationen hinter sich, und eine alte Fassung kennt die Spalten nicht,
+    die inzwischen dazugekommen sind.
+    """
+    jetzt = datetime.datetime.utcnow()
+    if _TAGS_CACHE["at"] and (jetzt - _TAGS_CACHE["at"]).total_seconds() < 600:
+        return _TAGS_CACHE["tags"]
+
+    def _fetch():
+        req = urllib.request.Request(
+            _GITHUB_TAGS_URL, headers={"Accept": "application/vnd.github.v3+json"})
+        with urllib.request.urlopen(req, timeout=6) as r:
+            return _djson.loads(r.read().decode())
+    try:
+        roh = await asyncio.get_event_loop().run_in_executor(None, _fetch)
+        namen = [t["name"] for t in roh
+                 if isinstance(t, dict) and re.fullmatch(r"v\d+\.\d+\.\d+", t.get("name") or "")]
+        namen.sort(key=lambda n: _ver_tuple(n[1:]), reverse=True)
+        _TAGS_CACHE["tags"], _TAGS_CACHE["at"] = namen, jetzt
+        return namen
+    except Exception as e:
+        print(f"[update] Versionsliste nicht abrufbar: {e}")
+        return _TAGS_CACHE["tags"]
+
+
 @web.get("/bot/update", response_class=HTMLResponse)
 async def bot_update_page(request: Request, success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
@@ -3226,6 +3270,12 @@ async def bot_update_page(request: Request, success: str = "", error: str = ""):
         "current_version": VERSION, "latest_version": latest,
         "update_available": update_available,
         "is_android": IS_ANDROID,
+        "update_kanal": await update_kanal(),
+        "update_kanaele": list(UPDATE_KANAELE),
+        # Nur aeltere anbieten: "zurueck" auf die laufende oder eine neuere Fassung waere
+        # kein Zurueckpatchen, sondern ein Update - dafuer gibt es den Knopf darueber.
+        "versionen": [v for v in await verfuegbare_versionen()
+                      if _ver_tuple(v[1:]) < _ver_tuple(VERSION)][:30],
         "success": success, "error": error,
     })
 
@@ -3515,7 +3565,8 @@ def _reap_stray_zombies():
         pass  # no children at all left to reap
 
 
-async def _do_git_update():
+async def _do_git_update(ziel: str = ""):
+    """ziel leer = dem eingestellten Kanal folgen, sonst ein Tag wie "v1.17.50"."""
     global _update_status, _update_running
     _update_status = {"logs": [], "done": False, "error": ""}
     _reap_stray_zombies()  # clean up anything left over from earlier update runs first
@@ -3537,15 +3588,22 @@ async def _do_git_update():
     try:
         _ulog("$ phobos-bot update — " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "cmd")
 
-        # Fetch latest commits
-        _ulog("$ git -C /repo fetch origin main", "cmd")
-        rc = await _run(["git", "-C", "/repo", "fetch", "origin", "main"])
+        # Ziel bestimmen: entweder der Zweig des eingestellten Kanals, oder ein Tag, auf
+        # den jemand ausdruecklich zurueckspringen will.
+        if ziel:
+            marke, holen = ziel, ["git", "-C", "/repo", "fetch", "--tags", "--force", "origin"]
+            _ulog(f"$ git -C /repo fetch --tags origin   (Ziel: {ziel})", "cmd")
+        else:
+            zweig = UPDATE_KANAELE.get(await update_kanal(), "main")
+            marke, holen = f"origin/{zweig}", ["git", "-C", "/repo", "fetch", "origin", zweig]
+            _ulog(f"$ git -C /repo fetch origin {zweig}", "cmd")
+        rc = await _run(holen)
         if rc != 0:
             raise RuntimeError(f"git fetch fehlgeschlagen (exit {rc})")
 
-        # Hard-reset to remote HEAD (handles any local drift)
-        _ulog("$ git -C /repo reset --hard origin/main", "cmd")
-        rc = await _run(["git", "-C", "/repo", "reset", "--hard", "origin/main"])
+        # Hard-reset to the chosen target (handles any local drift)
+        _ulog(f"$ git -C /repo reset --hard {marke}", "cmd")
+        rc = await _run(["git", "-C", "/repo", "reset", "--hard", marke])
         if rc != 0:
             raise RuntimeError(f"git reset fehlgeschlagen (exit {rc})")
         _ulog("  ✓  Code aktualisiert", "ok")
@@ -3619,10 +3677,29 @@ async def _do_android_update():
 _update_running = False
 
 
-@web.post("/bot/update/apply")
-async def bot_update_apply(request: Request):
+@web.post("/bot/update/kanal")
+async def bot_update_kanal(request: Request, kanal: str = Form("stable")):
+    """Welchem Zweig diese Installation folgt. Gilt fuer die Installation, nicht je Server."""
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
+    wert = kanal.strip().lower()
+    if wert not in UPDATE_KANAELE:
+        return RedirectResponse("/bot/update?error=Ungültige+Eingabe", status_code=302)
+    await set_config("update_kanal", wert)
+    # Der zwischengespeicherte Versionsstand gehoert zum alten Kanal - sonst stuende nach
+    # dem Wechsel bis zu fuenf Minuten lang die Version des anderen Zweigs da.
+    _UPDATE_CACHE["at"] = None
+    return RedirectResponse("/bot/update?success=Gespeichert", status_code=302)
+
+
+@web.post("/bot/update/apply")
+async def bot_update_apply(request: Request, ziel: str = Form("")):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    # Nur Versionsmarken zulassen - was hier ankommt, geht in einen git-Aufruf.
+    ziel = ziel.strip()
+    if ziel and not re.fullmatch(r"v\d+\.\d+\.\d+", ziel):
+        return RedirectResponse("/bot/update?error=Ungültige+Version", status_code=302)
 
     # Without this, a double-click (or two people hitting "Jetzt updaten" on two devices at
     # once) starts two concurrent updates that both reassign the shared `_update_status` global
@@ -3636,7 +3713,7 @@ async def bot_update_apply(request: Request):
         if IS_ANDROID:
             asyncio.create_task(_do_android_update())
         else:
-            asyncio.create_task(_do_git_update())
+            asyncio.create_task(_do_git_update(ziel))
     html = _UPDATE_IN_PROGRESS_HTML.replace("__IS_ANDROID__", "true" if IS_ANDROID else "false")
     return HTMLResponse(html)
 

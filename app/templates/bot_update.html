@@ -66,6 +66,45 @@
     </form>
   </div>
   <div class="checked-at" id="checked-at"></div>
+
+  {# Zwei Zweige im selben Repo: stable ist main, beta der Vorablauf. Der Kanal entscheidet,
+     welche Version die Suche oben ueberhaupt findet. #}
+  <div class="card" style="margin-top:1.25rem;">
+    <div class="feat-header">{{ tr.update_channel_title }}</div>
+    <p class="hint" style="margin-bottom:0.7rem;">{{ tr.update_channel_hint }}</p>
+    <form method="post" action="/bot/update/kanal" style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:flex-end;">
+      <div>
+        <label>{{ tr.update_channel_label }}</label>
+        <select name="kanal" style="margin:0;min-width:200px;">
+          <option value="stable" {% if update_kanal == 'stable' %}selected{% endif %}>{{ tr.update_channel_stable }}</option>
+          <option value="beta" {% if update_kanal == 'beta' %}selected{% endif %}>{{ tr.update_channel_beta }}</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-secondary">{{ tr.btn_save }}</button>
+    </form>
+  </div>
+
+  {% if versionen and not is_android %}
+  {# Zurueck auf eine aeltere Fassung. Bewusst unter einer Warnung: die Datenbank wandert
+     mit jedem Update weiter, und eine alte Fassung kennt die Spalten nicht, die seitdem
+     dazugekommen sind. Angeboten wird ab v1.16.0, weiter zurueck ist nicht getaggt. #}
+  <div class="card" style="margin-top:1.25rem;border:1px solid #f59e0b;">
+    <div class="feat-header">{{ tr.update_rollback_title }}</div>
+    <p class="hint" style="margin-bottom:0.3rem;">{{ tr.update_rollback_hint }}</p>
+    <p class="hint" style="color:#f59e0b;margin-bottom:0.7rem;">{{ tr.update_rollback_warning }}</p>
+    <form method="post" action="/bot/update/apply"
+          onsubmit="return confirm({{ tr.update_rollback_confirm | js }});"
+          style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:flex-end;">
+      <div>
+        <label>{{ tr.update_rollback_label }}</label>
+        <select name="ziel" style="margin:0;min-width:200px;">
+          {% for v in versionen %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-secondary">{{ tr.update_rollback_button }}</button>
+    </form>
+  </div>
+  {% endif %}
   {% if is_android %}
   <div class="restart-note" id="apply-note" style="display:none;">
     Lädt die neue APK vom GitHub-Release herunter und öffnet danach den Android-
