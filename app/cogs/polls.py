@@ -103,7 +103,7 @@ def _fit_text(draw, text: str, font, max_width: float) -> str:
     return (text + "…") if text else "…"
 
 
-def _render_combined_poll_image(rows: list, bar_color: str) -> bytes:
+def _render_combined_poll_image(rows: list, bar_color: str, spalten: int = 1) -> bytes:
     """Renders ONE composite PNG holding EVERY option - label, percentage/vote-count, a smooth
     progress bar, and (whenever available) the option's own picture right above its row -
     replacing v1.15.29-1.15.41's per-option-embed design entirely. That design gave any option
@@ -131,7 +131,15 @@ def _render_combined_poll_image(rows: list, bar_color: str) -> bytes:
     lists any option links separately as markdown links in the header embed's own description
     text instead, right below this image."""
     from PIL import Image, ImageDraw
-    width = 440
+    # spalten=1 stellt die Optionen untereinander (wie immer), spalten=2 nebeneinander.
+    # Nebeneinander wird die einzelne Spalte schmaler, dafuer die Karte halb so hoch - bei
+    # sechs Optionen mit Bildern ist das der Unterschied zwischen "passt auf den Schirm"
+    # und "man scrollt durch die halbe Nachricht".
+    spalten = 2 if spalten and spalten > 1 else 1
+    spalten = min(spalten, max(1, len(rows)))
+    spaltenbreite = 440
+    abstand_x = 16
+    width = spaltenbreite * spalten + abstand_x * (spalten - 1)
     pad = 18
     bar_h = 16
     text_h = 24  # label baseline to the bar's top - keep in sync with the "y + 24" below
@@ -152,37 +160,51 @@ def _render_combined_poll_image(rows: list, bar_color: str) -> bytes:
                 pic = Image.open(io.BytesIO(row["image_bytes"]))
                 pic.load()
                 pic = pic.convert("RGBA")
-                if pic.width > width:
-                    pic = pic.resize((width, round(pic.height * width / pic.width)), Image.LANCZOS)
+                if pic.width > spaltenbreite:
+                    pic = pic.resize((spaltenbreite, round(pic.height * spaltenbreite / pic.width)),
+                                     Image.LANCZOS)
             except Exception:
                 pic = None
         row_h = (pic.height + pic_gap if pic else 0) + text_h + bar_h
         prepared.append((pic, row_h))
-        total_h += row_h + (row_gap if i < len(rows) - 1 else 0)
-    total_h += pad
+    # Reihum auf die Spalten verteilen (erste Option links, zweite rechts, dritte links ...),
+    # damit beide Spalten aehnlich hoch werden, auch wenn nur manche Optionen ein Bild haben.
+    hoehen = [pad] * spalten
+    for i, (_, row_h) in enumerate(prepared):
+        sp = i % spalten
+        hoehen[sp] += row_h + row_gap
+    total_h = max(hoehen) - row_gap + pad
 
     canvas = Image.new("RGBA", (width, max(1, total_h)), bg_rgba)
     draw = ImageDraw.Draw(canvas)
-    y = pad
-    for row, (pic, _) in zip(rows, prepared):
+    # Je Spalte ein eigener Stift: links und rechts laufen unabhaengig nach unten.
+    y_je_spalte = [pad] * spalten
+    for i, (row, (pic, _)) in enumerate(zip(rows, prepared)):
+        sp = i % spalten
+        links = sp * (spaltenbreite + abstand_x)
+        rechts = links + spaltenbreite
+        y = y_je_spalte[sp]
         if pic is not None:
-            x = (width - pic.width) // 2
+            x = links + (spaltenbreite - pic.width) // 2
             canvas.paste(pic, (x, y), pic)
             y += pic.height + pic_gap
         meta = f"{row['pct']:.0f}% ({row['n']})"
         meta_w = draw.textlength(meta, font=meta_font)
-        label = _fit_text(draw, row["label"], label_font, width - pad * 2 - meta_w - 10)
-        draw.text((pad, y), label, font=label_font, fill=(255, 255, 255))
-        draw.text((width - pad - meta_w, y + 2), meta, font=meta_font, fill=(0xb5, 0xb8, 0xbe))
+        label = _fit_text(draw, row["label"], label_font, spaltenbreite - pad * 2 - meta_w - 10)
+        draw.text((links + pad, y), label, font=label_font, fill=(255, 255, 255))
+        draw.text((rechts - pad - meta_w, y + 2), meta, font=meta_font, fill=(0xb5, 0xb8, 0xbe))
         bar_y = y + 24
-        draw.rounded_rectangle([pad, bar_y, width - pad, bar_y + bar_h], radius=bar_h // 2, fill=track_rgb)
-        fill_w = max(0, min(width - pad * 2, round((width - pad * 2) * (row["pct"] / 100))))
+        draw.rounded_rectangle([links + pad, bar_y, rechts - pad, bar_y + bar_h],
+                               radius=bar_h // 2, fill=track_rgb)
+        innen = spaltenbreite - pad * 2
+        fill_w = max(0, min(innen, round(innen * (row["pct"] / 100))))
         if fill_w > 0:
             fill_w = max(fill_w, bar_h)  # keeps a visible rounded blob even for a tiny share
-            draw.rounded_rectangle([pad, bar_y, pad + fill_w, bar_y + bar_h], radius=bar_h // 2, fill=fill_rgb)
+            draw.rounded_rectangle([links + pad, bar_y, links + pad + fill_w, bar_y + bar_h],
+                                   radius=bar_h // 2, fill=fill_rgb)
         # The pic's own height (if any) was already added to y right after pasting it above -
         # only the label/bar block's fixed height plus the gap before the next row remains.
-        y += text_h + bar_h + row_gap
+        y_je_spalte[sp] = y + text_h + bar_h + row_gap
     buf = io.BytesIO()
     canvas.convert("RGB").save(buf, format="PNG")
     return buf.getvalue()
@@ -192,6 +214,7 @@ def build_poll_embed(
     question: str, multiple_choice: bool, options: list, counts: dict, ended: bool = False,
     image_url: str = "", image_filename: str = "", ends_at: str = "", created_at: str = "",
     bar_color: str = DEFAULT_BAR_COLOR, show_started: bool = False, show_ranking: bool = False,
+    spalten: int = 1,
 ) -> tuple:
     """Shared by creation, every vote, and _end_poll - one place for the bar/percentage layout
     so it can never drift between the three call sites. Returns (embeds, chart_files) - embeds
@@ -315,7 +338,7 @@ def build_poll_embed(
                 except Exception:
                     image_bytes = None
             rows.append({"label": opt["label"], "n": n, "pct": pct, "image_bytes": image_bytes})
-        chart_bytes = _render_combined_poll_image(rows, bar_color)
+        chart_bytes = _render_combined_poll_image(rows, bar_color, spalten)
         chart_files.append(discord.File(io.BytesIO(chart_bytes), filename="poll_bars.png"))
         header.set_image(url="attachment://poll_bars.png")
     elif options:
@@ -426,6 +449,7 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
         ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
         bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR, show_started=bool(poll.get("show_started")),
         show_ranking=bool(poll.get("show_ranking")),
+        spalten=int(poll.get("layout_spalten") or 1),
     )
     # No view= here on purpose - discord.py's edit_message() default for view is MISSING (not
     # None), so omitting it leaves the existing buttons untouched instead of needing to rebuild+
@@ -556,6 +580,7 @@ class Polls(commands.Cog):
             ends_at=ends_at, created_at=created_at,
             bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR, show_started=bool(poll.get("show_started")),
         show_ranking=bool(poll.get("show_ranking")),
+        spalten=int(poll.get("layout_spalten") or 1),
         )
         view = PollView(poll_id, options)
         try:
@@ -602,6 +627,7 @@ class Polls(commands.Cog):
             ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
             bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR, show_started=bool(poll.get("show_started")),
         show_ranking=bool(poll.get("show_ranking")),
+        spalten=int(poll.get("layout_spalten") or 1),
         )
         try:
             if chart_files:

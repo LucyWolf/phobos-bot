@@ -10921,6 +10921,9 @@ async def poll_create_web(request: Request, guild_id: int):
     multiple = bool(form.get("multiple_choice", ""))
     show_started = bool(form.get("show_started", ""))
     show_ranking = bool(form.get("show_ranking", ""))
+    # 2 = nebeneinander, alles andere untereinander. Bewusst eng gefasst: was hier
+    # ankommt, geht ungeprueft in die Bildberechnung.
+    layout_spalten = 2 if str(form.get("layout_spalten", "1")).strip() == "2" else 1
     bar_color = _clamp_poll_bar_color(form.get("bar_color", ""))
     try:
         duration_minutes = int(form.get("duration_minutes") or 0)
@@ -11075,11 +11078,11 @@ async def poll_create_web(request: Request, guild_id: int):
 
     pid = await db_insert(
         "INSERT INTO polls (guild_id,channel_id,question,multiple_choice,ends_at,created_by,"
-        "image_url,image_data,image_filename,bar_color,starts_at,duration_minutes,show_started,show_ranking) "
+        "image_url,image_data,image_filename,bar_color,starts_at,duration_minutes,show_started,show_ranking,layout_spalten) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (str(guild_id), str(channel.id), question, int(multiple), ends_at, request.session.get("user_id") or 0,
          final_image_url, final_image_data, final_image_filename, bar_color, starts_at_store,
-         duration_minutes_store, int(show_started), int(show_ranking)),
+         duration_minutes_store, int(show_started), int(show_ranking), layout_spalten),
     )
     for i, (label, opt_image, opt_image_file, opt_link, opt_width) in enumerate(options):
         opt_final_url, opt_final_data, opt_final_filename = resolved_options[i]
@@ -11114,7 +11117,7 @@ async def poll_create_web(request: Request, guild_id: int):
     embeds, chart_files = _build_poll_embed(
         question, multiple, opt_rows, {}, image_url=final_image_url, image_filename=final_image_filename,
         ends_at=ends_at, created_at=created_at, bar_color=bar_color, show_started=show_started,
-        show_ranking=show_ranking,
+        show_ranking=show_ranking, spalten=layout_spalten,
     )
     files.extend(chart_files)
     view = _PollView(pid, opt_rows)
@@ -11235,7 +11238,16 @@ async def poll_option_image_web(request: Request, guild_id: int, poll_id: int, o
     except Exception:
         raise HTTPException(status_code=404)
     ext = (row.get("image_filename") or "").rsplit(".", 1)[-1].lower()
-    media_type = _EMBED_IMAGE_MEDIA_TYPES.get(ext, "application/octet-stream")
+    media_type = _EMBED_IMAGE_MEDIA_TYPES.get(ext)
+    if not media_type:
+        # Ein Bild, das aus einem Link geholt wurde, hat gar keinen Dateinamen - dann stand
+        # hier application/octet-stream, und der Browser zeigte in der Vorschau nichts an,
+        # obwohl das Bild vorhanden war. Die ersten Bytes sagen ohnehin, was es ist.
+        media_type = ("image/png" if raw[:8] == b"\x89PNG\r\n\x1a\n"
+                      else "image/jpeg" if raw[:3] == b"\xff\xd8\xff"
+                      else "image/gif" if raw[:6] in (b"GIF87a", b"GIF89a")
+                      else "image/webp" if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP"
+                      else "application/octet-stream")
     return Response(content=raw, media_type=media_type)
 
 
@@ -11291,6 +11303,9 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     multiple = bool(form.get("multiple_choice", ""))
     show_started = bool(form.get("show_started", ""))
     show_ranking = bool(form.get("show_ranking", ""))
+    # 2 = nebeneinander, alles andere untereinander. Bewusst eng gefasst: was hier
+    # ankommt, geht ungeprueft in die Bildberechnung.
+    layout_spalten = 2 if str(form.get("layout_spalten", "1")).strip() == "2" else 1
     bar_color = _clamp_poll_bar_color(form.get("bar_color", ""))
 
     if len(options) < 2:
@@ -11383,8 +11398,8 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     # more than one vote recorded from when it was on, those extra votes just stay - only
     # nudges the displayed total vote count slightly, never a crash or a wrong option tally.
     await db_exec(
-        "UPDATE polls SET question=?, multiple_choice=?, image_url=?, image_data=?, image_filename=?, bar_color=?, show_started=?, show_ranking=? WHERE id=?",
-        (question, int(multiple), final_image_url, final_image_data, final_image_filename, bar_color, int(show_started), int(show_ranking), poll_id),
+        "UPDATE polls SET question=?, multiple_choice=?, image_url=?, image_data=?, image_filename=?, bar_color=?, show_started=?, show_ranking=?, layout_spalten=? WHERE id=?",
+        (question, int(multiple), final_image_url, final_image_data, final_image_filename, bar_color, int(show_started), int(show_ranking), layout_spalten, poll_id),
     )
 
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
@@ -11394,7 +11409,7 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
         question, multiple, opt_rows, counts, ended=bool(poll["ended"]),
         image_url=final_image_url, image_filename=final_image_filename,
         ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "", bar_color=bar_color,
-        show_started=show_started, show_ranking=show_ranking,
+        show_started=show_started, show_ranking=show_ranking, spalten=layout_spalten,
     )
     # An option's own uploaded picture is NOT separately attached here - chart_files is now the
     # complete, authoritative attachment list (the one combined image holding every option's

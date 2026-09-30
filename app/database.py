@@ -1217,6 +1217,11 @@ async def init_db():
             # aus v1.17.63 schon einen Text traegt, bekommt ihn dabei angeschaltet - sonst
             # verstummte sie beim Update, ohne dass jemand etwas geaendert haette.
             "ALTER TABLE role_rules ADD COLUMN dm_enabled INTEGER NOT NULL DEFAULT 0",
+            # Wie die Optionen einer Umfrage angeordnet werden: 1 = untereinander (wie
+            # bisher und weiterhin Standard), 2 = nebeneinander in zwei Spalten. Bei sechs
+            # Optionen mit Bildern ist das der Unterschied zwischen "passt auf den Schirm"
+            # und "man scrollt durch die halbe Nachricht".
+            "ALTER TABLE polls ADD COLUMN layout_spalten INTEGER NOT NULL DEFAULT 1",
             "UPDATE role_rules SET dm_enabled=1 WHERE TRIM(dm_text) != ''",
         ]:
             try:

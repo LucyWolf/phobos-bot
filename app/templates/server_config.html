@@ -1479,7 +1479,7 @@ document.addEventListener('click', function(e) {
               <div id="poll-options-edit-{{ p.id }}">
                 {% for opt in p.options %}
                 <div class="poll-option-row" style="display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.6rem;padding:0.5rem;border:1px solid var(--border);border-radius:0.5rem;"
-                     {% if opt.image_filename %}data-existing-image="/servers/{{ guild.id }}/polls/{{ p.id }}/option/{{ opt.id }}/image"{% elif opt.image_url %}data-existing-image="{{ opt.image_url }}"{% endif %}>
+                     {% if opt.image_data %}data-existing-image="/servers/{{ guild.id }}/polls/{{ p.id }}/option/{{ opt.id }}/image"{% elif opt.image_url %}data-existing-image="{{ opt.image_url }}"{% endif %}>
                   <input type="hidden" name="option_id" value="{{ opt.id }}">
                   <div style="display:flex;gap:0.4rem;">
                     <input type="text" name="option" maxlength="80" required value="{{ opt.label }}" style="margin:0;flex:1;">
@@ -1506,6 +1506,14 @@ document.addEventListener('click', function(e) {
               <label><input type="checkbox" name="multiple_choice" value="1" style="width:auto;display:inline;margin-right:0.4rem;" {% if p.multiple_choice %}checked{% endif %}> {{ tr.polls_multiple_label }}</label>
               <label><input type="checkbox" name="show_started" value="1" style="width:auto;display:inline;margin-right:0.4rem;" {% if p.show_started %}checked{% endif %}> {{ tr.polls_show_started_label }}</label>
               <label><input type="checkbox" name="show_ranking" value="1" style="width:auto;display:inline;margin-right:0.4rem;" {% if p.show_ranking %}checked{% endif %}> {{ tr.polls_show_ranking_label }}</label>
+              {# Untereinander oder nebeneinander. Bei sechs Optionen mit Bildern ist das
+                 der Unterschied zwischen "passt auf den Schirm" und "man scrollt durch die
+                 halbe Nachricht". #}
+              <label style="display:block;margin-top:0.5rem;">{{ tr.polls_layout_label }}</label>
+              <select name="layout_spalten" style="max-width:260px;">
+                <option value="1" {% if (p.layout_spalten or 1) != 2 %}selected{% endif %}>{{ tr.polls_layout_vertical }}</option>
+                <option value="2" {% if (p.layout_spalten or 1) == 2 %}selected{% endif %}>{{ tr.polls_layout_horizontal }}</option>
+              </select>
               <label>{{ tr.polls_bar_color_label }}</label>
               <input type="color" name="bar_color" value="{{ p.bar_color or '#7c3aed' }}" style="width:70px;height:2.2rem;padding:0.15rem;margin-bottom:0.75rem;">
               <button type="submit" class="btn btn-primary" style="margin-top:0.75rem;">{{ tr.btn_save }}</button>
@@ -1559,6 +1567,11 @@ document.addEventListener('click', function(e) {
         <label><input type="checkbox" name="multiple_choice" value="1" style="width:auto;display:inline;margin-right:0.4rem;"> {{ tr.polls_multiple_label }}</label>
         <label><input type="checkbox" name="show_started" value="1" style="width:auto;display:inline;margin-right:0.4rem;"> {{ tr.polls_show_started_label }}</label>
         <label><input type="checkbox" name="show_ranking" value="1" style="width:auto;display:inline;margin-right:0.4rem;"> {{ tr.polls_show_ranking_label }}</label>
+        <label style="display:block;margin-top:0.5rem;">{{ tr.polls_layout_label }}</label>
+        <select name="layout_spalten" style="max-width:260px;">
+          <option value="1">{{ tr.polls_layout_vertical }}</option>
+          <option value="2">{{ tr.polls_layout_horizontal }}</option>
+        </select>
       </div>
       <div>
         <label>{{ tr.polls_starts_at_label }}</label>
