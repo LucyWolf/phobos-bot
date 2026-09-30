@@ -469,7 +469,7 @@
         if (fu) fu.style.display = 'inline';
         if (badge) badge.style.display = 'inline';
         const link = document.getElementById('footer-update-link');
-        if (link) link.textContent = '🔔 ' + {{ tr.upd_available_v | js }}.replace('{v}', data.latest);
+        if (link) link.textContent = '🔔 ' + {{ tr.upd_available_v | jsraw }}.replace('{v}', data.latest);
       } else {
         if (fu) fu.style.display = 'none';
         if (badge) badge.style.display = 'none';

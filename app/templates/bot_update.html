@@ -151,14 +151,14 @@
 
   function doCheck(force) {
     setSpinner('search-spin', true);
-    document.getElementById('search-txt').textContent = {{ tr.upd_searching | js }};
+    document.getElementById('search-txt').textContent = {{ tr.upd_searching | jsraw }};
     document.getElementById('search-btn').disabled = true;
     fetch('/api/version' + (force ? '?force=1' : ''))
       .then(r => r.json())
       .then(applyVersionData)
       .catch(() => {
         document.getElementById('status-badge').className = 'status-badge badge-check';
-        document.getElementById('status-badge').textContent = '⚠️ ' + {{ tr.upd_check_failed | js }};
+        document.getElementById('status-badge').textContent = '⚠️ ' + {{ tr.upd_check_failed | jsraw }};
         resetSearchBtn();
       });
   }
@@ -192,7 +192,7 @@
       latestEl.style.color = 'var(--muted)';
       if (arrow) arrow.style.display = 'none';
       badge.className = 'status-badge badge-check';
-      badge.textContent = '⚠️ ' + {{ tr.upd_check_failed | js }};
+      badge.textContent = '⚠️ ' + {{ tr.upd_check_failed | jsraw }};
       form.style.display = 'none';
       note.style.display = 'none';
       return;
@@ -203,7 +203,7 @@
       latestEl.style.color = '#f59e0b';
       if (arrow) arrow.style.display = '';
       badge.className = 'status-badge badge-update';
-      badge.textContent = '🔔 ' + {{ tr.upd_available | js }};
+      badge.textContent = '🔔 ' + {{ tr.upd_available | jsraw }};
       form.style.display = 'inline';
       note.style.display = 'block';
     } else {
@@ -212,14 +212,14 @@
       latestEl.style.color = 'var(--success)';
       if (arrow) arrow.style.display = 'none';
       badge.className = 'status-badge badge-ok';
-      badge.textContent = '✅ ' + {{ tr.upd_up_to_date | js }};
+      badge.textContent = '✅ ' + {{ tr.upd_up_to_date | jsraw }};
       form.style.display = 'none';
       note.style.display = 'none';
     }
 
     // Woher die Zahl stammt - unabhaengig davon, ob es einen Zeitstempel gibt.
     const kh = document.getElementById('kanal-hinweis');
-    if (kh) kh.textContent = data.kanal === 'beta' ? {{ tr.upd_from_beta | js }} : '';
+    if (kh) kh.textContent = data.kanal === 'beta' ? {{ tr.upd_from_beta | jsraw }} : '';
 
     // Der ganze Block stand bis v1.17.80 in "if (data.checked_at)". War die Abfrage noch
     // NIE erfolgreich, gibt es keinen Zeitstempel - und damit stand hier gar nichts, auch
@@ -227,10 +227,10 @@
     const ca = document.getElementById('checked-at');
     if (ca) {
       let text = data.checked_at
-        ? {{ tr.upd_last_checked | js }} + ': ' + data.checked_at + ' UTC'
+        ? {{ tr.upd_last_checked | jsraw }} + ': ' + data.checked_at + ' UTC'
         : '';
       if (data.fehler) {
-        text = (text ? text + ' · ' : '') + {{ tr.upd_check_failed | js }};
+        text = (text ? text + ' · ' : '') + {{ tr.upd_check_failed | jsraw }};
         ca.style.color = '#f59e0b';
       } else {
         ca.style.color = '';
@@ -242,13 +242,13 @@
 
   function resetSearchBtn() {
     setSpinner('search-spin', false);
-    document.getElementById('search-txt').textContent = '🔍 ' + {{ tr.upd_search_now | js }};
+    document.getElementById('search-txt').textContent = '🔍 ' + {{ tr.upd_search_now | jsraw }};
     document.getElementById('search-btn').disabled = false;
   }
 
   function startApply() {
     setSpinner('apply-spin', true);
-    document.getElementById('apply-txt').textContent = {{ tr.upd_applying | js }};
+    document.getElementById('apply-txt').textContent = {{ tr.upd_applying | jsraw }};
     document.getElementById('apply-btn').disabled = true;
   }
 
