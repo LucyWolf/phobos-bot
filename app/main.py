@@ -2963,6 +2963,11 @@ async def _set_guild_avatar(instance, guild_id: int, data_uri: Optional[str]) ->
 @web.get("/bot/design", response_class=HTMLResponse)
 async def bot_design_page(request: Request, guild_id: str = "", success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
+    # Ohne diese Pruefung reicht ein getippter guild_id in der Adresszeile, um Name, Bild und
+    # Spitzname eines fremden Servers zu sehen - und ueber "andere_server" gleich die Namen
+    # aller weiteren Server, auf denen dieses Bot-Konto laeuft.
+    if guild_id and not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
     token_set = await _token_configured()
     try:
         target = bot._bot_for_guild(int(guild_id)) if guild_id else None
@@ -3034,9 +3039,9 @@ async def bot_design_save(
     if target is None:
         ready = bot._ready_bots()
         target = ready[0] if ready else None
-    redirect_base = f"/bot/design?guild_id={guild_id}" if guild_id else "/bot/design"
+    redirect_base = f"/bot/design?guild_id={guild_id}&" if guild_id else "/bot/design?"
     if not target or not target.is_ready():
-        return RedirectResponse(f"{redirect_base}&error=Bot+ist+offline", status_code=302)
+        return RedirectResponse(f"{redirect_base}error=Bot+ist+offline", status_code=302)
     try:
         geaendert = False
         # Zuerst der Spitzname: der gilt nur auf DIESEM Server und wirkt sofort, ohne dass
@@ -3059,12 +3064,20 @@ async def bot_design_save(
         # haengt der Token nur an diesem einen Server, ans KONTO (gilt ueberall, wie der
         # Kontoname - und ist dort ohnehin nur hier zu sehen).
         nur_hier = bool(guild_id and target.guilds and len(target.guilds) > 1)
-        if avatar_reset and nur_hier:
+        # Zuruecksetzen haengt NICHT an nur_hier: verlaesst der Bot die anderen Server, bleibt
+        # ein einmal gesetztes Server-Bild trotzdem liegen. Die Seite bietet den Haken dann
+        # weiter an (sie fragt guild_avatar ab), und er muss auch etwas tun.
+        if avatar_reset and guild_id:
             await _set_guild_avatar(target, int(guild_id), None)
             geaendert = True
         elif avatar and avatar.filename:
             content = await avatar.read()
             if content:
+                # Dieselbe Grenze wie bei jedem anderen Bild-Upload im Dashboard. Ohne sie
+                # liest der Server die Datei vollstaendig ein und blaeht sie als Data-URI noch
+                # um ein Drittel auf - auf Android ist das Schluss.
+                if len(content) > MAX_BILD_UPLOAD:
+                    raise ValueError(f"Bild zu groß (max. {MAX_BILD_UPLOAD // (1024*1024)} MB)")
                 if nur_hier:
                     await _set_guild_avatar(target, int(guild_id), _avatar_data_uri(content))
                     geaendert = True
@@ -3074,10 +3087,10 @@ async def bot_design_save(
             await target.user.edit(**kwargs)
             geaendert = True
         if not geaendert:
-            return RedirectResponse(f"{redirect_base}&error=Keine+Änderungen", status_code=302)
+            return RedirectResponse(f"{redirect_base}error=Keine+Änderungen", status_code=302)
     except (discord.HTTPException, OSError, ValueError) as e:
-        return RedirectResponse(f"{redirect_base}&error={urllib.parse.quote(str(e)[:80])}", status_code=302)
-    return RedirectResponse(f"{redirect_base}&success=Gespeichert", status_code=302)
+        return RedirectResponse(f"{redirect_base}error={urllib.parse.quote(str(e)[:80])}", status_code=302)
+    return RedirectResponse(f"{redirect_base}success=Gespeichert", status_code=302)
 
 
 # ── Bot Info ──────────────────────────────────────────────────────────────────
