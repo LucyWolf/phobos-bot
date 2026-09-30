@@ -23,10 +23,10 @@
 
 <div class="section-label" style="margin-bottom:0.75rem;">🟣 Meine Twitch-API</div>
 <p class="hint" style="max-width:660px;margin-bottom:1.25rem;">
-  Jeder Benutzer verwaltet seine eigene Twitch-App. Pro Server kann unter
-  <strong>Server → Streaming</strong> ausgewählt werden, welche API verwendet wird.
-  App erstellen auf <a href="https://dev.twitch.tv/console/apps/create" target="_blank" class="hint-link">dev.twitch.tv</a>
-  (OAuth Redirect: <code>http://localhost</code>, Kategorie: Chat Bot).
+  {{ tr.twapi_hint_1 }}
+  {{ tr.twapi_hint_2 }}
+  <a href="https://dev.twitch.tv/console/apps/create" target="_blank" class="hint-link">dev.twitch.tv</a>
+  (OAuth Redirect: <code>http://localhost</code>, {{ tr.twapi_category }}).
 </p>
 
 {% for api in twitch_apis %}
@@ -42,10 +42,10 @@
     </div>
     <span class="api-id-badge">#{{ api.id }}</span>
     <button type="button" onclick="toggleApiEdit({{ api.id }})"
-            class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="Einstellungen">⚙</button>
+            class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.nav_settings }}">⚙</button>
     <form method="post" action="/settings/notifications/delete/{{ api.id }}" style="margin:0"
           onsubmit="return confirm({{ ('API „' ~ api.label ~ '“ wirklich löschen?') | js }})">
-      <button class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.5rem;" title="Löschen">✕</button>
+      <button class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.5rem;" title="{{ tr.btn_delete }}">✕</button>
     </form>
   </div>
   <div style="font-size:0.8rem;color:var(--muted);">Client-ID: <code>{{ api.client_id[:12] }}…</code></div>
@@ -63,10 +63,10 @@
         </div>
       </div>
       <div style="margin-bottom:0.75rem;">
-        <label>Client-Secret <span style="font-size:0.72rem;color:var(--muted)">(leer = unverändert)</span></label>
+        <label>Client-Secret <span style="font-size:0.72rem;color:var(--muted)">{{ tr.twapi_unchanged }}</span></label>
         <input type="password" name="twitch_client_secret" placeholder="••••••••••••" autocomplete="off" style="margin:0;">
       </div>
-      <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">💾 Speichern</button>
+      <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
     </form>
 
     {% if api.is_own %}
@@ -77,7 +77,7 @@
         <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
           <span style="font-size:0.82rem;">👤 {{ gu.username }}</span>
           <form method="post" action="/settings/notifications/{{ api.id }}/access/remove/{{ gu.id }}" style="margin:0">
-            <button class="btn btn-danger" style="font-size:0.7rem;padding:0.15rem 0.4rem;" title="Löschen">✕</button>
+            <button class="btn btn-danger" style="font-size:0.7rem;padding:0.15rem 0.4rem;" title="{{ tr.btn_delete }}">✕</button>
           </form>
         </div>
         {% endfor %}
@@ -100,13 +100,13 @@
 </div>
 {% else %}
 <div class="api-card" style="text-align:center;color:var(--muted);font-size:0.85rem;">
-  Noch keine Twitch-API eingetragen.
+  {{ tr.twapi_empty }}
 </div>
 {% endfor %}
 
 <!-- Neue API hinzufügen -->
 <div class="api-card" style="max-width:660px;border-style:dashed;">
-  <div style="font-weight:700;font-size:0.88rem;margin-bottom:1rem;">➕ Neue Twitch-API hinzufügen</div>
+  <div style="font-weight:700;font-size:0.88rem;margin-bottom:1rem;">➕ {{ tr.twapi_add_heading }}</div>
   <form method="post" action="/settings/notifications/add">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
       <div>
@@ -122,7 +122,7 @@
       <label>Client-Secret</label>
       <input type="password" name="twitch_client_secret" placeholder="dein Client-Secret" autocomplete="off" style="margin:0;">
     </div>
-    <button type="submit" class="btn btn-primary">➕ Hinzufügen</button>
+    <button type="submit" class="btn btn-primary">➕ {{ tr.twapi_add_button }}</button>
   </form>
 </div>
 

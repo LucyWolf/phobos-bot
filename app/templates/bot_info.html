@@ -136,7 +136,7 @@
   </div>
 </div>
 
-<p class="hint" style="margin-top:0.5rem;" id="refresh-hint">Automatische Aktualisierung ist aus - Werte stammen vom Laden der Seite.</p>
+<p class="hint" style="margin-top:0.5rem;" id="refresh-hint">{{ tr.info_autorefresh_off }}</p>
 
 <script>
   const REFRESH_KEY = 'phobos_stats_refresh_interval';
@@ -189,7 +189,7 @@
         'Automatische Aktualisierung: alle ' + seconds + 's.';
     } else {
       document.getElementById('refresh-hint').textContent =
-        'Automatische Aktualisierung ist aus - Werte stammen vom Laden der Seite.';
+        {{ tr.info_autorefresh_off | js }};
     }
   }
 

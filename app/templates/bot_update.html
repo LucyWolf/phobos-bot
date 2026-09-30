@@ -31,7 +31,7 @@
 </style>
 
 {% if success %}
-<div class="alert alert-success">✅ Update heruntergeladen — Bot wird neu gestartet. Seite lädt automatisch neu…</div>
+<div class="alert alert-success">✅ {{ tr.upd_downloaded }}</div>
 <script>setTimeout(() => location.reload(), 12000);</script>
 {% endif %}
 {% if error %}
@@ -39,7 +39,7 @@
 {% endif %}
 
 <div class="update-card">
-  <div id="status-badge" class="status-badge badge-check">⏳ Suche läuft…</div>
+  <div id="status-badge" class="status-badge badge-check">⏳ {{ tr.upd_searching }}</div>
 
   <div class="version-row">
     <div class="version-box">
@@ -48,7 +48,7 @@
     </div>
     <div class="version-arrow" id="version-arrow">→</div>
     <div class="version-box">
-      <div class="version-label">Verfügbar auf GitHub</div>
+      <div class="version-label">{{ tr.upd_available_on }}</div>
       <div class="version-val" id="latest-val" style="color:var(--muted);">…</div>
     </div>
   </div>
@@ -56,12 +56,12 @@
   <div class="btn-row">
     <button class="btn-search" id="search-btn" onclick="doCheck(true)">
       <span class="spinner" id="search-spin"></span>
-      <span id="search-txt">🔍 Jetzt suchen</span>
+      <span id="search-txt">🔍 {{ tr.upd_search_now }}</span>
     </button>
     <form method="post" action="/bot/update/apply" id="apply-form" style="display:none;" onsubmit="startApply()">
       <button type="submit" class="btn btn-primary" id="apply-btn">
         <span class="spinner" id="apply-spin"></span>
-        <span id="apply-txt">⬇️ Jetzt updaten</span>
+        <span id="apply-txt">⬇️ {{ tr.upd_apply_now }}</span>
       </button>
     </form>
   </div>
@@ -107,41 +107,38 @@
   {% endif %}
   {% if is_android %}
   <div class="restart-note" id="apply-note" style="display:none;">
-    Lädt die neue APK vom GitHub-Release herunter und öffnet danach den Android-
-    Installationsdialog — der muss auf dem Handy selbst bestätigt werden.<br>
-    Die Datenbank und alle Einstellungen bleiben unangetastet.
+    {{ tr.upd_note_android }}
   </div>
   {% else %}
   <div class="restart-note" id="apply-note" style="display:none;">
-    Lädt die neue Version von GitHub, überschreibt die Dateien und startet den Bot in-place neu.<br>
-    Dauert ca. 10–30 Sekunden. Die Datenbank bleibt unangetastet.
+    {{ tr.upd_note_server }}
   </div>
   {% endif %}
 
   <a href="https://github.com/LucyWolf/phobos-bot/commits/main" target="_blank"
      style="display:inline-flex;align-items:center;gap:0.4rem;margin-top:1.1rem;font-size:0.8rem;color:var(--muted);text-decoration:none;">
-    📋 Changelog auf GitHub →
+    📋 {{ tr.upd_changelog }} →
   </a>
 </div>
 
 {% if is_android %}
 <div class="update-card">
-  <div class="section-label" style="margin-bottom:0.75rem;">Manuelles Update (immer möglich)</div>
+  <div class="section-label" style="margin-bottom:0.75rem;">{{ tr.upd_manual_heading }}</div>
   <p class="restart-note">
-    Neueste APK von der
-    <a href="https://github.com/LucyWolf/phobos-bot/releases/tag/android-debug" target="_blank">GitHub-Release-Seite</a>
-    herunterladen und über die installierte App installieren.
+    {{ tr.upd_manual_android_1 }}
+    <a href="https://github.com/LucyWolf/phobos-bot/releases/tag/android-debug" target="_blank">{{ tr.upd_manual_android_link }}</a>
+    {{ tr.upd_manual_android_2 }}
   </p>
 </div>
 {% else %}
 <div class="update-card">
-  <div class="section-label" style="margin-bottom:0.75rem;">Manuelles Update (immer möglich)</div>
+  <div class="section-label" style="margin-bottom:0.75rem;">{{ tr.upd_manual_heading }}</div>
   <div class="manual-steps">
     <span>cd /pfad/zu/phobos-bot</span><br>
     <span>git pull origin main</span><br>
     <span>docker compose up -d --build</span>
   </div>
-  <p class="restart-note">Auf dem Server ausführen — bei Änderungen an requirements.txt immer notwendig.</p>
+  <p class="restart-note">{{ tr.upd_manual_server_note }}</p>
 </div>
 {% endif %}
 
@@ -154,7 +151,7 @@
 
   function doCheck(force) {
     setSpinner('search-spin', true);
-    document.getElementById('search-txt').textContent = 'Suche läuft…';
+    document.getElementById('search-txt').textContent = {{ tr.upd_searching | js }};
     document.getElementById('search-btn').disabled = true;
     fetch('/api/version' + (force ? '?force=1' : ''))
       .then(r => r.json())
@@ -192,7 +189,7 @@
       latestEl.style.color = '#f59e0b';
       if (arrow) arrow.style.display = '';
       badge.className = 'status-badge badge-update';
-      badge.textContent = '🔔 Update verfügbar';
+      badge.textContent = '🔔 ' + {{ tr.upd_available | js }};
       form.style.display = 'inline';
       note.style.display = 'block';
     } else {
@@ -207,20 +204,20 @@
     }
 
     if (data.checked_at) {
-      document.getElementById('checked-at').textContent = 'Zuletzt geprüft: ' + data.checked_at + ' UTC';
+      document.getElementById('checked-at').textContent = {{ tr.upd_last_checked | js }} + ': ' + data.checked_at + ' UTC';
     }
     resetSearchBtn();
   }
 
   function resetSearchBtn() {
     setSpinner('search-spin', false);
-    document.getElementById('search-txt').textContent = '🔍 Jetzt suchen';
+    document.getElementById('search-txt').textContent = '🔍 ' + {{ tr.upd_search_now | js }};
     document.getElementById('search-btn').disabled = false;
   }
 
   function startApply() {
     setSpinner('apply-spin', true);
-    document.getElementById('apply-txt').textContent = 'Update wird geladen…';
+    document.getElementById('apply-txt').textContent = {{ tr.upd_applying | js }};
     document.getElementById('apply-btn').disabled = true;
   }
 

@@ -3,8 +3,8 @@
    that one guild via Discord's own OAuth params. Each card links into server_config.html. #}
 {% extends "base.html" %}
 
-{% block title %}{{ app_name }} – Server{% endblock %}
-{% block page_title %}🖥️ Server{% endblock %}
+{% block title %}{{ app_name }} – {{ tr.srv_title }}{% endblock %}
+{% block page_title %}🖥️ {{ tr.srv_title }}{% endblock %}
 
 {% block content %}
 {% if success %}<div class="alert alert-success" style="margin-bottom:1rem;">✅ {{ meldung(success, lang) }}</div>{% endif %}
@@ -31,18 +31,18 @@
 {% if bot_online %}
 <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:1.5rem; font-size:0.85rem; color:var(--success);">
   <span style="width:8px;height:8px;border-radius:50%;background:var(--success);display:inline-block;box-shadow:0 0 6px var(--success);"></span>
-  Bot online · {{ guilds|length }} Server verbunden
+  {{ tr.srv_online }} · {{ guilds|length }} {{ tr.srv_connected_count }}
 </div>
 {% else %}
 <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:1.5rem; font-size:0.85rem; color:var(--danger);">
   <span style="width:8px;height:8px;border-radius:50%;background:var(--danger);display:inline-block;"></span>
-  Bot offline — zuerst Token in den <a href="/settings" style="color:var(--danger)">Einstellungen</a> eintragen
+  {{ tr.srv_offline_1 }} <a href="/settings" style="color:var(--danger)">{{ tr.srv_offline_link }}</a> {{ tr.srv_offline_2 }}
 </div>
 {% endif %}
 
 <!-- Verbundene Server -->
 {% if guilds %}
-<div class="section-label" style="margin-bottom:0.75rem;">Verbundene Server ({{ guilds|length }})</div>
+<div class="section-label" style="margin-bottom:0.75rem;">{{ tr.srv_connected }} ({{ guilds|length }})</div>
 <div class="server-grid">
   {% for g in guilds %}
   <div class="server-card">
@@ -52,16 +52,16 @@
       </div>
       <div class="server-card-info">
         <div class="server-card-name" title="{{ g.name }}">{{ g.name }}</div>
-        <div class="server-card-meta">👥 {{ g.members }} Mitglieder</div>
+        <div class="server-card-meta">👥 {{ g.members }} {{ tr.srv_members }}</div>
       </div>
     </div>
     <div class="server-card-actions">
-      <a href="/servers/{{ g.id }}" class="btn btn-primary" style="font-size:0.8rem;padding:0.45rem 0.9rem;">⚙️ Verwalten</a>
+      <a href="/servers/{{ g.id }}" class="btn btn-primary" style="font-size:0.8rem;padding:0.45rem 0.9rem;">⚙️ {{ tr.srv_manage }}</a>
       {% if invite_url %}
-      <a href="{{ invite_url }}&guild_id={{ g.id }}&disable_guild_select=true" target="_blank" class="btn btn-secondary" style="font-size:0.8rem;padding:0.45rem 0.9rem;" title="Berechtigungen erneut bestätigen / Bot neu zu diesem Server einladen">🔄 Neu einladen</a>
+      <a href="{{ invite_url }}&guild_id={{ g.id }}&disable_guild_select=true" target="_blank" class="btn btn-secondary" style="font-size:0.8rem;padding:0.45rem 0.9rem;" title="{{ tr.srv_reinvite_hint }}">🔄 {{ tr.srv_reinvite }}</a>
       {% endif %}
-      <form method="post" action="/servers/{{ g.id }}/leave" onsubmit="return confirm({{ ('Bot wirklich von „' ~ g.name ~ '“ entfernen? Alle Einstellungen bleiben gespeichert.') | js }})">
-        <button type="submit" class="btn btn-danger" style="font-size:0.8rem;padding:0.45rem 0.9rem;" title="Löschen">✕</button>
+      <form method="post" action="/servers/{{ g.id }}/leave" onsubmit="return confirm({{ tr.srv_leave_confirm.replace('{name}', g.name) | js }})">
+        <button type="submit" class="btn btn-danger" style="font-size:0.8rem;padding:0.45rem 0.9rem;" title="{{ tr.srv_leave }}">✕</button>
       </form>
     </div>
   </div>
@@ -70,26 +70,23 @@
 {% endif %}
 
 <!-- Server hinzufügen -->
-<div class="section-label" style="margin-bottom:0.75rem;">Server hinzufügen</div>
+<div class="section-label" style="margin-bottom:0.75rem;">{{ tr.srv_add_heading }}</div>
 <div class="invite-box">
   <div class="big-icon">➕</div>
-  <h3>Weiteren Server einladen</h3>
+  <h3>{{ tr.srv_invite_heading }}</h3>
   <p>
-    Klicke auf den Button, wähle deinen Discord-Server aus<br>
-    und bestätige die Berechtigung. Der Server erscheint<br>
-    danach automatisch in der Sidebar.
+    {{ tr.srv_invite_hint }}
   </p>
   {% if invite_url %}
   <a href="{{ invite_url }}" target="_blank" class="btn-invite">
-    🔗 Bot zu Server einladen
+    🔗 {{ tr.srv_invite_button }}
   </a>
   {% else %}
-  <div class="alert alert-error" style="display:inline-block;">Bot muss online sein um den Einlade-Link zu generieren.</div>
+  <div class="alert alert-error" style="display:inline-block;">{{ tr.srv_invite_offline }}</div>
   {% endif %}
 </div>
 
 <p class="hint" style="margin-top:1rem;">
-  Nach der Einladung kann es einige Sekunden dauern bis der Server in der Sidebar erscheint.<br>
-  Seite neu laden falls nötig.
+  {{ tr.srv_invite_note }}
 </p>
 {% endblock %}

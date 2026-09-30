@@ -2,8 +2,8 @@
    Each enabled token runs its own bot connection (BotManager) and can serve a different set
    of guilds - this is what makes the whole multi-bot-instance setup possible. Not i18n'd. #}
 {% extends "base.html" %}
-{% block title %}{{ app_name }} – Bot-Tokens{% endblock %}
-{% block page_title %}🔑 Bot-Tokens{% endblock %}
+{% block title %}{{ app_name }} – {{ tr.tok_title }}{% endblock %}
+{% block page_title %}🔑 {{ tr.tok_title }}{% endblock %}
 
 {% block content %}
 <style>
@@ -30,12 +30,12 @@
 {% if legacy_token and not tokens %}
 <div class="tok-card">
   <div class="tok-row">
-    <span class="tok-label">Haupt-Token (Legacy)</span>
+    <span class="tok-label">{{ tr.tok_legacy_label }}</span>
     <span class="badge {% if legacy_running %}badge-green{% else %}badge-yellow{% endif %}">
       {% if legacy_running %}🟢 Online{% else %}⚙️ Gespeichert{% endif %}
     </span>
   </div>
-  <div class="tok-info">Gespeichert als <code>discord_token</code> in der Config. Wird automatisch verwendet, solange keine Tokens in der Tabelle eingetragen sind.</div>
+  <div class="tok-info">{{ tr.tok_legacy_info }}</div>
 </div>
 {% endif %}
 
@@ -52,33 +52,33 @@
               style="padding:0.25rem 0.55rem;font-size:0.78rem;flex-shrink:0;" title="Bezeichnung bearbeiten"
               onclick="startRename({{ t.id }})">✏️</button>
       <button type="submit" id="tok-save-{{ t.id }}" class="btn btn-primary"
-              style="display:none;padding:0.25rem 0.55rem;font-size:0.78rem;flex-shrink:0;" title="Speichern">✓</button>
+              style="display:none;padding:0.25rem 0.55rem;font-size:0.78rem;flex-shrink:0;" title="{{ tr.btn_save }}">✓</button>
       <button type="button" id="tok-cancel-{{ t.id }}" class="btn btn-secondary"
               style="display:none;padding:0.25rem 0.55rem;font-size:0.78rem;flex-shrink:0;" title="Abbrechen"
               onclick="cancelRename({{ t.id }}, '{{ t.label | replace("'", "\\'") }}')">✕</button>
     </form>
     <span class="badge {% if t.running %}badge-green{% elif t.enabled %}badge-yellow{% else %}badge-gray{% endif %}" style="flex-shrink:0;">
-      {% if t.running %}🟢 Online{% elif t.enabled %}⚙️ Aktiviert{% else %}⏸ Deaktiviert{% endif %}
+      {% if t.running %}🟢 {{ tr.tok_state_online }}{% elif t.enabled %}⚙️ {{ tr.tok_state_on }}{% else %}⏸ {{ tr.tok_state_off }}{% endif %}
     </span>
     <div class="tok-actions">
       {% if role == 'admin' and all_users %}
-      <button type="button" class="btn btn-secondary" style="padding:0.3rem 0.65rem;font-size:0.8rem;" title="Benutzer verwalten"
+      <button type="button" class="btn btn-secondary" style="padding:0.3rem 0.65rem;font-size:0.8rem;" title="{{ tr.tok_manage_users }}"
               onclick="toggleTokUsers({{ t.id }})">👥</button>
       {% endif %}
       <form method="post" action="/settings/tokens/toggle/{{ t.id }}" style="margin:0;">
-        <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.65rem;font-size:0.8rem;" title="{% if t.enabled %}Deaktivieren{% else %}Aktivieren{% endif %}">
+        <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.65rem;font-size:0.8rem;" title="{% if t.enabled %}{{ tr.tok_disable }}{% else %}{{ tr.tok_enable }}{% endif %}">
           {% if t.enabled %}⏸{% else %}▶{% endif %}
         </button>
       </form>
       <form method="post" action="/settings/tokens/delete/{{ t.id }}" style="margin:0;"
-            onsubmit="return confirm('Token \'{{ t.label }}\' wirklich löschen?')">
+            onsubmit="return confirm({{ tr.tok_delete_confirm.replace('{name}', t.label) | js }})">
         <button type="submit" class="btn" style="padding:0.3rem 0.65rem;font-size:0.8rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
       </form>
     </div>
   </div>
   <div class="tok-info">
     <span class="tok-masked">{{ t.masked }}</span>
-    &nbsp;·&nbsp; Hinzugefügt: {{ t.created_at | dt }}
+    &nbsp;·&nbsp; {{ tr.tok_added }}: {{ t.created_at | dt }}
   </div>
   {% if role == 'admin' and all_users %}
   {% set assigned = token_users.get(t.id, []) %}
@@ -100,7 +100,7 @@
         </label>
         {% endfor %}
       </div>
-      <button type="submit" class="btn btn-secondary" style="font-size:0.75rem;padding:0.2rem 0.6rem;">💾 Speichern</button>
+      <button type="submit" class="btn btn-secondary" style="font-size:0.75rem;padding:0.2rem 0.6rem;">{{ tr.btn_save }}</button>
     </form>
   </div>
   {% endif %}
@@ -108,12 +108,12 @@
 {% endfor %}
 
 {% if not tokens and not legacy_token %}
-<div style="color:var(--muted);font-size:0.88rem;margin-bottom:1rem;">Noch kein Token eingetragen.</div>
+<div style="color:var(--muted);font-size:0.88rem;margin-bottom:1rem;">{{ tr.tok_empty }}</div>
 {% endif %}
 
 <!-- Add token form -->
 <div class="tok-card" style="margin-top:1.5rem;">
-  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.85rem;">➕ Token hinzufügen</div>
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.85rem;">➕ {{ tr.tok_add_heading }}</div>
   <form method="post" action="/settings/tokens/add">
     <div style="display:grid;grid-template-columns:1fr 2fr;gap:0.75rem;margin-bottom:0.75rem;">
       <div>
@@ -121,13 +121,13 @@
         <input type="text" name="label" value="Bot" placeholder="z.B. Hauptbot" style="margin-bottom:0;">
       </div>
       <div>
-        <label>Discord Bot-Token</label>
-        <input type="password" name="token" placeholder="Dein Bot-Token aus dem Discord Developer Portal" required style="margin-bottom:0;">
+        <label>{{ tr.tok_field_label }}</label>
+        <input type="password" name="token" placeholder="{{ tr.tok_field_placeholder }}" required style="margin-bottom:0;">
       </div>
     </div>
     {% if role == 'admin' and all_users %}
     <div style="margin-bottom:0.75rem;">
-      <label>Zugewiesene Benutzer</label>
+      <label>{{ tr.tok_assigned_users }}</label>
       <div style="display:flex;flex-wrap:wrap;gap:0.35rem 1.1rem;">
         {% for u in all_users %}
         <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.82rem;cursor:pointer;white-space:nowrap;">
@@ -138,25 +138,25 @@
       </div>
     </div>
     {% endif %}
-    <button type="submit" class="btn btn-primary">💾 Token speichern</button>
+    <button type="submit" class="btn btn-primary">💾 {{ tr.tok_save_button }}</button>
   </form>
 </div>
 
 <div style="max-width:680px;margin-top:1rem;">
   <details>
-    <summary style="cursor:pointer;color:var(--muted);font-size:0.83rem;">Wo finde ich meinen Bot-Token?</summary>
+    <summary style="cursor:pointer;color:var(--muted);font-size:0.83rem;">{{ tr.tok_help_summary }}</summary>
     <div style="margin-top:0.6rem;font-size:0.82rem;color:var(--muted);line-height:1.6;">
-      1. Öffne <strong>discord.com/developers/applications</strong><br>
-      2. Wähle deine Anwendung (oder erstelle eine neue)<br>
-      3. Navigiere zu <strong>Bot → Token → Reset Token</strong><br>
-      4. Kopiere den Token und füge ihn oben ein
+      {{ tr.tok_help_1 }}<br>
+      {{ tr.tok_help_2 }}<br>
+      {{ tr.tok_help_3 }}<br>
+      {{ tr.tok_help_4 }}
     </div>
   </details>
 </div>
 
 {% if role == 'admin' %}
 <div class="tok-card" style="margin-top:1.5rem;border-color:rgba(124,58,237,.3);">
-  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.5rem;">🔑 Legacy Bot-Token</div>
+  <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.5rem;">🔑 {{ tr.tok_legacy_heading }}</div>
   {% if legacy_token %}
   <div class="tok-info" style="margin-bottom:0.75rem;">
     Aktueller Token: <span class="tok-masked">••••••••••••••••••••••••••••••••••••••••••••••••••</span>
@@ -167,10 +167,10 @@
       <div style="flex:1;min-width:200px;">
         <input type="password" name="token" placeholder="Discord Bot Token..." autocomplete="off" required style="margin:0;">
       </div>
-      <button type="submit" class="btn btn-primary">💾 Speichern</button>
+      <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
     </div>
   </form>
-  <div class="tok-info" style="margin-top:0.5rem;">Wird automatisch verwendet, solange keine Tokens in der Tabelle eingetragen sind.</div>
+  <div class="tok-info" style="margin-top:0.5rem;">{{ tr.tok_legacy_note }}</div>
 </div>
 {% endif %}
 

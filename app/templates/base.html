@@ -435,7 +435,7 @@
   <footer>
     <span id="footer-version">{{ app_name }} v{{ version }}</span>
     <span id="footer-update" style="display:none;margin-left:0.75rem;">
-      · <a href="/bot/update" id="footer-update-link" style="color:#f59e0b;font-weight:700;text-decoration:none;">🔔 Update verfügbar</a>
+      · <a href="/bot/update" id="footer-update-link" style="color:#f59e0b;font-weight:700;text-decoration:none;">🔔 {{ tr.upd_available }}</a>
     </span>
   </footer>
 </div>
@@ -469,7 +469,7 @@
         if (fu) fu.style.display = 'inline';
         if (badge) badge.style.display = 'inline';
         const link = document.getElementById('footer-update-link');
-        if (link) link.textContent = '🔔 Update v' + data.latest + ' verfügbar';
+        if (link) link.textContent = '🔔 ' + {{ tr.upd_available_v | js }}.replace('{v}', data.latest);
       } else {
         if (fu) fu.style.display = 'none';
         if (badge) badge.style.display = 'none';
