@@ -1763,7 +1763,12 @@ const POLL_PREVIEW_TEXTE = {
 // Bild gefunden" war das nicht zu unterscheiden, und genau daran haben wir uns die Zaehne
 // ausgebissen. Jetzt steht da, was los ist.
 function pollPreviewImageFailed(img) {
-  pollDebug(POLL_DBG.nichtLadbar, (img.getAttribute('src') || '').slice(0, 90));
+  const adresse = img.getAttribute('src') || '';
+  pollDebug(POLL_DBG.nichtLadbar, adresse.slice(0, 90));
+  // Eine Adresse, die nicht als Bild laedt, ist meistens eine Seite - im Bildfeld ist das
+  // der haeufigste Fall, weil daneben ein Linkfeld steht und niemand raten kann, welches
+  // wofuer ist. Also einmal den Server fragen, der holt das Bild der Seite.
+  pollPreviewAufloesen(adresse);
   const note = document.createElement('div');
   note.className = 'poll-preview-imgnote';
   note.textContent = POLL_PREVIEW_TEXTE.fehler;
@@ -1796,6 +1801,31 @@ window.addEventListener('error', function(e) {
   pollDebug(POLL_DBG.fehler, (e.message || '?') + ' @ ' + (e.lineno || '?'));
 });
 
+// Adressen, die als Bild nicht laden, hier einmal (und nur einmal) vom Server aufloesen
+// lassen. Nach Adresse gemerkt, nicht nach Zeile: dieselbe Adresse steht oft in mehreren
+// Optionen, und jede Zeile einzeln zu fragen waere derselbe Abruf mehrfach.
+const _pollAufgeloest = new Map();   // Adresse -> Bildadresse oder ''
+function pollPreviewAufloesen(adresse) {
+  if (!adresse || !/^https?:/i.test(adresse) || _pollAufgeloest.has(adresse)) return;
+  _pollAufgeloest.set(adresse, '');   // sofort belegen, sonst fragen mehrere Bilder zugleich
+  pollDebug(POLL_DBG.frage, adresse.slice(0, 70));
+  fetch('/servers/' + POLLS_GUILD_ID + '/polls/preview-link-image', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'url=' + encodeURIComponent(adresse),
+  }).then(function(r) {
+    pollDebug(POLL_DBG.beantwortet, 'HTTP ' + r.status);
+    return r.json();
+  }).then(function(data) {
+    const bild = data.image_data || (data.image_urls || [])[0] || '';
+    pollDebug(POLL_DBG.antwort, bild ? bild.slice(0, 70) : POLL_DBG.nichts);
+    if (!bild) return;
+    _pollAufgeloest.set(adresse, bild);
+    document.querySelectorAll('.poll-form').forEach(renderPollPreview);
+  }).catch(function(e) {
+    pollDebug(POLL_DBG.abfrageFehler, (e && e.message) || String(e));
+  });
+}
 function pollPreviewSafeUrl(s) {
   s = String(s === null || s === undefined ? '' : s).trim();
   // blob: gehoert dazu - pollPreviewFileUrl() macht daraus die Adresse einer gerade
@@ -1862,6 +1892,8 @@ function renderPollPreview(form) {
       image = pollPreviewFileUrl(fileInput.files[0]);
     } else if (urlInput && urlInput.value.trim()) {
       image = urlInput.value.trim();
+      // Stand hier eine Seitenadresse, haben wir laengst ihr Bild - dann das.
+      if (_pollAufgeloest.get(image)) image = _pollAufgeloest.get(image);
     } else if (removeInput && removeInput.checked) {
       // Explicitly marked for removal - never fall back to the existing image below, even
       // though nothing has actually been saved yet (mirrors _resolve_poll_option_image's own

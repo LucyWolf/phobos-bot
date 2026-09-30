@@ -9726,6 +9726,30 @@ async def _fetch_og_image_candidates(url: str) -> list:
     return _extract_image_candidates(html, url)
 
 
+async def _bildadresse_aufloesen(url: str) -> str:
+    """Was im Bildfeld steht, muss kein Bild sein.
+
+    Neben dem Bildfeld steht ein Linkfeld, und welches wofuer da ist, muss man raten. In der
+    Diagnose sah das so aus:
+
+        image=https://vrchat.com/home/world/wrld_...   link=-
+        Bild NICHT ladbar: https://vrchat.com/home/world/wrld_.../info
+
+    Die Seitenadresse stand im Bildfeld und wurde unveraendert in ein <img src> gesetzt - eine
+    HTML-Seite laedt dort nie. Statt den Benutzer raten zu lassen, welches Feld er nehmen
+    muss, wird die Adresse hier aufgeloest: ist sie ein Bild, bleibt sie; ist sie eine Seite,
+    kommt deren og:image zurueck; ist beides nicht zu holen, ein leerer Text - dann bleibt die
+    Eingabe unveraendert stehen, wie zuvor auch."""
+    html, direkt = await _fetch_og_quelle(url)
+    if direkt:
+        return direkt[:500]
+    if html:
+        gefunden = _extract_og_image(html, url)
+        if gefunden and gefunden.startswith(("http://", "https://")):
+            return gefunden[:500]
+    return ""
+
+
 async def _resolve_poll_option_image(
     image_url: str, has_upload: bool, upload_data: str, upload_filename: str,
     link_url: str, remove_checked: bool, existing_row,
@@ -9863,7 +9887,8 @@ async def _apply_poll_option_custom_width(image_url: str, image_data_b64: str, i
         # erlaubt ist. Schlaegt das fehl, bleibt alles wie zuvor - ein Bild darf das
         # Speichern nie verhindern.
         if image_url and not image_data_b64:
-            roh = await _fetch_image_bytes(image_url)
+            echte = await _bildadresse_aufloesen(image_url) or image_url
+            roh = await _fetch_image_bytes(echte)
             if roh:
                 try:
                     with Image.open(io.BytesIO(roh)) as probe:
@@ -9883,7 +9908,8 @@ async def _apply_poll_option_custom_width(image_url: str, image_data_b64: str, i
         except Exception:
             return image_url, image_data_b64, image_filename
     elif image_url:
-        raw = await _fetch_image_bytes(image_url)
+        # Auch hier kann im Bildfeld eine Seite statt eines Bildes stehen.
+        raw = await _fetch_image_bytes(await _bildadresse_aufloesen(image_url) or image_url)
         if not raw:
             return image_url, image_data_b64, image_filename
     else:
