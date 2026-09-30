@@ -71,35 +71,47 @@
     </div>
   </div>
 
-  {# Den Spitznamen braucht nur, wer sich ein Bot-Konto mit anderen Servern TEILT. Hat
-     dieser Server seinen eigenen Token - der Normalfall bei mehreren Servern -, ist der
-     Kontoname ohnehin nur hier zu sehen, und zwei Namensfelder waeren eine Erfindung.
-     Gemeldet als "also braust du nicht beide namen angeben sondern nur den einen". #}
-  {% if guild_id and andere_server %}
-  <div class="design-card">
-    <div class="section-label" style="margin-bottom:1rem;">{{ tr.bot_design_nick_heading }}</div>
-    <label>{{ tr.bot_design_nick_label }} ({{ tr.bot_design_current }}: {{ current_nick or current_name or '—' }})</label>
-    <input type="text" name="bot_nick" value="{{ current_nick or '' }}"
-           placeholder="{{ current_name or tr.bot_design_name_placeholder }}" maxlength="32"
-           {% if not bot_online %}disabled{% endif %}>
-    <p class="hint">{{ tr.bot_design_nick_hint }}</p>
-  </div>
-  {% endif %}
+  {# EIN Namensfeld, nicht zwei. Gemeldet: "also braust du nicht beide namen angeben
+     sondern nur den einen ... ist quatsch". Was dahinter passiert, haengt davon ab, ob
+     dieses Bot-Konto auch auf anderen Servern laeuft:
 
+       - nur hier  -> der Kontoname wird geaendert, er ist ohnehin nur hier zu sehen
+       - geteilt   -> der Spitzname wird gesetzt, der gilt nur auf diesem Server
+
+     Beides ergibt dasselbe Ergebnis - der Bot heisst hier so, wie es im Feld steht - und
+     in keinem Fall aendert sich etwas auf einem fremden Server. Den Kontonamen selbst
+     kann man weiterhin anfassen, aber bewusst: er steckt im Aufklapper darunter. #}
   <div class="design-card">
     <div class="section-label" style="margin-bottom:1rem;">{{ tr.bot_design_name_heading }}</div>
-    <label>{{ tr.bot_design_display_name_label }} ({{ tr.bot_design_current }}: {{ current_name or '—' }})</label>
-    <input type="text" name="bot_name" placeholder="{{ current_name or tr.bot_design_name_placeholder }}" maxlength="32"
+    <label>{{ tr.bot_design_name_label_here }}
+      ({{ tr.bot_design_current }}: {{ current_nick or current_name or '—' }})</label>
+    <input type="text" name="{% if andere_server %}bot_nick{% else %}bot_name{% endif %}"
+           value="{{ current_nick or '' }}"
+           placeholder="{{ current_name or tr.bot_design_name_placeholder }}" maxlength="32"
            {% if not bot_online %}disabled{% endif %}>
-    <p class="hint">{{ tr.bot_design_name_hint }}</p>
     {% if andere_server %}
-    {# Die Warnung nur dort, wo sie zutrifft - und mit den Namen der betroffenen Server,
-       damit niemand raten muss, was "ueberall" bedeutet. #}
-    <p class="hint" style="color:#f59e0b;">{{ tr.bot_design_shared_warning }}
-      <strong>{{ andere_server | join(', ') }}</strong>
-    </p>
+    <p class="hint">{{ tr.bot_design_nick_hint }}</p>
     {% else %}
     <p class="hint">{{ tr.bot_design_only_here }}</p>
+    {% endif %}
+
+    {% if andere_server %}
+    <details style="margin-top:0.9rem;">
+      <summary style="cursor:pointer;color:var(--muted);font-size:0.83rem;">
+        {{ tr.bot_design_account_summary }}
+      </summary>
+      <div style="margin-top:0.6rem;">
+        <label>{{ tr.bot_design_display_name_label }} ({{ tr.bot_design_current }}: {{ current_name or '—' }})</label>
+        <input type="text" name="bot_name" placeholder="{{ current_name or tr.bot_design_name_placeholder }}"
+               maxlength="32" {% if not bot_online %}disabled{% endif %}>
+        <p class="hint">{{ tr.bot_design_name_hint }}</p>
+        <p class="hint" style="color:#f59e0b;">{{ tr.bot_design_shared_warning }}
+          <strong>{{ andere_server | join(', ') }}</strong>
+        </p>
+      </div>
+    </details>
+    {% else %}
+    <p class="hint">{{ tr.bot_design_name_hint }}</p>
     {% endif %}
   </div>
 
