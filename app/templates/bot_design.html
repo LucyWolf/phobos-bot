@@ -83,8 +83,9 @@
      kann man weiterhin anfassen, aber bewusst: er steckt im Aufklapper darunter. #}
   <div class="design-card">
     <div class="section-label" style="margin-bottom:1rem;">{{ tr.bot_design_name_heading }}</div>
-    <label>{{ tr.bot_design_name_label_here }}
-      ({{ tr.bot_design_current }}: {{ current_nick or current_name or '—' }})</label>
+    {# Die Karte darueber heisst schon "Bot-Name" - das Feld wiederholt das nicht, es sagt
+       nur, wie er gerade heisst. #}
+    <label>{{ tr.bot_design_current }}: {{ current_nick or current_name or '—' }}</label>
     <input type="text" name="{% if andere_server %}bot_nick{% else %}bot_name{% endif %}"
            value="{{ current_nick or '' }}"
            placeholder="{{ current_name or tr.bot_design_name_placeholder }}" maxlength="32"
