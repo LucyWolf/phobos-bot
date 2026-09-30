@@ -3196,51 +3196,6 @@ async def check_latest_version(force: bool = False) -> str | None:
         return _UPDATE_CACHE.get("latest")
 
 
-# Der jeweils ANDERE Kanal, nur fuer die Anzeige auf der Updates-Seite. Eigener Zwischen-
-# speicher, damit die zusaetzliche Auskunft nicht am Stundenlimit von GitHub knabbert
-# (60 Abfragen ohne Anmeldung) - sie ist eine Auskunft, kein Grund fuer mehr Verkehr.
-_ANDERER_KANAL_CACHE: dict = {"version": None, "kanal": "", "at": None}
-
-
-async def version_im_anderen_kanal() -> tuple:
-    """(Kanalname, Version) des Kanals, dem diese Installation NICHT folgt - oder (None, None).
-
-    Ohne das sagt die Seite "Verfuegbar auf GitHub: 1.17.93" und verschweigt, dass es 1.17.96
-    gibt, nur eben im anderen Kanal. Genau daran ist eine ganze Fehlersuche vorbeigelaufen:
-    gemeldet, repariert, gepusht - und die Installation folgte stable und sah nichts davon.
-
-    Auf Android ergibt der Vergleich keinen Sinn: dort kommt das Update als fertige APK aus
-    dem Release, nicht aus einem Zweig."""
-    if IS_ANDROID:
-        return None, None
-    eigener = await update_kanal()
-    anderer = next((k for k in UPDATE_KANAELE if k != eigener), None)
-    if not anderer:
-        return None, None
-    now = datetime.datetime.utcnow()
-    at = _ANDERER_KANAL_CACHE["at"]
-    if (at and _ANDERER_KANAL_CACHE["kanal"] == anderer
-            and (now - at).total_seconds() < 300):
-        return anderer, _ANDERER_KANAL_CACHE["version"]
-    ref = UPDATE_KANAELE[anderer]
-
-    def _fetch():
-        req = urllib.request.Request(
-            _GITHUB_VERSION_TPL.format(ref=ref),
-            headers={"Accept": "application/vnd.github.v3+json"},
-        )
-        with urllib.request.urlopen(req, timeout=5) as r:
-            data = _djson.loads(r.read().decode())
-        return base64.b64decode(data["content"]).decode().strip()
-    try:
-        version = await asyncio.get_event_loop().run_in_executor(None, _fetch)
-    except Exception:
-        # Eine Nebenauskunft darf die Seite nicht aufhalten - dann steht sie eben nicht da.
-        return anderer, _ANDERER_KANAL_CACHE.get("version")
-    _ANDERER_KANAL_CACHE.update(version=version, kanal=anderer, at=now)
-    return anderer, version
-
-
 @web.get("/api/version")
 async def api_version(request: Request, force: int = 0):
     if not session(request).get("username"):
@@ -3416,7 +3371,6 @@ async def bot_update_page(request: Request, success: str = "", error: str = ""):
     token_set = await _token_configured()
     latest = await check_latest_version()
     update_available = bool(latest and _ver_tuple(latest) > _ver_tuple(VERSION))
-    anderer_kanal, anderer_version = await version_im_anderen_kanal()
     return templates.TemplateResponse("bot_update.html", {
         **session(request), "request": request,
         "guilds": await _guild_list(request), "token_set": token_set,
@@ -3426,7 +3380,6 @@ async def bot_update_page(request: Request, success: str = "", error: str = ""):
         "is_android": IS_ANDROID,
         "update_kanal": await update_kanal(),
         "update_kanaele": list(UPDATE_KANAELE),
-        "anderer_kanal": anderer_kanal, "anderer_kanal_version": anderer_version,
         # Nur aeltere anbieten: "zurueck" auf die laufende oder eine neuere Fassung waere
         # kein Zurueckpatchen, sondern ein Update - dafuer gibt es den Knopf darueber.
         "versionen": [v for v in await verfuegbare_versionen()
