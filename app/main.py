@@ -9726,6 +9726,13 @@ async def _fetch_og_image_candidates(url: str) -> list:
     return _extract_image_candidates(html, url)
 
 
+# Dieselbe Adresse wird beim Speichern zweimal gebraucht (einmal um zu sehen, ob sie eine
+# Seite ist, einmal um ihr Bild zu holen), und oft steht sie in mehreren Optionen. Ein
+# kurzes Gedaechtnis spart der fremden Seite die Abrufe und uns die Wartezeit.
+_BILDADRESSE_CACHE: dict = {}
+_BILDADRESSE_CACHE_TTL = 120
+
+
 async def _bildadresse_aufloesen(url: str) -> str:
     """Was im Bildfeld steht, muss kein Bild sein.
 
@@ -9740,14 +9747,51 @@ async def _bildadresse_aufloesen(url: str) -> str:
     muss, wird die Adresse hier aufgeloest: ist sie ein Bild, bleibt sie; ist sie eine Seite,
     kommt deren og:image zurueck; ist beides nicht zu holen, ein leerer Text - dann bleibt die
     Eingabe unveraendert stehen, wie zuvor auch."""
+    jetzt = time.time()
+    merk = _BILDADRESSE_CACHE.get(url)
+    if merk and jetzt - merk[0] < _BILDADRESSE_CACHE_TTL:
+        return merk[1]
+
+    def merken(wert):
+        if len(_BILDADRESSE_CACHE) > 200:
+            _BILDADRESSE_CACHE.clear()
+        _BILDADRESSE_CACHE[url] = (jetzt, wert)
+        return wert
+
     html, direkt = await _fetch_og_quelle(url)
     if direkt:
-        return direkt[:500]
+        return merken(direkt[:500])
     if html:
         gefunden = _extract_og_image(html, url)
         if gefunden and gefunden.startswith(("http://", "https://")):
-            return gefunden[:500]
-    return ""
+            return merken(gefunden[:500])
+    return merken("")
+
+
+async def _linkfeld_aus_bildfeld(options: list, i_bild: int, i_link: int) -> list:
+    """Steht im Bildfeld eine SEITE, ist sie auch als Link gemeint.
+
+    Gewuenscht war, die Namen ueber dem Bild anklickbar zu haben - genau das sind die Zeilen
+    "🔗 [Beschriftung](Adresse)", die build_poll_embed() in die Beschreibung setzt (und die
+    bei Discord ueber dem Bild steht). Sie erscheinen nur, wenn eine Adresse im LINKfeld
+    steht. Wer eine Weltseite ins Bildfeld schreibt, meint aber beides: das Bild von dort,
+    und den Weg dorthin.
+
+    Nur fuer Seiten, nicht fuer Bilder: eine reine Bildadresse als Link waere ein Link auf
+    eine nackte Bilddatei, das will niemand. Unterschieden wird daran, ob die Aufloesung
+    etwas ANDERES zurueckgibt als die Eingabe - dann lag hinter der Adresse eine Seite mit
+    einem og:image. Ein bereits gefuelltes Linkfeld wird nie ueberschrieben."""
+    async def einzeln(o):
+        img, link = o[i_bild], o[i_link]
+        if link or not img.startswith(("http://", "https://")):
+            return o
+        aufgeloest = await _bildadresse_aufloesen(img)
+        if not aufgeloest or aufgeloest == img:
+            return o
+        neu = list(o)
+        neu[i_link] = img
+        return tuple(neu)
+    return list(await asyncio.gather(*[einzeln(o) for o in options]))
 
 
 async def _resolve_poll_option_image(
@@ -11324,6 +11368,7 @@ async def poll_create_web(request: Request, guild_id: int):
     # latency to this request instead of their sum. existing_row=None/remove_checked=False
     # always apply here (a brand-new poll has nothing to keep or remove yet) - see
     # _resolve_poll_option_image's docstring for the full precedence shared with editing.
+    options = await _linkfeld_aus_bildfeld(options, 1, 3)
     resolved_options = await asyncio.gather(*[
         _resolve_poll_option_image(img, bool(opt_filename), opt_data_b64, opt_filename, link, False, None)
         for (lbl, img, img_file, link, width), (opt_data_b64, opt_filename) in zip(options, option_uploads)
@@ -11648,6 +11693,7 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     final_image_data = poll.get("image_data") or ""
     final_image_filename = poll.get("image_filename") or ""
 
+    options = await _linkfeld_aus_bildfeld(options, 2, 4)
     resolved_options = await asyncio.gather(*[
         _resolve_poll_option_image(
             img, bool(opt_filename), opt_data_b64, opt_filename, link,
