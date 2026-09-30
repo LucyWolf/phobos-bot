@@ -206,15 +206,20 @@ def _render_combined_poll_image(rows: list, bar_color: str, spalten: int = 1,
         if geschaetzt > MAX_BILD_PIXEL:
             faktor = (MAX_BILD_PIXEL / geschaetzt) ** 0.5
             spaltenbreite = max(STANDARD_SPALTENBREITE, int(spaltenbreite * faktor))
-    abstand_x = 16
+    mass = spaltenbreite / STANDARD_SPALTENBREITE
+
+    def skaliert(wert, kleinstes=1):
+        return max(kleinstes, round(wert * mass))
+
+    abstand_x = skaliert(16)
     width = spaltenbreite * spalten + abstand_x * (spalten - 1)
-    pad = 18
-    bar_h = 16
-    text_h = 24  # label baseline to the bar's top - keep in sync with the "y + 24" below
-    pic_gap = 8
-    row_gap = 20
-    label_font = _load_font(16, bold=True)
-    meta_font = _load_font(13, bold=False)
+    pad = skaliert(18)
+    bar_h = skaliert(16, 4)
+    text_h = skaliert(24)  # Grundlinie der Beschriftung bis zur Oberkante des Balkens
+    pic_gap = skaliert(8)
+    row_gap = skaliert(20)
+    label_font = _load_font(skaliert(16, 8), bold=True)
+    meta_font = _load_font(skaliert(13, 7), bold=False)
     fill_rgb = _hex_to_rgb(bar_color)
     track_rgb = (0x40, 0x44, 0x4b)
     bg_rgba = (0x2b, 0x2d, 0x31, 255)
@@ -262,10 +267,12 @@ def _render_combined_poll_image(rows: list, bar_color: str, spalten: int = 1,
             y += pic.height + pic_gap
         meta = f"{row['pct']:.0f}% ({row['n']})"
         meta_w = draw.textlength(meta, font=meta_font)
-        label = _fit_text(draw, row["label"], label_font, spaltenbreite - pad * 2 - meta_w - 10)
+        label = _fit_text(draw, row["label"], label_font,
+                          spaltenbreite - pad * 2 - meta_w - skaliert(10))
         draw.text((links + pad, y), label, font=label_font, fill=(255, 255, 255))
-        draw.text((rechts - pad - meta_w, y + 2), meta, font=meta_font, fill=(0xb5, 0xb8, 0xbe))
-        bar_y = y + 24
+        draw.text((rechts - pad - meta_w, y + skaliert(2)), meta, font=meta_font,
+                  fill=(0xb5, 0xb8, 0xbe))
+        bar_y = y + text_h
         draw.rounded_rectangle([links + pad, bar_y, rechts - pad, bar_y + bar_h],
                                radius=bar_h // 2, fill=track_rgb)
         innen = spaltenbreite - pad * 2
