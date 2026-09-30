@@ -3041,7 +3041,7 @@ async def bot_info_stats(request: Request):
 
 # ── Update Check ──────────────────────────────────────────────────────────────
 
-_UPDATE_CACHE: dict = {"latest": None, "at": None}
+_UPDATE_CACHE: dict = {"latest": None, "at": None, "fehler": "", "fehler_at": None}
 # The GitHub Contents API is used instead of raw.githubusercontent.com because the latter
 # sits behind a CDN that caches responses for up to 5 minutes REGARDLESS of query strings
 # (a cache-busting ?t=... param does not defeat it, verified directly) - with this project's
@@ -3073,6 +3073,11 @@ async def check_latest_version(force: bool = False) -> str | None:
     cached_at = _UPDATE_CACHE["at"]
     if not force and cached_at and (now - cached_at).total_seconds() < 300:
         return _UPDATE_CACHE["latest"]
+    # Nach einem abgewiesenen Versuch eine Weile Ruhe geben: GitHub laesst ohne Anmeldung
+    # 60 Abfragen je Stunde und IP zu, und weiteres Anklopfen verlaengert die Sperre nur.
+    letzter_fehler = _UPDATE_CACHE.get("fehler_at")
+    if letzter_fehler and (now - letzter_fehler).total_seconds() < 1800:
+        return _UPDATE_CACHE["latest"]
     try:
         ref = UPDATE_KANAELE.get(await update_kanal(), "main")
 
@@ -3087,8 +3092,15 @@ async def check_latest_version(force: bool = False) -> str | None:
         latest = await asyncio.get_event_loop().run_in_executor(None, _fetch)
         _UPDATE_CACHE["latest"] = latest
         _UPDATE_CACHE["at"] = now
+        _UPDATE_CACHE["fehler"] = ""
+        _UPDATE_CACHE["fehler_at"] = None
         return latest
-    except Exception:
+    except Exception as e:
+        # Den alten Wert weiter zeigen, aber nicht so tun, als sei er frisch: GitHub
+        # begrenzt Abfragen ohne Anmeldung auf 60 in der Stunde, und dann stand hier
+        # stillschweigend eine veraltete Zahl.
+        _UPDATE_CACHE["fehler"] = str(e)[:120]
+        _UPDATE_CACHE["fehler_at"] = now
         return _UPDATE_CACHE.get("latest")
 
 
@@ -3104,6 +3116,10 @@ async def api_version(request: Request, force: int = 0):
         "latest": latest,
         "update_available": update_available,
         "checked_at": checked_at,
+        # Damit auf der Seite steht, WOHER die Zahl kommt - sonst sieht man einer "1.17.76"
+        # nicht an, ob sie aus dem stabilen Zweig oder aus der Beta stammt.
+        "kanal": await update_kanal(),
+        "fehler": _UPDATE_CACHE.get("fehler") or "",
     })
 
 

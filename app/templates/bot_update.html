@@ -48,7 +48,7 @@
     </div>
     <div class="version-arrow" id="version-arrow">→</div>
     <div class="version-box">
-      <div class="version-label">{{ tr.upd_available_on }}</div>
+      <div class="version-label">{{ tr.upd_available_on }} <span id="kanal-hinweis" style="color:var(--accent);"></span></div>
       <div class="version-val" id="latest-val" style="color:var(--muted);">…</div>
     </div>
   </div>
@@ -184,6 +184,20 @@
 
     const hasUpdate = data.update_available || versionGt(data.latest, data.current);
 
+    // Kommt gar keine Zahl zurueck, stand hier bis v1.17.78 einfach weiter "…" - man sah
+    // nicht, ob gerade gesucht wird oder ob die Abfrage gescheitert ist. GitHub laesst
+    // ohne Anmeldung 60 Abfragen je Stunde und IP zu, danach ist genau das der Fall.
+    if (!data.latest) {
+      latestEl.textContent = '—';
+      latestEl.style.color = 'var(--muted)';
+      if (arrow) arrow.style.display = 'none';
+      badge.className = 'status-badge badge-check';
+      badge.textContent = '⚠️ ' + {{ tr.upd_check_failed | js }};
+      form.style.display = 'none';
+      note.style.display = 'none';
+      return;
+    }
+
     if (hasUpdate) {
       latestEl.textContent = data.latest ? 'v' + data.latest : '—';
       latestEl.style.color = '#f59e0b';
@@ -205,6 +219,16 @@
 
     if (data.checked_at) {
       document.getElementById('checked-at').textContent = {{ tr.upd_last_checked | js }} + ': ' + data.checked_at + ' UTC';
+      // Woher die Zahl stammt, und ob sie ueberhaupt frisch ist.
+      const kh = document.getElementById('kanal-hinweis');
+      if (kh) kh.textContent = data.kanal === 'beta' ? {{ tr.upd_from_beta | js }} : '';
+      const ca = document.getElementById('checked-at');
+      if (ca && data.fehler) {
+        ca.textContent += ' · ' + {{ tr.upd_check_failed | js }};
+        ca.style.color = '#f59e0b';
+      } else if (ca) {
+        ca.style.color = '';
+      }
     }
     resetSearchBtn();
   }
