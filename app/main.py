@@ -165,7 +165,7 @@ from database import (
     vrc_verify_code,
     # Was der Bot sagt, wenn ein Server nichts eigenes geschrieben hat - nach Sprache. Die
     # DEFAULT_*-Konstanten darueber bleiben das Deutsch daraus und werden weiter gebraucht.
-    bot_text, bot_labels, bot_worte, bot_sprachen,
+    bot_text, bot_labels, bot_worte, bot_sprachen, bot_lang,
 )
 import totp
 
@@ -8491,10 +8491,13 @@ async def server_config(
         # The words that ACTUALLY take effect after parsing, not the raw string - shown back
         # on the tab so an admin can see at a glance what their input turned into (an empty
         # setting falls back to the defaults, which would otherwise be invisible).
+        # Die Standardwoerter in der Sprache, die der Bot auf DIESEM Server spricht - sonst
+        # zeigt die Seite "!geburtstag" an, waehrend der Bot laengst auf "!birthday" hoert.
         "birthday_triggers": parse_command_triggers(
-            cfg.get("birthday_commands") or "", DEFAULT_BIRTHDAY_TRIGGERS),
+            cfg.get("birthday_commands") or "", bot_worte("birthday_commands", _bot_sprache)),
         "birthday_delete_words": parse_command_triggers(
-            cfg.get("birthday_delete_words") or "", DEFAULT_BIRTHDAY_DELETE_WORDS),
+            cfg.get("birthday_delete_words") or "",
+            bot_worte("birthday_delete_words", _bot_sprache)),
         # Defaults handed to the template so an empty field can show the text that is actually
         # being sent, rather than an empty box next to a bot that clearly answers something.
         "tempvoice_panel_defaults": {
@@ -10863,7 +10866,8 @@ async def cmd_add(
     # Same addition as in the /addcommand slash command: the birthday command left
     # b.commands when it became per-guild configurable, so it has to be checked separately.
     birthday_words = parse_command_triggers(
-        await get_guild_config(guild_id, "birthday_commands") or "", DEFAULT_BIRTHDAY_TRIGGERS)
+        await get_guild_config(guild_id, "birthday_commands") or "",
+        bot_worte("birthday_commands", await bot_lang(guild_id)))
     if (b and trigger in {c.name for c in b.commands}) or trigger in birthday_words:
         # Same reasoning as the /addcommand slash command: this cog's on_message and
         # discord.py's own classic-command dispatcher (command_prefix="!") both run

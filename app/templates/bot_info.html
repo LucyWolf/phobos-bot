@@ -158,7 +158,7 @@
     if (seconds > 0) {
       refreshTimer = setInterval(refreshStats, seconds * 1000);
       document.getElementById('refresh-hint').textContent =
-        'Automatische Aktualisierung: alle ' + seconds + 's.';
+        {{ tr.info_autorefresh_on | jsraw }}.replace('{s}', seconds);
     } else {
       document.getElementById('refresh-hint').textContent =
         {{ tr.info_autorefresh_off | jsraw }};

@@ -59,7 +59,7 @@
       </div>
       <div>
         <label>{{ tr.profile_position }}</label>
-        <input type="text" name="position" value="{{ user.position or '' }}" placeholder="z.B. Server-Admin, Moderator ...">
+        <input type="text" name="position" value="{{ user.position or '' }}" placeholder="{{ tr.prof_position_placeholder }}">
       </div>
       <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
     </form>
@@ -138,7 +138,7 @@
     <form method="post" action="/backup/export" style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;margin:0;">
       <button type="submit" class="btn btn-secondary">💾 {{ tr.prof_backup_button }}</button>
       <input type="password" name="password" autocomplete="new-password"
-             placeholder="Passwort (optional)" style="margin:0;max-width:210px;">
+             placeholder="{{ tr.usr_password_optional }}" style="margin:0;max-width:210px;">
     </form>
     <p style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem;">
       {{ tr.prof_backup_pw_hint }}
@@ -153,7 +153,7 @@
     </p>
     <form method="post" action="/profile/delete" onsubmit="return confirm({{ tr.prof_delete_confirm | js }})">
       <label>{{ tr.prof_pw_enter }}</label>
-      <input type="password" name="pw1" required autocomplete="current-password" placeholder="Passwort">
+      <input type="password" name="pw1" required autocomplete="current-password" placeholder="{{ tr.usr_password }}">
       <label>{{ tr.prof_pw_repeat }}</label>
       <input type="password" name="pw2" required autocomplete="current-password" placeholder="{{ tr.prof_pw_repeat }}">
       <button type="submit" class="btn btn-danger" style="margin-top:0.25rem;">🗑 {{ tr.prof_delete_button }}</button>

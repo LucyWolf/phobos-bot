@@ -267,7 +267,7 @@
         <label style="font-size:0.82rem;margin-top:0.85rem;">{{ tr.config_card_heading_label }}</label>
         <input type="text" name="welcome_card_heading_text" value="{{ cfg.get('welcome_card_heading_text','') }}" placeholder="WELCOME" maxlength="60">
         <label style="font-size:0.82rem;">{{ tr.config_card_subtitle_label }}</label>
-        <input type="text" name="welcome_card_subtitle_text" value="{{ cfg.get('welcome_card_subtitle_text','') }}" placeholder="Mitglied #{count}" maxlength="80">
+        <input type="text" name="welcome_card_subtitle_text" value="{{ cfg.get('welcome_card_subtitle_text','') }}" placeholder="{{ tr.welcome_subtitle_placeholder }}" maxlength="80">
         <p style="font-size:0.75rem;color:var(--muted);margin-top:0.25rem;">
           {{ tr.config_card_text_placeholder_hint }}
         </p>
@@ -356,7 +356,7 @@ document.addEventListener('click', function(e) {
     </div>
     <input type="text" name="automod_banned_words" id="automod-banned-words" value="{{ cfg.get('automod_banned_words', '') }}" placeholder="{{ tr.automod_words_placeholder }}" style="margin-bottom:1rem;">
     <label>{{ tr.automod_warn_label }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.automod_warn_hint }}</span></label>
-    <input type="text" name="automod_warn_message" value="{{ cfg.get('automod_warn_message', '⚠️ **{server}**: {reason}') }}" placeholder="⚠️ **{server}**: {reason}">
+    <input type="text" name="automod_warn_message" value="{{ cfg.get('automod_warn_message', '⚠️ **{server}**: {reason}') }}" placeholder="{{ tr.automod_warn_placeholder }}">
   </div>
   <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
 </form>
