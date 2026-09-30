@@ -116,8 +116,58 @@ def _fit_text(draw, text: str, font, max_width: float) -> str:
     return (text + "…") if text else "…"
 
 
-# Was in der Oberflaeche zur Auswahl steht. Leer heisst: das Bild so lassen, wie es ist.
-BILD_VERHAELTNISSE = ("", "16:9", "4:3", "1:1")
+# Formate, unter denen die Automatik waehlt. Kein Auswahlfeld mehr: welches am groessten
+# ankommt, haengt allein an der Zahl der Optionen und der Spalten - das kann der Bot besser
+# ausrechnen als ein Mensch raten.
+BILD_VERHAELTNISSE = ("16:9", "3:2", "4:3", "1:1")
+
+# So gross zeigt Discord ein Embed-Bild hoechstens an. Beides begrenzt: eine breite flache
+# Karte scheitert an der Breite, eine hohe schmale an der Hoehe - und die Hoehe war der
+# Grund, warum untereinander KLEINER ankam als nebeneinander, obwohl die Karte weniger
+# Bilder nebeneinander zu quetschen hatte.
+ANZEIGE_BREITE = 520
+ANZEIGE_HOEHE = 350
+
+# Die Grundmasse einer Zeile, bezogen auf STANDARD_SPALTENBREITE. Sie stehen hier, weil
+# sowohl das Zeichnen als auch die Vorausberechnung der Automatik sie braucht - liefen sie
+# auseinander, waehlte die Automatik ein Format, das anders aussieht als gerechnet.
+GRUND_PAD = 18
+GRUND_BAR_H = 26
+GRUND_TEXT_H = 30
+GRUND_PIC_GAP = 8
+GRUND_ROW_GAP = 22
+GRUND_ABSTAND_X = 16
+
+
+def _bestes_verhaeltnis(anzahl: int, spalten: int) -> str:
+    """Welches Bildformat kommt bei dieser Anordnung am groessten an?
+
+    Gerechnet wird in Vielfachen der Spaltenbreite - die absolute Groesse kuerzt sich
+    heraus, nur das Verhaeltnis entscheidet. Fuer jedes Format: wie hoch wird die Karte, wie
+    weit muss Discord sie verkleinern, und wie viel Flaeche bleibt dem einzelnen Bild.
+
+    Zwei Optionen nebeneinander lassen die Karte breit und flach - dort liegt Hoehe brach,
+    und ein quadratisches Bild fuellt sie. Bei vier Optionen wird die Hoehe knapp, dann
+    gewinnt 16:9. Genau diese Abwaegung nimmt die Automatik ab."""
+    anzahl = max(1, anzahl)
+    spalten = min(max(1, spalten), anzahl)
+    reihen = (anzahl + spalten - 1) // spalten
+    breite = spalten + GRUND_ABSTAND_X / STANDARD_SPALTENBREITE * (spalten - 1)
+    bestes, groesste = BILD_VERHAELTNISSE[0], -1.0
+    for kandidat in BILD_VERHAELTNISSE:
+        b, h = (int(t) for t in kandidat.split(":"))
+        bildhoehe = h / b
+        zeile = bildhoehe + (GRUND_PIC_GAP + GRUND_TEXT_H + GRUND_BAR_H) / STANDARD_SPALTENBREITE
+        hoehe = (reihen * (zeile + GRUND_ROW_GAP / STANDARD_SPALTENBREITE)
+                 - GRUND_ROW_GAP / STANDARD_SPALTENBREITE
+                 + 2 * GRUND_PAD / STANDARD_SPALTENBREITE)
+        if hoehe <= 0:
+            continue
+        faktor = min(ANZEIGE_BREITE / breite, ANZEIGE_HOEHE / hoehe)
+        flaeche = faktor * faktor * bildhoehe   # (1 breit) x (bildhoehe hoch), beides skaliert
+        if flaeche > groesste:
+            bestes, groesste = kandidat, flaeche
+    return bestes
 
 
 def _verhaeltnis_hoehe(verhaeltnis: str, breite: int) -> int:
@@ -213,19 +263,22 @@ def _render_combined_poll_image(rows: list, bar_color: str, spalten: int = 1,
     def skaliert(wert, kleinstes=1):
         return max(kleinstes, round(wert * mass))
 
-    abstand_x = skaliert(16)
+    abstand_x = skaliert(GRUND_ABSTAND_X)
     width = spaltenbreite * spalten + abstand_x * (spalten - 1)
-    pad = skaliert(18)
-    bar_h = skaliert(26, 6)
-    text_h = skaliert(30)  # Grundlinie der Beschriftung bis zur Oberkante des Balkens
-    pic_gap = skaliert(8)
-    row_gap = skaliert(22)
+    pad = skaliert(GRUND_PAD)
+    bar_h = skaliert(GRUND_BAR_H, 6)
+    text_h = skaliert(GRUND_TEXT_H)  # Grundlinie der Beschriftung bis zur Oberkante des Balkens
+    pic_gap = skaliert(GRUND_PIC_GAP)
+    row_gap = skaliert(GRUND_ROW_GAP)
     label_font = _load_font(skaliert(20, 9), bold=True)
     meta_font = _load_font(skaliert(16, 8), bold=False)
     fill_rgb = _hex_to_rgb(bar_color)
     track_rgb = (0x40, 0x44, 0x4b)
     bg_rgba = (0x2b, 0x2d, 0x31, 255)
 
+    # Ohne Vorgabe rechnet der Bot selbst aus, was am groessten ankommt.
+    if not _verhaeltnis_hoehe(verhaeltnis, spaltenbreite):
+        verhaeltnis = _bestes_verhaeltnis(len(rows), spalten)
     ziel_hoehe = _verhaeltnis_hoehe(verhaeltnis, spaltenbreite)
 
     prepared = []

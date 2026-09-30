@@ -126,7 +126,7 @@ from cogs.leveling import xp_for_level as _xp_for_level, cumulative_xp_for_level
 from cogs.welcome import _make_card as _welcome_make_card, fill as _welcome_fill
 from cogs.polls import (
     build_poll_embed as _build_poll_embed, PollView as _PollView,
-    DEFAULT_BAR_COLOR as _DEFAULT_BAR_COLOR, BILD_VERHAELTNISSE as _BILD_VERHAELTNISSE,
+    DEFAULT_BAR_COLOR as _DEFAULT_BAR_COLOR,
     MAX_SPALTENBREITE as MAX_BILD_BREITE,
 )
 from cogs.ratings import (
@@ -11235,9 +11235,7 @@ async def poll_create_web(request: Request, guild_id: int):
     # 2 = nebeneinander, alles andere untereinander. Bewusst eng gefasst: was hier
     # ankommt, geht ungeprueft in die Bildberechnung.
     layout_spalten = 2 if str(form.get("layout_spalten", "1")).strip() == "2" else 1
-    bild_verhaeltnis = str(form.get("bild_verhaeltnis", "")).strip()
-    if bild_verhaeltnis not in _BILD_VERHAELTNISSE:
-        bild_verhaeltnis = ""
+    bild_verhaeltnis = ""   # kein Feld mehr - der Bot waehlt das Format selbst
     bar_color = _clamp_poll_bar_color(form.get("bar_color", ""))
     try:
         duration_minutes = int(form.get("duration_minutes") or 0)
@@ -11636,9 +11634,7 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     # 2 = nebeneinander, alles andere untereinander. Bewusst eng gefasst: was hier
     # ankommt, geht ungeprueft in die Bildberechnung.
     layout_spalten = 2 if str(form.get("layout_spalten", "1")).strip() == "2" else 1
-    bild_verhaeltnis = str(form.get("bild_verhaeltnis", "")).strip()
-    if bild_verhaeltnis not in _BILD_VERHAELTNISSE:
-        bild_verhaeltnis = ""
+    bild_verhaeltnis = ""   # kein Feld mehr - der Bot waehlt das Format selbst
     bar_color = _clamp_poll_bar_color(form.get("bar_color", ""))
 
     if len(options) < 2:
