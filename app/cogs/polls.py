@@ -63,6 +63,16 @@ def _pct_line(label: str, n: int, total: int) -> tuple:
     return f"**{label}**\n{pct:.0f}% ({n} Stimme(n))", pct
 
 
+# Breite einer Spalte im kombinierten Bild, wenn nichts anderes danach verlangt.
+STANDARD_SPALTENBREITE = 440
+# Nach oben gedeckelt: Discord zeigt ein Embed-Bild ohnehin nur so breit an, wie das Embed
+# ist - mehr Punkte machen es schaerfer, nicht groesser. Und 25 Optionen mal voller Breite
+# waeren ein Bild, das weder schnell gebaut noch angenommen wird.
+MAX_SPALTENBREITE = 1400
+# Damit ein Bild bei vielen Optionen nicht ins Unermessliche waechst: reicht die Flaeche
+# darueber hinaus, wird die Spalte schmaler, bis es passt.
+MAX_BILD_PIXEL = 24_000_000
+
 MAX_EMBED_FIELDS = 25  # Discords Grenze fuer Felder in EINEM Embed
 MAX_DESCRIPTION_CHARS = 3900  # Discord's real embed-description hard limit is 4096 - same
 # safety margin already used elsewhere in this project for user-editable text blocks. Matters
@@ -172,7 +182,30 @@ def _render_combined_poll_image(rows: list, bar_color: str, spalten: int = 1,
     # und "man scrollt durch die halbe Nachricht".
     spalten = 2 if spalten and spalten > 1 else 1
     spalten = min(spalten, max(1, len(rows)))
-    spaltenbreite = 440
+
+    # Wie breit eine Spalte wird, bestimmen die Bilder selbst - und damit die px-Angabe je
+    # Option, denn auf die wurden sie beim Speichern gebracht. Vorher standen hier feste
+    # 440, und jedes groessere Bild wurde darauf zurueckgerechnet: "selber wenn ich auf 2000
+    # stelle ferändert es nix". Ohne Bilder (oder mit kleineren) bleibt es bei 440, damit
+    # eine Umfrage ohne Bilder genauso aussieht wie bisher.
+    #
+    # Image.open liest nur den Kopf der Datei - die Breite steht ohne load() bereit, das
+    # kostet fast nichts.
+    spaltenbreite = STANDARD_SPALTENBREITE
+    for row in rows:
+        if row.get("image_bytes"):
+            try:
+                with Image.open(io.BytesIO(row["image_bytes"])) as probe:
+                    spaltenbreite = max(spaltenbreite, probe.width)
+            except Exception:
+                pass
+    spaltenbreite = min(spaltenbreite, MAX_SPALTENBREITE)
+    if spaltenbreite > STANDARD_SPALTENBREITE:
+        reihen = (len(rows) + spalten - 1) // spalten
+        geschaetzt = (spaltenbreite * spalten) * (reihen * spaltenbreite)  # quadratisch gerechnet: die Obergrenze
+        if geschaetzt > MAX_BILD_PIXEL:
+            faktor = (MAX_BILD_PIXEL / geschaetzt) ** 0.5
+            spaltenbreite = max(STANDARD_SPALTENBREITE, int(spaltenbreite * faktor))
     abstand_x = 16
     width = spaltenbreite * spalten + abstand_x * (spalten - 1)
     pad = 18
