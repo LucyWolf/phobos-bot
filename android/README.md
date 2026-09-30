@@ -176,6 +176,28 @@ side-loading onto your own phone, this should fall under the free tier — but l
 change, so check [chaquo.com/chaquopy/license](https://chaquo.com/chaquopy/license/) yourself
 before relying on that.
 
+## Veroeffentlichen einer neuen APK
+
+Drei Stellen nennen dieselbe Version und muessen zusammenpassen:
+
+1. die APK selbst (kommt aus `app/VERSION`),
+2. `version.txt` als zweites Asset im Release - **dagegen** prueft die Android-Fassung seit
+   v1.17.84, nicht mehr gegen den Git-Zweig,
+3. die Release-Notiz ("Aktueller Stand: vX.Y.Z").
+
+```bash
+cd android && ./gradlew assembleDebug
+cp app/build/outputs/apk/debug/app-debug.apk /tmp/phobos-bot.apk
+echo "$(cat ../app/VERSION)" > /tmp/version.txt
+gh release upload android-debug /tmp/phobos-bot.apk /tmp/version.txt --clobber
+gh release edit android-debug --notes "..."          # Stand nicht vergessen
+python3 ../tools/apk_pruefen.py app/build/outputs/apk/debug/app-debug.apk
+```
+
+Das letzte Kommando vergleicht alle drei Angaben. Es ist einmal schiefgegangen, dass die
+APK ersetzt und die Notiz stehen gelassen wurde - und einmal, dass die Update-Seite eine
+Version meldete, die es als APK gar nicht gab.
+
 ## Installing the built APK
 
 Don't want to build it yourself? A pre-built APK is published under
