@@ -71,16 +71,48 @@
     </div>
   </div>
 
+  {# Zwei verschiedene Dinge, die vorher eines waren. Discord kennt fuer einen Bot genau
+     einen Kontonamen und ein Kontobild - beides gilt auf JEDEM Server, auf dem er ist.
+     Wer ihn nur hier anders nennen will, braucht den Spitznamen. #}
+  {% if guild_id %}
+  <div class="design-card">
+    <div class="section-label" style="margin-bottom:1rem;">{{ tr.bot_design_nick_heading }}</div>
+    <label>{{ tr.bot_design_nick_label }} ({{ tr.bot_design_current }}: {{ current_nick or current_name or '—' }})</label>
+    <input type="text" name="bot_nick" value="{{ current_nick or '' }}"
+           placeholder="{{ current_name or tr.bot_design_name_placeholder }}" maxlength="32"
+           {% if not bot_online %}disabled{% endif %}>
+    <p class="hint">{{ tr.bot_design_nick_hint }}</p>
+  </div>
+  {% endif %}
+
   <div class="design-card">
     <div class="section-label" style="margin-bottom:1rem;">{{ tr.bot_design_name_heading }}</div>
     <label>{{ tr.bot_design_display_name_label }} ({{ tr.bot_design_current }}: {{ current_name or '—' }})</label>
     <input type="text" name="bot_name" placeholder="{{ current_name or tr.bot_design_name_placeholder }}" maxlength="32"
            {% if not bot_online %}disabled{% endif %}>
     <p class="hint">{{ tr.bot_design_name_hint }}</p>
+    <p class="hint" style="color:#f59e0b;">{{ tr.bot_design_global_warning }}</p>
   </div>
 
-  <button type="submit" class="btn btn-primary" {% if not bot_online %}disabled{% endif %}>{{ tr.btn_save }}</button>
+  <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
+    <button type="submit" class="btn btn-primary" {% if not bot_online %}disabled{% endif %}>{{ tr.btn_save }}</button>
+    {% if guild_id and current_nick %}
+    {# Zuruecksetzen heisst: Spitzname weg, der Bot heisst hier wieder wie sein Konto.
+       Eigenes Formular, damit es nicht am Bild oder am Kontonamen haengt. #}
+    <button type="submit" class="btn btn-secondary" form="nick-reset"
+            {% if not bot_online %}disabled{% endif %}>{{ tr.bot_design_reset }}</button>
+    {% endif %}
+  </div>
 </form>
+
+{% if guild_id and current_nick %}
+{# multipart wie das Hauptformular: die Route deklariert einen Datei-Parameter, und
+   FastAPI erwartet dann auch bei einem Absenden ohne Datei diese Kodierung. #}
+<form method="post" action="/bot/design" id="nick-reset" enctype="multipart/form-data" style="display:none;">
+  <input type="hidden" name="guild_id" value="{{ guild_id }}">
+  <input type="hidden" name="bot_nick" value="">
+</form>
+{% endif %}
 
 <script>
   const fileInput = document.getElementById('avatar-file');

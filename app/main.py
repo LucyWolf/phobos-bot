@@ -2936,12 +2936,23 @@ async def bot_design_page(request: Request, guild_id: str = "", success: str = "
     current_name = target.user.name if target and target.user else None
     current_avatar = str(target.user.display_avatar.url) if target and target.user else None
     bot_online = target is not None and target.is_ready()
+    # Der Name auf DIESEM Server. Discord kennt fuer einen Bot genau einen Kontonamen und
+    # ein Kontobild - beides gilt ueberall, wo er ist ("wenn man den bei einem Server
+    # aendert, aendert der den ueberall"). Was pro Server geht, ist der Spitzname.
+    current_nick = None
+    if target and guild_id:
+        try:
+            g = target.get_guild(int(guild_id))
+            current_nick = g.me.nick if g and g.me else None
+        except (ValueError, TypeError, AttributeError):
+            current_nick = None
     return templates.TemplateResponse("bot_design.html", {
         **session(request), "request": request,
         "guilds": await _guild_list(request), "token_set": token_set,
         "active": "bot_design_" + guild_id if guild_id else "bot_design",
         "success": success, "error": error,
         "current_name": current_name, "current_avatar": current_avatar,
+        "current_nick": current_nick,
         "bot_online": bot_online, "guild_id": guild_id,
         "enabled_features": await _get_enabled_features(guild_id) if guild_id else None,
         "user_allowed_tabs": await _viewer_allowed_tabs(request, guild_id) if guild_id else None,
@@ -2952,6 +2963,7 @@ async def bot_design_page(request: Request, guild_id: str = "", success: str = "
 async def bot_design_save(
     request: Request,
     bot_name: str = Form(""),
+    bot_nick: str = Form(""),
     guild_id: str = Form(""),
     avatar: UploadFile = File(None),
 ):
@@ -2968,6 +2980,18 @@ async def bot_design_save(
     if not target or not target.is_ready():
         return RedirectResponse(f"{redirect_base}&error=Bot+ist+offline", status_code=302)
     try:
+        geaendert = False
+        # Zuerst der Spitzname: der gilt nur auf DIESEM Server und wirkt sofort, ohne dass
+        # Discord irgendetwas an anderen Servern anfasst. Ein leeres Feld setzt ihn zurueck,
+        # dann heisst der Bot dort wieder wie sein Konto.
+        if guild_id:
+            g = target.get_guild(int(guild_id))
+            if g and g.me:
+                gewuenscht = bot_nick.strip()[:32] or None
+                if gewuenscht != g.me.nick:
+                    await g.me.edit(nick=gewuenscht)
+                    geaendert = True
+
         kwargs = {}
         if bot_name.strip() and bot_name.strip() != target.user.name:
             kwargs["username"] = bot_name.strip()
@@ -2977,7 +3001,8 @@ async def bot_design_save(
                 kwargs["avatar"] = content
         if kwargs:
             await target.user.edit(**kwargs)
-        else:
+            geaendert = True
+        if not geaendert:
             return RedirectResponse(f"{redirect_base}&error=Keine+Änderungen", status_code=302)
     except (discord.HTTPException, OSError) as e:
         return RedirectResponse(f"{redirect_base}&error={urllib.parse.quote(str(e)[:80])}", status_code=302)
