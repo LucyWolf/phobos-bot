@@ -66,7 +66,17 @@
         <label class="file-input-label" for="avatar-file">{{ tr.bot_design_choose_image }}</label>
         <input type="file" id="avatar-file" name="avatar">
         <div id="file-name">{{ tr.bot_design_no_image }}</div>
-        <div class="avatar-meta" style="margin-top:0.5rem;">{{ tr.bot_design_avatar_hint }}</div>
+        {# Das Bild gilt nur dann allein hier, wenn sich mehrere Server dieses Konto teilen -
+           sonst haengt es am Konto. Genau wie beim Namen darueber. #}
+        <div class="avatar-meta" style="margin-top:0.5rem;">
+          {% if andere_server %}{{ tr.bot_design_avatar_only_here }}{% else %}{{ tr.bot_design_avatar_hint }}{% endif %}
+        </div>
+        {% if hat_server_avatar %}
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;color:var(--muted);margin-top:0.6rem;cursor:pointer;">
+          <input type="checkbox" name="avatar_reset" value="1">
+          {{ tr.bot_design_avatar_reset }}
+        </label>
+        {% endif %}
       </div>
     </div>
   </div>

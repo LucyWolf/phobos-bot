@@ -2927,6 +2927,39 @@ def get_invite_url() -> str:
 
 # ── Bot Design ────────────────────────────────────────────────────────────────
 
+def _avatar_data_uri(content: bytes) -> str:
+    """Discord nimmt das SERVER-Profilbild nur als Data-URI entgegen, nicht als rohe Bytes wie
+    beim Kontobild. Der Typ muss stimmen, sonst kommt 400 zurueck - also aus den ersten Bytes
+    lesen statt dem Dateinamen zu glauben (der kann alles behaupten)."""
+    if content[:8] == b"\x89PNG\r\n\x1a\n":
+        mime = "image/png"
+    elif content[:3] == b"\xff\xd8\xff":
+        mime = "image/jpeg"
+    elif content[:6] in (b"GIF87a", b"GIF89a"):
+        mime = "image/gif"
+    elif content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        mime = "image/webp"
+    else:
+        raise ValueError("Unbekanntes Bildformat")
+    return f"data:{mime};base64," + base64.b64encode(content).decode("ascii")
+
+
+async def _set_guild_avatar(instance, guild_id: int, data_uri: Optional[str]) -> None:
+    """Das Profilbild NUR auf diesem einen Server setzen (data_uri=None nimmt es wieder weg,
+    dann gilt dort wieder das Kontobild).
+
+    Warum zu Fuss und nicht ueber discord.py: die hier gebuendelte 2.3.2 ist von 2023, ihr
+    Member.edit() kennt nur nick/mute/deafen/roles/voice_channel/timed_out_until - kein
+    avatar. Die Discord-API kann es inzwischen sehr wohl: "Modify Current Member"
+    (PATCH /guilds/{id}/members/@me) nimmt nick, avatar, banner und bio. Ob Discord das auch
+    BOTS erlaubt oder nur Nitro-Konten, steht nirgends - der Aufruf sagt es. Deshalb faengt
+    der Aufrufer HTTPException ab und zeigt Discords Antwort im Klartext an, statt sie zu
+    verschlucken."""
+    from discord.http import Route
+    route = Route("PATCH", "/guilds/{guild_id}/members/@me", guild_id=guild_id)
+    await instance.http.request(route, json={"avatar": data_uri})
+
+
 @web.get("/bot/design", response_class=HTMLResponse)
 async def bot_design_page(request: Request, guild_id: str = "", success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
@@ -2941,6 +2974,10 @@ async def bot_design_page(request: Request, guild_id: str = "", success: str = "
     current_name = target.user.name if target and target.user else None
     current_avatar = str(target.user.display_avatar.url) if target and target.user else None
     bot_online = target is not None and target.is_ready()
+    # Traegt der Bot auf DIESEM Server ein eigenes Bild? display_avatar wuerde es zwar
+    # mitliefern, aber nur guild_avatar verraet, ob es wirklich ein Server-Bild ist - und
+    # genau davon haengt ab, ob der Zuruecksetzen-Knopf ueberhaupt etwas zu tun haette.
+    hat_server_avatar = False
     # Auf WIE VIELEN Servern laeuft dieses Bot-Konto? Davon haengt alles ab: bedient der
     # Token nur diesen einen Server, ist sein Kontoname ohnehin nur hier zu sehen, und die
     # Warnung "das gilt ueberall" waere schlicht falsch - genau das wurde gemeldet ("dieser
@@ -2959,6 +2996,9 @@ async def bot_design_page(request: Request, guild_id: str = "", success: str = "
         try:
             g = target.get_guild(int(guild_id))
             current_nick = g.me.nick if g and g.me else None
+            if g and g.me and g.me.guild_avatar:
+                current_avatar = str(g.me.guild_avatar.url)
+                hat_server_avatar = True
         except (ValueError, TypeError, AttributeError):
             current_nick = None
     return templates.TemplateResponse("bot_design.html", {
@@ -2968,6 +3008,7 @@ async def bot_design_page(request: Request, guild_id: str = "", success: str = "
         "success": success, "error": error,
         "current_name": current_name, "current_avatar": current_avatar,
         "current_nick": current_nick,
+        "hat_server_avatar": hat_server_avatar,
         "andere_server": andere_server,
         "bot_online": bot_online, "guild_id": guild_id,
         "enabled_features": await _get_enabled_features(guild_id) if guild_id else None,
@@ -2981,6 +3022,7 @@ async def bot_design_save(
     bot_name: str = Form(""),
     bot_nick: str = Form(""),
     guild_id: str = Form(""),
+    avatar_reset: str = Form(""),
     avatar: UploadFile = File(None),
 ):
     if r := auth_redirect(request): return r
@@ -3011,16 +3053,29 @@ async def bot_design_save(
         kwargs = {}
         if bot_name.strip() and bot_name.strip() != target.user.name:
             kwargs["username"] = bot_name.strip()
-        if avatar and avatar.filename:
+
+        # Das Bild folgt derselben Trennung wie der Name: teilt sich das Konto mehrere
+        # Server, gehoert das Bild an die MITGLIEDSCHAFT (gilt nur hier, wie der Spitzname);
+        # haengt der Token nur an diesem einen Server, ans KONTO (gilt ueberall, wie der
+        # Kontoname - und ist dort ohnehin nur hier zu sehen).
+        nur_hier = bool(guild_id and target.guilds and len(target.guilds) > 1)
+        if avatar_reset and nur_hier:
+            await _set_guild_avatar(target, int(guild_id), None)
+            geaendert = True
+        elif avatar and avatar.filename:
             content = await avatar.read()
             if content:
-                kwargs["avatar"] = content
+                if nur_hier:
+                    await _set_guild_avatar(target, int(guild_id), _avatar_data_uri(content))
+                    geaendert = True
+                else:
+                    kwargs["avatar"] = content
         if kwargs:
             await target.user.edit(**kwargs)
             geaendert = True
         if not geaendert:
             return RedirectResponse(f"{redirect_base}&error=Keine+Änderungen", status_code=302)
-    except (discord.HTTPException, OSError) as e:
+    except (discord.HTTPException, OSError, ValueError) as e:
         return RedirectResponse(f"{redirect_base}&error={urllib.parse.quote(str(e)[:80])}", status_code=302)
     return RedirectResponse(f"{redirect_base}&success=Gespeichert", status_code=302)
 
