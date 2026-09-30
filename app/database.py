@@ -1223,6 +1223,11 @@ async def init_db():
             # und "man scrollt durch die halbe Nachricht".
             "ALTER TABLE polls ADD COLUMN layout_spalten INTEGER NOT NULL DEFAULT 1",
             "UPDATE role_rules SET dm_enabled=1 WHERE TRIM(dm_text) != ''",
+            # Seitenverhaeltnis der Options-Bilder: leer = so lassen, wie das Bild ist
+            # (wie bisher), sonst "16:9", "4:3" oder "1:1". Das Bild wird dabei nicht
+            # beschnitten, sondern eingepasst - was ueberbleibt, faerbt sich wie der
+            # Hintergrund der Karte, damit nichts vom Bild verlorengeht.
+            "ALTER TABLE polls ADD COLUMN bild_verhaeltnis TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

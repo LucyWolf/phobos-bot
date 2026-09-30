@@ -1525,6 +1525,16 @@ document.addEventListener('click', function(e) {
                 <option value="1" {% if (p.layout_spalten or 1) != 2 %}selected{% endif %}>{{ tr.polls_layout_vertical }}</option>
                 <option value="2" {% if (p.layout_spalten or 1) == 2 %}selected{% endif %}>{{ tr.polls_layout_horizontal }}</option>
               </select>
+              {# Seitenverhaeltnis der Options-Bilder. Ohne Angabe bleibt jedes Bild, wie
+                 es ist; sonst wird es eingepasst - nicht beschnitten, damit nichts davon
+                 verlorengeht. #}
+              <label>{{ tr.polls_ratio_label }}</label>
+              <select name="bild_verhaeltnis" style="max-width:260px;">
+                <option value="" {% if not p.bild_verhaeltnis %}selected{% endif %}>{{ tr.polls_ratio_original }}</option>
+                <option value="16:9" {% if p.bild_verhaeltnis == '16:9' %}selected{% endif %}>16:9</option>
+                <option value="4:3" {% if p.bild_verhaeltnis == '4:3' %}selected{% endif %}>4:3</option>
+                <option value="1:1" {% if p.bild_verhaeltnis == '1:1' %}selected{% endif %}>1:1</option>
+              </select>
               <label>{{ tr.polls_bar_color_label }}</label>
               <input type="color" name="bar_color" value="{{ p.bar_color or '#7c3aed' }}" style="width:70px;height:2.2rem;padding:0.15rem;margin-bottom:0.75rem;">
               <button type="submit" class="btn btn-primary" style="margin-top:0.75rem;">{{ tr.btn_save }}</button>
@@ -1589,6 +1599,13 @@ document.addEventListener('click', function(e) {
         <select name="layout_spalten" style="max-width:260px;">
           <option value="1">{{ tr.polls_layout_vertical }}</option>
           <option value="2">{{ tr.polls_layout_horizontal }}</option>
+        </select>
+        <label>{{ tr.polls_ratio_label }}</label>
+        <select name="bild_verhaeltnis" style="max-width:260px;">
+          <option value="">{{ tr.polls_ratio_original }}</option>
+          <option value="16:9">16:9</option>
+          <option value="4:3">4:3</option>
+          <option value="1:1">1:1</option>
         </select>
       </div>
       <div>

@@ -104,7 +104,41 @@ def _fit_text(draw, text: str, font, max_width: float) -> str:
     return (text + "…") if text else "…"
 
 
-def _render_combined_poll_image(rows: list, bar_color: str, spalten: int = 1) -> bytes:
+# Was in der Oberflaeche zur Auswahl steht. Leer heisst: das Bild so lassen, wie es ist.
+BILD_VERHAELTNISSE = ("", "16:9", "4:3", "1:1")
+
+
+def _verhaeltnis_hoehe(verhaeltnis: str, breite: int) -> int:
+    """Wie hoch ein Bild dieser Breite im gewaehlten Verhaeltnis waere. 0 = unveraendert."""
+    try:
+        b, h = (int(t) for t in str(verhaeltnis).split(":"))
+        if b > 0 and h > 0:
+            return max(1, round(breite * h / b))
+    except (ValueError, AttributeError):
+        pass
+    return 0
+
+
+def _einpassen(pic, breite: int, hoehe: int, hintergrund):
+    """Bild vollstaendig in breite x hoehe einpassen, mittig, Rest wie der Hintergrund.
+
+    Bewusst nicht zuschneiden: ein Bild darf nichts verlieren, nur weil es nicht ins
+    gewaehlte Verhaeltnis passt. Was ueberbleibt, faerbt sich wie die Karte darunter und
+    faellt deshalb kaum auf. Ein Bild, das schon passt, wird nur skaliert."""
+    from PIL import Image
+    if pic.width <= 0 or pic.height <= 0:
+        return pic
+    faktor = min(breite / pic.width, hoehe / pic.height)
+    neu_b = max(1, round(pic.width * faktor))
+    neu_h = max(1, round(pic.height * faktor))
+    skaliert = pic.resize((neu_b, neu_h), Image.LANCZOS)
+    flaeche = Image.new("RGBA", (breite, hoehe), hintergrund)
+    flaeche.paste(skaliert, ((breite - neu_b) // 2, (hoehe - neu_h) // 2), skaliert)
+    return flaeche
+
+
+def _render_combined_poll_image(rows: list, bar_color: str, spalten: int = 1,
+                               verhaeltnis: str = "") -> bytes:
     """Renders ONE composite PNG holding EVERY option - label, percentage/vote-count, a smooth
     progress bar, and (whenever available) the option's own picture right above its row -
     replacing v1.15.29-1.15.41's per-option-embed design entirely. That design gave any option
@@ -152,6 +186,8 @@ def _render_combined_poll_image(rows: list, bar_color: str, spalten: int = 1) ->
     track_rgb = (0x40, 0x44, 0x4b)
     bg_rgba = (0x2b, 0x2d, 0x31, 255)
 
+    ziel_hoehe = _verhaeltnis_hoehe(verhaeltnis, spaltenbreite)
+
     prepared = []
     total_h = pad
     for i, row in enumerate(rows):
@@ -164,6 +200,8 @@ def _render_combined_poll_image(rows: list, bar_color: str, spalten: int = 1) ->
                 if pic.width > spaltenbreite:
                     pic = pic.resize((spaltenbreite, round(pic.height * spaltenbreite / pic.width)),
                                      Image.LANCZOS)
+                if ziel_hoehe:
+                    pic = _einpassen(pic, spaltenbreite, ziel_hoehe, bg_rgba)
             except Exception:
                 pic = None
         row_h = (pic.height + pic_gap if pic else 0) + text_h + bar_h
@@ -215,7 +253,7 @@ def build_poll_embed(
     question: str, multiple_choice: bool, options: list, counts: dict, ended: bool = False,
     image_url: str = "", image_filename: str = "", ends_at: str = "", created_at: str = "",
     bar_color: str = DEFAULT_BAR_COLOR, show_started: bool = False, show_ranking: bool = False,
-    spalten: int = 1,
+    spalten: int = 1, verhaeltnis: str = "",
 ) -> tuple:
     """Shared by creation, every vote, and _end_poll - one place for the bar/percentage layout
     so it can never drift between the three call sites. Returns (embeds, chart_files) - embeds
@@ -339,7 +377,7 @@ def build_poll_embed(
                 except Exception:
                     image_bytes = None
             rows.append({"label": opt["label"], "n": n, "pct": pct, "image_bytes": image_bytes})
-        chart_bytes = _render_combined_poll_image(rows, bar_color, spalten)
+        chart_bytes = _render_combined_poll_image(rows, bar_color, spalten, verhaeltnis)
         chart_files.append(discord.File(io.BytesIO(chart_bytes), filename="poll_bars.png"))
         header.set_image(url="attachment://poll_bars.png")
     elif options:
@@ -475,6 +513,7 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
         bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR, show_started=bool(poll.get("show_started")),
         show_ranking=bool(poll.get("show_ranking")),
         spalten=int(poll.get("layout_spalten") or 1),
+        verhaeltnis=poll.get("bild_verhaeltnis") or "",
     )
     # No view= here on purpose - discord.py's edit_message() default for view is MISSING (not
     # None), so omitting it leaves the existing buttons untouched instead of needing to rebuild+
@@ -606,6 +645,7 @@ class Polls(commands.Cog):
             bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR, show_started=bool(poll.get("show_started")),
         show_ranking=bool(poll.get("show_ranking")),
         spalten=int(poll.get("layout_spalten") or 1),
+        verhaeltnis=poll.get("bild_verhaeltnis") or "",
         )
         view = PollView(poll_id, options)
         try:
@@ -653,6 +693,7 @@ class Polls(commands.Cog):
             bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR, show_started=bool(poll.get("show_started")),
         show_ranking=bool(poll.get("show_ranking")),
         spalten=int(poll.get("layout_spalten") or 1),
+        verhaeltnis=poll.get("bild_verhaeltnis") or "",
         )
         try:
             if chart_files:
