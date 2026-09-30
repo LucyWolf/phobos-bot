@@ -63,6 +63,7 @@ def _pct_line(label: str, n: int, total: int) -> tuple:
     return f"**{label}**\n{pct:.0f}% ({n} Stimme(n))", pct
 
 
+MAX_EMBED_FIELDS = 25  # Discords Grenze fuer Felder in EINEM Embed
 MAX_DESCRIPTION_CHARS = 3900  # Discord's real embed-description hard limit is 4096 - same
 # safety margin already used elsewhere in this project for user-editable text blocks. Matters
 # here because the header embed's description can carry a per-option link line (label up to 80
@@ -378,7 +379,31 @@ def build_poll_embed(
     # link (e.g. several VRChat world links) could otherwise push the whole description past
     # what Discord accepts, making the entire send/edit fail outright rather than just this list
     # looking incomplete.
-    link_lines = [f"🔗 [{opt['label']}]({opt['link_url']})" for opt in options if opt.get("link_url")]
+    mit_link = [opt for opt in options if opt.get("link_url")]
+    if mit_link and spalten > 1:
+        # Stehen die Bilder nebeneinander, sollen die Namen darueber es auch. Dafuer sind
+        # Felder da: mit inline=True setzt Discord sie in eine Reihe, und Felder stehen
+        # zwischen Beschreibung und Bild - genau dort, wo sie hingehoeren.
+        #
+        # Discord packt allerdings bis zu DREI inline-Felder in eine Reihe, wir wollen zwei.
+        # Ein unsichtbares drittes Feld (Zero-Width Space) macht die Reihe voll und erzwingt
+        # den Umbruch. Mehr als 25 Felder nimmt ein Embed nicht an - das begrenzt die Zahl
+        # der Paare, der Rest faellt auf die Liste in der Beschreibung zurueck.
+        paare = min(len(mit_link), (MAX_EMBED_FIELDS // 3) * 2)
+        for i, opt in enumerate(mit_link[:paare]):
+            header.add_field(name="\u200b",
+                             value=f"🔗 [{opt['label']}]({opt['link_url']})"[:1024],
+                             inline=True)
+            if i % 2 == 1:
+                header.add_field(name="\u200b", value="\u200b", inline=True)
+        rest = mit_link[paare:]
+    else:
+        rest = mit_link
+
+    # Untereinander (oder was keinen Platz als Feld mehr fand): je eine Zeile in der
+    # Beschreibung. Begrenzt gegen dieselbe echte Discord-Grenze - eine Umfrage mit vielen
+    # langen Links koennte sie sonst sprengen und damit die ganze Nachricht scheitern lassen.
+    link_lines = [f"🔗 [{opt['label']}]({opt['link_url']})" for opt in rest]
     if link_lines:
         used = len("\n\n".join(header_lines)) + (4 if header_lines else 0)
         capped = _cap_text_lines(link_lines, MAX_DESCRIPTION_CHARS - used, "\n", "🔗 … und {n} weitere Links")
