@@ -1405,6 +1405,9 @@ document.addEventListener('click', function(e) {
   .poll-preview-option-row { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.25rem; }
   .poll-preview-option-large-img { display:block; width:100%; max-height:160px; object-fit:cover; border-radius:4px; margin:0.3rem 0 0.4rem; }
   .poll-preview-imgnote { font-size:0.72rem; color:var(--muted); font-style:italic; margin:0.3rem 0 0.4rem; }
+  .poll-debug { margin-bottom:1rem; border:1px solid var(--border); border-radius:0.5rem; background:var(--bg); }
+  .poll-debug > summary { cursor:pointer; padding:0.45rem 0.7rem; font-size:0.76rem; color:var(--muted); }
+  .poll-debug-body { white-space:pre-wrap; font-family:monospace; font-size:0.7rem; color:var(--muted); padding:0 0.7rem 0.6rem; max-height:260px; overflow:auto; }
   .poll-preview-option b { color:#f2f3f5; }
   .poll-preview-progress-track { display:inline-block; width:140px; height:8px; background:#40444b; border-radius:4px; vertical-align:middle; margin-right:0.5rem; overflow:hidden; }
   .poll-preview-progress-fill { display:block; height:100%; border-radius:4px; }
@@ -1475,6 +1478,13 @@ document.addEventListener('click', function(e) {
               <input type="text" name="question" maxlength="200" required value="{{ p.question }}">
               <div style="font-size:0.78rem;font-weight:600;margin:0.75rem 0 0.3rem;color:var(--muted);">{{ tr.polls_preview_label }}</div>
               <div class="poll-preview-box" style="margin-bottom:1rem;"></div>
+    {# Sichtbare Diagnose statt Browser-Konsole: was steht in den Feldern, was hat die
+       Abfrage geliefert, welche Adresse steht am Bild, und hat es geladen. Eingeklappt, bis
+       jemand nachsieht. #}
+    <details class="poll-debug">
+      <summary>{{ tr.polls_debug_title }} — v{{ phobos_version }}</summary>
+      <div class="poll-debug-body"></div>
+    </details>
               <label>{{ tr.polls_options_label }}</label>
               <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.4rem;">{{ tr.polls_option_extras_hint }}</div>
               <div id="poll-options-edit-{{ p.id }}">
@@ -1540,6 +1550,13 @@ document.addEventListener('click', function(e) {
     <input type="text" name="question" maxlength="200" required>
     <div style="font-size:0.78rem;font-weight:600;margin:0.75rem 0 0.3rem;color:var(--muted);">{{ tr.polls_preview_label }}</div>
     <div class="poll-preview-box" style="margin-bottom:1rem;"></div>
+    {# Sichtbare Diagnose statt Browser-Konsole: was steht in den Feldern, was hat die
+       Abfrage geliefert, welche Adresse steht am Bild, und hat es geladen. Eingeklappt, bis
+       jemand nachsieht. #}
+    <details class="poll-debug">
+      <summary>{{ tr.polls_debug_title }} — v{{ phobos_version }}</summary>
+      <div class="poll-debug-body"></div>
+    </details>
     <label>{{ tr.polls_options_label }}</label>
     <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.4rem;">{{ tr.polls_option_extras_hint }}</div>
     <div id="poll-options-new">
@@ -1746,11 +1763,39 @@ const POLL_PREVIEW_TEXTE = {
 // Bild gefunden" war das nicht zu unterscheiden, und genau daran haben wir uns die Zaehne
 // ausgebissen. Jetzt steht da, was los ist.
 function pollPreviewImageFailed(img) {
+  pollDebug(POLL_DBG.nichtLadbar, (img.getAttribute('src') || '').slice(0, 90));
   const note = document.createElement('div');
   note.className = 'poll-preview-imgnote';
   note.textContent = POLL_PREVIEW_TEXTE.fehler;
   if (img.parentNode) img.parentNode.replaceChild(note, img);
 }
+// ── Diagnose ────────────────────────────────────────────────────────────────
+// Haelt fest, was beim Bauen der Vorschau wirklich passiert. Ohne das ist "kein Bild da"
+// nicht von "Bild da, aber nicht ladbar" und nicht von "Skript gar nicht gelaufen" zu
+// unterscheiden - drei Runden Fehlersuche haben genau daran gehangen.
+const POLL_DBG = {
+  fehler: {{ tr.polls_dbg_script_error | jsraw }}, option: {{ tr.polls_dbg_option | jsraw }},
+  geladen: {{ tr.polls_dbg_img_loaded | jsraw }}, nichtLadbar: {{ tr.polls_dbg_img_failed | jsraw }},
+  frage: {{ tr.polls_dbg_asking | jsraw }}, beantwortet: {{ tr.polls_dbg_answered | jsraw }},
+  antwort: {{ tr.polls_dbg_answer | jsraw }}, abfrageFehler: {{ tr.polls_dbg_request_failed | jsraw }},
+  keineAbfrage: {{ tr.polls_dbg_no_request | jsraw }}, keinLink: {{ tr.polls_dbg_no_link | jsraw }},
+  keinHttp: {{ tr.polls_dbg_not_http | jsraw }}, hatBild: {{ tr.polls_dbg_has_image | jsraw }},
+  nichts: {{ tr.polls_dbg_nothing | jsraw }},
+};
+const POLL_DEBUG = [];
+function pollDebug(was, wert) {
+  const zeit = new Date().toLocaleTimeString();
+  POLL_DEBUG.push(zeit + '  ' + was + (wert === undefined ? '' : ': ' + wert));
+  if (POLL_DEBUG.length > 60) POLL_DEBUG.shift();
+  document.querySelectorAll('.poll-debug-body').forEach(function(b) {
+    b.textContent = POLL_DEBUG.join('\n');
+  });
+}
+// Ein Fehler im Skript legt die Vorschau lahm und hinterlaesst sonst keine Spur.
+window.addEventListener('error', function(e) {
+  pollDebug(POLL_DBG.fehler, (e.message || '?') + ' @ ' + (e.lineno || '?'));
+});
+
 function pollPreviewSafeUrl(s) {
   s = String(s === null || s === undefined ? '' : s).trim();
   // blob: gehoert dazu - pollPreviewFileUrl() macht daraus die Adresse einer gerade
@@ -1852,6 +1897,11 @@ function renderPollPreview(form) {
                     && !(versucht && versucht.link === linkWert);
     const noImage = !image && !!linkWert && !!versucht && versucht.link === linkWert
                     && !versucht.image;
+    pollDebug(POLL_DBG.option + ' "' + label + '"',
+      'image=' + (urlInput && urlInput.value.trim() ? urlInput.value.trim().slice(0, 60) : '-')
+      + ' | link=' + (linkWert ? linkWert.slice(0, 60) : '-')
+      + ' | file=' + (fileInput && fileInput.files && fileInput.files[0] ? fileInput.files[0].name : '-')
+      + ' | used=' + (image ? image.slice(0, 70) : POLL_DBG.nichts));
     options.push({label: label, image: image, customWidth: customWidth,
                   pending: pending, noImage: noImage});
   });
@@ -1883,6 +1933,7 @@ function renderPollPreview(form) {
       var widthStyle = opt.customWidth ? ' style="width:' + opt.customWidth + 'px;max-width:100%;"' : '';
       html += '<img class="poll-preview-option-large-img" src="' + pollPreviewEscapeAttr(pollPreviewSafeUrl(opt.image)) + '"' + widthStyle
         + ' referrerpolicy="no-referrer"'
+        + ' onload="pollDebug(POLL_DBG.geladen, this.naturalWidth + \'x\' + this.naturalHeight)"'
         + ' onerror="pollPreviewImageFailed(this)">';
     } else if (opt.pending) {
       html += '<div class="poll-preview-imgnote">' + pollPreviewEscapeHtml(POLL_PREVIEW_TEXTE.holt) + '</div>';
@@ -1925,19 +1976,31 @@ function pollPreviewAutoFetch(row) {
   const fileInput = row.querySelector('input[name="option_image_file"]');
   const link = linkInput ? linkInput.value.trim() : '';
   const hasOwnImage = (urlInput && urlInput.value.trim()) || (fileInput && fileInput.files && fileInput.files[0]);
-  if (!link || !link.startsWith('http') || hasOwnImage) return;
+  if (!link || !link.startsWith('http') || hasOwnImage) {
+    pollDebug(POLL_DBG.keineAbfrage, !link ? POLL_DBG.keinLink
+      : (!link.startsWith('http') ? POLL_DBG.keinHttp : POLL_DBG.hatBild));
+    return;
+  }
+  pollDebug(POLL_DBG.frage, link.slice(0, 70));
   const cached = _pollPreviewAutoFetched.get(row);
   if (cached && cached.link === link) return; // already tried this exact link, don't re-fetch on every keystroke elsewhere in the form
   fetch('/servers/' + POLLS_GUILD_ID + '/polls/preview-link-image', {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
     body: 'url=' + encodeURIComponent(link),
-  }).then(function(r) { return r.json(); }).then(function(data) {
+  }).then(function(r) {
+    pollDebug(POLL_DBG.beantwortet, 'HTTP ' + r.status);
+    return r.json();
+  }).then(function(data) {
+    pollDebug(POLL_DBG.antwort, 'urls=' + ((data.image_urls || []).length)
+      + ' | inline=' + (data.image_data ? (data.image_data.length + ' B') : '-')
+      + ' | 1st=' + (((data.image_urls || [])[0] || '-').slice(0, 70)));
     _pollPreviewAutoFetched.set(row, {link: link,
       image: data.image_data || (data.image_urls || [])[0] || ''});
     const form = row.closest('form');
     if (form) renderPollPreview(form);
-  }).catch(function() {
+  }).catch(function(e) {
+    pollDebug(POLL_DBG.abfrageFehler, (e && e.message) || String(e));
     _pollPreviewAutoFetched.set(row, {link: link, image: ''});
   });
 }

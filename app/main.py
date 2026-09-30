@@ -895,6 +895,7 @@ _set_app_name("Phobos Bot")
 # der 448 Stellen kennt die Sprache der Sitzung. Uebersetzt wird deshalb hier, beim
 # Anzeigen: die Vorlagen rufen meldung(success, lang) auf.
 templates.env.globals["meldung"] = _meldung
+templates.env.globals["phobos_version"] = VERSION
 
 
 ACTION_COLORS = {
