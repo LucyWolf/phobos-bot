@@ -13,7 +13,7 @@
    regardless, just not linked to. #}
 {% extends "base.html" %}
 
-{% block title %}{{ guild.name }} – Verwaltung{% endblock %}
+{% block title %}{{ guild.name }} – {{ tr.srv_manage }}{% endblock %}
 {% block page_title %}{{ tab_label }}{% endblock %}
 
 {% block content %}
@@ -3606,7 +3606,7 @@ async function vrcLoadGroupRoles() {
       // textContent ueber option.text: Rollennamen kommen aus VRChat, nicht von uns.
       const o = document.createElement('option');
       o.value = role.id;
-      o.textContent = role.name + (role.management ? ' (Verwaltung)' : '');
+      o.textContent = role.name + (role.management ? ' (' + {{ tr.srv_manage | jsraw }} + ')' : '');
       sel.appendChild(o);
     });
     out.textContent = (d.roles || []).length + ' ' + {{ tr.vrc_roles_loaded | jsraw }};
