@@ -1738,7 +1738,11 @@ function pollPreviewEscapeAttr(s) {
 // (og:image des verlinkten Servers), nicht nur aus dem eigenen Formular.
 function pollPreviewSafeUrl(s) {
   s = String(s === null || s === undefined ? '' : s).trim();
-  return /^https?:\/\//i.test(s) ? s : '';
+  // blob: gehoert dazu - pollPreviewFileUrl() macht daraus die Adresse einer gerade
+  // ausgewaehlten Datei. Ohne sie fiel JEDES hochgeladene Bild stillschweigend aus der
+  // Vorschau, obwohl die Umfrage es spaeter sehr wohl zeigt. Die Adresse stammt aus
+  // URL.createObjectURL() dieser Seite, nicht aus einer Eingabe.
+  return /^(https?:|blob:)/i.test(s) ? s : '';
 }
 // Caches one object URL per File instance (a WeakMap key, so it's automatically forgotten once
 // the file input moves on to a different File) rather than calling URL.createObjectURL() fresh

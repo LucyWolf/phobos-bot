@@ -9746,6 +9746,10 @@ def _clamp_poll_bar_color(raw_color: str) -> str:
 
 _POLL_IMAGE_FETCH_TIMEOUT = aiohttp.ClientTimeout(total=8)
 _POLL_IMAGE_FETCH_MAX_BYTES = 8_000_000
+# So breit zeichnet cogs/polls.py eine Spalte des kombinierten Umfragebildes
+# ("spaltenbreite = 440"). Breitere Bilder verkleinert es dort ohnehin - dann koennen sie
+# auch gleich verkleinert gespeichert werden, statt die Datenbank vollzuschreiben.
+_POLL_IMAGE_CANVAS_WIDTH = 440
 
 
 async def _fetch_image_bytes(url: str) -> bytes:
@@ -9815,6 +9819,26 @@ async def _apply_poll_option_custom_width(image_url: str, image_data_b64: str, i
     entirely - same "never let an image feature break the rest of saving" principle as
     _fetch_og_image returning "" on failure instead of raising."""
     if target_width <= 0:
+        # Ohne Breitenangabe blieb ein Link-Bild bisher eine blosse URL - und genau die kann
+        # _render_combined_poll_image() nicht zeichnen: es laeuft synchron in der
+        # Ereignisschleife des Bots und darf nichts nachladen. Die Umfrage zeigte dann nur
+        # Balken, obwohl im Dashboard ein Bild stand. Also einmal hier holen, wo ein await
+        # erlaubt ist. Schlaegt das fehl, bleibt alles wie zuvor - ein Bild darf das
+        # Speichern nie verhindern.
+        if image_url and not image_data_b64:
+            roh = await _fetch_image_bytes(image_url)
+            if roh:
+                try:
+                    with Image.open(io.BytesIO(roh)) as probe:
+                        zu_breit = probe.width > _POLL_IMAGE_CANVAS_WIDTH
+                except Exception:
+                    zu_breit = None  # kein lesbares Bild - dann lieber gar nichts anfassen
+                if zu_breit is False:
+                    return "", base64.b64encode(roh).decode("ascii"), f"opt{index}_link.png"
+                if zu_breit:
+                    verkleinert, fehler = _resize_image_bytes(roh, _POLL_IMAGE_CANVAS_WIDTH)
+                    if not fehler:
+                        return "", base64.b64encode(verkleinert).decode("ascii"), f"opt{index}_link.png"
         return image_url, image_data_b64, image_filename
     if image_data_b64:
         try:
