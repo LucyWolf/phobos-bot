@@ -3053,6 +3053,15 @@ _GITHUB_VERSION_URL = "https://api.github.com/repos/LucyWolf/phobos-bot/contents
 UPDATE_KANAELE = {"stable": "main", "beta": "beta"}
 _GITHUB_VERSION_TPL = "https://api.github.com/repos/LucyWolf/phobos-bot/contents/app/VERSION?ref={ref}"
 _GITHUB_TAGS_URL = "https://api.github.com/repos/LucyWolf/phobos-bot/tags?per_page=100"
+# Auf Android kommt das Update NICHT aus dem Git-Zweig, sondern als fertige APK aus dem
+# Release. Beides kann auseinanderlaufen: der Zweig ist Minuten nach einem Commit neu, die
+# APK erst nach einem Build. Wer gegen den Zweig prueft, verspricht ein Update, das die APK
+# gar nicht liefert - gemeldet als "der ladet alles, fragt ob er installieren soll, mache
+# ich, dann sieht man dass nix passiert ist". Android prueft deshalb gegen diese Datei, die
+# neben der APK im selben Release liegt und ihre Version traegt.
+_ANDROID_VERSION_URL = (
+    "https://github.com/LucyWolf/phobos-bot/releases/download/android-debug/version.txt"
+)
 
 
 async def update_kanal() -> str:
@@ -3082,6 +3091,12 @@ async def check_latest_version(force: bool = False) -> str | None:
         ref = UPDATE_KANAELE.get(await update_kanal(), "main")
 
         def _fetch():
+            if IS_ANDROID:
+                # Die Version der veroeffentlichten APK, nicht die des Zweigs.
+                req = urllib.request.Request(_ANDROID_VERSION_URL,
+                                             headers={"User-Agent": "phobos-bot"})
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    return r.read().decode().strip()
             req = urllib.request.Request(
                 _GITHUB_VERSION_TPL.format(ref=ref),
                 headers={"Accept": "application/vnd.github.v3+json"},
