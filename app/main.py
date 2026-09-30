@@ -9641,37 +9641,71 @@ def _is_public_http_url(url: str) -> bool:
     return True
 
 
-async def _fetch_html_for_og(url: str) -> str:
-    """Shared HTTP fetch behind both the single-best-guess auto-save lookup and the live
-    preview button's multi-candidate list - one network call either way, never raises, returns
-    "" on ANY failure (timeout, connection error, non-HTML response) so a flaky/slow site never
-    breaks saving the poll or the preview button, only leaves that option's image empty."""
-    # Checked here rather than at each caller, so no future caller can forget it.
+# Womit wir uns beim Holen von Vorschaubildern melden.
+#
+# Frueher stand hier "Mozilla/5.0 (compatible; PhobosBot/1.0; ...)" - ehrlich, aber unbrauchbar:
+# api.vrchat.cloud liefert darauf 403 und gibt dasselbe Bild an eine gewoehnliche
+# Browser-Kennung ohne Weiteres heraus (nachgemessen, nicht vermutet). VRChat ist damit nicht
+# allein; das Abweisen unbekannter Kennungen ist bei Bild-CDNs die Regel. Das Ergebnis war,
+# dass eine Umfrage-Option mit VRChat-Link nie ein Bild bekam, obwohl im og:image der Seite
+# eines stand und die Seite selbst sich problemlos lesen liess.
+_BILD_ABRUF_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+async def _fetch_og_quelle(url: str) -> tuple:
+    """Holt die Adresse EINMAL und sagt, was dort steht: (html, bild_adresse).
+
+    Zeigt der Link auf eine Seite, kommt ihr HTML zurueck und die Bildadresse ist leer - der
+    Aufrufer sucht darin wie bisher nach og:image. Zeigt er dagegen direkt auf ein BILD, ist
+    es umgekehrt: kein HTML, dafuer die Adresse selbst als Bild.
+
+    Der zweite Fall fehlte, und er ist der naheliegendste ueberhaupt - Bildadresse kopieren,
+    einfuegen. Die Pruefung "kein html im Content-Type -> nichts gefunden" hat ihn wortlos
+    verworfen, und die Vorschau zeigte fuer eine vollkommen gueltige Bildadresse "kein Bild
+    gefunden". Beim Bild wird der Inhalt nicht gelesen: die Kopfzeile genuegt, und die Datei
+    kann gross sein.
+
+    Gibt bei jedem Fehler ("", "") zurueck - eine langsame oder kaputte fremde Seite darf
+    weder das Speichern der Umfrage noch die Vorschau aufhalten."""
+    # Hier geprueft und nicht bei jedem Aufrufer, damit es keiner vergessen kann.
     if not await asyncio.get_running_loop().run_in_executor(None, _is_public_http_url, url):
-        return ""
+        return "", ""
     try:
         async with aiohttp.ClientSession(timeout=_OG_FETCH_TIMEOUT) as session:
-            headers = {"User-Agent": "Mozilla/5.0 (compatible; PhobosBot/1.0; +poll-preview)"}
+            headers = {"User-Agent": _BILD_ABRUF_UA}
             async with session.get(url, headers=headers) as resp:
                 if resp.status != 200:
-                    return ""
-                if "html" not in resp.headers.get("Content-Type", "").lower():
-                    return ""
+                    return "", ""
+                typ = resp.headers.get("Content-Type", "").lower()
+                if typ.startswith("image/"):
+                    return "", str(resp.url)  # str(resp.url): nach etwaigen Umleitungen
+                if "html" not in typ:
+                    return "", ""
                 chunks, total = [], 0
                 async for chunk in resp.content.iter_chunked(8192):
                     chunks.append(chunk)
                     total += len(chunk)
                     if total >= _OG_FETCH_MAX_BYTES:
                         break
-                return b"".join(chunks).decode("utf-8", errors="ignore")
+                return b"".join(chunks).decode("utf-8", errors="ignore"), ""
     except Exception:
-        return ""
+        return "", ""
+
+
+async def _fetch_html_for_og(url: str) -> str:
+    """Nur das HTML einer Seite - fuer Aufrufer, die mit einem direkten Bild nichts anfangen
+    koennen. Siehe _fetch_og_quelle()."""
+    html, _ = await _fetch_og_quelle(url)
+    return html
 
 
 async def _fetch_og_image(url: str) -> str:
     """Best-effort single-best-guess image for a poll option's link, used automatically on
-    save when the option has a link but no image of its own."""
-    html = await _fetch_html_for_og(url)
+    save when the option has a link but no image of its own. Zeigt der Link direkt auf ein
+    Bild, ist das die Antwort - siehe _fetch_og_quelle()."""
+    html, direkt = await _fetch_og_quelle(url)
+    if direkt:
+        return direkt[:500]
     if not html:
         return ""
     image_url = _extract_og_image(html, url)
@@ -9681,9 +9715,11 @@ async def _fetch_og_image(url: str) -> str:
 
 
 async def _fetch_og_image_candidates(url: str) -> list:
-    """Every candidate image for the live "🔍" preview button's picker - see
-    _extract_image_candidates for why this can return more than one."""
-    html = await _fetch_html_for_og(url)
+    """Every candidate image for the live preview - see _extract_image_candidates for why this
+    can return more than one. Zeigt der Link direkt auf ein Bild, ist es der einzige."""
+    html, direkt = await _fetch_og_quelle(url)
+    if direkt:
+        return [direkt]
     if not html:
         return []
     return _extract_image_candidates(html, url)
@@ -9761,7 +9797,7 @@ async def _fetch_image_bytes(url: str) -> bytes:
     back to leaving the image as a plain URL at its original size rather than losing it."""
     try:
         async with aiohttp.ClientSession(timeout=_POLL_IMAGE_FETCH_TIMEOUT) as session:
-            headers = {"User-Agent": "Mozilla/5.0 (compatible; PhobosBot/1.0; +poll-image)"}
+            headers = {"User-Agent": _BILD_ABRUF_UA}
             async with session.get(url, headers=headers) as resp:
                 if resp.status != 200:
                     return b""
@@ -11431,7 +11467,21 @@ async def poll_preview_link_image(request: Request, guild_id: int):
     if not url.startswith(("http://", "https://")):
         return JSONResponse({"image_urls": []})
     image_urls = await _fetch_og_image_candidates(url)
-    return JSONResponse({"image_urls": image_urls})
+    # Die Adresse allein genuegt dem Browser nicht immer: api.vrchat.cloud etwa liefert ihr
+    # Bild nur an eine gewoehnliche Browser-Kennung, andere CDNs gehen nach dem Referrer.
+    # Dann zeigte die Vorschau nichts, obwohl das Bild gefunden war und in der Umfrage
+    # spaeter sehr wohl erscheint. Hier ist es ohnehin schon in Reichweite - also gleich
+    # mitschicken, verkleinert auf die Breite, mit der die Umfrage es am Ende zeichnet.
+    # image_urls bleibt daneben stehen: faellt das Holen aus, hat die Vorschau weiter etwas.
+    bild_daten = ""
+    if image_urls:
+        roh = await _fetch_image_bytes(image_urls[0])
+        if roh:
+            klein, fehler = _resize_image_bytes(roh, _POLL_IMAGE_CANVAS_WIDTH)
+            nutzbar = roh if fehler else klein
+            if len(nutzbar) <= _POLL_IMAGE_FETCH_MAX_BYTES:
+                bild_daten = "data:image/png;base64," + base64.b64encode(nutzbar).decode("ascii")
+    return JSONResponse({"image_urls": image_urls, "image_data": bild_daten})
 
 
 @web.get("/servers/{guild_id}/polls/{poll_id}/option/{option_id}/image")

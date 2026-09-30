@@ -1757,7 +1757,10 @@ function pollPreviewSafeUrl(s) {
   // ausgewaehlten Datei. Ohne sie fiel JEDES hochgeladene Bild stillschweigend aus der
   // Vorschau, obwohl die Umfrage es spaeter sehr wohl zeigt. Die Adresse stammt aus
   // URL.createObjectURL() dieser Seite, nicht aus einer Eingabe.
-  return /^(https?:|blob:)/i.test(s) ? s : '';
+  // data:image/ gehoert dazu, seit die Vorschau-Abfrage das Bild fertig mitliefert (siehe
+  // poll_preview_link_image). Bewusst NUR image/ - ein data:text/html waere genau das Loch,
+  // das der XSS-Durchgang in v1.17.37 geschlossen hat.
+  return /^(https?:|blob:|data:image\/)/i.test(s) ? s : '';
 }
 // Caches one object URL per File instance (a WeakMap key, so it's automatically forgotten once
 // the file input moves on to a different File) rather than calling URL.createObjectURL() fresh
@@ -1930,7 +1933,8 @@ function pollPreviewAutoFetch(row) {
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
     body: 'url=' + encodeURIComponent(link),
   }).then(function(r) { return r.json(); }).then(function(data) {
-    _pollPreviewAutoFetched.set(row, {link: link, image: (data.image_urls || [])[0] || ''});
+    _pollPreviewAutoFetched.set(row, {link: link,
+      image: data.image_data || (data.image_urls || [])[0] || ''});
     const form = row.closest('form');
     if (form) renderPollPreview(form);
   }).catch(function() {
