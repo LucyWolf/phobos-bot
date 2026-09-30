@@ -7,7 +7,7 @@
 {% block page_title %}🖥️ Server{% endblock %}
 
 {% block content %}
-{% if success %}<div class="alert alert-success" style="margin-bottom:1rem;">✅ {{ success }}</div>{% endif %}
+{% if success %}<div class="alert alert-success" style="margin-bottom:1rem;">✅ {{ meldung(success, lang) }}</div>{% endif %}
 <style>
   .server-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.25rem; display:flex; flex-direction:column; gap:1rem; margin-bottom:0; transition:border-color 0.15s; }
   .server-card:hover { border-color:var(--accent); }

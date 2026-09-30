@@ -14,8 +14,8 @@
   .lang-radio label { display:flex; align-items:center; gap:0.4rem; cursor:pointer; font-size:0.9rem; }
 </style>
 
-{% if success %}<div class="alert alert-success" style="max-width:780px;">✅ {{ success }}</div>{% endif %}
-{% if error %}<div class="alert alert-error" style="max-width:780px;">❌ {{ error }}</div>{% endif %}
+{% if success %}<div class="alert alert-success" style="max-width:780px;">✅ {{ meldung(success, lang) }}</div>{% endif %}
+{% if error %}<div class="alert alert-error" style="max-width:780px;">❌ {{ meldung(error, lang) }}</div>{% endif %}
 
 <div class="prof-grid" style="max-width:780px;">
 

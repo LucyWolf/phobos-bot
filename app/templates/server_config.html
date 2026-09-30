@@ -31,8 +31,8 @@
 {{ server_subnav(guild.id, request.query_params.get('tab', 'config'), enabled_features, user_allowed_tabs, tr) }}
 
 {% if saved %}<div class="alert alert-success">✅ Einstellungen gespeichert.</div>{% endif %}
-{% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
-{% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
+{% if success %}<div class="alert alert-success">✅ {{ meldung(success, lang) }}</div>{% endif %}
+{% if error %}<div class="alert alert-error">❌ {{ meldung(error, lang) }}</div>{% endif %}
 
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->

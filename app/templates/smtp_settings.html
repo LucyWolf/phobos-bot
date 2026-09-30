@@ -8,7 +8,7 @@
 {% block content %}
 {% if saved %}<div class="alert alert-success">✅ Gespeichert.</div>{% endif %}
 {% if test_ok %}<div class="alert alert-success">✅ Test-E-Mail erfolgreich gesendet.</div>{% endif %}
-{% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
+{% if error %}<div class="alert alert-error">❌ {{ meldung(error, lang) }}</div>{% endif %}
 
 <div class="card" style="max-width:560px;">
   <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.3rem;">SMTP-Konfiguration</div>

@@ -51,8 +51,8 @@
   </div>
 </div>
 
-{% if success %}<div class="alert alert-success" style="max-width:640px;">✅ {{ success }}</div>{% endif %}
-{% if error %}<div class="alert alert-error" style="max-width:640px;">❌ {{ error }}</div>{% endif %}
+{% if success %}<div class="alert alert-success" style="max-width:640px;">✅ {{ meldung(success, lang) }}</div>{% endif %}
+{% if error %}<div class="alert alert-error" style="max-width:640px;">❌ {{ meldung(error, lang) }}</div>{% endif %}
 
 <!-- Status -->
 <div class="status-row">

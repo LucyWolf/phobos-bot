@@ -64,7 +64,7 @@
 </div>
 
 {% if success %}<div class="alert alert-success" style="max-width:660px;">✅ {{ tr.saved_ok }}</div>{% endif %}
-{% if error %}<div class="alert alert-error" style="max-width:660px;">❌ {{ error }}</div>{% endif %}
+{% if error %}<div class="alert alert-error" style="max-width:660px;">❌ {{ meldung(error, lang) }}</div>{% endif %}
 
 <div class="log-settings">
   <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.85rem;">{{ tr.log_settings_title }}</div>

@@ -6,7 +6,7 @@
 {% block page_title %}🔐 Zwei-Faktor-Authentifizierung einrichten{% endblock %}
 
 {% block content %}
-{% if error %}<div class="alert alert-error" style="max-width:480px;">❌ {{ error }}</div>{% endif %}
+{% if error %}<div class="alert alert-error" style="max-width:480px;">❌ {{ meldung(error, lang) }}</div>{% endif %}
 
 <div class="card" style="max-width:480px;">
   <p class="hint" style="margin-bottom:1rem;">

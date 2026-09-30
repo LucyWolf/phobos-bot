@@ -8,8 +8,8 @@
 {% block page_title %}📡 Streaming-API{% endblock %}
 
 {% block content %}
-{% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
-{% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
+{% if success %}<div class="alert alert-success">✅ {{ meldung(success, lang) }}</div>{% endif %}
+{% if error %}<div class="alert alert-error">❌ {{ meldung(error, lang) }}</div>{% endif %}
 
 <style>
   .api-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; padding:1.25rem; margin-bottom:0.85rem; max-width:660px; }

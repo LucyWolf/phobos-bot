@@ -5,8 +5,8 @@
 {# Installation-wide, not per server: the bot signs in as one VRChat account for everything,
    the same way the Streaming-API page holds the Twitch apps every server then draws on. The
    per-server settings that build on it live in each server's "VRC-Link" tab. #}
-{% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
-{% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
+{% if error %}<div class="alert alert-error">❌ {{ meldung(error, lang) }}</div>{% endif %}
+{% if success %}<div class="alert alert-success">✅ {{ meldung(success, lang) }}</div>{% endif %}
 
 <div class="card">
   <div class="feat-header">{{ tr.vrc_account_heading }}</div>

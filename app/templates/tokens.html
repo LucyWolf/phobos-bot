@@ -23,8 +23,8 @@
   .tok-users-edit.open { display:block; }
 </style>
 
-{% if success %}<div class="alert alert-success" style="max-width:680px;">✅ {{ success }}</div>{% endif %}
-{% if error %}<div class="alert alert-danger"  style="max-width:680px;">❌ {{ error }}</div>{% endif %}
+{% if success %}<div class="alert alert-success" style="max-width:680px;">✅ {{ meldung(success, lang) }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger"  style="max-width:680px;">❌ {{ meldung(error, lang) }}</div>{% endif %}
 
 
 {% if legacy_token and not tokens %}

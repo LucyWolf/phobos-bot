@@ -133,7 +133,7 @@ from cogs.ratings import (
     refresh_posted_list as _refresh_ratings_list,
 )
 from cogs.log_utils import log_bot_event as _log_bot_event, BOT_EVENT_CATEGORIES
-from i18n import get_tr
+from i18n import get_tr, meldung as _meldung
 import uvicorn
 from discord.ext import commands
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
@@ -890,6 +890,11 @@ def _set_app_name(name: str):
     templates.env.globals["app_name"] = _app_name
 
 _set_app_name("Phobos Bot")
+
+# Die Meldungen nach dem Speichern kommen aus den Umleitungen und sind dort deutsch - keine
+# der 448 Stellen kennt die Sprache der Sitzung. Uebersetzt wird deshalb hier, beim
+# Anzeigen: die Vorlagen rufen meldung(success, lang) auf.
+templates.env.globals["meldung"] = _meldung
 
 
 ACTION_COLORS = {

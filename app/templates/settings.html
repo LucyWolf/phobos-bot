@@ -6,9 +6,9 @@
 {% block page_title %}⚙️ Einstellungen{% endblock %}
 
 {% block content %}
-{% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
+{% if error %}<div class="alert alert-error">❌ {{ meldung(error, lang) }}</div>{% endif %}
 {% if saved %}<div class="alert alert-success">✅ Gespeichert.</div>{% endif %}
-{% if success %}<div class="alert alert-success">✅ {{ success }}</div>{% endif %}
+{% if success %}<div class="alert alert-success">✅ {{ meldung(success, lang) }}</div>{% endif %}
 
 {% if role == 'admin' %}
 <!-- ── App-Name ── -->

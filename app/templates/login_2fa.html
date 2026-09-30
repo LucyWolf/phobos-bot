@@ -33,7 +33,7 @@
   <h1>Zwei-Faktor-Code</h1>
   <p class="hint">Gib den 6-stelligen Code aus deiner Authenticator-App ein (oder einen Backup-Code).</p>
 
-  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  {% if error %}<div class="error">{{ meldung(error, lang) }}</div>{% endif %}
   <form method="post" action="/login/2fa">
     <label>Code</label>
     <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus maxlength="12">

@@ -45,7 +45,7 @@
 </div>
 
 {% if success %}<div class="alert alert-success">✅ {{ tr.saved_ok }}</div>{% endif %}
-{% if error %}<div class="alert alert-error">❌ {{ error }}</div>{% endif %}
+{% if error %}<div class="alert alert-error">❌ {{ meldung(error, lang) }}</div>{% endif %}
 
 {% if not twitch_configured %}
 <div class="alert alert-error">

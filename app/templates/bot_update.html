@@ -35,7 +35,7 @@
 <script>setTimeout(() => location.reload(), 12000);</script>
 {% endif %}
 {% if error %}
-<div class="alert alert-error">❌ {{ error }}</div>
+<div class="alert alert-error">❌ {{ meldung(error, lang) }}</div>
 {% endif %}
 
 <div class="update-card">

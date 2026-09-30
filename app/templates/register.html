@@ -38,13 +38,13 @@
   {% if not valid %}
   <div class="expired">
     <div class="icon">⏱</div>
-    <strong>{{ error }}</strong>
+    <strong>{{ meldung(error, lang) }}</strong>
     <p>Bitte einen neuen Einladungslink beim Administrator anfordern.</p>
   </div>
   <a href="/login" class="back">← Zurück zum Login</a>
 
   {% else %}
-  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  {% if error %}<div class="error">{{ meldung(error, lang) }}</div>{% endif %}
   <form method="post" action="/register">
     <input type="hidden" name="code" value="{{ code }}">
     <label>Benutzername</label>
