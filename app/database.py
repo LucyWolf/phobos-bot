@@ -1546,6 +1546,12 @@ BOT_TEXTE = {
         "vrc_instance_locked_title":  DEFAULT_VRC_INSTANCE_LOCKED_TITLE,
         "vrc_instance_count_label":   DEFAULT_VRC_INSTANCE_COUNT_LABEL,
         "vrc_instance_footer":        DEFAULT_VRC_INSTANCE_FOOTER,
+        # Was der Bot antwortet, wenn jemand den Verknuepfen-Knopf drueckt. Stand bis
+        # v1.17.73 hart im Cog, obwohl das Panel daneben schon frei schreibbar war.
+        # {minutes} = wie lange der Link gilt, {name} = der verknuepfte VRChat-Name.
+        "vrc_dm_link_text":           "\U0001f517 Hier entlang \u2014 auf der Seite verkn\u00fcpfst du dein VRChat-Konto.\nDer Link gilt nur f\u00fcr dich und l\u00e4uft in {minutes} Minuten ab.",
+        "vrc_dm_linked_text":         "\U0001f517 Du bist bereits mit **{name}** verkn\u00fcpft.\nAuf deiner Seite kannst du die Verkn\u00fcpfung ansehen, auffrischen oder l\u00f6sen.",
+        "vrc_dm_button":              "Meine Seite \u00f6ffnen",
         "birthday_reply_saved":       DEFAULT_BIRTHDAY_REPLY_SAVED,
         "birthday_reply_deleted":     DEFAULT_BIRTHDAY_REPLY_DELETED,
         "birthday_reply_error":       DEFAULT_BIRTHDAY_REPLY_ERROR,
@@ -1570,6 +1576,9 @@ BOT_TEXTE = {
         "vrc_instance_locked_title":  "{world}",
         "vrc_instance_count_label":   "Currently inside",
         "vrc_instance_footer":        "{group}",
+        "vrc_dm_link_text":           "\U0001f517 This way \u2014 the page links your VRChat account.\nThe link is yours alone and expires in {minutes} minutes.",
+        "vrc_dm_linked_text":         "\U0001f517 You are already linked with **{name}**.\nOn your page you can view, refresh or undo the link.",
+        "vrc_dm_button":              "Open my page",
         "birthday_reply_saved":       "\u2705 Birthday saved: **{date}**",
         "birthday_reply_deleted":     "\u2705 Birthday cleared.",
         "birthday_reply_error": (

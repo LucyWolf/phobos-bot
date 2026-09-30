@@ -8358,6 +8358,9 @@ async def server_config(
         "vrc_instance_footer_default": bot_text("vrc_instance_footer", _bot_sprache),
         "vrc_instance_locked_default": bot_text("vrc_instance_locked_message", _bot_sprache),
         "vrc_instance_locked_title_default": bot_text("vrc_instance_locked_title", _bot_sprache),
+        "vrc_dm_link_default": bot_text("vrc_dm_link_text", _bot_sprache),
+        "vrc_dm_linked_default": bot_text("vrc_dm_linked_text", _bot_sprache),
+        "vrc_dm_button_default": bot_text("vrc_dm_button", _bot_sprache),
         # Names for the live example under the format field. A real linked pair if there is
         # one - seeing the format applied to somebody who is actually on the server says more
         # than a made-up name - otherwise a stand-in, so the example is never empty.
@@ -8433,7 +8436,8 @@ _TAB_TEXT_KEYS = {
                 "vrc_instance_closed_message", "vrc_instance_delete_after",
                 "vrc_instance_title", "vrc_instance_closed_title",
                 "vrc_instance_count_label", "vrc_instance_footer",
-                "vrc_instance_locked_title", "vrc_instance_locked_message"],
+                "vrc_instance_locked_title", "vrc_instance_locked_message",
+                "vrc_dm_link_text", "vrc_dm_linked_text", "vrc_dm_button"],
     "birthday": ["birthday_channel", "birthday_message", "birthday_commands",
                  "birthday_delete_words", "birthday_reply_saved",
                  "birthday_reply_deleted", "birthday_reply_error"],

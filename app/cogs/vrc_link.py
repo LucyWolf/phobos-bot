@@ -1320,18 +1320,24 @@ async def send_personal_link(interaction: discord.Interaction) -> None:
 
     row = await db_one("SELECT * FROM vrc_links WHERE guild_id=? AND user_id=?",
                        (str(interaction.guild_id), str(interaction.user.id)))
+    # Frei schreibbar wie das Panel daneben; leer gelassen gilt der Standard in der Sprache
+    # dieses Servers. {minutes} = Gueltigkeit des Links, {name} = der verknuepfte Name.
+    sprache = await bot_lang(interaction.guild_id)
+
+    async def baustein(schluessel):
+        return ((await get_guild_config(interaction.guild_id, schluessel) or "").strip()
+                or bot_text(schluessel, sprache))
+
     if row and row["status"] == VRC_STATE_APPROVED:
-        text = (f"🔗 Du bist bereits mit **{row['vrchat_name']}** verknüpft.\n"
-                f"Auf deiner Seite kannst du die Verknüpfung ansehen, auffrischen oder lösen.")
+        text = (await baustein("vrc_dm_linked_text")).replace("{name}", row["vrchat_name"] or "?")
     else:
         minutes = await link_minutes(interaction.guild_id)
-        text = ("🔗 Hier entlang — auf der Seite verknüpfst du dein VRChat-Konto.\n"
-                f"Der Link gilt nur für dich und läuft in {minutes} Minuten ab.")
+        text = (await baustein("vrc_dm_link_text")).replace("{minutes}", str(minutes))
 
     view = discord.ui.View(timeout=None)
-    view.add_item(discord.ui.Button(label="Meine Seite öffnen", emoji="↗️",
-                                    style=discord.ButtonStyle.link, url=url))
-    await interaction.followup.send(text, view=view, ephemeral=True)
+    view.add_item(discord.ui.Button(label=(await baustein("vrc_dm_button"))[:MAX_BUTTON_LABEL],
+                                    emoji="↗️", style=discord.ButtonStyle.link, url=url))
+    await interaction.followup.send(text[:2000], view=view, ephemeral=True)
 
 
 async def post_panel(bot, guild: discord.Guild, channel: discord.TextChannel) -> discord.Message:

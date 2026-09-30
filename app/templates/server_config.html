@@ -3310,6 +3310,33 @@ document.addEventListener('click', function(e) {
       <input type="text" name="vrc_panel_title" maxlength="256"
              value="{{ cfg.get('vrc_panel_title', '') }}" placeholder="{{ vrc_panel_title_default }}">
     </div>
+
+    {# Was der Bot antwortet, wenn jemand den Knopf drueckt - bis v1.17.73 stand das hart
+       im Cog, obwohl das Panel daneben schon frei schreibbar war. Leer heisst: Standard in
+       der Sprache dieses Servers. #}
+    <div style="grid-column:1 / -1;">
+      <div class="section-label" style="margin:0.5rem 0 0.2rem;">{{ tr.vrc_dm_heading }}</div>
+      <div class="hint" style="margin-bottom:0.5rem;">{{ tr.vrc_dm_hint }}</div>
+    </div>
+    <div>
+      <label>{{ tr.vrc_dm_button_label }}</label>
+      <input type="text" name="vrc_dm_button" maxlength="80"
+             value="{{ cfg.get('vrc_dm_button', '') }}" placeholder="{{ vrc_dm_button_default }}">
+    </div>
+    <div style="grid-column:1 / -1;">
+      <label>{{ tr.vrc_dm_link_label }}</label>
+      <textarea name="vrc_dm_link_text" rows="2" maxlength="1800"
+        placeholder="{{ vrc_dm_link_default }}" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;
+               padding:0.6rem 0.8rem;color:var(--text);font-size:0.85rem;font-family:inherit;
+               line-height:1.5;resize:vertical;outline:none;">{{ cfg.get('vrc_dm_link_text', '') }}</textarea>
+    </div>
+    <div style="grid-column:1 / -1;">
+      <label>{{ tr.vrc_dm_linked_label }}</label>
+      <textarea name="vrc_dm_linked_text" rows="2" maxlength="1800"
+        placeholder="{{ vrc_dm_linked_default }}" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;
+               padding:0.6rem 0.8rem;color:var(--text);font-size:0.85rem;font-family:inherit;
+               line-height:1.5;resize:vertical;outline:none;">{{ cfg.get('vrc_dm_linked_text', '') }}</textarea>
+    </div>
     <div style="grid-column:1 / -1;">
       <label>{{ tr.vrc_panel_text_label }}</label>
       {# base.html styles input and select globally but NOT textarea - each one carries its
