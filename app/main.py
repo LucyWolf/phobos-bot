@@ -3027,9 +3027,6 @@ async def bot_info_page(request: Request):
         "bot_online": bot.is_ready(), "version": VERSION,
         "bot_name": bot.user.name if bot.user else "—",
         "bot_id": str(bot.user.id) if bot.user else "—",
-        # Aussetzer: auf Android friert das System eine App im Standby ein, und man sieht es
-        # sonst nirgends - der Prozess laeuft ja weiter, sobald man das Geraet anfasst.
-        "herzschlag": herzschlag_bericht(),
     })
 
 
@@ -11787,67 +11784,6 @@ async def api_guilds(request: Request):
 
 # ── Startup ───────────────────────────────────────────────────────────────────
 
-HERZSCHLAG_DATEI = DATA_DIR / "herzschlag.json"
-# Alle 15 Sekunden ein Lebenszeichen. Laenger als 60 Sekunden Pause heisst: der Prozess war
-# weg - auf Android friert das System eine App im Standby ein, und genau das ist gemeldet
-# worden ("nach einer Zeit ist die Bot-Seite nicht mehr erreichbar").
-HERZSCHLAG_TAKT = 15
-HERZSCHLAG_LUECKE = 60
-HERZSCHLAG_MAX = 50
-
-
-async def _herzschlag():
-    """Schreibt regelmaessig einen Zeitstempel und merkt sich, wann er ausgeblieben ist.
-
-    Damit laesst sich die haeufigste Android-Frage beantworten, ohne zu raten: lief der
-    Prozess durch und nur das Netz war weg (keine Luecke), oder hat das System die App
-    eingefroren (Luecke)? Die Antwort steht auf der Bot-Info-Seite.
-
-    Absichtlich plattformunabhaengig - unter Docker sollte hier nie eine Luecke auftauchen,
-    und taucht doch eine auf, will man das erst recht wissen.
-    """
-    stand = {"start": datetime.datetime.utcnow().isoformat(), "luecken": []}
-    try:
-        if HERZSCHLAG_DATEI.exists():
-            alt = _djson.loads(HERZSCHLAG_DATEI.read_text())
-            # Die Luecken der vorherigen Laeufe bleiben stehen, der Startzeitpunkt nicht.
-            stand["luecken"] = list(alt.get("luecken") or [])[-HERZSCHLAG_MAX:]
-    except Exception as e:
-        print(f"[herzschlag] alte Datei nicht lesbar: {e}")
-
-    letzte = datetime.datetime.utcnow()
-    while True:
-        await asyncio.sleep(HERZSCHLAG_TAKT)
-        jetzt = datetime.datetime.utcnow()
-        pause = (jetzt - letzte).total_seconds()
-        if pause > HERZSCHLAG_LUECKE:
-            stand["luecken"] = (stand["luecken"] + [{
-                "von": letzte.isoformat(), "bis": jetzt.isoformat(), "sekunden": int(pause),
-            }])[-HERZSCHLAG_MAX:]
-            print(f"[herzschlag] Aussetzer: {int(pause)} Sekunden ohne Lebenszeichen")
-        letzte = jetzt
-        stand["zuletzt"] = jetzt.isoformat()
-        try:
-            HERZSCHLAG_DATEI.write_text(_djson.dumps(stand))
-        except Exception as e:
-            print(f"[herzschlag] nicht schreibbar: {e}")
-
-
-def herzschlag_bericht() -> dict:
-    """Was die Bot-Info-Seite ueber Aussetzer anzeigt."""
-    try:
-        stand = _djson.loads(HERZSCHLAG_DATEI.read_text())
-    except Exception:
-        return {"luecken": [], "gesamt": 0, "laengste": 0, "zuletzt": None}
-    luecken = [l for l in (stand.get("luecken") or []) if isinstance(l, dict)]
-    return {
-        "luecken": luecken[-10:][::-1],
-        "gesamt": len(luecken),
-        "laengste": max((int(l.get("sekunden") or 0) for l in luecken), default=0),
-        "zuletzt": stand.get("zuletzt"),
-    }
-
-
 async def main():
     await init_db()
     stored_name = await get_config("app_name")
@@ -11865,7 +11801,6 @@ async def main():
     server = uvicorn.Server(uvicorn.Config(web, host="0.0.0.0", port=8080, log_level="warning"))
     # Bot runs as independent background task — crashes there never kill the web server
     asyncio.create_task(run_bot())
-    asyncio.create_task(_herzschlag())
     await server.serve()
 
 

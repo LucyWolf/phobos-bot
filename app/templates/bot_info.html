@@ -34,34 +34,6 @@
   {% if bot_online %} · ID: <code style="font-size:0.78rem;">{{ bot_id }}</code>{% endif %}
 </div>
 
-{# Aussetzer sichtbar machen. Auf Android friert das System eine App im Standby ein; man
-   merkt es nur daran, dass die Seite zeitweise nicht erreichbar war - und sobald man das
-   Geraet anfasst, laeuft wieder alles, als waere nichts gewesen. Hier steht es schwarz auf
-   weiss, inklusive der Frage, ob der Prozess selbst weg war oder nur das Netz. #}
-{% if herzschlag and herzschlag.gesamt %}
-<div class="card" style="margin-bottom:1.25rem;border:1px solid var(--danger);">
-  <div class="feat-header" style="color:var(--danger);">{{ tr.heartbeat_title }}</div>
-  <p class="hint" style="margin-bottom:0.6rem;">{{ tr.heartbeat_hint }}</p>
-  <div style="font-size:0.85rem;margin-bottom:0.5rem;">
-    {{ tr.heartbeat_count }}: <strong>{{ herzschlag.gesamt }}</strong> ·
-    {{ tr.heartbeat_longest }}: <strong>{{ (herzschlag.laengste // 60) }} min {{ herzschlag.laengste % 60 }} s</strong>
-  </div>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>{{ tr.heartbeat_from }}</th><th>{{ tr.heartbeat_to }}</th><th>{{ tr.heartbeat_length }}</th></tr></thead>
-      <tbody>
-        {% for l in herzschlag.luecken %}
-        <tr>
-          <td style="font-size:0.78rem;">{{ l.von[:19]|replace('T', ' ') }}</td>
-          <td style="font-size:0.78rem;">{{ l.bis[:19]|replace('T', ' ') }}</td>
-          <td style="font-size:0.78rem;">{{ (l.sekunden // 60) }} min {{ l.sekunden % 60 }} s</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-{% endif %}
 
 <div class="section-title">{{ tr.info_system }}</div>
 <div class="info-grid">
