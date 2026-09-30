@@ -31,9 +31,15 @@
     <div style="color:var(--muted);line-height:1.6;">
       {{ tr.bot_design_info_intro }}
       <ul style="margin:0.4rem 0 0;padding:0 0 0 1.1rem;">
-        <li>{{ tr.bot_design_info_item_global }}</li>
+        {% if andere_server %}
+        <li>{{ tr.bot_design_info_item_shared }}</li>
+        {% else %}
+        <li>{{ tr.bot_design_info_item_own }}</li>
+        {% endif %}
         <li>{{ tr.bot_design_info_item_multi }}</li>
+        {% if not andere_server %}
         <li>{{ tr.bot_design_info_item_limit }}</li>
+        {% endif %}
       </ul>
     </div>
   </div>
