@@ -426,34 +426,11 @@ class PollButton(discord.ui.Button):
         await _handle_vote(interaction, self.custom_id)
 
 
-# Discord laesst unter eine Nachricht 5 Reihen mit je 5 Knoepfen - mehr als 25 nimmt es
-# nicht an, und ein Versuch laesst die ganze Nachricht scheitern.
-MAX_KOMPONENTEN = 25
-
-
 class PollView(discord.ui.View):
     def __init__(self, poll_id: int, options: list):
         super().__init__(timeout=None)
-        gewaehlt = options[:MAX_OPTIONS]
-        for opt in gewaehlt:
+        for opt in options[:MAX_OPTIONS]:
             self.add_item(PollButton(poll_id, opt["id"], opt["label"]))
-        # Ein Knopf je Option mit Link. Gewuenscht war, auf das BILD klicken zu koennen -
-        # das kann Discord nicht: ein Embed kennt genau eine url, und die macht den Titel
-        # anklickbar, nichts im Bild; bei einem kombinierten Bild aus allen Optionen erst
-        # recht nicht. Ein Link-Knopf direkt darunter ist derselbe eine Klick zum Ziel.
-        # Die Zeilen "🔗 [Beschriftung](Adresse)" in der Beschreibung bleiben daneben
-        # stehen: sie tragen beliebig viele Links, auch wenn die Knoepfe ausgehen.
-        frei = MAX_KOMPONENTEN - len(gewaehlt)
-        for opt in gewaehlt:
-            if frei <= 0:
-                break
-            ziel = (opt.get("link_url") or "").strip()
-            if not ziel.startswith(("http://", "https://")):
-                continue
-            beschriftung = f"🔗 {opt['label']}"[:80]
-            self.add_item(discord.ui.Button(style=discord.ButtonStyle.link,
-                                            url=ziel, label=beschriftung))
-            frei -= 1
 
 
 async def _handle_vote(interaction: discord.Interaction, custom_id: str):
