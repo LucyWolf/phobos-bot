@@ -216,12 +216,12 @@ def _render_combined_poll_image(rows: list, bar_color: str, spalten: int = 1,
     abstand_x = skaliert(16)
     width = spaltenbreite * spalten + abstand_x * (spalten - 1)
     pad = skaliert(18)
-    bar_h = skaliert(16, 4)
-    text_h = skaliert(24)  # Grundlinie der Beschriftung bis zur Oberkante des Balkens
+    bar_h = skaliert(26, 6)
+    text_h = skaliert(30)  # Grundlinie der Beschriftung bis zur Oberkante des Balkens
     pic_gap = skaliert(8)
-    row_gap = skaliert(20)
-    label_font = _load_font(skaliert(16, 8), bold=True)
-    meta_font = _load_font(skaliert(13, 7), bold=False)
+    row_gap = skaliert(22)
+    label_font = _load_font(skaliert(20, 9), bold=True)
+    meta_font = _load_font(skaliert(16, 8), bold=False)
     fill_rgb = _hex_to_rgb(bar_color)
     track_rgb = (0x40, 0x44, 0x4b)
     bg_rgba = (0x2b, 0x2d, 0x31, 255)

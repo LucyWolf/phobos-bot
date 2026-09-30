@@ -9824,23 +9824,6 @@ async def _resolve_poll_option_image(
     return "", "", ""
 
 
-def _clamp_poll_image_width(raw_width: str) -> int:
-    """Bringt die eingetragene Breite in einen brauchbaren Bereich (50 bis MAX_BILD_BREITE).
-
-    Faengt ebenso einen manipulierten POST ab wie einen Vertipper; ein Wert ausserhalb wird
-    stillschweigend zurechtgerueckt, statt das ganze Speichern scheitern zu lassen - es geht
-    um ein Aussehen, nicht um Daten.
-
-    Die Obergrenze ist kein runder Wunschwert: Discord zeigt ein Embed-Bild rund 520-550
-    Punkte breit an, darueber verkleinert es beim Anzeigen wieder. Das Doppelte lohnt noch
-    fuer die Schaerfe, alles weitere kostet nur Dateigroesse."""
-    try:
-        w = int(raw_width)
-    except (TypeError, ValueError):
-        return 0
-    if w <= 0:
-        return 0
-    return max(50, min(MAX_BILD_BREITE, w))
 
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -11238,14 +11221,12 @@ async def poll_create_web(request: Request, guild_id: int):
     raw_images = form.getlist("option_image")
     raw_image_files = form.getlist("option_image_file")
     raw_links = form.getlist("option_link")
-    raw_widths = form.getlist("option_image_width")
     raw_images += [""] * (len(raw_labels) - len(raw_images))
     raw_image_files += [None] * (len(raw_labels) - len(raw_image_files))
     raw_links += [""] * (len(raw_labels) - len(raw_links))
-    raw_widths += [""] * (len(raw_labels) - len(raw_widths))
     options = [
-        (lbl.strip(), img.strip(), img_file, link.strip(), _clamp_poll_image_width(width))
-        for lbl, img, img_file, link, width in zip(raw_labels, raw_images, raw_image_files, raw_links, raw_widths)
+        (lbl.strip(), img.strip(), img_file, link.strip(), MAX_BILD_BREITE)
+        for lbl, img, img_file, link in zip(raw_labels, raw_images, raw_image_files, raw_links)
         if lbl.strip()
     ]
     multiple = bool(form.get("multiple_choice", ""))
@@ -11639,16 +11620,14 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     raw_images = form.getlist("option_image")
     raw_image_files = form.getlist("option_image_file")
     raw_links = form.getlist("option_link")
-    raw_widths = form.getlist("option_image_width")
     removed_image_ids = set(form.getlist("option_remove_image"))
     raw_ids += [""] * (len(raw_labels) - len(raw_ids))
     raw_images += [""] * (len(raw_labels) - len(raw_images))
     raw_image_files += [None] * (len(raw_labels) - len(raw_image_files))
     raw_links += [""] * (len(raw_labels) - len(raw_links))
-    raw_widths += [""] * (len(raw_labels) - len(raw_widths))
     options = [
-        (_safe_int(oid), lbl.strip(), img.strip(), img_file, link.strip(), _clamp_poll_image_width(width))
-        for oid, lbl, img, img_file, link, width in zip(raw_ids, raw_labels, raw_images, raw_image_files, raw_links, raw_widths)
+        (_safe_int(oid), lbl.strip(), img.strip(), img_file, link.strip(), MAX_BILD_BREITE)
+        for oid, lbl, img, img_file, link in zip(raw_ids, raw_labels, raw_images, raw_image_files, raw_links)
         if lbl.strip()
     ]
     multiple = bool(form.get("multiple_choice", ""))

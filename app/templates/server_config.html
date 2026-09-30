@@ -1499,7 +1499,6 @@ document.addEventListener('click', function(e) {
                   <div style="display:flex;gap:0.4rem;">
                     <input type="url" name="option_image" placeholder="{{ tr.polls_option_image_placeholder }}" value="{{ opt.image_url }}" style="margin:0;flex:1;font-size:0.78rem;">
                     <input type="file" name="option_image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin:0;flex:1;font-size:0.72rem;">
-                    <input type="number" name="option_image_width" min="50" max="1100" value="{{ opt.image_width or 1100 }}" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;">
                   </div>
                   {% if opt.image_url or opt.image_filename %}
                   <div style="display:flex;align-items:center;gap:0.5rem;">
@@ -1575,7 +1574,6 @@ document.addEventListener('click', function(e) {
         <div style="display:flex;gap:0.4rem;">
           <input type="url" name="option_image" placeholder="{{ tr.polls_option_image_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
           <input type="file" name="option_image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin:0;flex:1;font-size:0.72rem;">
-          <input type="number" name="option_image_width" min="50" max="1100" value="1100" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;">
         </div>
         <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;font-size:0.78rem;">
       </div>
@@ -1584,7 +1582,6 @@ document.addEventListener('click', function(e) {
         <div style="display:flex;gap:0.4rem;">
           <input type="url" name="option_image" placeholder="{{ tr.polls_option_image_placeholder }}" style="margin:0;flex:1;font-size:0.78rem;">
           <input type="file" name="option_image_file" accept="image/png,image/jpeg,image/gif,image/webp" style="margin:0;flex:1;font-size:0.72rem;">
-          <input type="number" name="option_image_width" min="50" max="1100" value="1100" placeholder="{{ tr.polls_image_width_placeholder }}" title="{{ tr.polls_image_width_label }}" style="margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;">
         </div>
         <input type="url" name="option_link" placeholder="{{ tr.polls_option_link_placeholder }}" style="margin:0;font-size:0.78rem;">
       </div>
@@ -1727,13 +1724,7 @@ function addPollOption(containerId) {
   imageFileInput.type = 'file'; imageFileInput.name = 'option_image_file';
   imageFileInput.accept = 'image/png,image/jpeg,image/gif,image/webp';
   imageFileInput.style.cssText = 'margin:0;flex:1;font-size:0.72rem;';
-  const widthInput = document.createElement('input');
-  widthInput.type = 'number'; widthInput.name = 'option_image_width';
-  widthInput.min = '50'; widthInput.max = '1100'; widthInput.value = '1100';
-  widthInput.placeholder = '{{ tr.polls_image_width_placeholder }}';
-  widthInput.title = '{{ tr.polls_image_width_label }}';
-  widthInput.style.cssText = 'margin:0;flex:0 0 80px;width:80px;font-size:0.72rem;';
-  extrasRow.appendChild(imageInput); extrasRow.appendChild(imageFileInput); extrasRow.appendChild(widthInput);
+  extrasRow.appendChild(imageInput); extrasRow.appendChild(imageFileInput);
   const linkInput = document.createElement('input');
   linkInput.type = 'url'; linkInput.name = 'option_link';
   linkInput.placeholder = '{{ tr.polls_option_link_placeholder }}';
@@ -1903,7 +1894,7 @@ function renderPollPreview(form) {
     const fileInput = row.querySelector('input[name="option_image_file"]');
     const urlInput = row.querySelector('input[name="option_image"]');
     const linkInput = row.querySelector('input[name="option_link"]');
-    const widthInput = row.querySelector('input[name="option_image_width"]');
+
     const removeInput = row.querySelector('input[name="option_remove_image"]');
     if (fileInput && fileInput.files && fileInput.files[0]) {
       image = pollPreviewFileUrl(fileInput.files[0]);
@@ -1936,8 +1927,7 @@ function renderPollPreview(form) {
         image = fetched.image;
       }
     }
-    const customWidth = widthInput
-      ? Math.max(50, Math.min(2000, parseInt(widthInput.value, 10) || 300)) : 0;
+
     // Steht ein Link da, aber (noch) kein Bild? Dann laeuft entweder die Abfrage - oder sie
     // ist zurueckgekommen und hat nichts gefunden. Beides ist eine Auskunft wert.
     const linkWert = linkInput ? linkInput.value.trim() : '';
@@ -1951,7 +1941,7 @@ function renderPollPreview(form) {
       + ' | link=' + (linkWert ? linkWert.slice(0, 60) : '-')
       + ' | file=' + (fileInput && fileInput.files && fileInput.files[0] ? fileInput.files[0].name : '-')
       + ' | used=' + (image ? image.slice(0, 70) : POLL_DBG.nichts));
-    options.push({label: label, image: image, customWidth: customWidth,
+    options.push({label: label, image: image,
                   pending: pending, noImage: noImage});
   });
   if (!question && options.length === 0) {
@@ -1979,8 +1969,7 @@ function renderPollPreview(form) {
       // max-width:100% still caps it to the preview box on a narrow screen, since this preview
       // is explicitly an approximation, not a pixel-exact mockup (see renderPollPreview()'s doc
       // comment above).
-      var widthStyle = opt.customWidth ? ' style="width:' + opt.customWidth + 'px;max-width:100%;"' : '';
-      html += '<img class="poll-preview-option-large-img" src="' + pollPreviewEscapeAttr(pollPreviewSafeUrl(opt.image)) + '"' + widthStyle
+      html += '<img class="poll-preview-option-large-img" src="' + pollPreviewEscapeAttr(pollPreviewSafeUrl(opt.image)) + '"'
         + ' referrerpolicy="no-referrer"'
         + ' onload="pollDebug(POLL_DBG.geladen, this.naturalWidth + \'x\' + this.naturalHeight)"'
         + ' onerror="pollPreviewImageFailed(this)">';
