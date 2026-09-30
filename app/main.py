@@ -2941,9 +2941,19 @@ async def bot_design_page(request: Request, guild_id: str = "", success: str = "
     current_name = target.user.name if target and target.user else None
     current_avatar = str(target.user.display_avatar.url) if target and target.user else None
     bot_online = target is not None and target.is_ready()
-    # Der Name auf DIESEM Server. Discord kennt fuer einen Bot genau einen Kontonamen und
-    # ein Kontobild - beides gilt ueberall, wo er ist ("wenn man den bei einem Server
-    # aendert, aendert der den ueberall"). Was pro Server geht, ist der Spitzname.
+    # Auf WIE VIELEN Servern laeuft dieses Bot-Konto? Davon haengt alles ab: bedient der
+    # Token nur diesen einen Server, ist sein Kontoname ohnehin nur hier zu sehen, und die
+    # Warnung "das gilt ueberall" waere schlicht falsch - genau das wurde gemeldet ("dieser
+    # design ist nur führ diesen dc"). Erst wenn sich mehrere Server ein Konto teilen, wird
+    # der Unterschied zwischen Kontoname und Spitzname ueberhaupt zum Thema.
+    andere_server = []
+    if target:
+        try:
+            andere_server = [g.name for g in target.guilds if str(g.id) != str(guild_id)]
+        except Exception:
+            andere_server = []
+    # Der Name auf DIESEM Server. Ein Spitzname gilt nur hier - gebraucht wird er aber nur,
+    # wenn das Konto auch anderswo auftaucht.
     current_nick = None
     if target and guild_id:
         try:
@@ -2958,6 +2968,7 @@ async def bot_design_page(request: Request, guild_id: str = "", success: str = "
         "success": success, "error": error,
         "current_name": current_name, "current_avatar": current_avatar,
         "current_nick": current_nick,
+        "andere_server": andere_server,
         "bot_online": bot_online, "guild_id": guild_id,
         "enabled_features": await _get_enabled_features(guild_id) if guild_id else None,
         "user_allowed_tabs": await _viewer_allowed_tabs(request, guild_id) if guild_id else None,
