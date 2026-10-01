@@ -1521,8 +1521,9 @@ document.addEventListener('click', function(e) {
                  halbe Nachricht". #}
               <label style="display:block;margin-top:0.5rem;">{{ tr.polls_layout_label }}</label>
               <select name="layout_spalten" style="max-width:260px;">
-                <option value="1" {% if (p.layout_spalten or 1) != 2 %}selected{% endif %}>{{ tr.polls_layout_vertical }}</option>
-                <option value="2" {% if (p.layout_spalten or 1) == 2 %}selected{% endif %}>{{ tr.polls_layout_horizontal }}</option>
+                <option value="0" {% if not p.layout_spalten %}selected{% endif %}>{{ tr.polls_layout_auto }}</option>
+                <option value="1" {% if p.layout_spalten == 1 %}selected{% endif %}>{{ tr.polls_layout_vertical }}</option>
+                <option value="2" {% if p.layout_spalten == 2 %}selected{% endif %}>{{ tr.polls_layout_horizontal }}</option>
               </select>
               <label>{{ tr.polls_bar_color_label }}</label>
               <input type="color" name="bar_color" value="{{ p.bar_color or '#7c3aed' }}" style="width:70px;height:2.2rem;padding:0.15rem;margin-bottom:0.75rem;">
@@ -1584,6 +1585,7 @@ document.addEventListener('click', function(e) {
         <label><input type="checkbox" name="show_ranking" value="1" style="width:auto;display:inline;margin-right:0.4rem;"> {{ tr.polls_show_ranking_label }}</label>
         <label style="display:block;margin-top:0.5rem;">{{ tr.polls_layout_label }}</label>
         <select name="layout_spalten" style="max-width:260px;">
+          <option value="0" selected>{{ tr.polls_layout_auto }}</option>
           <option value="1">{{ tr.polls_layout_vertical }}</option>
           <option value="2">{{ tr.polls_layout_horizontal }}</option>
         </select>

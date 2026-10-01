@@ -121,12 +121,19 @@ def _fit_text(draw, text: str, font, max_width: float) -> str:
 # ausrechnen als ein Mensch raten.
 BILD_VERHAELTNISSE = ("16:9", "3:2", "4:3", "1:1")
 
-# So gross zeigt Discord ein Embed-Bild hoechstens an. Beides begrenzt: eine breite flache
-# Karte scheitert an der Breite, eine hohe schmale an der Hoehe - und die Hoehe war der
-# Grund, warum untereinander KLEINER ankam als nebeneinander, obwohl die Karte weniger
-# Bilder nebeneinander zu quetschen hatte.
-ANZEIGE_BREITE = 520
-ANZEIGE_HOEHE = 350
+# Wie viele Spalten die Automatik hoechstens in Betracht zieht.
+MAX_SPALTEN = 4
+
+# So gross zeigt Discord einen freistehenden Bildanhang hoechstens an. Beides begrenzt:
+# eine breite flache Karte scheitert an der Breite, eine hohe schmale an der Hoehe - und
+# die Hoehe war der Grund, warum untereinander kleiner ankam als nebeneinander.
+#
+# Die Werte gelten fuer einen ANHANG. Im Embed war beides enger (etwa 520 x 350), und genau
+# das war der Grund, das Bild dort herauszunehmen: "wenn ich das ohne einbettung mache sind
+# die bilder viel gröser" - der Rahmen dahinter begrenzt es. Aendert Discord daran etwas,
+# gehoeren diese zwei Zahlen angepasst; die Automatik rechnet alles andere daraus aus.
+ANZEIGE_BREITE = 550
+ANZEIGE_HOEHE = 400
 
 # Die Grundmasse einer Zeile, bezogen auf STANDARD_SPALTENBREITE. Sie stehen hier, weil
 # sowohl das Zeichnen als auch die Vorausberechnung der Automatik sie braucht - liefen sie
@@ -139,7 +146,24 @@ GRUND_ROW_GAP = 22
 GRUND_ABSTAND_X = 16
 
 
-def _bestes_verhaeltnis(anzahl: int, spalten: int) -> str:
+def _bestes_layout(anzahl: int) -> tuple:
+    """Welche Anordnung ergibt die groessten Bilder? Liefert (spalten, verhaeltnis).
+
+    Probiert jede Kombination aus Spaltenzahl und Format durch und nimmt die mit der
+    groessten angezeigten Bildflaeche. Nachgemessen ergeben zwei Spalten fast immer das
+    Beste: bei drei oder vier wird die einzelne Spalte so schmal, dass es trotz flacherer
+    Karte schlechter ausgeht. Die Schleife laesst das offen, statt zwei fest einzutragen -
+    aendern sich die Masse, aendert sich die Antwort von selbst."""
+    anzahl = max(1, anzahl)
+    beste, groesste = (1, BILD_VERHAELTNISSE[0]), -1.0
+    for spalten in range(1, min(MAX_SPALTEN, anzahl) + 1):
+        v, flaeche = _bestes_verhaeltnis(anzahl, spalten, mit_mass=True)
+        if flaeche > groesste:
+            beste, groesste = (spalten, v), flaeche
+    return beste
+
+
+def _bestes_verhaeltnis(anzahl: int, spalten: int, mit_mass: bool = False):
     """Welches Bildformat kommt bei dieser Anordnung am groessten an?
 
     Gerechnet wird in Vielfachen der Spaltenbreite - die absolute Groesse kuerzt sich
@@ -167,7 +191,7 @@ def _bestes_verhaeltnis(anzahl: int, spalten: int) -> str:
         flaeche = faktor * faktor * bildhoehe   # (1 breit) x (bildhoehe hoch), beides skaliert
         if flaeche > groesste:
             bestes, groesste = kandidat, flaeche
-    return bestes
+    return (bestes, groesste) if mit_mass else bestes
 
 
 def _verhaeltnis_hoehe(verhaeltnis: str, breite: int) -> int:
@@ -218,9 +242,11 @@ def _render_combined_poll_image(rows: list, bar_color: str, spalten: int = 1,
     that's only a bare external image_url (no local bytes) can't be fetched here (this runs
     synchronously inside embed-building code called from vote/interaction handlers - a blocking
     network request there would stall the bot's event loop) and falls back to a bar-only row,
-    same as an option with no picture at all. Becomes the header embed's own set_image() - the
-    per-poll banner-image feature that used to live in that slot was removed entirely in
-    v1.15.20, see build_poll_embed's docstring for the one remaining legacy exception.
+    same as an option with no picture at all. Wird als freistehender Anhang an die Nachricht
+    gehaengt, NICHT ins Embed gesetzt: dasselbe Bild kommt im Embed spuerbar kleiner an, weil
+    der Rahmen dahinter es begrenzt. Das per-poll banner-image feature, das frueher in diesem
+    Platz lag, wurde in v1.15.20 entfernt - siehe build_poll_embed's docstring fuer die eine
+    verbliebene Ausnahme fuer alte Umfragen.
 
     A row's own clickable link (if any) is deliberately NOT part of this image - an image can
     never be clickable on Discord regardless of how it's built, and an embed only supports one
@@ -232,7 +258,11 @@ def _render_combined_poll_image(rows: list, bar_color: str, spalten: int = 1,
     # Nebeneinander wird die einzelne Spalte schmaler, dafuer die Karte halb so hoch - bei
     # sechs Optionen mit Bildern ist das der Unterschied zwischen "passt auf den Schirm"
     # und "man scrollt durch die halbe Nachricht".
-    spalten = 2 if spalten and spalten > 1 else 1
+    # 0 (oder nichts) heisst: der Bot sucht sich Anordnung UND Format selbst aus.
+    auto_verhaeltnis = ""
+    if not spalten:
+        spalten, auto_verhaeltnis = _bestes_layout(len(rows))
+    spalten = max(1, min(int(spalten), MAX_SPALTEN))
     spalten = min(spalten, max(1, len(rows)))
 
     # Wie breit eine Spalte wird, bestimmen die Bilder selbst - und damit die px-Angabe je
@@ -278,7 +308,7 @@ def _render_combined_poll_image(rows: list, bar_color: str, spalten: int = 1,
 
     # Ohne Vorgabe rechnet der Bot selbst aus, was am groessten ankommt.
     if not _verhaeltnis_hoehe(verhaeltnis, spaltenbreite):
-        verhaeltnis = _bestes_verhaeltnis(len(rows), spalten)
+        verhaeltnis = auto_verhaeltnis or _bestes_verhaeltnis(len(rows), spalten)
     ziel_hoehe = _verhaeltnis_hoehe(verhaeltnis, spaltenbreite)
 
     prepared = []
@@ -474,7 +504,6 @@ def build_poll_embed(
             rows.append({"label": opt["label"], "n": n, "pct": pct, "image_bytes": image_bytes})
         chart_bytes = _render_combined_poll_image(rows, bar_color, spalten, verhaeltnis)
         chart_files.append(discord.File(io.BytesIO(chart_bytes), filename="poll_bars.png"))
-        header.set_image(url="attachment://poll_bars.png")
     elif options:
         # Legacy per-poll banner image already occupies the header's image slot (a poll created
         # before v1.15.20) - keep showing IT rather than silently swapping in the combined
@@ -607,7 +636,7 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
         ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
         bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR, show_started=bool(poll.get("show_started")),
         show_ranking=bool(poll.get("show_ranking")),
-        spalten=int(poll.get("layout_spalten") or 1),
+        spalten=int(poll.get("layout_spalten") or 0),
         verhaeltnis=poll.get("bild_verhaeltnis") or "",
     )
     # No view= here on purpose - discord.py's edit_message() default for view is MISSING (not
@@ -739,7 +768,7 @@ class Polls(commands.Cog):
             ends_at=ends_at, created_at=created_at,
             bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR, show_started=bool(poll.get("show_started")),
         show_ranking=bool(poll.get("show_ranking")),
-        spalten=int(poll.get("layout_spalten") or 1),
+        spalten=int(poll.get("layout_spalten") or 0),
         verhaeltnis=poll.get("bild_verhaeltnis") or "",
         )
         view = PollView(poll_id, options)
@@ -787,7 +816,7 @@ class Polls(commands.Cog):
             ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
             bar_color=poll.get("bar_color") or DEFAULT_BAR_COLOR, show_started=bool(poll.get("show_started")),
         show_ranking=bool(poll.get("show_ranking")),
-        spalten=int(poll.get("layout_spalten") or 1),
+        spalten=int(poll.get("layout_spalten") or 0),
         verhaeltnis=poll.get("bild_verhaeltnis") or "",
         )
         try:

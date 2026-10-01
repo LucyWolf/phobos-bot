@@ -11234,7 +11234,8 @@ async def poll_create_web(request: Request, guild_id: int):
     show_ranking = bool(form.get("show_ranking", ""))
     # 2 = nebeneinander, alles andere untereinander. Bewusst eng gefasst: was hier
     # ankommt, geht ungeprueft in die Bildberechnung.
-    layout_spalten = 2 if str(form.get("layout_spalten", "1")).strip() == "2" else 1
+    _layout_roh = str(form.get("layout_spalten", "0")).strip()
+    layout_spalten = int(_layout_roh) if _layout_roh in ("0", "1", "2") else 0
     bild_verhaeltnis = ""   # kein Feld mehr - der Bot waehlt das Format selbst
     bar_color = _clamp_poll_bar_color(form.get("bar_color", ""))
     try:
@@ -11633,7 +11634,8 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     show_ranking = bool(form.get("show_ranking", ""))
     # 2 = nebeneinander, alles andere untereinander. Bewusst eng gefasst: was hier
     # ankommt, geht ungeprueft in die Bildberechnung.
-    layout_spalten = 2 if str(form.get("layout_spalten", "1")).strip() == "2" else 1
+    _layout_roh = str(form.get("layout_spalten", "0")).strip()
+    layout_spalten = int(_layout_roh) if _layout_roh in ("0", "1", "2") else 0
     bild_verhaeltnis = ""   # kein Feld mehr - der Bot waehlt das Format selbst
     bar_color = _clamp_poll_bar_color(form.get("bar_color", ""))
 
