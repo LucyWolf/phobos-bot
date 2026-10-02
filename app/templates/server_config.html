@@ -1527,6 +1527,8 @@ document.addEventListener('click', function(e) {
                 <option value="0" {% if not p.layout_spalten %}selected{% endif %}>{{ tr.polls_layout_auto }}</option>
                 <option value="1" {% if p.layout_spalten == 1 %}selected{% endif %}>{{ tr.polls_layout_vertical }}</option>
                 <option value="2" {% if p.layout_spalten == 2 %}selected{% endif %}>{{ tr.polls_layout_horizontal }}</option>
+                <option value="3" {% if p.layout_spalten == 3 %}selected{% endif %}>{{ tr.polls_layout_3 }}</option>
+                <option value="4" {% if p.layout_spalten == 4 %}selected{% endif %}>{{ tr.polls_layout_4 }}</option>
               </select>
               <label>{{ tr.polls_bar_color_label }}</label>
               <input type="color" name="bar_color" value="{{ p.bar_color or '#7c3aed' }}" style="width:70px;height:2.2rem;padding:0.15rem;margin-bottom:0.75rem;">
@@ -1591,6 +1593,8 @@ document.addEventListener('click', function(e) {
           <option value="0" selected>{{ tr.polls_layout_auto }}</option>
           <option value="1">{{ tr.polls_layout_vertical }}</option>
           <option value="2">{{ tr.polls_layout_horizontal }}</option>
+          <option value="3">{{ tr.polls_layout_3 }}</option>
+          <option value="4">{{ tr.polls_layout_4 }}</option>
         </select>
       </div>
       <div>
