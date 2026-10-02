@@ -1405,6 +1405,9 @@ document.addEventListener('click', function(e) {
   .poll-preview-option-row { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.25rem; }
   .poll-preview-option-large-img { display:block; width:100%; max-height:160px; object-fit:cover; border-radius:4px; margin:0.3rem 0 0.4rem; }
   .poll-preview-imgnote { font-size:0.72rem; color:var(--muted); font-style:italic; margin:0.3rem 0 0.4rem; }
+  .poll-preview-content { padding:0.1rem 0 0.4rem; }
+  .poll-preview-links { display:flex; gap:1.2rem; flex-wrap:wrap; font-size:0.82rem; color:#00a8fc; margin-top:0.2rem; }
+  .poll-preview-real { display:block; max-width:100%; border-radius:6px; margin:0.35rem 0 0.5rem; }
   .poll-debug { margin-bottom:1rem; border:1px solid var(--border); border-radius:0.5rem; background:var(--bg); }
   .poll-debug > summary { cursor:pointer; padding:0.45rem 0.7rem; font-size:0.76rem; color:var(--muted); }
   .poll-debug-body { white-space:pre-wrap; font-family:monospace; font-size:0.7rem; color:var(--muted); padding:0 0.7rem 0.6rem; max-height:260px; overflow:auto; }
@@ -1749,6 +1752,7 @@ function pollPreviewEscapeAttr(s) {
 // (og:image des verlinkten Servers), nicht nur aus dem eigenen Formular.
 const POLL_PREVIEW_TEXTE = {
   holt:    {{ tr.polls_preview_image_loading | jsraw }},
+  baut:    {{ tr.polls_dbg_building | jsraw }},
   keins:   {{ tr.polls_preview_image_none | jsraw }},
   fehler:  {{ tr.polls_preview_image_failed | jsraw }},
 };
@@ -1779,6 +1783,7 @@ const POLL_DBG = {
   keineAbfrage: {{ tr.polls_dbg_no_request | jsraw }}, keinLink: {{ tr.polls_dbg_no_link | jsraw }},
   keinHttp: {{ tr.polls_dbg_not_http | jsraw }}, hatBild: {{ tr.polls_dbg_has_image | jsraw }},
   nichts: {{ tr.polls_dbg_nothing | jsraw }},
+  baut: {{ tr.polls_dbg_building | jsraw }}, gebaut: {{ tr.polls_dbg_built | jsraw }},
 };
 const POLL_DEBUG = [];
 function pollDebug(was, wert) {
@@ -1926,46 +1931,55 @@ function renderPollPreview(form) {
       + ' | link=' + (linkWert ? linkWert.slice(0, 60) : '-')
       + ' | file=' + (fileInput && fileInput.files && fileInput.files[0] ? fileInput.files[0].name : '-')
       + ' | used=' + (image ? image.slice(0, 70) : POLL_DBG.nichts));
-    options.push({label: label, image: image,
+    options.push({label: label, image: image, link: linkWert,
                   pending: pending, noImage: noImage});
   });
   if (!question && options.length === 0) {
     box.innerHTML = '<div class="poll-preview-empty">{{ tr.polls_preview_empty }}</div>';
     return;
   }
+  // Aufbau wie in Discord, seit das Bild ein Anhang ist: Nachrichtentext ganz oben (Frage,
+  // Endzeit, Links), darunter das Bild, darunter das Embed mit der Fusszeile, ganz unten die
+  // Knoepfe. Das Bild ist nicht mehr nachgebaut, sondern das echte - der Server rendert es
+  // mit derselben Funktion wie der Bot (siehe poll_preview_image).
+  const barColorInput = form.querySelector('input[name="bar_color"]');
+  const barColor = barColorInput ? barColorInput.value : '#7c3aed';
+  const spaltenSelect = form.querySelector('select[name="layout_spalten"]');
+  const spalten = spaltenSelect ? parseInt(spaltenSelect.value, 10) || 0 : 0;
+
   let html = '<div class="poll-preview-message">';
   html += '<div class="poll-preview-header">'
     + '<div class="poll-preview-avatar">🤖</div>'
     + '<span class="poll-preview-botname">Phobos</span>'
     + '<span class="poll-preview-appbadge">APP</span>'
     + '</div>';
-  html += '<div class="poll-preview-embed">';
-  html += '<div class="poll-preview-title">🗳️ ' + pollPreviewEscapeHtml(question || '{{ tr.polls_preview_placeholder_question }}') + '</div>';
-  const barColorInput = form.querySelector('input[name="bar_color"]');
-  const barColor = barColorInput ? barColorInput.value : '#7c3aed';
-  options.forEach(function(opt) {
-    html += '<div class="poll-preview-option">';
-    html += '<div class="poll-preview-option-row">';
-    html += '<b>' + pollPreviewEscapeHtml(opt.label) + '</b>';
-    html += '</div>';
-    if (opt.image) {
-      // Approximates Discord's real behaviour (an attachment renders at its actual pixel
-      // width, not stretched) by overriding the class's width:100% with an inline px width -
-      // max-width:100% still caps it to the preview box on a narrow screen, since this preview
-      // is explicitly an approximation, not a pixel-exact mockup (see renderPollPreview()'s doc
-      // comment above).
-      html += '<img class="poll-preview-option-large-img" src="' + pollPreviewEscapeAttr(pollPreviewSafeUrl(opt.image)) + '"'
-        + ' referrerpolicy="no-referrer"'
-        + ' onload="pollDebug(POLL_DBG.geladen, this.naturalWidth + \'x\' + this.naturalHeight)"'
-        + ' onerror="pollPreviewImageFailed(this)">';
-    } else if (opt.pending) {
-      html += '<div class="poll-preview-imgnote">' + pollPreviewEscapeHtml(POLL_PREVIEW_TEXTE.holt) + '</div>';
-    } else if (opt.noImage) {
-      html += '<div class="poll-preview-imgnote">' + pollPreviewEscapeHtml(POLL_PREVIEW_TEXTE.keins) + '</div>';
+
+  html += '<div class="poll-preview-content">';
+  html += '<div class="poll-preview-title">🗳️ <b>' + pollPreviewEscapeHtml(question || '{{ tr.polls_preview_placeholder_question }}') + '</b></div>';
+  // Die Links stehen so angeordnet wie die Bilder darunter - genau wie in der Nachricht.
+  const mitLink = options.filter(function(o) { return o.link; });
+  if (mitLink.length) {
+    const jeZeile = Math.max(1, spalten || _pollLetzteSpalten || 1);
+    for (let i = 0; i < mitLink.length; i += jeZeile) {
+      html += '<div class="poll-preview-links">';
+      mitLink.slice(i, i + jeZeile).forEach(function(o) {
+        html += '<span>🔗 ' + pollPreviewEscapeHtml(o.label) + '</span>';
+      });
+      html += '</div>';
     }
-    html += '<span class="poll-preview-progress-track"><span class="poll-preview-progress-fill" style="width:0%;background:' + barColor + ';"></span></span>'
-      + '<span class="poll-preview-pct">0% (0)</span></div>';
-  });
+  }
+  html += '</div>';
+
+  // Das echte Bild, sobald es da ist. Bis dahin steht dort, dass es gebaut wird - frueher
+  // zeigte die Vorschau an dieser Stelle eine Nachbildung, die mit dem Ergebnis nur
+  // ungefaehr etwas zu tun hatte.
+  if (_pollEchtesBild) {
+    html += '<img class="poll-preview-real" src="' + pollPreviewEscapeAttr(_pollEchtesBild) + '">';
+  } else if (options.length) {
+    html += '<div class="poll-preview-imgnote">' + pollPreviewEscapeHtml(POLL_PREVIEW_TEXTE.baut) + '</div>';
+  }
+
+  html += '<div class="poll-preview-embed">';
   html += '<div class="poll-preview-footer">' + (multiple ? 'Mehrfachauswahl' : 'Einzelauswahl') + ' · 0 Stimme(n)</div>';
   html += '</div>';
   if (options.length) {
@@ -1986,6 +2000,66 @@ function renderPollPreview(form) {
 // entirely ("man hat ja oben den forschau bild") - this automatic fetch is the only trigger
 // left. Keyed by the row ELEMENT (not the link string) so two different option rows with
 // in-flight fetches never clobber each other's debounce timer or cached result.
+// ── Das echte Vorschaubild ──────────────────────────────────────────────────
+// Der Server rendert es mit derselben Funktion wie der Bot. Gesammelt wird, was gerade im
+// Formular steht; gerufen wird gedrosselt, denn jeder Aufruf zeichnet ein Bild und holt
+// womoeglich fremde Bilder nach.
+let _pollEchtesBild = '';
+let _pollLetzteSpalten = 0;
+let _pollBildTimer = null;
+let _pollBildLaeuft = false;
+let _pollBildStand = '';
+
+function schedulePollEchtesBild(form) {
+  if (_pollBildTimer) clearTimeout(_pollBildTimer);
+  _pollBildTimer = setTimeout(function() { pollEchtesBildHolen(form); }, 700);
+}
+
+function pollEchtesBildHolen(form) {
+  const daten = new URLSearchParams();
+  let anzahl = 0;
+  form.querySelectorAll('.poll-option-row').forEach(function(row) {
+    const labelInput = row.querySelector('input[name="option"]');
+    const label = labelInput ? labelInput.value.trim() : '';
+    if (!label) return;
+    anzahl++;
+    daten.append('option', label);
+    // Dieselbe Reihenfolge wie beim Speichern: eigenes Bild, sonst das vom Link.
+    const urlInput = row.querySelector('input[name="option_image"]');
+    const linkInput = row.querySelector('input[name="option_link"]');
+    const eigen = urlInput ? urlInput.value.trim() : '';
+    const link = linkInput ? linkInput.value.trim() : '';
+    daten.append('option_image', eigen || link);
+  });
+  if (!anzahl) { _pollEchtesBild = ''; return; }
+  const spaltenSelect = form.querySelector('select[name="layout_spalten"]');
+  daten.append('layout_spalten', spaltenSelect ? spaltenSelect.value : '0');
+  const farbe = form.querySelector('input[name="bar_color"]');
+  if (farbe) daten.append('bar_color', farbe.value);
+
+  // Steht schon dasselbe im Bild, nicht noch einmal bauen lassen.
+  const stand = daten.toString();
+  if (stand === _pollBildStand || _pollBildLaeuft) return;
+  _pollBildStand = stand;
+  _pollBildLaeuft = true;
+  pollDebug(POLL_DBG.baut, anzahl + ' Optionen');
+  fetch('/servers/' + POLLS_GUILD_ID + '/polls/preview-image', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: stand,
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    _pollBildLaeuft = false;
+    _pollEchtesBild = d.image || '';
+    _pollLetzteSpalten = d.spalten || 0;
+    pollDebug(POLL_DBG.gebaut, d.image ? (d.image.length + ' B, ' + (d.spalten || '?') + ' Spalten')
+                                       : (d.fehler || POLL_DBG.nichts));
+    renderPollPreview(form);
+  }).catch(function(e) {
+    _pollBildLaeuft = false;
+    pollDebug(POLL_DBG.abfrageFehler, (e && e.message) || String(e));
+  });
+}
+
 const _pollPreviewAutoFetched = new WeakMap(); // row -> {link, image}
 const _pollPreviewFetchTimers = new WeakMap(); // row -> setTimeout id
 function schedulePollPreviewAutoFetch(row) {
@@ -2033,13 +2107,18 @@ function pollPreviewAutoFetch(row) {
 document.querySelectorAll('.poll-form').forEach(function(form) {
   form.addEventListener('input', function(e) {
     renderPollPreview(form);
+    schedulePollEchtesBild(form);
     if (e.target && e.target.name === 'option_link') {
       const row = e.target.closest('.poll-option-row');
       if (row) schedulePollPreviewAutoFetch(row);
     }
   });
-  form.addEventListener('change', function() { renderPollPreview(form); });
+  form.addEventListener('change', function() {
+    renderPollPreview(form);
+    schedulePollEchtesBild(form);
+  });
   renderPollPreview(form);
+  schedulePollEchtesBild(form);
   form.querySelectorAll('.poll-option-row').forEach(function(row) { schedulePollPreviewAutoFetch(row); });
 });
 </script>

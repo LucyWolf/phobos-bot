@@ -128,6 +128,8 @@ from cogs.polls import (
     build_poll_embed as _build_poll_embed, PollView as _PollView,
     DEFAULT_BAR_COLOR as _DEFAULT_BAR_COLOR,
     MAX_SPALTENBREITE as MAX_BILD_BREITE,
+    _render_combined_poll_image as _poll_bild_bauen,
+    _bestes_layout as _poll_bestes_layout,
 )
 from cogs.ratings import (
     build_ratings_embed as _build_ratings_embed, RatingsListView as _RatingsListView,
@@ -11509,6 +11511,68 @@ async def poll_delete_web(request: Request, guild_id: int, poll_id: int):
     await db_exec("DELETE FROM poll_options WHERE poll_id=?", (poll_id,))
     await db_exec("DELETE FROM polls WHERE id=?", (poll_id,))
     return RedirectResponse(f"/servers/{guild_id}?tab=polls&success=Umfrage+gelöscht", status_code=302)
+
+
+@web.post("/servers/{guild_id}/polls/preview-image")
+async def poll_preview_image(request: Request, guild_id: int):
+    """Baut das Umfragebild genau so, wie der Bot es spaeter postet, und gibt es zurueck.
+
+    Die Vorschau im Dashboard hat bis hierher eine Discord-Nachbildung aus HTML gezeigt -
+    aehnlich, aber eben nicht dasselbe: Anordnung, Seitenverhaeltnis und Balken entstehen
+    erst beim Zeichnen im Bot, und davon war in der Nachbildung nichts zu sehen. Gemeldet
+    als "das soll dann auch im forschau bild angezeigt werden das tad der nie bis her".
+
+    Gerendert wird mit derselben Funktion wie im Cog - eine zweite Umsetzung fuer die
+    Vorschau wuerde frueher oder spaeter abweichen, und dann zeigt die Vorschau wieder
+    etwas anderes als die Umfrage.
+
+    Die Bilder der Optionen kommen auf demselben Weg wie beim Speichern (Adresse aufloesen,
+    holen, verkleinern), damit auch dort kein Unterschied entsteht. Ohne Bild bleibt die
+    Option eine reine Balkenzeile - genauso wie spaeter."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return JSONResponse({"image": ""}, status_code=403)
+    form = await request.form()
+    labels = [l.strip() for l in form.getlist("option")]
+    bilder = form.getlist("option_image")
+    bilder += [""] * (len(labels) - len(bilder))
+    try:
+        spalten = int(str(form.get("layout_spalten", "0")).strip() or 0)
+    except ValueError:
+        spalten = 0
+    farbe = _clamp_poll_bar_color(str(form.get("bar_color", "")).strip())
+
+    async def bytes_fuer(adresse: str):
+        adresse = (adresse or "").strip()
+        if not adresse.startswith(("http://", "https://")):
+            return None
+        roh = await _fetch_image_bytes(await _bildadresse_aufloesen(adresse) or adresse)
+        if not roh:
+            return None
+        try:
+            with Image.open(io.BytesIO(roh)) as probe:
+                zu_breit = probe.width > MAX_BILD_BREITE
+        except Exception:
+            return None
+        if not zu_breit:
+            return roh
+        verkleinert, fehler = _resize_image_bytes(roh, MAX_BILD_BREITE)
+        return None if fehler else verkleinert
+
+    geholt = await asyncio.gather(*[bytes_fuer(b) for b in bilder[:len(labels)]])
+    rows = [{"label": lbl or "—", "n": 0, "pct": 0.0, "image_bytes": roh}
+            for lbl, roh in zip(labels, geholt) if lbl]
+    if not rows:
+        return JSONResponse({"image": ""})
+    try:
+        roh = await asyncio.get_event_loop().run_in_executor(
+            None, _poll_bild_bauen, rows, farbe, spalten, "")
+    except Exception as e:
+        return JSONResponse({"image": "", "fehler": str(e)[:120]})
+    return JSONResponse({
+        "image": "data:image/png;base64," + base64.b64encode(roh).decode("ascii"),
+        "spalten": (_poll_bestes_layout(len(rows))[0] if not spalten else spalten),
+    })
 
 
 @web.post("/servers/{guild_id}/polls/preview-link-image")
