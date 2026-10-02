@@ -440,6 +440,10 @@ def build_poll_embed(
     live, alongside the existing bar chart/percentage display (not a replacement for it) - ties
     keep the options' original `option_index` order since Python's sort is stable."""
     total = sum(counts.values())
+    if not spalten:
+        spalten, auto_format = _bestes_layout(len(options))
+        verhaeltnis = verhaeltnis or auto_format
+    spalten = max(1, min(int(spalten), MAX_SPALTEN, max(1, len(options))))
     kopfzeilen = [("🔒 " if ended else "🗳️ ") + f"**{question}**"]
     header = discord.Embed(color=0x64748b if ended else 0x7c3aed)
     has_legacy_image = bool(image_filename or image_url)
