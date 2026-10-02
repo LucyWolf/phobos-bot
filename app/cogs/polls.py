@@ -142,6 +142,10 @@ GRUND_BAR_H = 26
 GRUND_TEXT_H = 30
 GRUND_PIC_GAP = 8
 GRUND_ROW_GAP = 22
+# Die Stimmenzahl am Balken. Stand frueher bei 13 und in Grau - zu klein und zu blass, um
+# sie auf einem herunterskalierten Bild noch lesen zu koennen ("die stimen bei den
+# ladebalken haben"). Jetzt so gross wie die Beschriftung daneben.
+GRUND_META_SCHRIFT = 20
 GRUND_ABSTAND_X = 16
 
 
@@ -300,7 +304,7 @@ def _render_combined_poll_image(rows: list, bar_color: str, spalten: int = 1,
     pic_gap = skaliert(GRUND_PIC_GAP)
     row_gap = skaliert(GRUND_ROW_GAP)
     label_font = _load_font(skaliert(20, 9), bold=True)
-    meta_font = _load_font(skaliert(16, 8), bold=False)
+    meta_font = _load_font(skaliert(GRUND_META_SCHRIFT, 8), bold=True)
     fill_rgb = _hex_to_rgb(bar_color)
     track_rgb = (0x40, 0x44, 0x4b)
     bg_rgba = (0x2b, 0x2d, 0x31, 255)
@@ -354,8 +358,8 @@ def _render_combined_poll_image(rows: list, bar_color: str, spalten: int = 1,
         label = _fit_text(draw, row["label"], label_font,
                           spaltenbreite - pad * 2 - meta_w - skaliert(10))
         draw.text((links + pad, y), label, font=label_font, fill=(255, 255, 255))
-        draw.text((rechts - pad - meta_w, y + skaliert(2)), meta, font=meta_font,
-                  fill=(0xb5, 0xb8, 0xbe))
+        draw.text((rechts - pad - meta_w, y), meta, font=meta_font,
+                  fill=(0xdc, 0xdd, 0xde))
         bar_y = y + text_h
         draw.rounded_rectangle([links + pad, bar_y, rechts - pad, bar_y + bar_h],
                                radius=bar_h // 2, fill=track_rgb)
@@ -444,7 +448,7 @@ def build_poll_embed(
         spalten, auto_format = _bestes_layout(len(options))
         verhaeltnis = verhaeltnis or auto_format
     spalten = max(1, min(int(spalten), MAX_SPALTEN, max(1, len(options))))
-    kopfzeilen = [("🔒 " if ended else "🗳️ ") + f"**{question}**"]
+    kopfzeilen = [("🔒 " if ended else "") + f"**{question}**"]
     header = discord.Embed(color=0x64748b if ended else 0x7c3aed)
     has_legacy_image = bool(image_filename or image_url)
     if image_filename:
