@@ -11430,7 +11430,7 @@ async def poll_create_web(request: Request, guild_id: int):
     # extra inline image at the bottom of the message).
     files = _embed_post_files(final_image_data, final_image_filename)
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
-    embeds, chart_files = _build_poll_embed(
+    embeds, chart_files, inhalt = _build_poll_embed(
         question, multiple, opt_rows, {}, image_url=final_image_url, image_filename=final_image_filename,
         ends_at=ends_at, created_at=created_at, bar_color=bar_color, show_started=show_started,
         show_ranking=show_ranking, spalten=layout_spalten,
@@ -11439,7 +11439,7 @@ async def poll_create_web(request: Request, guild_id: int):
     files.extend(chart_files)
     view = _PollView(pid, opt_rows)
     try:
-        msg = await channel.send(embeds=embeds, view=view, files=files)
+        msg = await channel.send(content=inhalt, embeds=embeds, view=view, files=files)
     except (discord.HTTPException, OSError):
         await db_exec("DELETE FROM polls WHERE id=?", (pid,))
         return RedirectResponse(f"/servers/{guild_id}?tab=polls&error=Umfrage+konnte+nicht+gepostet+werden", status_code=302)
@@ -11737,7 +11737,7 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
     opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
     vote_rows = await db_rows("SELECT option_id, COUNT(*) c FROM poll_votes WHERE poll_id=? GROUP BY option_id", (poll_id,))
     counts = {r["option_id"]: r["c"] for r in vote_rows}
-    embeds, chart_files = _build_poll_embed(
+    embeds, chart_files, inhalt = _build_poll_embed(
         question, multiple, opt_rows, counts, ended=bool(poll["ended"]),
         image_url=final_image_url, image_filename=final_image_filename,
         ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "", bar_color=bar_color,
@@ -11769,7 +11769,7 @@ async def poll_edit_web(request: Request, guild_id: int, poll_id: int):
             # Discord keeps whatever attachment the message already had, which breaks the
             # moment an image is swapped/removed during this edit (same reasoning as
             # embed_post_update's identical attachments= usage above).
-            await msg.edit(embeds=embeds, view=view, attachments=files)
+            await msg.edit(content=inhalt, embeds=embeds, view=view, attachments=files)
     except Exception:
         # Best-effort - the DB save above already succeeded regardless of whether the live
         # Discord message could still be found/edited (channel or message deleted, bot

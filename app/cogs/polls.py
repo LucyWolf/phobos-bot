@@ -441,10 +441,8 @@ def build_poll_embed(
     live, alongside the existing bar chart/percentage display (not a replacement for it) - ties
     keep the options' original `option_index` order since Python's sort is stable."""
     total = sum(counts.values())
-    header = discord.Embed(
-        title=("🔒 " if ended else "🗳️ ") + question,
-        color=0x64748b if ended else 0x7c3aed,
-    )
+    kopfzeilen = [("🔒 " if ended else "🗳️ ") + f"**{question}**"]
+    header = discord.Embed(color=0x64748b if ended else 0x7c3aed)
     has_legacy_image = bool(image_filename or image_url)
     if image_filename:
         header.set_image(url=f"attachment://{image_filename}")
@@ -474,18 +472,18 @@ def build_poll_embed(
             # sitting at UTC, where the (still wrong) naive-local assumption is a no-op by
             # coincidence.
             started_dt = datetime.datetime.fromisoformat(created_at).replace(tzinfo=datetime.timezone.utc)
-            header_lines.append(f"**Gestartet:** {discord.utils.format_dt(started_dt, 'R')}")
+            kopfzeilen.append(f"**Gestartet:** {discord.utils.format_dt(started_dt, 'R')}")
         except Exception:
             pass
     if ended:
         # A relative "beendet vor X" would just keep counting up forever once a poll is over -
         # not useful, and confusing next to a "live countdown" feature that's about time still
         # REMAINING. A plain, timeless label is all that's needed once it's already done.
-        header_lines.append("**Beendet**")
+        kopfzeilen.append("**Beendet**")
     elif ends_at:
         try:
             ends_dt = datetime.datetime.fromisoformat(ends_at).replace(tzinfo=datetime.timezone.utc)
-            header_lines.append(f"**Endet:** {discord.utils.format_dt(ends_dt, 'R')}")
+            kopfzeilen.append(f"**Endet:** {discord.utils.format_dt(ends_dt, 'R')}")
         except Exception:
             pass
 
@@ -574,7 +572,7 @@ def build_poll_embed(
 
     if header_lines:
         header.description = "\n\n".join(header_lines)
-    return [header], chart_files
+    return [header], chart_files, "\n".join(kopfzeilen)[:2000]
 
 
 class PollButton(discord.ui.Button):
@@ -630,7 +628,7 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
     options = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
     rows = await db_rows("SELECT option_id, COUNT(*) c FROM poll_votes WHERE poll_id=? GROUP BY option_id", (poll_id,))
     counts = {r["option_id"]: r["c"] for r in rows}
-    embeds, chart_files = build_poll_embed(
+    embeds, chart_files, inhalt = build_poll_embed(
         poll["question"], bool(poll["multiple_choice"]), options, counts,
         image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
         ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
@@ -651,9 +649,9 @@ async def _handle_vote(interaction: discord.Interaction, custom_id: str):
     # all, so nothing here needed re-attaching in the first place (see build_poll_embed).
     try:
         if chart_files:
-            await interaction.response.edit_message(embeds=embeds, attachments=chart_files)
+            await interaction.response.edit_message(content=inhalt, embeds=embeds, attachments=chart_files)
         else:
-            await interaction.response.edit_message(embeds=embeds)
+            await interaction.response.edit_message(content=inhalt, embeds=embeds)
     except (discord.HTTPException, OSError) as e:
         # The vote is already written to the DB above by this point - a failure here (a genuine
         # network hiccup, or discord.py 2.3.2's http.py re-raising a real connection failure
@@ -762,7 +760,7 @@ class Polls(commands.Cog):
         created_at = datetime.datetime.utcnow().isoformat()
         if not ends_at and duration_minutes > 0:
             ends_at = (datetime.datetime.utcnow() + datetime.timedelta(minutes=duration_minutes)).isoformat()
-        embeds, chart_files = build_poll_embed(
+        embeds, chart_files, inhalt = build_poll_embed(
             poll["question"], bool(poll["multiple_choice"]), options, {},
             image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
             ends_at=ends_at, created_at=created_at,
@@ -773,7 +771,7 @@ class Polls(commands.Cog):
         )
         view = PollView(poll_id, options)
         try:
-            msg = await channel.send(embeds=embeds, view=view, files=chart_files)
+            msg = await channel.send(content=inhalt, embeds=embeds, view=view, files=chart_files)
         except (discord.HTTPException, OSError) as e:
             print(f"[Polls] failed to start poll {poll_id}: {e}")
             return
@@ -810,7 +808,7 @@ class Polls(commands.Cog):
         options = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (poll_id,))
         rows = await db_rows("SELECT option_id, COUNT(*) c FROM poll_votes WHERE poll_id=? GROUP BY option_id", (poll_id,))
         counts = {r["option_id"]: r["c"] for r in rows}
-        embeds, chart_files = build_poll_embed(
+        embeds, chart_files, inhalt = build_poll_embed(
             poll["question"], bool(poll["multiple_choice"]), options, counts, ended=True,
             image_url=poll.get("image_url") or "", image_filename=poll.get("image_filename") or "",
             ends_at=poll.get("ends_at") or "", created_at=poll.get("created_at") or "",
@@ -821,9 +819,9 @@ class Polls(commands.Cog):
         )
         try:
             if chart_files:
-                await msg.edit(embeds=embeds, view=None, attachments=chart_files)
+                await msg.edit(content=inhalt, embeds=embeds, view=None, attachments=chart_files)
             else:
-                await msg.edit(embeds=embeds, view=None)
+                await msg.edit(content=inhalt, embeds=embeds, view=None)
         except Exception as e:
             print(f"[Polls] failed to finalize poll {poll_id}: {e}")
         total_votes = sum(counts.values())
@@ -881,10 +879,10 @@ class Polls(commands.Cog):
                 (pid, i, label[:80]),
             )
         opt_rows = await db_rows("SELECT * FROM poll_options WHERE poll_id=? ORDER BY option_index", (pid,))
-        embeds, chart_files = build_poll_embed(question, multiple, opt_rows, {}, ends_at=ends_at, created_at=created_at)
+        embeds, chart_files, inhalt = build_poll_embed(question, multiple, opt_rows, {}, ends_at=ends_at, created_at=created_at)
         view = PollView(pid, opt_rows)
         try:
-            msg = await interaction.channel.send(embeds=embeds, view=view, files=chart_files)
+            msg = await interaction.channel.send(content=inhalt, embeds=embeds, view=view, files=chart_files)
         except (discord.HTTPException, OSError) as e:
             # defer() already ran above - an unhandled exception here (missing "Send
             # Messages", or a genuine network-level OSError; discord.py 2.3.2's http.py
