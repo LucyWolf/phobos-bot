@@ -449,7 +449,22 @@ async def sync_vrc_roles(guild, member: discord.Member, link) -> list:
 
     session = await vrc_session()
     if not session:
+        # Ohne Anmeldung bei VRChat passiert hier gar nichts - frueher lautlos, und niemand
+        # konnte sehen, warum Rollen ausblieben. Jetzt steht es im Protokoll und auf der
+        # VRC-Link-Seite (vrc_sync_fehler).
+        print("[vrc_link] keine VRChat-Anmeldung - Rollen werden nicht vergeben")
+        try:
+            await set_guild_config(guild.id, "vrc_sync_fehler",
+                                   datetime.datetime.utcnow().isoformat())
+        except Exception:
+            pass
         return []
+    try:
+        if await get_guild_config(guild.id, "vrc_sync_fehler"):
+            await set_guild_config(guild.id, "vrc_sync_fehler", "")
+    except Exception:
+        pass
+
     from vrchat import add_member_role, remove_member_role
     changed, now_have = [], set(had)
     for role_id in sorted(want - had):
@@ -1391,6 +1406,40 @@ class VRCLink(commands.Cog):
         """Haelt die Zeitschaltuhr an, wenn der Cog entladen wird."""
         self._check.cancel()
 
+    async def _gruppenstand_nachziehen(self, guild, rows) -> None:
+        """Fragt VRChat fuer die, die laut Stand nicht in der Gruppe sind.
+
+        Eine Anfrage je haengengebliebenem Mitglied, und nur wenn der Rollenabgleich ohnehin
+        faellig ist - bei einer Handvoll Nachzueglern sind das ein paar Anfragen pro
+        Intervall, nicht eine je Mitglied und Minute. Wer schon als Mitglied gilt, wird nicht
+        gefragt: dass jemand die Gruppe verlaesst, faellt beim naechsten Rollenwechsel auf,
+        und VRChat nimmt die Rollen dabei ohnehin selbst weg.
+
+        Ist die Gruppe gerade nicht erreichbar, bleibt der gespeicherte Stand wie er war -
+        eine Stoerung als "nicht in der Gruppe" zu lesen waere schlimmer als gar nichts zu
+        tun."""
+        offen = [r for r in rows if not r["vrc_group_member"] and r["vrc_user_id"]]
+        if not offen:
+            return
+        group_id = (await get_guild_config(guild.id, "vrc_group_id") or "").strip()
+        if not group_id:
+            return
+        for row in offen[:25]:   # Deckel, damit ein grosser Rueckstau nicht alles aufhaelt
+            try:
+                state, is_member = await group_membership(group_id, row["vrc_user_id"])
+                if state != "ok" or not is_member:
+                    continue
+                await db_exec(
+                    "UPDATE vrc_links SET vrc_group_member=1, vrc_group_checked=? WHERE id=?",
+                    (datetime.datetime.utcnow().isoformat(), row["id"]),
+                )
+                row["vrc_group_member"] = 1   # damit der Abgleich gleich danach greift
+                print(f"[vrc_link] {row['vrchat_name']} ist der Gruppe beigetreten - "
+                      f"Rollen werden jetzt vergeben")
+            except Exception as e:
+                print(f"[vrc_link] Gruppenstand fuer {row['vrc_user_id']} "
+                      f"nicht pruefbar: {e}")
+
     @tasks.loop(minutes=1)
     async def _check(self):
         """Keeps Discord in step with the approved links, once a minute.
@@ -1449,6 +1498,18 @@ class VRCLink(commands.Cog):
                     if time.monotonic() - last >= every * 60:
                         self._roles_last[guild.id] = time.monotonic()
                         roles_due = True
+
+                # Wer laut gespeichertem Stand NICHT in der VRChat-Gruppe ist, bekommt
+                # nie Rollen - sync_vrc_roles() steigt bei genau dieser Bedingung aus. Das
+                # Feld wurde aber nur beim Verknuepfen und beim Auffrischen der eigenen
+                # Seite gesetzt, nie auf Zeit. Wer sich verknuepft hat, BEVOR er der Gruppe
+                # beitrat, blieb deshalb dauerhaft haengen - gemeldet als "er hatte die
+                # rollen in der vrchat gruppe nicht vergeben bei 2 leuten".
+                #
+                # Nachgezogen wird nur fuer die Haengengebliebenen, nicht fuer alle: wer
+                # schon als Mitglied gilt, kostet weiterhin keine einzige VRChat-Anfrage.
+                if roles_due:
+                    await self._gruppenstand_nachziehen(guild, rows)
 
                 for row in rows:
                     member = guild.get_member(int(row["user_id"])) if str(row["user_id"]).isdigit() else None

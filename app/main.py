@@ -5179,6 +5179,25 @@ async def vrc_debug(request: Request, guild_id: int):
         z.append(f"  davon bestätigt: {sum(1 for l in links if l['verified_at'])}")
         z.append(f"  davon 18+ bei VRChat: {sum(1 for l in links if l['vrc_age_verified'])}")
         z.append(f"  davon in der Gruppe: {sum(1 for l in links if l['vrc_group_member'])}")
+        offen = [l for l in links if l["verified_at"] and not l["vrc_group_member"]]
+        z.append(f"  bestätigt, aber NICHT in der Gruppe: {len(offen)}"
+                 + ("   <- diese bekommen keine VRChat-Rollen" if offen else ""))
+        nie = [l for l in links if l["vrc_group_member"] and not (l["vrc_roles_synced"] or "")]
+        z.append(f"  in der Gruppe, aber nie abgeglichen: {len(nie)}")
+        letzte = sorted((l["vrc_roles_synced"] or "") for l in links if l["vrc_roles_synced"])
+        z.append(f"  letzter Rollenabgleich: {letzte[-1] if letzte else 'nie'}")
+    except Exception as e:
+        z.append(f"  Fehler: {str(e)[:300]}")
+
+    z.append("")
+    z.append("── 9. Rollenabgleich ──")
+    try:
+        takt = (await get_guild_config(guild_id, "vrc_role_sync_minutes") or "0").strip()
+        z.append(f"  Intervall: {takt} Minuten" + ("   <- 0 heißt: nur beim Verknüpfen, nie auf Zeit"
+                                                   if takt in ("", "0") else ""))
+        fehler = (await get_guild_config(guild_id, "vrc_sync_fehler") or "").strip()
+        z.append(f"  letzter Anmeldefehler: {fehler or 'keiner'}"
+                 + ("   <- ohne VRChat-Anmeldung werden keine Rollen vergeben" if fehler else ""))
     except Exception as e:
         z.append(f"  Fehler: {str(e)[:300]}")
 
