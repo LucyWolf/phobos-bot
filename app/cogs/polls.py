@@ -276,9 +276,9 @@ def _render_combined_poll_image(rows: list, bar_color: str, spalten: int = 1,
     # Nebeneinander wird die einzelne Spalte schmaler, dafuer die Karte halb so hoch - bei
     # sechs Optionen mit Bildern ist das der Unterschied zwischen "passt auf den Schirm"
     # und "man scrollt durch die halbe Nachricht".
-    # 0 (oder nichts) heisst: der Bot sucht sich Anordnung UND Format selbst aus.
+    # Wie oben: 1 heisst untereinander, alles andere nebeneinander im festen Raster.
     auto_verhaeltnis = ""
-    if not spalten:
+    if int(spalten or 0) != 1:
         spalten, auto_verhaeltnis = _bestes_layout(len(rows))
     spalten = max(1, min(int(spalten), MAX_SPALTEN))
     spalten = min(spalten, max(1, len(rows)))
@@ -459,7 +459,12 @@ def build_poll_embed(
     live, alongside the existing bar chart/percentage display (not a replacement for it) - ties
     keep the options' original `option_index` order since Python's sort is stable."""
     total = sum(counts.values())
-    if not spalten:
+    # Zwei Moeglichkeiten, mehr nicht: untereinander (1) oder nebeneinander. Wie breit
+    # "nebeneinander" wird, entscheidet das feste Raster nach der Zahl der Optionen - zwei
+    # Optionen zwei, drei Optionen drei, vier als 2+2 und so weiter (siehe _raster_spalten).
+    if int(spalten or 0) == 1:
+        spalten = 1
+    else:
         spalten, auto_format = _bestes_layout(len(options))
         verhaeltnis = verhaeltnis or auto_format
     spalten = max(1, min(int(spalten), MAX_SPALTEN, max(1, len(options))))
