@@ -149,21 +149,36 @@ GRUND_META_SCHRIFT = 20
 GRUND_ABSTAND_X = 16
 
 
-def _bestes_layout(anzahl: int) -> tuple:
-    """Welche Anordnung ergibt die groessten Bilder? Liefert (spalten, verhaeltnis).
+def _raster_spalten(anzahl: int) -> int:
+    """Wie viele Bilder nebeneinander - festes Raster, nicht gerechnet.
 
-    Probiert jede Kombination aus Spaltenzahl und Format durch und nimmt die mit der
-    groessten angezeigten Bildflaeche. Nachgemessen ergeben zwei Spalten fast immer das
-    Beste: bei drei oder vier wird die einzelne Spalte so schmal, dass es trotz flacherer
-    Karte schlechter ausgeht. Die Schleife laesst das offen, statt zwei fest einzutragen -
-    aendern sich die Masse, aendert sich die Antwort von selbst."""
+        2 -> 2          4 -> 2 und 2          6 -> 3 und 3
+        3 -> 3          5 -> 3 und 2          7 -> 3, 3 und 1
+
+    Vorher wurde die Anordnung nach der groessten Bildflaeche gewaehlt. Das ergab bei drei
+    Optionen zwei oben und eine darunter - rechnerisch die groesseren Bilder, aber eine
+    schiefe Reihe. Gewuenscht ist ein Raster, das man vorhersehen kann: bis drei alles in
+    eine Reihe, vier als Quadrat, darueber drei je Reihe.
+
+    Vier bekommt bewusst zwei Spalten statt drei: 3+1 laesst eine Reihe fast leer, 2+2 ist
+    ausgewogen."""
     anzahl = max(1, anzahl)
-    beste, groesste = (1, BILD_VERHAELTNISSE[0]), -1.0
-    for spalten in range(1, min(MAX_SPALTEN, anzahl) + 1):
-        v, flaeche = _bestes_verhaeltnis(anzahl, spalten, mit_mass=True)
-        if flaeche > groesste:
-            beste, groesste = (spalten, v), flaeche
-    return beste
+    if anzahl <= 3:
+        return anzahl
+    if anzahl == 4:
+        return 2
+    return 3
+
+
+def _bestes_layout(anzahl: int) -> tuple:
+    """(spalten, verhaeltnis) fuer diese Zahl an Optionen.
+
+    Die Anordnung steht fest (siehe _raster_spalten). Gewaehlt wird nur noch das Bildformat,
+    und zwar das, welches in diesem Raster am groessten ankommt - bei zwei nebeneinander
+    liegt Hoehe brach, da gewinnt 1:1; bei vollen Reihen wird sie knapp, dann 16:9."""
+    anzahl = max(1, anzahl)
+    spalten = _raster_spalten(anzahl)
+    return spalten, _bestes_verhaeltnis(anzahl, spalten)
 
 
 def _bestes_verhaeltnis(anzahl: int, spalten: int, mit_mass: bool = False):
