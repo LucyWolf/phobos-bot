@@ -8670,8 +8670,8 @@ _TAB_CHECKBOX_KEYS = {
     # vrc_require_ownership defaults to ON when absent, so an existing server keeps the
     # proof it already had - see the read in vrc_public_name().
     "vrclink": ["vrc_enabled", "vrc_nickname_enabled", "vrc_auto_approve", "vrc_dm_on_join",
-                "vrc_require_ownership", "vrc_group_invite", "vrc_instance_cleanup",
-                "vrc_instance_live_count", "vrc_instance_detail"],
+                "vrc_require_ownership", "vrc_group_invite", "vrc_auto_invite",
+                "vrc_instance_cleanup", "vrc_instance_live_count", "vrc_instance_detail"],
     # auto_kick_enabled deliberately NOT here - it needs the previous saved value to detect an
     # off→on transition (see the dedicated handling in server_config_save below), the generic
     # loop below has no way to express that.

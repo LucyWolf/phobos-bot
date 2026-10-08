@@ -243,6 +243,12 @@ async def fetch_profile(vrc_user_id: str) -> tuple:
     return ("ok", user) if user else ("not_found", None)
 
 
+# Wie oft der Gruppenstand der Nachzuegler nachgesehen wird. Eine Anfrage je offenem Fall,
+# also bei einer Handvoll alle zehn Minuten ein paar Anfragen - nicht der Verkehr, der ein
+# Bot-Konto auffaellig macht.
+GRUPPENSTAND_TAKT = 600
+
+
 async def group_membership(group_id: str, vrc_user_id: str) -> tuple:
     """Whether this VRChat account is in the configured group.
 
@@ -1394,6 +1400,7 @@ class VRCLink(commands.Cog):
         # run, which is harmless, and it keeps a write out of the hot loop.
         self._roles_last: dict[int, float] = {}
         self._instances_last: dict[int, float] = {}
+        self._gruppe_last: dict[int, float] = {}
         self._check.start()
 
     async def cog_load(self):
@@ -1424,10 +1431,26 @@ class VRCLink(commands.Cog):
         group_id = (await get_guild_config(guild.id, "vrc_group_id") or "").strip()
         if not group_id:
             return
+        automatisch = (await get_guild_config(guild.id, "vrc_auto_invite") or "") == "1"
         for row in offen[:25]:   # Deckel, damit ein grosser Rueckstau nicht alles aufhaelt
             try:
                 state, is_member = await group_membership(group_id, row["vrc_user_id"])
-                if state != "ok" or not is_member:
+                if state != "ok":
+                    continue
+                if not is_member:
+                    # Noch nicht drin: auf Wunsch einmal einladen. Genau einmal - der
+                    # Zeitstempel vrc_group_invited haelt fest, dass es passiert ist, sonst
+                    # ginge bei jedem Durchgang eine neue Einladung an VRChat, und
+                    # wiederholtes Schreiben ist das Muster, das Bot-Konten auffaellig macht.
+                    if automatisch and not row["vrc_group_invited"]:
+                        zustand, detail = await send_group_invite(group_id, row["vrc_user_id"])
+                        await db_exec(
+                            "UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
+                            (datetime.datetime.utcnow().isoformat(), row["id"]),
+                        )
+                        row["vrc_group_invited"] = "x"
+                        print(f"[vrc_link] Gruppeneinladung an {row['vrchat_name']}: {zustand}"
+                              + (f" ({detail})" if detail else ""))
                     continue
                 await db_exec(
                     "UPDATE vrc_links SET vrc_group_member=1, vrc_group_checked=? WHERE id=?",
@@ -1508,7 +1531,12 @@ class VRCLink(commands.Cog):
                 #
                 # Nachgezogen wird nur fuer die Haengengebliebenen, nicht fuer alle: wer
                 # schon als Mitglied gilt, kostet weiterhin keine einzige VRChat-Anfrage.
-                if roles_due:
+                # Eigener Takt, nicht an den Rollenabgleich gehaengt: steht dessen
+                # Intervall auf 0 (die Vorgabe), lief der Nachzug sonst nie - und genau die
+                # Nachzuegler sind der Fall, der ihn braucht.
+                nach = self._gruppe_last.get(guild.id, 0.0)
+                if time.monotonic() - nach >= GRUPPENSTAND_TAKT:
+                    self._gruppe_last[guild.id] = time.monotonic()
                     await self._gruppenstand_nachziehen(guild, rows)
 
                 for row in rows:

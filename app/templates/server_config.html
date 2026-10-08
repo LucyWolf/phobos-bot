@@ -3478,6 +3478,18 @@ document.addEventListener('click', function(e) {
                value="{{ cfg.get('vrc_role_sync_minutes', '') }}" placeholder="0">
         <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_role_sync_hint }}</div>
       </div>
+
+      {# Einladung von selbst verschicken. Bewusst abschaltbar und standardmaessig aus:
+         eine Einladung ist eine echte Handlung auf VRChat-Seite. #}
+      <div style="margin-top:0.9rem;">
+        <label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;">
+          <input type="checkbox" name="vrc_auto_invite" value="1"
+                 style="width:auto;display:inline;margin:0;"
+                 {% if cfg.get('vrc_auto_invite') == '1' %}checked{% endif %}>
+          {{ tr.vrc_auto_invite_label }}
+        </label>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_auto_invite_hint }}</div>
+      </div>
     </div>
   </div>
   <button type="submit" class="btn btn-primary" style="margin-top:0.9rem;">{{ tr.btn_save }}</button>
