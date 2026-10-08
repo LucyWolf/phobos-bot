@@ -3407,6 +3407,8 @@ async def bot_update_page(request: Request, success: str = "", error: str = ""):
         "is_android": IS_ANDROID,
         "update_kanal": await update_kanal(),
         "update_kanaele": list(UPDATE_KANAELE),
+        "update_sig_pflicht": (await get_config("update_signatur_pflicht") or "") == "1",
+        "update_signierer": (await get_config("update_signierer") or ""),
         # Nur aeltere anbieten: "zurueck" auf die laufende oder eine neuere Fassung waere
         # kein Zurueckpatchen, sondern ein Update - dafuer gibt es den Knopf darueber.
         "versionen": [v for v in await verfuegbare_versionen()
@@ -3700,6 +3702,40 @@ def _reap_stray_zombies():
         pass  # no children at all left to reap
 
 
+async def _signatur_pruefen(marke: str, lauf) -> tuple:
+    """Stammt das Ziel wirklich von der hinterlegten Person? (ok, Begruendung)
+
+    Prueft die Signatur des Commits, auf den aktualisiert werden soll - BEVOR er eingespielt
+    wird. Das ist der entscheidende Punkt: der alte, noch vertrauenswuerdige Code prueft den
+    neuen. Ein Angreifer mit Schreibrechten auf das Repo kann die Pruefung also nicht im
+    selben Zug entfernen, weil sein Commit schon vorher abgelehnt wird.
+
+    Der erlaubte Schluessel steht bewusst in der LOKALEN Konfiguration, nicht im Repo - sonst
+    tauschte ein Angreifer ihn einfach mit aus, und die Pruefung bestaetigte seine eigene
+    Unterschrift.
+
+    Ohne hinterlegten Schluessel gibt es nichts zu pruefen; dann meldet das hier einen Fehler,
+    statt stillschweigend durchzuwinken."""
+    schluessel = (await get_config("update_signierer") or "").strip()
+    if not schluessel:
+        return False, ("Signaturpflicht ist an, aber kein Schlüssel hinterlegt. "
+                       "Auf der Updates-Seite eintragen oder die Pflicht abschalten.")
+    datei = DATA_DIR / "allowed_signers"
+    try:
+        # Der Name links ist beliebig, git braucht nur irgendeine Kennung je Zeile.
+        datei.write_text(f"phobos {schluessel}\n", encoding="utf-8")
+    except OSError as e:
+        return False, f"Schlüsseldatei nicht schreibbar: {e}"
+    rc = await lauf(["git", "-C", "/repo",
+                     "-c", f"gpg.ssh.allowedSignersFile={datei}",
+                     "-c", "gpg.format=ssh",
+                     "verify-commit", marke])
+    if rc != 0:
+        return False, ("Die Signatur stimmt nicht — das Ziel ist nicht mit dem hinterlegten "
+                       "Schlüssel unterschrieben. Update abgebrochen.")
+    return True, ""
+
+
 async def _do_git_update(ziel: str = ""):
     """ziel leer = dem eingestellten Kanal folgen, sonst ein Tag wie "v1.17.50"."""
     global _update_status, _update_running
@@ -3735,6 +3771,14 @@ async def _do_git_update(ziel: str = ""):
         rc = await _run(holen)
         if rc != 0:
             raise RuntimeError(f"git fetch fehlgeschlagen (exit {rc})")
+
+        # Erst pruefen, dann einspielen - andersherum waere die Pruefung wertlos.
+        if (await get_config("update_signatur_pflicht") or "") == "1":
+            _ulog(f"$ git verify-commit {marke}", "cmd")
+            ok, grund = await _signatur_pruefen(marke, _run)
+            if not ok:
+                raise RuntimeError(grund)
+            _ulog("  ✓  Signatur geprüft", "ok")
 
         # Hard-reset to the chosen target (handles any local drift)
         _ulog(f"$ git -C /repo reset --hard {marke}", "cmd")
@@ -3831,6 +3875,30 @@ async def _do_android_update():
 
 
 _update_running = False
+
+
+@web.post("/bot/update/signatur")
+async def bot_update_signatur(request: Request, pflicht: str = Form(""),
+                              schluessel: str = Form("")):
+    """Signaturpflicht und erlaubter Schluessel.
+
+    Der Schluessel gehoert hierher und nicht ins Repo: dort koennte ihn jemand mit
+    Schreibrechten gegen seinen eigenen tauschen, und die Pruefung bestaetigte anschliessend
+    brav dessen Unterschrift."""
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    schluessel = " ".join(schluessel.split())[:400]
+    if schluessel and not schluessel.startswith(("ssh-ed25519 ", "ssh-rsa ", "ecdsa-", "sk-ssh-")):
+        return RedirectResponse("/bot/update?error=Kein+gültiger+SSH-Schlüssel", status_code=302)
+    an = "1" if pflicht else ""
+    # Ohne Schluessel waere die Pflicht eine Sperre ohne Ausweg - das Update liefe in einen
+    # Fehler, den man nur hier wieder abstellen kann. Lieber gleich sagen.
+    if an and not schluessel:
+        return RedirectResponse("/bot/update?error=Erst+einen+Schlüssel+eintragen",
+                                status_code=302)
+    await set_config("update_signatur_pflicht", an)
+    await set_config("update_signierer", schluessel)
+    return RedirectResponse("/bot/update?success=Gespeichert", status_code=302)
 
 
 @web.post("/bot/update/kanal")

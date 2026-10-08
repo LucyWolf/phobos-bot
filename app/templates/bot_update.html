@@ -90,6 +90,25 @@
     </form>
   </div>
 
+  {# Signaturpflicht. Der Schluessel steht bewusst HIER und nicht im Repo - sonst koennte
+     jemand mit Schreibrechten dort einfach seinen eigenen hinterlegen. #}
+  <div class="card" style="margin-top:1.25rem;">
+    <div class="feat-header">{{ tr.update_sig_title }}</div>
+    <p class="hint" style="margin-bottom:0.7rem;">{{ tr.update_sig_hint }}</p>
+    <form method="post" action="/bot/update/signatur">
+      <label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;margin-bottom:0.7rem;">
+        <input type="checkbox" name="pflicht" value="1" style="width:auto;display:inline;margin:0;"
+               {% if update_sig_pflicht %}checked{% endif %}>
+        {{ tr.update_sig_label }}
+      </label>
+      <label>{{ tr.update_sig_key_label }}</label>
+      <input type="text" name="schluessel" value="{{ update_signierer }}"
+             placeholder="ssh-ed25519 AAAA…" style="font-family:monospace;font-size:0.78rem;">
+      <div class="hint" style="margin-top:-0.5rem;margin-bottom:0.7rem;">{{ tr.update_sig_key_hint }}</div>
+      <button type="submit" class="btn btn-secondary">{{ tr.btn_save }}</button>
+    </form>
+  </div>
+
   {% if versionen and not is_android %}
   {# Zurueck auf eine aeltere Fassung. Bewusst unter einer Warnung: die Datenbank wandert
      mit jedem Update weiter, und eine alte Fassung kennt die Spalten nicht, die seitdem
