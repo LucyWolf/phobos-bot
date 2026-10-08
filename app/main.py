@@ -67,7 +67,6 @@ import io
 import json as _djson
 import math
 import os
-import socket as _dsock
 import traceback
 from contextvars import ContextVar
 try:
@@ -265,10 +264,14 @@ def load_secret_key() -> str:
 SECRET_KEY = load_secret_key()
 
 
-def _docker_api(method: str, path: str) -> tuple[int, bytes]:
-    """Minimal Docker Engine API client over Unix socket."""
+def _docker_api(method: str, path: str) -> tuple:
+    """Kleinster denkbarer Zugriff auf die Docker-Schnittstelle ueber den Unix-Socket.
+
+    Existiert nur noch fuer den Uebergang, siehe _neu_erstellen_noetig(). Ist der Socket
+    nicht eingehaengt - der Normalfall seit v1.18.23 -, kommt hier nie jemand an."""
+    import socket as _s
     try:
-        sock = _dsock.socket(_dsock.AF_UNIX, _dsock.SOCK_STREAM)
+        sock = _s.socket(_s.AF_UNIX, _s.SOCK_STREAM)
         sock.settimeout(5)
         sock.connect("/var/run/docker.sock")
         req = f"{method} {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
@@ -287,20 +290,41 @@ def _docker_api(method: str, path: str) -> tuple[int, bytes]:
         return 0, b""
 
 
-def _get_compose_dir() -> str | None:
-    """Return docker-compose project working dir from own container labels, or None."""
+def _get_compose_dir():
+    """Das Arbeitsverzeichnis des compose-Projekts auf dem WIRT, aus den eigenen Labels.
+
+    Wird fuer den einmaligen Neuaufbau gebraucht: "docker compose up -d" laeuft zwar hier
+    drin, spricht aber mit dem Docker des Wirts - und der sucht die Dateien unter seinem
+    eigenen Pfad, nicht unter /repo."""
     if not os.path.exists("/var/run/docker.sock"):
         return None
     try:
-        hostname = os.environ.get("HOSTNAME", "")
-        code, body = _docker_api("GET", f"/v1.43/containers/{hostname}/json")
+        code, body = _docker_api("GET", f"/v1.43/containers/{os.environ.get('HOSTNAME', '')}/json")
         if code == 200:
-            info = _djson.loads(body)
-            labels = (info.get("Config") or {}).get("Labels") or {}
+            labels = (_djson.loads(body).get("Config") or {}).get("Labels") or {}
             return labels.get("com.docker.compose.project.working_dir")
     except Exception:
         pass
     return None
+
+
+def _neu_erstellen_noetig() -> bool:
+    """Haengt der Socket noch im Container, obwohl die compose-Datei ihn nicht mehr nennt?
+
+    Dann stammt der laufende Container noch aus der Zeit davor. Ein Neustart aendert daran
+    nichts - Docker uebernimmt geaenderte Einbindungen erst, wenn der Container NEU ERSTELLT
+    wird. Ohne diesen Schritt bliebe der Socket eingehaengt, bis jemand von Hand
+    "docker compose up -d" tippt; und genau das ist der Zugang, der hier wegsoll.
+
+    Einmalig: danach ist der Socket fort, os.path.exists schlaegt fehl, und der ganze Pfad
+    wird nie wieder betreten."""
+    if not os.path.exists("/var/run/docker.sock"):
+        return False
+    try:
+        with open("/repo/docker-compose.yml", encoding="utf-8") as f:
+            return "docker.sock" not in f.read()
+    except OSError:
+        return False
 
 
 def hash_pw(password: str) -> str:
@@ -3719,17 +3743,38 @@ async def _do_git_update(ziel: str = ""):
             raise RuntimeError(f"git reset fehlgeschlagen (exit {rc})")
         _ulog("  ✓  Code aktualisiert", "ok")
 
-        compose_dir = await asyncio.get_event_loop().run_in_executor(None, _get_compose_dir)
-        if compose_dir:
-            _ulog("$ docker-compose restart", "cmd")
-            rc = await _run(["docker-compose", "restart"], cwd=compose_dir)
-            _update_status["done"] = True
-        else:
-            _ulog("$ exec python " + " ".join(sys.argv), "cmd")
-            _ulog("  🚀  Server wird neu gestartet…", "restart")
-            _update_status["done"] = True
-            await asyncio.sleep(1)
+        # Einmaliger Uebergang: der laufende Container hat den Docker-Socket noch
+        # eingehaengt, die neue compose-Datei nennt ihn nicht mehr. Ein Neustart wuerde das
+        # nicht aendern - Docker uebernimmt Einbindungen erst beim Neuerstellen. Also hier,
+        # mit dem Socket, der gleich verschwindet.
+        if await asyncio.get_event_loop().run_in_executor(None, _neu_erstellen_noetig):
+            verzeichnis = await asyncio.get_event_loop().run_in_executor(None, _get_compose_dir)
+            if verzeichnis:
+                _ulog("  Der Container haengt noch am Docker-Socket - er wird ohne ihn "
+                      "neu aufgebaut.", "warn")
+                for befehl in (["docker", "compose", "up", "-d"], ["docker-compose", "up", "-d"]):
+                    _ulog("$ " + " ".join(befehl), "cmd")
+                    try:
+                        if await _run(befehl, cwd=verzeichnis) == 0:
+                            _update_status["done"] = True
+                            return   # der neue Container laeuft bereits, dieser hier geht gleich
+                    except FileNotFoundError:
+                        continue
+                _ulog("  Neuaufbau nicht moeglich - bitte einmal von Hand "
+                      "\"docker compose up -d\" ausfuehren, damit der Socket wegfaellt.", "warn")
+
+        _ulog("$ exec python " + " ".join(sys.argv), "cmd")
+        _ulog("  🚀  Server wird neu gestartet…", "restart")
+        _update_status["done"] = True
+        await asyncio.sleep(1)
+        try:
             os.execv(sys.executable, [sys.executable] + sys.argv)
+        except Exception as e:
+            # Letzter Ausweg: beenden und den Neustart dem Container ueberlassen. Besser als
+            # mit altem Code weiterzulaufen, nachdem die Dateien schon neu sind.
+            _ulog(f"  Neustart ueber exec nicht moeglich ({e}) - Prozess wird beendet", "warn")
+            await asyncio.sleep(0.5)
+            os._exit(0)
 
     except Exception as e:
         _ulog(f"❌  Fehler: {e}", "err")
