@@ -163,6 +163,16 @@
 <div class="alert alert-error" style="margin-bottom:1.25rem;">❌ {{ meldung(error, lang) }}</div>
 {% endif %}
 
+{% if is_android %}
+<div style="margin-bottom:1.25rem;padding:1rem 1.15rem;border-radius:0.75rem;
+            border:2px solid #f59e0b;background:rgba(245,158,11,0.12);">
+  <div style="font-weight:700;font-size:1rem;color:#f59e0b;margin-bottom:0.4rem;">
+    ⚠️ {{ tr.android_warn_title }}
+  </div>
+  <div style="font-size:0.88rem;line-height:1.6;">{{ tr.android_warn_body }}</div>
+</div>
+{% endif %}
+
 <!-- ── Greeting ───────────────────────────────────────── -->
 <div class="dash-greeting">
   <div>

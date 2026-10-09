@@ -3711,6 +3711,29 @@ async function vrcInstRaw() {
   out.textContent = '…';
   try {
     const r = await fetch('/servers/{{ guild.id }}/vrc/instances/raw', {method: 'POST'});
+const VRC_PROBE_T = {
+  name: {{ tr.vrc_probe_name | jsraw }}, id: {{ tr.vrc_probe_id | jsraw }},
+  trust: {{ tr.vrc_probe_trust | jsraw }}, adult: {{ tr.vrc_probe_adult | jsraw }},
+  adult_fields: {{ tr.vrc_probe_adult_fields | jsraw }},
+  adult_tag: {{ tr.vrc_probe_adult_tag | jsraw }},
+  textfields: {{ tr.vrc_probe_textfields | jsraw }},
+  textlen: {{ tr.vrc_probe_textlen | jsraw }}, chars: {{ tr.vrc_probe_chars | jsraw }},
+  delivered: {{ tr.vrc_probe_delivered | jsraw }},
+  absent: {{ tr.vrc_probe_absent | jsraw }}, empty: {{ tr.vrc_probe_empty | jsraw }},
+  ja: {{ tr.vrc_probe_yes | jsraw }}, nein: {{ tr.vrc_probe_no | jsraw }},
+};
+const VRC_GRP_T = {
+  gruppe: {{ tr.vrc_grp_group | jsraw }}, mitglieder: {{ tr.vrc_grp_members | jsraw }},
+  botkonto: {{ tr.vrc_grp_botaccount | jsraw }}, hinweis: {{ tr.vrc_grp_note | jsraw }},
+  status: {
+    member: {{ tr.vrc_grpstate_member | jsraw }},
+    requested: {{ tr.vrc_grpstate_requested | jsraw }},
+    invited: {{ tr.vrc_grpstate_invited | jsraw }},
+    banned: {{ tr.vrc_grpstate_banned | jsraw }},
+    userblocked: {{ tr.vrc_grpstate_blocked | jsraw }},
+    inactive: {{ tr.vrc_grpstate_inactive | jsraw }},
+  },
+};
     const d = await r.json();
     if (d.error) { out.textContent = '❌ ' + d.error; return; }
     const z = ['Offene Instanzen: ' + d.anzahl, ''];
@@ -3858,11 +3881,12 @@ async function vrcGroupCall(what) {
       out.textContent = '❌ ' + d.error;
     } else {
       const lines = [];
-      if (d.group_name) lines.push('Gruppe: ' + d.group_name
-        + (d.group_members != null ? ' (' + d.group_members + ' Mitglieder)' : ''));
-      if (d.bot_name) lines.push('Bot-Konto: ' + d.bot_name);
-      lines.push((d.bot_is_member ? '✅ ' : '⚠️ ') + (d.bot_status_text || d.bot_status || '?'));
-      if (d.group_note) lines.push('Hinweis: ' + d.group_note);
+      if (d.group_name) lines.push(VRC_GRP_T.gruppe + ' ' + d.group_name
+        + (d.group_members != null ? ' (' + d.group_members + ' ' + VRC_GRP_T.mitglieder + ')' : ''));
+      if (d.bot_name) lines.push(VRC_GRP_T.botkonto + ' ' + d.bot_name);
+      const zustand = VRC_GRP_T.status[d.bot_status] || d.bot_status_text || d.bot_status || '?';
+      lines.push((d.bot_is_member ? '✅ ' : '⚠️ ') + zustand);
+      if (d.group_note) lines.push(VRC_GRP_T.hinweis + ' ' + d.group_note);
       out.textContent = lines.join('\n');
     }
   } catch (e) {
@@ -3886,24 +3910,25 @@ async function vrcProbe() {
     const d = await r.json();
     // textContent, nie innerHTML: hier landen fremde Profiltexte im Dashboard.
     if (d.error) { out.textContent = '❌ ' + d.error; btn.disabled = false; return; }
+    const P = VRC_PROBE_T;
+    const jn = function (b) { return b ? P.ja : P.nein; };
     const lines = [
-      'Name: ' + d.name,
-      'ID: ' + d.id,
-      'Vertrauensstufe: ' + d.trust,
-      '18+: ' + (d.age ? 'ja' : 'nein'),
-      '  gelieferte 18+-Felder: ' + (Object.keys(d.age_fields).length
+      P.name + ' ' + d.name,
+      P.id + ' ' + d.id,
+      P.trust + ' ' + d.trust,
+      P.adult + ' ' + jn(d.age),
+      '  ' + P.adult_fields + ' ' + (Object.keys(d.age_fields).length
           ? JSON.stringify(d.age_fields) : {{ tr.none_dash | jsraw }}),
-      '  18+-Merkmal in tags: ' + (d.age_tag ? 'ja' : 'nein'),
-      'VRChat+: ' + (d.supporter ? 'ja' : 'nein'),
-      'Textfelder fuer den Nachweis:'
+      '  ' + P.adult_tag + ' ' + jn(d.age_tag),
+      'VRChat+: ' + jn(d.supporter),
+      P.textfields
     ];
     Object.keys(d.text_fields).forEach(function (k) {
       const v = d.text_fields[k];
-      lines.push('  ' + k + ': ' + (v === null ? '— kommt nicht zurueck —'
-                                   : (v === '' ? '— leer —' : v)));
+      lines.push('  ' + k + ': ' + (v === null ? P.absent : (v === '' ? P.empty : v)));
     });
-    lines.push('Gesamtlaenge des Profiltexts: ' + d.text_len + ' Zeichen');
-    lines.push('Gelieferte Felder: ' + d.fields.join(', '));
+    lines.push(P.textlen + ' ' + d.text_len + ' ' + P.chars);
+    lines.push(P.delivered + ' ' + d.fields.join(', '));
     out.textContent = lines.join('\n');
     out.style.whiteSpace = 'pre-wrap';
   } catch (e) {

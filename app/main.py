@@ -2605,7 +2605,7 @@ async def dashboard(request: Request, error: str = ""):
         **session(request), "request": request,
         "actions": actions, "stats": stats, "colors": ACTION_COLORS,
         "token_set": token_set, "guilds": guilds, "active": "dashboard",
-        "bot_online": bot.is_ready(),
+        "bot_online": bot.is_ready(), "is_android": IS_ANDROID,
         "uptime_str": uptime_str,
         "total_members": total_members,
         "local_hour": local_hour,
