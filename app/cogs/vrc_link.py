@@ -1461,10 +1461,11 @@ class VRCLink(commands.Cog):
                         # "Soll == Ist" fuer erfuellt und vergibt nie wieder etwas.
                         await db_exec(
                             "UPDATE vrc_links SET vrc_group_member=0, vrc_group_roles='[]', "
-                            "vrc_group_checked=? WHERE id=?",
+                            "vrc_group_invited='', vrc_group_checked=? WHERE id=?",
                             (datetime.datetime.utcnow().isoformat(), row["id"]),
                         )
                         row["vrc_group_member"] = 0
+                        row["vrc_group_invited"] = ""
                         print(f"[vrc_link] {row['vrchat_name']} ist nicht mehr in der Gruppe")
                     else:
                         await db_exec(
