@@ -3711,29 +3711,6 @@ async function vrcInstRaw() {
   out.textContent = '…';
   try {
     const r = await fetch('/servers/{{ guild.id }}/vrc/instances/raw', {method: 'POST'});
-const VRC_PROBE_T = {
-  name: {{ tr.vrc_probe_name | jsraw }}, id: {{ tr.vrc_probe_id | jsraw }},
-  trust: {{ tr.vrc_probe_trust | jsraw }}, adult: {{ tr.vrc_probe_adult | jsraw }},
-  adult_fields: {{ tr.vrc_probe_adult_fields | jsraw }},
-  adult_tag: {{ tr.vrc_probe_adult_tag | jsraw }},
-  textfields: {{ tr.vrc_probe_textfields | jsraw }},
-  textlen: {{ tr.vrc_probe_textlen | jsraw }}, chars: {{ tr.vrc_probe_chars | jsraw }},
-  delivered: {{ tr.vrc_probe_delivered | jsraw }},
-  absent: {{ tr.vrc_probe_absent | jsraw }}, empty: {{ tr.vrc_probe_empty | jsraw }},
-  ja: {{ tr.vrc_probe_yes | jsraw }}, nein: {{ tr.vrc_probe_no | jsraw }},
-};
-const VRC_GRP_T = {
-  gruppe: {{ tr.vrc_grp_group | jsraw }}, mitglieder: {{ tr.vrc_grp_members | jsraw }},
-  botkonto: {{ tr.vrc_grp_botaccount | jsraw }}, hinweis: {{ tr.vrc_grp_note | jsraw }},
-  status: {
-    member: {{ tr.vrc_grpstate_member | jsraw }},
-    requested: {{ tr.vrc_grpstate_requested | jsraw }},
-    invited: {{ tr.vrc_grpstate_invited | jsraw }},
-    banned: {{ tr.vrc_grpstate_banned | jsraw }},
-    userblocked: {{ tr.vrc_grpstate_blocked | jsraw }},
-    inactive: {{ tr.vrc_grpstate_inactive | jsraw }},
-  },
-};
     const d = await r.json();
     if (d.error) { out.textContent = '❌ ' + d.error; return; }
     const z = ['Offene Instanzen: ' + d.anzahl, ''];
@@ -3865,6 +3842,30 @@ function vrcAddRoleMap() {
     vrc.options[vrc.selectedIndex] ? vrc.options[vrc.selectedIndex].textContent : '';
   document.getElementById('vrc-map-form').submit();
 }
+
+const VRC_PROBE_T = {
+  name: {{ tr.vrc_probe_name | jsraw }}, id: {{ tr.vrc_probe_id | jsraw }},
+  trust: {{ tr.vrc_probe_trust | jsraw }}, adult: {{ tr.vrc_probe_adult | jsraw }},
+  adult_fields: {{ tr.vrc_probe_adult_fields | jsraw }},
+  adult_tag: {{ tr.vrc_probe_adult_tag | jsraw }},
+  textfields: {{ tr.vrc_probe_textfields | jsraw }},
+  textlen: {{ tr.vrc_probe_textlen | jsraw }}, chars: {{ tr.vrc_probe_chars | jsraw }},
+  delivered: {{ tr.vrc_probe_delivered | jsraw }},
+  absent: {{ tr.vrc_probe_absent | jsraw }}, empty: {{ tr.vrc_probe_empty | jsraw }},
+  ja: {{ tr.vrc_probe_yes | jsraw }}, nein: {{ tr.vrc_probe_no | jsraw }},
+};
+const VRC_GRP_T = {
+  gruppe: {{ tr.vrc_grp_group | jsraw }}, mitglieder: {{ tr.vrc_grp_members | jsraw }},
+  botkonto: {{ tr.vrc_grp_botaccount | jsraw }}, hinweis: {{ tr.vrc_grp_note | jsraw }},
+  status: {
+    member: {{ tr.vrc_grpstate_member | jsraw }},
+    requested: {{ tr.vrc_grpstate_requested | jsraw }},
+    invited: {{ tr.vrc_grpstate_invited | jsraw }},
+    banned: {{ tr.vrc_grpstate_banned | jsraw }},
+    userblocked: {{ tr.vrc_grpstate_blocked | jsraw }},
+    inactive: {{ tr.vrc_grpstate_inactive | jsraw }},
+  },
+};
 
 async function vrcGroupCall(what) {
   const out = document.getElementById('vrc-grp-out');
