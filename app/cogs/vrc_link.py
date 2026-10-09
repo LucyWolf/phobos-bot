@@ -247,6 +247,10 @@ async def fetch_profile(vrc_user_id: str) -> tuple:
 # also bei einer Handvoll alle zehn Minuten ein paar Anfragen - nicht der Verkehr, der ein
 # Bot-Konto auffaellig macht.
 GRUPPENSTAND_TAKT = 600
+# Wie viele je Durchgang nachgesehen werden. Reihum, aeltester Pruefstand zuerst - bei
+# zwoelf Verknuepfungen ist damit jeder etwa alle zwanzig Minuten dran, bei hundert alle
+# anderthalb Stunden. Eine Anfrage je Eintrag, nicht mehr.
+GRUPPENSTAND_JE_LAUF = 6
 
 
 async def group_membership(group_id: str, vrc_user_id: str) -> tuple:
@@ -1425,19 +1429,45 @@ class VRCLink(commands.Cog):
         Ist die Gruppe gerade nicht erreichbar, bleibt der gespeicherte Stand wie er war -
         eine Stoerung als "nicht in der Gruppe" zu lesen waere schlimmer als gar nichts zu
         tun."""
-        offen = [r for r in rows if not r["vrc_group_member"] and r["vrc_user_id"]]
+        # Reihum ALLE, nicht nur die, die noch nicht drin sind. Wer austritt, verlor den
+        # Vermerk sonst nie: er wird nur beim Verknuepfen und beim Auffrischen von Hand
+        # zurueckgesetzt. Im Dashboard stand dann dauerhaft "in der Gruppe" bei jemandem,
+        # der laengst draussen ist - gemeldet mit Bild, elf Mal "in" und mindestens einer
+        # davon nicht drin.
+        #
+        # Der aelteste Pruefstand zuerst: so kommt jeder regelmaessig dran, ohne dass ein
+        # Durchgang je mehr als eine Handvoll Anfragen kostet.
+        offen = sorted((r for r in rows if r["vrc_user_id"]),
+                       key=lambda r: r["vrc_group_checked"] or "")
         if not offen:
             return
         group_id = (await get_guild_config(guild.id, "vrc_group_id") or "").strip()
         if not group_id:
             return
         automatisch = (await get_guild_config(guild.id, "vrc_auto_invite") or "") == "1"
-        for row in offen[:25]:   # Deckel, damit ein grosser Rueckstau nicht alles aufhaelt
+        for row in offen[:GRUPPENSTAND_JE_LAUF]:
             try:
                 state, is_member = await group_membership(group_id, row["vrc_user_id"])
                 if state != "ok":
                     continue
                 if not is_member:
+                    if row["vrc_group_member"]:
+                        # War drin, ist es nicht mehr. VRChat nimmt die Rollen mit der
+                        # Mitgliedschaft weg, der gemerkte Stand muss deshalb mit geleert
+                        # werden - sonst haelt sync_vrc_roles() beim Wiedereintritt
+                        # "Soll == Ist" fuer erfuellt und vergibt nie wieder etwas.
+                        await db_exec(
+                            "UPDATE vrc_links SET vrc_group_member=0, vrc_group_roles='[]', "
+                            "vrc_group_checked=? WHERE id=?",
+                            (datetime.datetime.utcnow().isoformat(), row["id"]),
+                        )
+                        row["vrc_group_member"] = 0
+                        print(f"[vrc_link] {row['vrchat_name']} ist nicht mehr in der Gruppe")
+                    else:
+                        await db_exec(
+                            "UPDATE vrc_links SET vrc_group_checked=? WHERE id=?",
+                            (datetime.datetime.utcnow().isoformat(), row["id"]),
+                        )
                     # Noch nicht drin: auf Wunsch einmal einladen. Genau einmal - der
                     # Zeitstempel vrc_group_invited haelt fest, dass es passiert ist, sonst
                     # ginge bei jedem Durchgang eine neue Einladung an VRChat, und
@@ -1452,13 +1482,15 @@ class VRCLink(commands.Cog):
                         print(f"[vrc_link] Gruppeneinladung an {row['vrchat_name']}: {zustand}"
                               + (f" ({detail})" if detail else ""))
                     continue
+                war_schon = bool(row["vrc_group_member"])
                 await db_exec(
                     "UPDATE vrc_links SET vrc_group_member=1, vrc_group_checked=? WHERE id=?",
                     (datetime.datetime.utcnow().isoformat(), row["id"]),
                 )
                 row["vrc_group_member"] = 1   # damit der Abgleich gleich danach greift
-                print(f"[vrc_link] {row['vrchat_name']} ist der Gruppe beigetreten - "
-                      f"Rollen werden jetzt vergeben")
+                if not war_schon:
+                    print(f"[vrc_link] {row['vrchat_name']} ist der Gruppe beigetreten - "
+                          f"Rollen werden jetzt vergeben")
             except Exception as e:
                 print(f"[vrc_link] Gruppenstand fuer {row['vrc_user_id']} "
                       f"nicht pruefbar: {e}")
