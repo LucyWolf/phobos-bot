@@ -273,6 +273,9 @@ async def group_membership(group_id: str, vrc_user_id: str) -> tuple:
     except Exception as e:
         print(f"[vrc_link] group check for {vrc_user_id!r} in {group_id!r} failed: {e}")
         return "unavailable", False
+    status = str((row or {}).get("membershipStatus") or "") if isinstance(row, dict) else ""
+    if status:
+        return "ok", status == "member"
     return "ok", bool(row)
 
 
