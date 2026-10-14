@@ -132,14 +132,14 @@
     <p class="hint" style="margin-bottom:1rem;color:#22c55e;">✅ {{ tr.profile_2fa_enabled }}</p>
 
     <button type="button" class="btn btn-secondary" onclick="toggle2faBackupForm()" style="margin-bottom:0.75rem;">🔑 {{ tr.profile_2fa_backup_regenerate }}</button>
-    <form method="post" action="/profile/2fa/backup-codes/regenerate" id="2fa-backup-form" class="keine-zugangsdaten" style="display:none;margin-bottom:1.25rem;" onsubmit="return confirm({{ tr.profile_2fa_backup_regenerate_confirm | js }})">
+    <form method="post" action="/profile/2fa/backup-codes/regenerate" id="2fa-backup-form" data-pwmanager="off" style="display:none;margin-bottom:1.25rem;" onsubmit="return confirm({{ tr.profile_2fa_backup_regenerate_confirm | js }})">
       <p class="hint" style="margin-bottom:0.5rem;">{{ tr.profile_2fa_backup_regenerate_hint }}</p>
       <label>{{ tr.label_password }}</label>
       <input type="password" name="password" required autocomplete="current-password">
       <button type="submit" class="btn btn-primary">{{ tr.profile_2fa_backup_regenerate }}</button>
     </form>
 
-    <form method="post" action="/profile/2fa/disable" class="keine-zugangsdaten" onsubmit="return confirm({{ tr.profile_2fa_disable_confirm | js }})">
+    <form method="post" action="/profile/2fa/disable" data-pwmanager="off" onsubmit="return confirm({{ tr.profile_2fa_disable_confirm | js }})">
       <label>{{ tr.label_password }}</label>
       <input type="password" name="password" required autocomplete="current-password">
       <button type="submit" class="btn btn-danger">{{ tr.profile_2fa_disable }}</button>
@@ -156,7 +156,7 @@
       // Druckvorschau der Backup-Codes. Hier wird aber nichts angemeldet, sondern nur
       // rueckgefragt - also steht beim Absenden kein ausgefuelltes Passwortfeld mehr da.
       // Ohne JavaScript behaelt das Feld seinen Namen und das Formular geht wie bisher durch.
-      document.querySelectorAll('form.keine-zugangsdaten').forEach(function (f) {
+      document.querySelectorAll('form[data-pwmanager]').forEach(function (f) {
         f.addEventListener('submit', function (e) {
           if (e.defaultPrevented) return;          // Rueckfrage abgelehnt: nichts anfassen
           const pw = f.querySelector('input[type=password]');
