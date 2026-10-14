@@ -150,20 +150,47 @@
         if (f) f.style.display = f.style.display === 'none' ? '' : 'none';
       }
 
-      // Firefox bot nach dem Absenden an, "deine@email.de" mit diesem Passwort zu
-      // speichern: es verrechnet das E-Mail-Feld weiter oben auf der Seite mit dem
+      // Passwortmanager boten nach dem Absenden an, "deine@email.de" mit diesem Passwort
+      // zu speichern - sie verrechnen das E-Mail-Feld weiter oben auf der Seite mit dem
       // Passwortfeld hier zu einem Login. Der Kasten legte sich dann ueber die
       // Druckvorschau der Backup-Codes. Hier wird aber nichts angemeldet, sondern nur
-      // rueckgefragt - also steht beim Absenden kein ausgefuelltes Passwortfeld mehr da.
-      // Ohne JavaScript behaelt das Feld seinen Namen und das Formular geht wie bisher durch.
+      // rueckgefragt.
+      //
+      // Erst beim Absenden aufzuraeumen reicht nicht: Erweiterungen wie Bitwarden oder
+      // Proton Pass greifen den Wert schon beim Tippen ab, und autocomplete="off"
+      // ignorieren sie absichtlich, damit Seiten den Manager nicht aussperren koennen.
+      // Was bleibt, ist, ihnen gar kein Passwortfeld hinzustellen: ein Textfeld, dessen
+      // Zeichen das Stylesheet zu Punkten macht, und ohne name= ist es auch kein
+      // Anmeldefeld mehr. Der Wert wandert erst beim Absenden in ein verstecktes Feld.
+      //
+      // Ohne JavaScript - und in Browsern ohne -webkit-text-security, wo die Zeichen
+      // sonst offen dastuenden - bleibt alles beim Alten: type=password mit name=,
+      // das Formular geht unveraendert durch.
+      const maskierbar = window.CSS && CSS.supports
+                      && (CSS.supports('-webkit-text-security', 'disc')
+                       || CSS.supports('text-security', 'disc'));
+
       document.querySelectorAll('form[data-pwmanager]').forEach(function (f) {
+        const pw = f.querySelector('input[type=password]');
+        if (!pw) return;
+
+        if (maskierbar && pw.name) {
+          pw.dataset.feldname = pw.name;
+          pw.removeAttribute('name');
+          pw.type = 'text';
+          pw.autocomplete = 'off';
+          pw.spellcheck = false;
+          pw.style.webkitTextSecurity = 'disc';
+          pw.style.textSecurity = 'disc';
+        }
+
         f.addEventListener('submit', function (e) {
           if (e.defaultPrevented) return;          // Rueckfrage abgelehnt: nichts anfassen
-          const pw = f.querySelector('input[type=password]');
-          if (!pw || !pw.name) return;
+          const name = pw.dataset.feldname || pw.name;
+          if (!name) return;
           const versteckt = document.createElement('input');
           versteckt.type = 'hidden';
-          versteckt.name = pw.name;
+          versteckt.name = name;
           versteckt.value = pw.value;
           pw.removeAttribute('name');
           pw.value = '';
