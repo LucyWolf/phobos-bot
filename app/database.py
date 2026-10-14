@@ -1241,6 +1241,16 @@ async def init_db():
             # hier nicht davon abhaengen, ob gerade jemand am Login herumprobiert.
             "ALTER TABLE users ADD COLUMN reset_fail_count INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE users ADD COLUMN reset_locked_until TEXT",
+            # Admin NUR fuer diesen einen Server ("das der jenige dann auch admin zu diesen
+            # gewaerten server hat aber nicht zu anderen"). Haengt bewusst an der Freigabe
+            # und nicht am Konto: wird der Zugriff entzogen, faellt die Zeile weg und damit
+            # auch dieses Recht. Standard 0, bestehende Freigaben bleiben also Moderatoren.
+            "ALTER TABLE user_guild_permissions ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0",
+            # Moderator auf ALLEN Servern, ohne jede einzeln freizugeben - die vierte Stufe
+            # neben Master-Admin (role='admin'), Server-Admin (Freigabe mit is_admin) und
+            # Server-Moderator (Freigabe ohne). Standard 0, bestehende Moderatoren bleiben
+            # also genau auf den Servern, fuer die sie freigegeben sind.
+            "ALTER TABLE users ADD COLUMN alle_server INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await db.execute(col)

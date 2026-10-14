@@ -1036,10 +1036,23 @@ async def _guild_list(request: Request) -> list:
     return [g for g in all_guilds if g["id"] in allowed]
 
 
+async def _ist_master_moderator(uid) -> bool:
+    """Moderator, der ohne Einzelfreigabe auf jeden Server darf."""
+    if not uid:
+        return False
+    row = await db_one("SELECT role, alle_server FROM users WHERE id=?", (uid,))
+    return bool(row and row["role"] == "moderator" and row["alle_server"])
+
+
 async def _guild_access(request: Request, guild_id) -> bool:
     if request.session.get("role") == "admin":
         return True
     uid = request.session.get("user_id")
+    # Master-Moderator: dieselben Rechte wie ein freigegebener Moderator, nur eben auf
+    # jedem Server - gedacht fuer jemanden, der ueberall mithilft, ohne dass jede neue
+    # Gilde erst einzeln freigeschaltet werden muss.
+    if await _ist_master_moderator(uid):
+        return True
     row = await db_one(
         "SELECT 1 FROM user_guild_permissions WHERE user_id=? AND guild_id=?",
         (uid, str(guild_id)),
@@ -1047,6 +1060,23 @@ async def _guild_access(request: Request, guild_id) -> bool:
     if row:
         return True
     return str(guild_id) in await _token_guild_ids(uid)
+
+
+async def _ist_server_admin(request: Request, guild_id) -> bool:
+    """Darf dieser Betrachter DIESEN Server verwalten wie eine Administratorin?
+
+    Wahr fuer die globalen Admins und fuer Moderatoren, deren Freigabe fuer genau diesen
+    Server das Haekchen traegt. Das Recht reicht nie weiter als bis zum Serverrand: die
+    Benutzerverwaltung, die Einstellungen, das Bot-Token und die Updates bleiben dem
+    globalen Admin vorbehalten, und auch die Reiterliste (allowed_tabs) gilt weiter.
+    """
+    if request.session.get("role") == "admin":
+        return True
+    row = await db_one(
+        "SELECT is_admin FROM user_guild_permissions WHERE user_id=? AND guild_id=?",
+        (request.session.get("user_id"), str(guild_id)),
+    )
+    return bool(row and row["is_admin"])
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -2926,7 +2956,8 @@ async def settings_app_name_save(request: Request, app_name: str = Form(...)):
 @web.get("/users", response_class=HTMLResponse)
 async def users_page(request: Request, error: str = "", success: str = ""):
     if r := admin_redirect(request): return r
-    all_users = await db_rows("SELECT id, username, role, email, created_at, active FROM users ORDER BY created_at")
+    all_users = await db_rows("SELECT id, username, role, email, created_at, active, "
+                              "alle_server FROM users ORDER BY created_at")
     token_set = await _token_configured()
     admin_count = sum(1 for u in all_users if u["role"] == "admin")
     all_guilds = [{"id": str(g.id), "name": g.name} for g in bot.guilds]
@@ -2961,10 +2992,30 @@ async def users_create(request: Request, username: str = Form(...), password: st
 
 
 @web.post("/users/role/{user_id}")
-async def users_role(request: Request, user_id: int, role: str = Form(...), next: str = Form("/users")):
+async def users_role(request: Request, user_id: int, role: str = Form(...),
+                     next: str = Form("/users"), rang: str = Form("")):
+    """Setzt den Rang eines Kontos.
+
+    Vier Stufen, aus zwei Fragen zusammengesetzt - wie weit (alle Server oder nur die
+    freigegebenen) und wie hoch (Admin oder Moderator):
+
+        master_admin  role='admin'                     alles, auch Einstellungen und Token
+        master_mod    role='moderator', alle_server=1  Moderator auf jedem Server
+        server        role='moderator', alle_server=0  nur freigegebene Server
+
+    Ob jemand auf einem freigegebenen Server Admin oder Moderator ist, haengt an der
+    Freigabe selbst (user_guild_permissions.is_admin) und wird dort eingestellt - das
+    kann je Server verschieden sein und gehoert deshalb nicht ans Konto.
+
+    `rang` ist der neue Weg, `role` bleibt fuer die alten Knoepfe bestehen.
+    """
     if r := admin_redirect(request): return r
     dest = next if (next == "/users" or next.startswith("/servers/")) else "/users"
     sep = "&" if "?" in dest else "?"
+    if rang:
+        if rang not in ("master_admin", "master_mod", "server"):
+            return RedirectResponse(f"{dest}{sep}error=Ungültiger+Rang", status_code=302)
+        role = "admin" if rang == "master_admin" else "moderator"
     if role not in ("admin", "moderator"):
         return RedirectResponse(f"{dest}{sep}error=Ungültige+Rolle", status_code=302)
     if role == "moderator":
@@ -2973,7 +3024,10 @@ async def users_role(request: Request, user_id: int, role: str = Form(...), next
         )
         if not other_admins or other_admins.get("c", 0) == 0:
             return RedirectResponse(f"{dest}{sep}error=Letzter+Admin+kann+nicht+herabgestuft+werden", status_code=302)
-    await db_exec("UPDATE users SET role=? WHERE id=?", (role, user_id))
+    # Ein Admin ist nie "nur auf manchen Servern" - das Flag waere dort ohne Wirkung und
+    # wuerde beim Herabstufen stillschweigend wieder auftauchen.
+    alle = 1 if rang == "master_mod" else 0
+    await db_exec("UPDATE users SET role=?, alle_server=? WHERE id=?", (role, alle, user_id))
     return RedirectResponse(f"{dest}{sep}success=Rolle+geändert", status_code=302)
 
 
@@ -8695,11 +8749,15 @@ async def server_config(
     twitch_configured = bool(await db_rows("SELECT 1 FROM twitch_apis LIMIT 1"))
 
     # Dashboard users & server access
-    all_users = await db_rows("SELECT id, username, role FROM users ORDER BY role DESC, username")
+    all_users = await db_rows(
+        "SELECT id, username, role, alle_server FROM users ORDER BY role DESC, username")
     perm_rows = await db_rows(
-        "SELECT user_id, allowed_tabs FROM user_guild_permissions WHERE guild_id=?", (str(guild_id),)
+        "SELECT user_id, allowed_tabs, is_admin FROM user_guild_permissions WHERE guild_id=?",
+        (str(guild_id),)
     )
     server_perms = {p["user_id"] for p in perm_rows}
+    # Wer von den Freigegebenen diesen Server verwalten darf wie eine Administratorin.
+    server_user_admins = {p["user_id"] for p in perm_rows if p["is_admin"]}
     # Per-granted-moderator tab restriction, for the "👥 Nutzer" tab's own checklist - a user_id
     # NOT in this dict (or an empty set) means unrestricted, matching _viewer_allowed_tabs' own
     # "none/empty = no restriction" convention used for enforcement above.
@@ -8886,6 +8944,8 @@ async def server_config(
         "subs": subs, "twitch_configured": twitch_configured,
         "all_users": all_users, "server_perms": server_perms,
         "server_user_allowed_tabs": server_user_allowed_tabs,
+        "server_user_admins": server_user_admins,
+        "ist_server_admin": await _ist_server_admin(request, guild_id),
         "server_admin_count": server_admin_count,
         "automod_presets": automod_presets,
         "leveling_channels": leveling_channels,
@@ -9049,7 +9109,11 @@ async def server_features_save(request: Request, guild_id: int):
     # ("der mod kann die sachen die bei nutzer aus sind wieder an machen" - confirmed live: a
     # granted moderator could POST here directly and rewrite it, even fully restricted via
     # their own allowed_tabs, since that's a separate, per-viewer check this route never made).
-    if r := admin_redirect(request): return r
+    # Server-Admins duerfen das jetzt auch - aber nur fuer ihren eigenen Server, und die
+    # Pruefung bleibt hier in der Route: die Vorlage versteckt den Kasten zwar, ein
+    # Moderator ohne das Haekchen koennte sonst aber weiterhin direkt hierher schicken.
+    if not await _ist_server_admin(request, guild_id):
+        return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/?error=Keine+Berechtigung", status_code=302)
     form = await request.form()
@@ -11178,6 +11242,26 @@ async def server_revoke_user(request: Request, guild_id: int, user_id: int):
         (user_id, str(guild_id)),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=users&success=Zugriff+entzogen", status_code=302)
+
+
+@web.post("/servers/{guild_id}/users/{user_id}/admin")
+async def server_user_admin_toggle(request: Request, guild_id: int, user_id: int):
+    """Macht einen freigegebenen Moderator zum Admin DIESES Servers - oder wieder zurueck."""
+    if r := admin_redirect(request): return r
+    row = await db_one(
+        "SELECT is_admin FROM user_guild_permissions WHERE user_id=? AND guild_id=?",
+        (user_id, str(guild_id)),
+    )
+    if not row:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=users&error=Kein+Zugriff+gewährt", status_code=302)
+    neu = 0 if row["is_admin"] else 1
+    await db_exec(
+        "UPDATE user_guild_permissions SET is_admin=? WHERE user_id=? AND guild_id=?",
+        (neu, user_id, str(guild_id)),
+    )
+    meldung = "Server-Admin+gesetzt" if neu else "Server-Admin+entfernt"
+    return RedirectResponse(f"/servers/{guild_id}?tab=users&success={meldung}", status_code=302)
 
 
 @web.post("/servers/{guild_id}/users/{user_id}/tabs")

@@ -92,7 +92,7 @@
             {{ u.username }}
             {% if not u.active %}<span class="badge badge-gray" style="margin-left:0.35rem;font-size:0.68rem;">deaktiviert</span>{% endif %}
           </td>
-          <td><span class="badge badge-{{ u.role }}">{{ u.role }}</span></td>
+          <td><span class="badge badge-{{ u.role }}">{% if u.role == 'admin' %}{{ tr.rang_master_admin }}{% elif u.alle_server %}{{ tr.rang_master_mod }}{% else %}{{ tr.rang_server }}{% endif %}</span></td>
           <td style="font-size:0.8rem;">
             <form method="post" action="/users/email/{{ u.id }}" style="display:flex;gap:0.4rem;align-items:center;min-width:200px;">
               <input type="email" name="email_addr" value="{{ u.email or '' }}" placeholder="email@example.com"
@@ -110,20 +110,22 @@
             </form>
             {% endif %}
             {% else %}
-            {% if u.role == 'moderator' %}
-            <form method="post" action="/users/role/{{ u.id }}" style="display:inline">
-              <input type="hidden" name="role" value="admin">
-              <button type="submit" class="btn btn-secondary" style="font-size:0.78rem; padding:0.25rem 0.6rem;">↑ Admin</button>
-            </form>
-            {% else %}
-            {% if admin_count > 1 %}
-            <form method="post" action="/users/role/{{ u.id }}" style="display:inline">
+            {# Vier Stufen aus zwei Fragen: wie weit (alle Server oder nur die freigegebenen)
+               und wie hoch (Admin oder Moderator). Die ersten drei haengen am Konto und
+               stehen hier; ob jemand auf einem freigegebenen Server Admin ist, steht im
+               Nutzer-Reiter des jeweiligen Servers - das kann je Server verschieden sein. #}
+            {% if u.role != 'admin' or admin_count > 1 %}
+            <form method="post" action="/users/role/{{ u.id }}" style="display:inline-flex;gap:0.3rem;align-items:center;">
+              <select name="rang" style="width:auto;font-size:0.78rem;padding:0.25rem 0.4rem;margin:0;">
+                <option value="master_admin" {% if u.role == 'admin' %}selected{% endif %}>{{ tr.rang_master_admin }}</option>
+                <option value="master_mod" {% if u.role != 'admin' and u.alle_server %}selected{% endif %}>{{ tr.rang_master_mod }}</option>
+                <option value="server" {% if u.role != 'admin' and not u.alle_server %}selected{% endif %}>{{ tr.rang_server }}</option>
+              </select>
               <input type="hidden" name="role" value="moderator">
-              <button type="submit" class="btn btn-secondary" style="font-size:0.78rem; padding:0.25rem 0.6rem;">↓ Mod</button>
+              <button type="submit" class="btn btn-secondary" style="font-size:0.78rem; padding:0.25rem 0.6rem;">{{ tr.btn_save }}</button>
             </form>
             {% endif %}
-            {% endif %}
-            {% if u.role == 'moderator' %}
+            {% if u.role == 'moderator' and not u.alle_server %}
             <button type="button" onclick="toggleServers({{ u.id }})"
                     class="btn btn-secondary" style="font-size:0.78rem; padding:0.25rem 0.6rem;">🖥 {{ tr.usr_servers_button }}</button>
             {% endif %}

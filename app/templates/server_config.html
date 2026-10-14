@@ -66,7 +66,9 @@
   </form>
 </div>
 
-{% if role == 'admin' %}
+{# Server-Admins duerfen das auch - aber nur hier, fuer ihren eigenen Server. Die
+   Sicherung weiter unten und der Nutzer-Reiter bleiben den globalen Admins. #}
+{% if ist_server_admin %}
 <div class="card" style="margin-bottom:1.25rem;">
   <div class="feat-header" style="margin-bottom:0.5rem;">{{ tr.features_title }}</div>
   <p class="hint" style="margin-bottom:0.85rem;">{{ tr.features_hint }}</p>
@@ -2390,7 +2392,18 @@ document.addEventListener('click', function(e) {
     {% endif %}
     {% if u.role == 'admin' %}
     <span style="color:var(--muted);font-size:0.8rem;">{{ tr.server_users_global_access }}</span>
+    {% elif u.alle_server %}
+    {# Master-Moderator: ist ohne Freigabe auf jedem Server, hier gibt es nichts zu geben
+       oder zu nehmen - das steht auf der Benutzerseite. #}
+    <span style="color:var(--muted);font-size:0.8rem;">{{ tr.server_users_global_mod }}</span>
     {% elif u.id in server_perms %}
+    <form method="post" action="/servers/{{ guild.id }}/users/{{ u.id }}/admin" style="margin:0;">
+      <button type="submit" class="btn"
+              style="font-size:0.78rem;padding:0.25rem 0.7rem;{% if u.id in server_user_admins %}background:rgba(124,58,237,.18);color:#a78bfa;border:1px solid rgba(124,58,237,.35);{% endif %}"
+              title="{{ tr.server_users_admin_hint }}">
+        {% if u.id in server_user_admins %}★ {{ tr.rang_server_admin }}{% else %}☆ {{ tr.rang_server_mod }}{% endif %}
+      </button>
+    </form>
     <button type="button" onclick="toggleUserTabsEdit({{ u.id }})" class="btn btn-secondary" title="{{ tr.btn_settings }}" style="font-size:0.78rem;padding:0.25rem 0.6rem;">⚙</button>
     <form method="post" action="/servers/{{ guild.id }}/users/{{ u.id }}/revoke" style="margin:0;">
       <button type="submit" class="btn" style="background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.25);font-size:0.78rem;padding:0.25rem 0.7rem;">{{ tr.server_users_revoke }}</button>
