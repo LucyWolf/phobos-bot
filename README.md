@@ -360,9 +360,9 @@ The backup codes can be printed: the sheet carries the installation's name, the 
 No password, no SMTP configured (so no reset mail), no second admin — then the way back is on the server itself:
 
 ```bash
-docker exec -it phobos python3 /w/tools/passwort_setzen.py --liste
-docker exec -it phobos python3 /w/tools/passwort_setzen.py --benutzer <name>
-docker exec -it phobos python3 /w/tools/passwort_setzen.py --benutzer <name> --2fa-aus
+docker exec -it Phobos-Bot python3 /repo/tools/passwort_setzen.py --liste
+docker exec -it Phobos-Bot python3 /repo/tools/passwort_setzen.py --benutzer <name>
+docker exec -it Phobos-Bot python3 /repo/tools/passwort_setzen.py --benutzer <name> --2fa-aus
 ```
 
 The password is prompted for, never passed as an argument — otherwise it would sit in the shell history and the process list. Setting it ends all open sessions for that account. `--2fa-aus` additionally turns off two-factor and discards the backup codes, which is what you need when the phone is gone too. This opens nothing that was not already open: whoever has a shell on that machine can read and write the database anyway.
@@ -1033,9 +1033,9 @@ Die Backup-Codes lassen sich ausdrucken: auf dem Blatt stehen Name der Installat
 Kein Passwort, kein SMTP eingerichtet (also keine Mail zum Zurücksetzen), kein zweiter Admin — dann führt der Weg über den Server:
 
 ```bash
-docker exec -it phobos python3 /w/tools/passwort_setzen.py --liste
-docker exec -it phobos python3 /w/tools/passwort_setzen.py --benutzer <name>
-docker exec -it phobos python3 /w/tools/passwort_setzen.py --benutzer <name> --2fa-aus
+docker exec -it Phobos-Bot python3 /repo/tools/passwort_setzen.py --liste
+docker exec -it Phobos-Bot python3 /repo/tools/passwort_setzen.py --benutzer <name>
+docker exec -it Phobos-Bot python3 /repo/tools/passwort_setzen.py --benutzer <name> --2fa-aus
 ```
 
 Das Passwort wird abgefragt, nicht als Argument übergeben — sonst stünde es in der Shell-Geschichte und in der Prozessliste. Beim Setzen werden alle offenen Anmeldungen dieses Kontos beendet. `--2fa-aus` schaltet zusätzlich die Zwei-Faktor-Anmeldung ab und verwirft die Backup-Codes; das braucht man, wenn auch das Handy weg ist. Damit geht nichts auf, was nicht ohnehin offen wäre: wer eine Shell auf der Maschine hat, kann die Datenbank sowieso lesen und schreiben.
