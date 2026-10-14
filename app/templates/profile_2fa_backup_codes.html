@@ -1,11 +1,51 @@
 {# Shows the 8 one-time 2FA backup codes, either right after initial setup or after
    regenerating them from the profile page (main.py's profile_2fa_setup_confirm /
-   profile_2fa_backup_codes_regenerate) - codes are only ever shown once, right here. #}
+   profile_2fa_backup_codes_regenerate) - codes are only ever shown once, right here.
+
+   Der Kasten mit der Klasse "zettel" ist gleichzeitig der Ausdruck: beim Drucken bleibt
+   nur er stehen (siehe @media print), damit auf dem Blatt der Name der Installation, das
+   Konto und das Datum stehen und nicht die halbe Oberflaeche. #}
 {% extends "base.html" %}
 {% block title %}{{ app_name }} – Backup-Codes{% endblock %}
 {% block page_title %}🔑 Backup-Codes{% endblock %}
 
 {% block content %}
+<style>
+  .zettel-kopf { border-bottom:1px solid var(--border); padding-bottom:0.7rem; margin-bottom:0.9rem; }
+  .zettel-kopf h2 { margin:0 0 0.15rem; font-size:1.05rem; }
+  .zettel-kopf .zettel-was { font-size:0.8rem; color:var(--muted); }
+  .zettel-zeilen { margin-top:0.55rem; font-size:0.76rem; color:var(--muted); line-height:1.6; }
+  .zettel-zeilen b { color:var(--text); font-weight:600; }
+  .zettel-codes {
+    background:var(--bg); border:1px solid var(--border); border-radius:0.5rem; padding:1rem;
+    font-family:monospace; font-size:0.95rem; line-height:2; margin-bottom:1rem;
+  }
+  .zettel-codes div { display:flex; gap:0.7rem; align-items:baseline; justify-content:center; }
+  .zettel-codes .nr { color:var(--muted); font-size:0.75rem; min-width:1.2rem; text-align:right; }
+  .zettel-codes .kasten { color:var(--muted); }
+
+  /* Auf dem Papier: nur der Zettel, schwarz auf weiss, ohne Oberflaeche drumherum. */
+  @media print {
+    .sidebar, #sidebar, .page-header, footer, .alert, .nicht-drucken { display:none !important; }
+    #main { margin-left:0 !important; }
+    .page-content { padding:0 !important; }
+    body, #main, .page-content { background:#fff !important; color:#000 !important; }
+    .zettel {
+      max-width:none !important; width:100% !important; margin:0 !important;
+      border:1px solid #000 !important; border-radius:0 !important;
+      background:#fff !important; color:#000 !important; box-shadow:none !important;
+      padding:1.4rem !important; break-inside:avoid;
+    }
+    .zettel .zettel-kopf { border-bottom-color:#000 !important; }
+    .zettel .zettel-kopf h2, .zettel-zeilen b { color:#000 !important; }
+    .zettel .zettel-was, .zettel-zeilen, .zettel-codes .nr, .zettel .hint { color:#333 !important; }
+    .zettel-codes {
+      background:#fff !important; border:1px solid #000 !important;
+      color:#000 !important; font-size:1.05rem !important;
+    }
+  }
+</style>
+
 {% if noch_nicht_aktiv %}
 <div class="alert" style="max-width:480px;border:1px solid #f59e0b;background:rgba(245,158,11,0.12);">
   ⚠️ <b>{{ tr.twofa_not_yet_title }}</b><br>{{ tr.twofa_not_yet_body }}
@@ -14,26 +54,41 @@
 <div class="alert alert-success" style="max-width:480px;">✅ {{ tr.twofa_now_active }}</div>
 {% endif %}
 
-<div class="card" style="max-width:480px;">
-  <p class="hint" style="margin-bottom:1rem;">
-    {{ tr.twofa_codes_hint }}
-  </p>
-
-  <div style="background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;padding:1rem;
-              font-family:monospace;font-size:0.95rem;line-height:2;text-align:center;margin-bottom:1rem;">
-    {% for c in codes %}{{ c }}<br>{% endfor %}
+<div class="card zettel" style="max-width:480px;">
+  <div class="zettel-kopf">
+    <h2>{{ app_name }}</h2>
+    <div class="zettel-was">{{ tr.twofa_sheet_title }}</div>
+    <div class="zettel-zeilen">
+      {{ tr.twofa_sheet_account }}: <b>{{ display_name or username }}</b>
+      {%- if username and display_name and display_name != username %} ({{ username }}){% endif %}<br>
+      {% if zettel_adresse %}{{ tr.twofa_sheet_address }}: <b>{{ zettel_adresse }}</b><br>{% endif %}
+      {% if zettel_datum %}{{ tr.twofa_sheet_created }}: <b>{{ zettel_datum }}</b>{% endif %}
+    </div>
   </div>
 
-  {% if noch_nicht_aktiv %}
-  <form method="post" action="/profile/2fa/aktivieren">
-    <button type="submit" class="btn btn-primary" style="display:block;width:100%;">
-      {{ tr.twofa_saved_activate }}
-    </button>
-  </form>
-  <a href="/profile" style="display:block;text-align:center;margin-top:0.7rem;font-size:0.8rem;
-     color:var(--muted);">{{ tr.twofa_cancel }}</a>
-  {% else %}
-  <a href="/profile" class="btn btn-primary" style="display:block;text-align:center;width:100%;">{{ tr.twofa_saved }}</a>
-  {% endif %}
+  <div class="zettel-codes">
+    {% for c in codes %}<div><span class="nr">{{ loop.index }}.</span> <span>{{ c }}</span> <span class="kasten">☐</span></div>{% endfor %}
+  </div>
+
+  <p class="hint" style="margin-top:0;margin-bottom:1rem;">{{ tr.twofa_sheet_note }}</p>
+
+  <div class="nicht-drucken">
+    <p class="hint" style="margin-top:0;margin-bottom:1rem;">{{ tr.twofa_codes_hint }}</p>
+
+    <button type="button" class="btn" onclick="window.print()"
+            style="display:block;width:100%;margin-bottom:0.6rem;">{{ tr.twofa_print }}</button>
+
+    {% if noch_nicht_aktiv %}
+    <form method="post" action="/profile/2fa/aktivieren">
+      <button type="submit" class="btn btn-primary" style="display:block;width:100%;">
+        {{ tr.twofa_saved_activate }}
+      </button>
+    </form>
+    <a href="/profile" style="display:block;text-align:center;margin-top:0.7rem;font-size:0.8rem;
+       color:var(--muted);">{{ tr.twofa_cancel }}</a>
+    {% else %}
+    <a href="/profile" class="btn btn-primary" style="display:block;text-align:center;width:100%;">{{ tr.twofa_saved }}</a>
+    {% endif %}
+  </div>
 </div>
 {% endblock %}

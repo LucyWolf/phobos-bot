@@ -1572,6 +1572,7 @@ async def profile_2fa_setup_confirm(request: Request, code: str = Form(...)):
         **session(request), "request": request,
         "guilds": await _guild_list(request), "token_set": await _token_configured(),
         "active": "profile", "codes": codes, "noch_nicht_aktiv": True,
+        **await _zettel_kopf(),
     })
 
 
@@ -1592,6 +1593,18 @@ async def profile_2fa_aktivieren(request: Request):
     request.session.pop("pending_totp_secret", None)
     return RedirectResponse("/profile?success=Zwei-Faktor-Authentifizierung+aktiv",
                             status_code=302)
+
+
+async def _zettel_kopf() -> dict:
+    """Was oben auf dem Ausdruck der Backup-Codes steht.
+
+    Ohne Namen und Adresse ist so ein Zettel wertlos: wer zwei Installationen betreibt,
+    hat sonst zwei Blaetter mit acht Codes und keine Ahnung, welches wohin gehoert.
+    """
+    return {
+        "zettel_adresse": await link_base_url(),
+        "zettel_datum": datetime.datetime.now(_request_tz.get()).strftime("%d.%m.%Y %H:%M"),
+    }
 
 
 async def _regenerate_backup_codes(uid: int) -> list[str]:
@@ -1619,6 +1632,7 @@ async def profile_2fa_backup_codes_regenerate(request: Request, password: str = 
         **session(request), "request": request,
         "guilds": await _guild_list(request), "token_set": await _token_configured(),
         "active": "profile", "codes": codes,
+        **await _zettel_kopf(),
     })
 
 
