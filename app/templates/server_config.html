@@ -2373,7 +2373,9 @@ document.addEventListener('click', function(e) {
   <div style="display:flex;align-items:center;gap:0.75rem;padding:0.65rem 0;border-bottom:1px solid var(--border);flex-wrap:wrap;">
     <div style="flex:1;">
       <span style="font-weight:600;">{{ u.username }}</span>
-      <span class="badge badge-{{ u.role }}" style="margin-left:0.5rem;font-size:0.72rem;">{{ u.role }}</span>
+      {# Den Rang zeigen, nicht die rohe Rolle - sonst stehen hier zwei Leute als "admin",
+         von denen einer alles darf und der andere nur diesen einen Server. #}
+      <span class="badge badge-{{ u.role }}" style="margin-left:0.5rem;font-size:0.72rem;">{% if u.role == 'admin' %}{{ tr.rang_master_admin }}{% elif u.alle_server %}{{ tr.rang_master_mod }}{% elif u.id in server_user_admins %}{{ tr.rang_server_admin }}{% else %}{{ tr.rang_server_mod }}{% endif %}</span>
     </div>
     {% if u.username == username %}
     <span style="font-size:0.78rem;color:var(--muted);">{{ tr.server_users_you }}</span>

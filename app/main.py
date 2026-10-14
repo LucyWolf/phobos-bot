@@ -1028,6 +1028,10 @@ async def _guild_list(request: Request) -> list:
     if request.session.get("role") == "admin":
         return all_guilds
     user_id = request.session.get("user_id")
+    # Master-Moderatoren duerfen auf jeden Server (siehe _guild_access) - ohne diese Zeile
+    # stuenden sie vor einer leeren Liste und kaemen nur ueber eingetippte Adressen hinein.
+    if await _ist_master_moderator(user_id):
+        return all_guilds
     perms = await db_rows(
         "SELECT guild_id FROM user_guild_permissions WHERE user_id=?", (user_id,)
     )
@@ -2222,19 +2226,24 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...),
                 ex = await db.execute("SELECT id FROM users WHERE username=?", (u["username"],))
                 ex = await ex.fetchone()
                 if ex:
+                    # alle_server gehoert zur Rolle: wird die uebernommen, muss auch der
+                    # Rang mit, sonst kaeme ein Master-Moderator still als
+                    # Server-Moderator zurueck. Nur Moderatoren koennen es tragen.
                     await db.execute(
-                        "UPDATE users SET display_name=?,position=?,email=?,role=?,language=?,timezone=? WHERE username=?",
+                        "UPDATE users SET display_name=?,position=?,email=?,role=?,language=?,timezone=?,alle_server=? WHERE username=?",
                         (u.get("display_name",""), u.get("position",""), u.get("email",""),
                          u.get("role","moderator"), u.get("language","de"), u.get("timezone",""),
+                         1 if (u.get("alle_server") and u.get("role") != "admin") else 0,
                          u["username"]),
                     )
                     new_id = ex[0]
                 else:
                     cur = await db.execute(
-                        "INSERT INTO users (username,password_hash,role,email,display_name,position,language,timezone) VALUES (?,?,?,?,?,?,?,?)",
+                        "INSERT INTO users (username,password_hash,role,email,display_name,position,language,timezone,alle_server) VALUES (?,?,?,?,?,?,?,?,?)",
                         (u["username"], u.get("password_hash",""), u.get("role","moderator"),
                          u.get("email",""), u.get("display_name",""), u.get("position",""),
-                         u.get("language","de"), u.get("timezone","")),
+                         u.get("language","de"), u.get("timezone",""),
+                         1 if (u.get("alle_server") and u.get("role") != "admin") else 0),
                     )
                     new_id = cur.lastrowid
                 if old_id is not None:
@@ -2283,11 +2292,22 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...),
         # 5. user_guild_permissions
         for p in data.get("user_guild_permissions", []):
             old_u = p.get("user_id")
-            new_u = old_uid_map.get(old_u, old_u)
+            if old_u not in old_uid_map:
+                # Eine Freigabe, zu der in dieser Sicherung kein Konto steht. Frueher wurde
+                # dann die alte Nummer direkt eingetragen - in der Zielinstallation gehoert
+                # die aber jemand anderem, der damit stillschweigend Zugriff auf einen
+                # fremden Server bekaeme, seit es Server-Admins gibt sogar mit Adminrecht.
+                continue
+            new_u = old_uid_map[old_u]
             try:
+                # Beides mit uebernehmen: eine leere Reiterliste heisst UNBESCHRAENKT,
+                # ein eingeschraenkter Moderator kaeme sonst mit mehr Rechten zurueck,
+                # als er vor der Sicherung hatte.
                 await db.execute(
-                    "INSERT OR IGNORE INTO user_guild_permissions (user_id,guild_id) VALUES (?,?)",
-                    (new_u, p["guild_id"]),
+                    "INSERT OR IGNORE INTO user_guild_permissions "
+                    "(user_id,guild_id,is_admin,allowed_tabs) VALUES (?,?,?,?)",
+                    (new_u, p["guild_id"], p.get("is_admin", 0) or 0,
+                     p.get("allowed_tabs") or ""),
                 )
             except Exception:
                 pass
@@ -3024,9 +3044,18 @@ async def users_role(request: Request, user_id: int, role: str = Form(...),
         )
         if not other_admins or other_admins.get("c", 0) == 0:
             return RedirectResponse(f"{dest}{sep}error=Letzter+Admin+kann+nicht+herabgestuft+werden", status_code=302)
-    # Ein Admin ist nie "nur auf manchen Servern" - das Flag waere dort ohne Wirkung und
-    # wuerde beim Herabstufen stillschweigend wieder auftauchen.
-    alle = 1 if rang == "master_mod" else 0
+    if role == "admin":
+        # Ein Admin ist nie "nur auf manchen Servern" - das Flag waere dort ohne Wirkung
+        # und tauchte beim Herabstufen stillschweigend wieder auf.
+        alle = 0
+    elif rang:
+        alle = 1 if rang == "master_mod" else 0
+    else:
+        # Aufruf ohne Rang (die aelteren Knoepfe schicken nur role): dann ist ueber die
+        # Reichweite nichts gesagt worden, also bleibt sie, wie sie war. Sonst kippte
+        # jeder solche Aufruf einen Master-Moderator still auf "nur freigegebene Server".
+        vorher = await db_one("SELECT alle_server FROM users WHERE id=?", (user_id,))
+        alle = (vorher or {}).get("alle_server", 0) or 0
     await db_exec("UPDATE users SET role=?, alle_server=? WHERE id=?", (role, alle, user_id))
     return RedirectResponse(f"{dest}{sep}success=Rolle+geändert", status_code=302)
 
@@ -3042,6 +3071,11 @@ async def users_delete(request: Request, user_id: int, next: str = "/users"):
         )
         if not other_admins or other_admins.get("c", 0) == 0:
             return RedirectResponse(f"{dest}?error=Letzter+Admin+kann+nicht+gelöscht+werden", status_code=302)
+    # Was an Rechten am Konto hing, geht mit ihm. Bleiben die Zeilen liegen, sind sie
+    # nicht nur Muell: beim Einspielen einer Sicherung werden sie wieder jemandem
+    # zugeordnet - siehe die Zuordnung in _restore_backup.
+    await db_exec("DELETE FROM user_guild_permissions WHERE user_id=?", (user_id,))
+    await db_exec("DELETE FROM bot_token_users WHERE user_id=?", (user_id,))
     await db_exec("DELETE FROM users WHERE id=?", (user_id,))
     if is_self:
         request.session.clear()
@@ -3055,12 +3089,25 @@ async def users_guilds_save(request: Request, user_id: int):
     form = await request.form()
     guild_ids = form.getlist("guild_ids")
     valid_ids = {str(g.id) for g in bot.guilds}
+    # An der Freigabe haengen zwei Einstellungen, die hier gar nicht zur Debatte stehen:
+    # ob jemand auf diesem Server Admin ist, und welche Reiter er sieht. Diese Liste
+    # entscheidet nur ueber das OB - also vorher merken und fuer die Server, die bleiben,
+    # wieder einsetzen. Ohne das verlor ein Haken auf "Server-Admin" (und jede
+    # Reitereinschraenkung) beim naechsten Speichern dieser Liste stillschweigend.
+    vorher = {
+        r["guild_id"]: (r["is_admin"], r["allowed_tabs"])
+        for r in await db_rows(
+            "SELECT guild_id, is_admin, allowed_tabs FROM user_guild_permissions "
+            "WHERE user_id=?", (user_id,))
+    }
     await db_exec("DELETE FROM user_guild_permissions WHERE user_id=?", (user_id,))
     for gid in guild_ids:
         if gid in valid_ids:
+            is_admin, tabs = vorher.get(gid, (0, ""))
             await db_exec(
-                "INSERT OR IGNORE INTO user_guild_permissions (user_id, guild_id) VALUES (?,?)",
-                (user_id, gid),
+                "INSERT OR IGNORE INTO user_guild_permissions "
+                "(user_id, guild_id, is_admin, allowed_tabs) VALUES (?,?,?,?)",
+                (user_id, gid, is_admin, tabs or ""),
             )
     return RedirectResponse("/users?success=Serverrechte+gespeichert", status_code=302)
 
