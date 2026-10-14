@@ -54,7 +54,10 @@
         </div>
         <div>
           <label>{{ tr.label_email }}</label>
-          <input type="email" name="email" value="{{ user.email or '' }}" placeholder="deine@email.de">
+          <input type="email" name="email" value="{{ email_offen or user.email or '' }}" placeholder="deine@email.de">
+          {% if not smtp_bereit %}
+          <div class="hint" style="margin-top:-0.5rem;">{{ tr.profile_email_no_smtp }}</div>
+          {% endif %}
         </div>
       </div>
       <div>
@@ -64,6 +67,30 @@
       <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
     </form>
   </div>
+
+  {% if email_offen %}
+  <div class="card" style="grid-column:1/-1;border-color:#f59e0b;">
+    <div class="feat-header">✉️ {{ tr.profile_email_pending_title }}</div>
+    <p style="font-size:0.85rem;line-height:1.6;margin-bottom:1rem;">
+      {{ tr.profile_email_pending_body.replace('{adresse}', email_offen) }}
+    </p>
+    <form method="post" action="/profile/email/bestaetigen"
+          style="display:flex;gap:0.6rem;align-items:flex-end;flex-wrap:wrap;">
+      <div style="flex:0 0 160px;">
+        <label>{{ tr.profile_email_code }}</label>
+        <input type="text" name="code" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+               autocomplete="one-time-code" placeholder="123456"
+               style="margin:0;font-family:monospace;font-size:1.1rem;letter-spacing:0.15em;">
+      </div>
+      <button type="submit" class="btn btn-primary">{{ tr.profile_email_confirm }}</button>
+    </form>
+    <form method="post" action="/profile/email/abbrechen" style="margin-top:0.6rem;">
+      <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;padding:0.25rem 0.6rem;">
+        {{ tr.profile_email_discard }}
+      </button>
+    </form>
+  </div>
+  {% endif %}
 
   <!-- ── Sprache & Zeitzone ── -->
   <div class="card">

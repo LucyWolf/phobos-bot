@@ -6,13 +6,17 @@
 {% block page_title %}🔑 Backup-Codes{% endblock %}
 
 {% block content %}
-<div class="alert alert-success" style="max-width:480px;">✅ Zwei-Faktor-Authentifizierung ist jetzt aktiv.</div>
+{% if noch_nicht_aktiv %}
+<div class="alert" style="max-width:480px;border:1px solid #f59e0b;background:rgba(245,158,11,0.12);">
+  ⚠️ <b>{{ tr.twofa_not_yet_title }}</b><br>{{ tr.twofa_not_yet_body }}
+</div>
+{% else %}
+<div class="alert alert-success" style="max-width:480px;">✅ {{ tr.twofa_now_active }}</div>
+{% endif %}
 
 <div class="card" style="max-width:480px;">
   <p class="hint" style="margin-bottom:1rem;">
-    Speichere diese Backup-Codes an einem sicheren Ort. Jeder Code funktioniert <strong>einmal</strong>
-    als Ersatz für den Authenticator-Code, z.B. falls du dein Handy verlierst.
-    Sie werden dir nur <strong>jetzt</strong> angezeigt.
+    {{ tr.twofa_codes_hint }}
   </p>
 
   <div style="background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;padding:1rem;
@@ -20,6 +24,16 @@
     {% for c in codes %}{{ c }}<br>{% endfor %}
   </div>
 
-  <a href="/profile" class="btn btn-primary" style="display:block;text-align:center;width:100%;">Ich habe sie gespeichert</a>
+  {% if noch_nicht_aktiv %}
+  <form method="post" action="/profile/2fa/aktivieren">
+    <button type="submit" class="btn btn-primary" style="display:block;width:100%;">
+      {{ tr.twofa_saved_activate }}
+    </button>
+  </form>
+  <a href="/profile" style="display:block;text-align:center;margin-top:0.7rem;font-size:0.8rem;
+     color:var(--muted);">{{ tr.twofa_cancel }}</a>
+  {% else %}
+  <a href="/profile" class="btn btn-primary" style="display:block;text-align:center;width:100%;">{{ tr.twofa_saved }}</a>
+  {% endif %}
 </div>
 {% endblock %}

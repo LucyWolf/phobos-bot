@@ -252,6 +252,13 @@ async def init_db():
                 user_id INTEGER NOT NULL,
                 expires_at DATETIME NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS email_changes (
+                user_id INTEGER PRIMARY KEY,
+                neue_email TEXT NOT NULL,
+                code_hash TEXT NOT NULL,
+                versuche INTEGER NOT NULL DEFAULT 0,
+                expires_at DATETIME NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS bot_tokens (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 label TEXT NOT NULL DEFAULT 'Bot',

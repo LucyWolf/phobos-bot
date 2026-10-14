@@ -1373,6 +1373,9 @@ async def profile_page(request: Request, success: str = "", error: str = ""):
         "guilds": await _guild_list(request), "token_set": token_set,
         "active": "profile", "user": user, "tzones": TZONES,
         "success": success, "error": error,
+        "email_offen": (await db_one("SELECT neue_email FROM email_changes WHERE user_id=?",
+                                     (request.session.get("user_id"),)) or {}).get("neue_email", ""),
+        "smtp_bereit": await smtp_bereit(),
     })
 
 
@@ -1385,12 +1388,89 @@ async def profile_info_save(
 ):
     if r := auth_redirect(request): return r
     uid = request.session.get("user_id")
+    neue = email.strip()
+
+    # Name und Position gehen immer durch - nur die Adresse braucht einen Nachweis.
     await db_exec(
-        "UPDATE users SET display_name=?, position=?, email=? WHERE id=?",
-        (display_name.strip(), position.strip(), email.strip(), uid),
+        "UPDATE users SET display_name=?, position=? WHERE id=?",
+        (display_name.strip(), position.strip(), uid),
     )
     request.session["display_name"] = display_name.strip()
-    return RedirectResponse("/profile?success=Profil+gespeichert", status_code=302)
+
+    bisher = await db_one("SELECT email FROM users WHERE id=?", (uid,))
+    alt_adresse = (bisher["email"] if bisher else "") or ""
+    if neue == alt_adresse:
+        await db_exec("DELETE FROM email_changes WHERE user_id=?", (uid,))
+        return RedirectResponse("/profile?success=Profil+gespeichert", status_code=302)
+
+    if not neue:
+        # Adresse loeschen braucht keinen Nachweis - es geht nichts verloren, an das man
+        # nicht mehr herankaeme.
+        await db_exec("UPDATE users SET email='' WHERE id=?", (uid,))
+        await db_exec("DELETE FROM email_changes WHERE user_id=?", (uid,))
+        return RedirectResponse("/profile?success=Profil+gespeichert", status_code=302)
+
+    if not await smtp_bereit():
+        # Ohne Postversand laesst sich nichts bestaetigen. Dann wie bisher uebernehmen -
+        # eine Adresse, die man nicht eintragen kann, hilft niemandem -, aber sagen, dass
+        # sie ungeprueft ist.
+        await db_exec("UPDATE users SET email=? WHERE id=?", (neue, uid))
+        await db_exec("DELETE FROM email_changes WHERE user_id=?", (uid,))
+        return RedirectResponse("/profile?success=Adresse+ohne+Prüfung+übernommen",
+                                status_code=302)
+
+    code = f"{secrets.randbelow(1000000):06d}"
+    try:
+        await _send_email_code(neue, code)
+    except Exception as e:
+        print(f"[profil] Bestätigungscode an {neue!r} nicht zustellbar: {e}")
+        return RedirectResponse("/profile?error=Code+konnte+nicht+gesendet+werden",
+                                status_code=302)
+    await db_exec(
+        "INSERT OR REPLACE INTO email_changes (user_id, neue_email, code_hash, versuche, "
+        "expires_at) VALUES (?,?,?,0,?)",
+        (uid, neue, hash_pw(code),
+         (datetime.datetime.utcnow() + datetime.timedelta(minutes=30)).isoformat()),
+    )
+    return RedirectResponse("/profile?success=Bestätigungscode+verschickt", status_code=302)
+
+
+@web.post("/profile/email/bestaetigen")
+async def profile_email_bestaetigen(request: Request, code: str = Form("")):
+    """Nimmt den Code aus der Mail entgegen und uebernimmt die Adresse."""
+    if r := auth_redirect(request): return r
+    uid = request.session.get("user_id")
+    offen = await db_one("SELECT * FROM email_changes WHERE user_id=?", (uid,))
+    if not offen:
+        return RedirectResponse("/profile", status_code=302)
+    try:
+        abgelaufen = datetime.datetime.fromisoformat(offen["expires_at"]) < datetime.datetime.utcnow()
+    except (ValueError, TypeError):
+        abgelaufen = True
+    if abgelaufen:
+        await db_exec("DELETE FROM email_changes WHERE user_id=?", (uid,))
+        return RedirectResponse("/profile?error=Code+abgelaufen", status_code=302)
+    if not verify_pw(code.strip(), offen["code_hash"]):
+        # Begrenzt, damit ein sechsstelliger Code nicht durchprobiert werden kann.
+        # Beim fuenften Fehlversuch gleich verwerfen, sonst steht der Kasten weiter
+        # da und nimmt Eingaben an, die nie mehr greifen.
+        if offen["versuche"] + 1 >= 5:
+            await db_exec("DELETE FROM email_changes WHERE user_id=?", (uid,))
+            return RedirectResponse("/profile?error=Zu+viele+Versuche", status_code=302)
+        await db_exec("UPDATE email_changes SET versuche=versuche+1 WHERE user_id=?", (uid,))
+        return RedirectResponse("/profile?error=Falscher+Code", status_code=302)
+
+    await db_exec("UPDATE users SET email=? WHERE id=?", (offen["neue_email"], uid))
+    await db_exec("DELETE FROM email_changes WHERE user_id=?", (uid,))
+    return RedirectResponse("/profile?success=E-Mail-Adresse+bestätigt", status_code=302)
+
+
+@web.post("/profile/email/abbrechen")
+async def profile_email_abbrechen(request: Request):
+    """Verwirft eine ausstehende Adressaenderung."""
+    if r := auth_redirect(request): return r
+    await db_exec("DELETE FROM email_changes WHERE user_id=?", (request.session.get("user_id"),))
+    return RedirectResponse("/profile?success=Änderung+verworfen", status_code=302)
 
 
 @web.post("/profile/preferences")
@@ -1487,17 +1567,31 @@ async def profile_2fa_setup_confirm(request: Request, code: str = Form(...)):
     if not totp.verify_totp(secret, code):
         return RedirectResponse("/profile/2fa/setup?error=Ungültiger+Code", status_code=302)
 
-    await db_exec(
-        "UPDATE users SET totp_secret=?, totp_enabled=1, totp_fail_count=0, totp_locked_until=NULL WHERE id=?",
-        (secret, uid),
-    )
-    request.session.pop("pending_totp_secret", None)
     codes = await _regenerate_backup_codes(uid)
     return templates.TemplateResponse("profile_2fa_backup_codes.html", {
         **session(request), "request": request,
         "guilds": await _guild_list(request), "token_set": await _token_configured(),
-        "active": "profile", "codes": codes,
+        "active": "profile", "codes": codes, "noch_nicht_aktiv": True,
     })
+
+
+@web.post("/profile/2fa/aktivieren")
+async def profile_2fa_aktivieren(request: Request):
+    """Schaltet 2FA scharf - nachdem die Backup-Codes angezeigt und bestaetigt wurden."""
+    if r := auth_redirect(request): return r
+    uid = request.session.get("user_id")
+    secret = request.session.get("pending_totp_secret")
+    if not secret:
+        # Kein Vorgang offen: entweder laengst erledigt oder die Sitzung ist weitergezogen.
+        return RedirectResponse("/profile", status_code=302)
+    await db_exec(
+        "UPDATE users SET totp_secret=?, totp_enabled=1, totp_fail_count=0, "
+        "totp_locked_until=NULL WHERE id=?",
+        (secret, uid),
+    )
+    request.session.pop("pending_totp_secret", None)
+    return RedirectResponse("/profile?success=Zwei-Faktor-Authentifizierung+aktiv",
+                            status_code=302)
 
 
 async def _regenerate_backup_codes(uid: int) -> list[str]:
@@ -2467,6 +2561,51 @@ async def server_backup_restore(request: Request, guild_id: int,
 
 # ── Password Reset ─────────────────────────────────────────────────────────────
 
+async def _send_email_code(to_addr: str, code: str):
+    """Schickt den Bestaetigungscode an die NEUE Adresse.
+
+    Genau darin liegt der Sinn: ankommen kann er nur, wenn die Adresse stimmt. Ein Vertipper
+    traegt sonst eine Adresse ein, an die niemand herankommt - und wer sein Passwort
+    vergisst, kommt nie wieder ins Konto."""
+    host = await get_config("smtp_host") or ""
+    try:
+        port = int(await get_config("smtp_port") or 587)
+    except (ValueError, TypeError):
+        port = 587
+    user = await get_config("smtp_user") or ""
+    pw = await get_config("smtp_pass") or ""
+    frm = await get_config("smtp_from") or user
+    if not host or not user:
+        raise ValueError("SMTP nicht konfiguriert")
+
+    def _send():
+        msg = email.mime.text.MIMEText(
+            f"Hallo,\n\ndein Bestätigungscode lautet:\n\n    {code}\n\n"
+            f"Gib ihn im Dashboard ein, damit diese Adresse übernommen wird.\n"
+            f"Der Code ist 30 Minuten gültig. Hast du das nicht veranlasst, ignoriere diese "
+            f"Nachricht — ohne den Code ändert sich nichts.\n\n{_app_name}",
+            "plain", "utf-8",
+        )
+        msg["Subject"] = f"{_app_name}: Bestätigungscode"
+        msg["From"] = frm
+        msg["To"] = to_addr
+        with smtplib.SMTP(host, port, timeout=20) as srv:
+            srv.starttls()
+            srv.login(user, pw)
+            srv.send_message(msg)
+
+    await asyncio.get_event_loop().run_in_executor(None, _send)
+
+
+async def smtp_bereit() -> bool:
+    """Kann ueberhaupt Post rausgehen?
+
+    Dieselbe Bedingung, an der _send_reset_email() scheitern wuerde - nur vorher gefragt,
+    damit die Seite es sagen kann, statt eine Mail zu versprechen, die nie ankommt."""
+    return bool((await get_config("smtp_host") or "").strip()
+                and (await get_config("smtp_user") or "").strip())
+
+
 async def _send_reset_email(to_addr: str, reset_url: str):
     host = await get_config("smtp_host") or ""
     try:
@@ -2506,6 +2645,7 @@ async def forgot_pw_page(request: Request, error: str = "", success: str = ""):
         return RedirectResponse("/", status_code=302)
     return templates.TemplateResponse("forgot_password.html", {
         "request": request, "error": error, "success": success, "version": VERSION,
+        "smtp_bereit": await smtp_bereit(),
     })
 
 
