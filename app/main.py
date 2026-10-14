@@ -2663,27 +2663,123 @@ async def forgot_pw_page(request: Request, error: str = "", success: str = ""):
     })
 
 
+RESET_SPERRE_MINUTEN = 60
+RESET_VERSUCHE = 3
+
+
+def _reset_sperre_minuten(user) -> int:
+    """Wie viele Minuten das Konto am Reset-Weg noch gesperrt ist (0 = offen)."""
+    bis = (user or {}).get("reset_locked_until")
+    if not bis:
+        return 0
+    try:
+        dt = datetime.datetime.fromisoformat(bis)
+    except (ValueError, TypeError):
+        return 0
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    rest = (dt - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
+    return max(0, int(rest // 60) + 1) if rest > 0 else 0
+
+
+async def _reset_mail_schicken(user) -> Optional[str]:
+    """Legt den Token an und schickt den Link. Gibt einen Fehlertext zurueck, sonst None."""
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.datetime.utcnow() + datetime.timedelta(hours=1)).isoformat()
+    await db_exec(
+        "INSERT OR REPLACE INTO password_reset_tokens (token,user_id,expires_at) VALUES (?,?,?)",
+        (_token_hash(token), user["id"], expires),
+    )
+    base = await get_config("base_url") or ""
+    reset_url = f"{base.rstrip('/')}/reset-password?token={token}"
+    try:
+        await _send_reset_email(user["email"], reset_url)
+    except Exception as e:
+        return str(e)
+    return None
+
+
+# Immer dieselbe Antwort, egal ob die Adresse bekannt ist - sonst laesst sich an dieser
+# Maske durchprobieren, wer hier ein Konto hat.
+_RESET_NEUTRAL = ("/forgot-password?success="
+                  "Falls+diese+E-Mail+registriert+ist+wurde+ein+Link+gesendet")
+
+
 @web.post("/forgot-password")
 async def forgot_pw_submit(request: Request, email_addr: str = Form(...)):
-    user = await db_one("SELECT id, email FROM users WHERE email=?", (email_addr.strip(),))
+    user = await db_one("SELECT * FROM users WHERE email=?", (email_addr.strip(),))
     if user and user.get("email"):
-        token = secrets.token_urlsafe(32)
-        expires = (datetime.datetime.utcnow() + datetime.timedelta(hours=1)).isoformat()
-        await db_exec(
-            "INSERT OR REPLACE INTO password_reset_tokens (token,user_id,expires_at) VALUES (?,?,?)",
-            (_token_hash(token), user["id"], expires),
-        )
-        base = await get_config("base_url") or ""
-        reset_url = f"{base.rstrip('/')}/reset-password?token={token}"
-        try:
-            await _send_reset_email(email_addr.strip(), reset_url)
-        except Exception as e:
-            return RedirectResponse(f"/forgot-password?error={urllib.parse.quote(str(e))}", status_code=302)
-    # always show success to prevent user enumeration
-    return RedirectResponse(
-        "/forgot-password?success=Falls+diese+E-Mail+registriert+ist+wurde+ein+Link+gesendet",
-        status_code=302,
-    )
+        if user.get("totp_enabled"):
+            # Wer das Postfach uebernommen hat, soll damit allein noch nicht ins Konto
+            # kommen: vor der Mail steht derselbe zweite Faktor wie vor der Anmeldung.
+            request.session["pending_reset_user_id"] = user["id"]
+            return RedirectResponse("/forgot-password/2fa", status_code=302)
+        if fehler := await _reset_mail_schicken(user):
+            return RedirectResponse(
+                f"/forgot-password?error={urllib.parse.quote(fehler)}", status_code=302)
+    return RedirectResponse(_RESET_NEUTRAL, status_code=302)
+
+
+@web.get("/forgot-password/2fa", response_class=HTMLResponse)
+async def forgot_pw_2fa_page(request: Request, error: str = ""):
+    uid = request.session.get("pending_reset_user_id")
+    if not uid:
+        return RedirectResponse("/forgot-password", status_code=302)
+    user = await db_one("SELECT * FROM users WHERE id=?", (uid,))
+    gesperrt = _reset_sperre_minuten(user)
+    return templates.TemplateResponse("forgot_password_2fa.html", {
+        "request": request, "error": error, "version": VERSION,
+        "gesperrt": gesperrt, "versuche": RESET_VERSUCHE,
+        "uebrig": max(0, RESET_VERSUCHE - ((user or {}).get("reset_fail_count") or 0)),
+    })
+
+
+@web.post("/forgot-password/2fa")
+async def forgot_pw_2fa_submit(request: Request, code: str = Form(""), quelle: str = Form("app")):
+    uid = request.session.get("pending_reset_user_id")
+    if not uid:
+        return RedirectResponse("/forgot-password", status_code=302)
+    user = await db_one("SELECT * FROM users WHERE id=?", (uid,))
+    if not user or not user.get("totp_enabled"):
+        request.session.pop("pending_reset_user_id", None)
+        return RedirectResponse(_RESET_NEUTRAL, status_code=302)
+
+    if _reset_sperre_minuten(user):
+        return RedirectResponse("/forgot-password/2fa", status_code=302)
+
+    code = code.strip()
+    ok = False
+    if quelle == "backup":
+        # Nur die Backup-Codes pruefen, weil genau das ausgewaehlt wurde. Ein verbrauchter
+        # Code ist danach weg - auch wenn die Mail nie gelesen wird.
+        for row in await db_rows(
+                "SELECT * FROM totp_backup_codes WHERE user_id=? AND used=0", (uid,)):
+            if verify_pw(code.lower(), row["code_hash"]):
+                await db_exec("UPDATE totp_backup_codes SET used=1 WHERE id=?", (row["id"],))
+                ok = True
+                break
+    else:
+        ok = bool(code) and totp.verify_totp(user["totp_secret"], code)
+
+    if not ok:
+        fehlversuche = (user.get("reset_fail_count") or 0) + 1
+        if fehlversuche >= RESET_VERSUCHE:
+            bis = (datetime.datetime.now(datetime.timezone.utc)
+                   + datetime.timedelta(minutes=RESET_SPERRE_MINUTEN)).isoformat()
+            await db_exec(
+                "UPDATE users SET reset_fail_count=0, reset_locked_until=? WHERE id=?",
+                (bis, uid))
+        else:
+            await db_exec("UPDATE users SET reset_fail_count=? WHERE id=?", (fehlversuche, uid))
+        return RedirectResponse("/forgot-password/2fa?error=1", status_code=302)
+
+    await db_exec(
+        "UPDATE users SET reset_fail_count=0, reset_locked_until=NULL WHERE id=?", (uid,))
+    request.session.pop("pending_reset_user_id", None)
+    if fehler := await _reset_mail_schicken(user):
+        return RedirectResponse(
+            f"/forgot-password?error={urllib.parse.quote(fehler)}", status_code=302)
+    return RedirectResponse(_RESET_NEUTRAL, status_code=302)
 
 
 @web.get("/reset-password", response_class=HTMLResponse)

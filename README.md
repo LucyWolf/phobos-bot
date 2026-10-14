@@ -351,6 +351,22 @@ Passwords of existing accounts are never overwritten during a restore.
 
 Every dashboard user can enable TOTP-based two-factor authentication under **Profile → Two-Factor Authentication** — compatible with Google Authenticator, Authy, Aegis and similar apps. After entering the confirmation code once, 8 one-time backup codes are shown (for account recovery if you lose your device); they can be regenerated anytime with your password. Login then requires the app code (or a backup code) after the password, and repeated failed codes temporarily lock the account.
 
+The backup codes can be printed: the sheet carries the installation's name, the account, the dashboard address and the date, so two installations never produce two identical-looking sheets.
+
+**Resetting a password on an account with 2FA** asks for the code *before* the mail goes out — from the app, or a backup code if the phone is gone. Without that step, access to the mailbox alone would be enough to take over the account: the reset link sets a new password, and nothing else stands in the way until then. Three wrong codes lock the reset path for an hour, counted separately from the login so neither can lock the other. Starting over at the address form does not clear it.
+
+### Locked out completely
+
+No password, no SMTP configured (so no reset mail), no second admin — then the way back is on the server itself:
+
+```bash
+docker exec -it phobos python3 /w/tools/passwort_setzen.py --liste
+docker exec -it phobos python3 /w/tools/passwort_setzen.py --benutzer <name>
+docker exec -it phobos python3 /w/tools/passwort_setzen.py --benutzer <name> --2fa-aus
+```
+
+The password is prompted for, never passed as an argument — otherwise it would sit in the shell history and the process list. Setting it ends all open sessions for that account. `--2fa-aus` additionally turns off two-factor and discards the backup codes, which is what you need when the phone is gone too. This opens nothing that was not already open: whoever has a shell on that machine can read and write the database anyway.
+
 ---
 
 ## Security
@@ -1007,6 +1023,22 @@ Passwörter bestehender Konten werden beim Einspielen nie überschrieben.
 ## Zwei-Faktor-Authentifizierung
 
 Jeder Dashboard-Nutzer kann unter **Profil → Zwei-Faktor-Authentifizierung** TOTP-basierte 2FA aktivieren — kompatibel mit Google Authenticator, Authy, Aegis und ähnlichen Apps. Nach einmaliger Bestätigung mit dem Code aus der App werden 8 Backup-Codes angezeigt (für den Notfall, falls das Handy verloren geht); sie lassen sich jederzeit mit dem Passwort neu erstellen. Der Login verlangt danach zusätzlich zum Passwort den App-Code (oder einen Backup-Code); wiederholt falsche Codes sperren das Konto vorübergehend.
+
+Die Backup-Codes lassen sich ausdrucken: auf dem Blatt stehen Name der Installation, Konto, Adresse des Dashboards und das Datum — sonst liegen bei zwei Installationen zwei nicht unterscheidbare Zettel herum.
+
+**Passwort zurücksetzen bei einem Konto mit 2FA** verlangt den Code, *bevor* die Mail rausgeht — aus der App, oder einen Backup-Code, wenn das Handy weg ist. Ohne diesen Schritt würde der Zugriff auf das Postfach allein genügen, um das Konto zu übernehmen: der Link setzt ein neues Passwort, und bis dahin steht nichts weiter im Weg. Drei falsche Codes sperren den Weg für eine Stunde, getrennt vom Login gezählt, damit sich beide nicht gegenseitig sperren. Ein neuer Anlauf an der Adressmaske hebt die Sperre nicht auf.
+
+### Ganz ausgesperrt
+
+Kein Passwort, kein SMTP eingerichtet (also keine Mail zum Zurücksetzen), kein zweiter Admin — dann führt der Weg über den Server:
+
+```bash
+docker exec -it phobos python3 /w/tools/passwort_setzen.py --liste
+docker exec -it phobos python3 /w/tools/passwort_setzen.py --benutzer <name>
+docker exec -it phobos python3 /w/tools/passwort_setzen.py --benutzer <name> --2fa-aus
+```
+
+Das Passwort wird abgefragt, nicht als Argument übergeben — sonst stünde es in der Shell-Geschichte und in der Prozessliste. Beim Setzen werden alle offenen Anmeldungen dieses Kontos beendet. `--2fa-aus` schaltet zusätzlich die Zwei-Faktor-Anmeldung ab und verwirft die Backup-Codes; das braucht man, wenn auch das Handy weg ist. Damit geht nichts auf, was nicht ohnehin offen wäre: wer eine Shell auf der Maschine hat, kann die Datenbank sowieso lesen und schreiben.
 
 ---
 

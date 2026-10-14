@@ -1235,6 +1235,12 @@ async def init_db():
             # beschnitten, sondern eingepasst - was ueberbleibt, faerbt sich wie der
             # Hintergrund der Karte, damit nichts vom Bild verlorengeht.
             "ALTER TABLE polls ADD COLUMN bild_verhaeltnis TEXT NOT NULL DEFAULT ''",
+            # Eigene Zaehler fuer den Weg "Passwort vergessen". Wer dort einen 2FA- oder
+            # Backup-Code falsch eingibt, darf nicht den Zaehler der Anmeldung fuellen und
+            # damit das Konto an der Anmeldemaske sperren - und umgekehrt soll eine Sperre
+            # hier nicht davon abhaengen, ob gerade jemand am Login herumprobiert.
+            "ALTER TABLE users ADD COLUMN reset_fail_count INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN reset_locked_until TEXT",
         ]:
             try:
                 await db.execute(col)
