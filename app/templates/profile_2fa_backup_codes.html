@@ -26,9 +26,13 @@
 
   /* Auf dem Papier: nur der Zettel, schwarz auf weiss, ohne Oberflaeche drumherum. */
   @media print {
+    /* Ohne Seitenrand druckt der Browser auch seine eigene Kopf- und Fusszeile nicht mehr
+       (Datum, Seitentitel, Adresse, Seitenzahl) - die haben auf dem Zettel nichts verloren.
+       Den Abstand zum Blattrand macht stattdessen .page-content. */
+    @page { size: auto; margin: 0; }
     .sidebar, #sidebar, .page-header, footer, .alert, .nicht-drucken { display:none !important; }
     #main { margin-left:0 !important; }
-    .page-content { padding:0 !important; }
+    .page-content { padding:14mm !important; }
     body, #main, .page-content { background:#fff !important; color:#000 !important; }
     .zettel {
       max-width:none !important; width:100% !important; margin:0 !important;
