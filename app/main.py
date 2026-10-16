@@ -122,7 +122,8 @@ except ImportError:
     psutil = None
 from cogs.tickets import OpenTicketView as _TicketView, close_ticket_channel as _close_ticket_channel
 from cogs.leveling import xp_for_level as _xp_for_level, cumulative_xp_for_level as _cumulative_xp_for_level
-from cogs.welcome import _make_card as _welcome_make_card, fill as _welcome_fill
+from cogs.welcome import (_make_card as _welcome_make_card, fill as _welcome_fill,
+                          KARTE_BREITE as _KARTE_BREITE, KARTE_HOEHE as _KARTE_HOEHE)
 from cogs.polls import (
     build_poll_embed as _build_poll_embed, PollView as _PollView,
     DEFAULT_BAR_COLOR as _DEFAULT_BAR_COLOR,
@@ -10495,12 +10496,33 @@ async def _read_welcome_bg_upload(upload_file, max_dim: int = 1600) -> str | Non
         img = img.convert("RGB")
     except Exception:
         raise ValueError("Ungültiges+Bildformat")
-    if img.width > max_dim or img.height > max_dim:
-        scale = max_dim / max(img.width, img.height)
-        img = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))), Image.LANCZOS)
+    # Frueher wurde nur auf 1600px laengste Kante begrenzt. Ein quadratisches Foto landete
+    # damit als 1600x1600 in der Datenbank - und in jeder Sicherung -, obwohl cogs/welcome.py
+    # es beim Zeichnen ohnehin mittig auf 800x280 beschneidet. Das sind elfmal so viele
+    # Pixel wie je gebraucht werden. Der Zuschnitt passiert jetzt schon hier, auf die
+    # doppelte Kartengroesse: dasselbe Bildergebnis, etwas Reserve nach oben, ein Bruchteil
+    # des Platzes. Bereits gespeicherte Bilder bleiben unangetastet.
+    img = _cover_crop_pil(img, _KARTE_BREITE * 2, _KARTE_HOEHE * 2)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def _cover_crop_pil(img, ziel_b: int, ziel_h: int):
+    """Skaliert so, dass das Bild die Zielflaeche gerade ausfuellt, und schneidet mittig ab.
+
+    Dasselbe Vorgehen wie _cover_crop() in cogs/welcome.py, nur schon beim Hochladen - wird
+    ein Bild kleiner als die Zielflaeche hochgeladen, bleibt es unveraendert, statt
+    kuenstlich aufgeblasen zu werden.
+    """
+    b, h = img.size
+    if b <= ziel_b and h <= ziel_h:
+        return img
+    faktor = max(ziel_b / b, ziel_h / h)
+    neu_b, neu_h = max(1, round(b * faktor)), max(1, round(h * faktor))
+    img = img.resize((neu_b, neu_h), Image.LANCZOS)
+    links, oben = (neu_b - ziel_b) // 2, (neu_h - ziel_h) // 2
+    return img.crop((links, oben, links + ziel_b, oben + ziel_h))
 
 
 async def _read_welcome_overlay_upload(upload_file, max_dim: int = 1600) -> str | None:
@@ -10525,9 +10547,12 @@ async def _read_welcome_overlay_upload(upload_file, max_dim: int = 1600) -> str 
         img = img.convert("RGBA")
     except Exception:
         raise ValueError("Ungültiges+Bildformat")
-    if img.width > max_dim or img.height > max_dim:
-        scale = max_dim / max(img.width, img.height)
-        img = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))), Image.LANCZOS)
+    # Der Aufleger wird beim Zeichnen auf die Kartenflaeche gestreckt, nicht beschnitten -
+    # also hier dieselbe Streckung, nur in doppelter Groesse. Das Bild sieht am Ende genau
+    # so aus wie vorher, braucht in der Datenbank aber einen Bruchteil des Platzes.
+    ziel = (_KARTE_BREITE * 2, _KARTE_HOEHE * 2)
+    if img.size != ziel and (img.width > ziel[0] or img.height > ziel[1]):
+        img = img.resize(ziel, Image.LANCZOS)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode("ascii")

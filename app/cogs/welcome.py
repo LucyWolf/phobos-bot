@@ -18,12 +18,21 @@ import discord
 from discord.ext import commands
 from database import get_guild_config
 
+# Die Masse der fertigen Karte. Stehen hier, weil main.py die Uploads danach ausrichtet:
+# ein Hintergrund wird ohnehin auf genau diese Groesse beschnitten, ihn groesser zu
+# speichern kostet nur Platz in der Datenbank und in jeder Sicherung.
+KARTE_BREITE, KARTE_HOEHE = 800, 280
+
 _FONT_PATHS = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
     "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
 ]
-_FONT_PATHS_REG = [p.replace("Bold", "").replace("-Bold", "") for p in _FONT_PATHS]
+# Zuerst "-Bold" samt Bindestrich: die alte Kette entfernte erst "Bold" und suchte danach
+# nach "DejaVuSans-.ttf" - eine Datei, die es nicht gibt. _load_font(bold=False) fand also
+# nie etwas und fiel jedes Mal auf PILs winzige Standardschrift zurueck. Betroffen war die
+# dritte Zeile der Karte (der Untertitel), in allen drei Anordnungen.
+_FONT_PATHS_REG = [p.replace("-Bold", "").replace("Bold", "") for p in _FONT_PATHS]
 
 
 def _hex_to_rgb(hex_color: str):
@@ -164,7 +173,7 @@ async def _make_card(member: discord.Member, circle_color: str, text_color: str,
     except Exception as e:
         print(f"[Welcome] avatar download failed for {member}: {e}")
 
-    W, H = 800, 280
+    W, H = KARTE_BREITE, KARTE_HOEHE
 
     bg = None
     if bg_image_b64:
