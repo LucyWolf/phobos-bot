@@ -266,6 +266,16 @@ async def init_db():
                 enabled INTEGER NOT NULL DEFAULT 1,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
+            -- Von welchen Adressen aus sich ein Konto schon einmal erfolgreich angemeldet
+            -- hat. Dient nur der Frage "ist das hier neu?" - deshalb reicht der Hash, die
+            -- Adresse selbst muss dafuer nirgends gespeichert werden.
+            CREATE TABLE IF NOT EXISTS login_orte (
+                user_id INTEGER NOT NULL,
+                ip_hash TEXT NOT NULL,
+                zuerst DATETIME DEFAULT CURRENT_TIMESTAMP,
+                zuletzt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, ip_hash)
+            );
             CREATE TABLE IF NOT EXISTS user_guild_permissions (
                 user_id INTEGER NOT NULL,
                 guild_id TEXT NOT NULL,
@@ -1251,6 +1261,10 @@ async def init_db():
             # Server-Moderator (Freigabe ohne). Standard 0, bestehende Moderatoren bleiben
             # also genau auf den Servern, fuer die sie freigegeben sind.
             "ALTER TABLE users ADD COLUMN alle_server INTEGER NOT NULL DEFAULT 0",
+            # Warn-Mails bei Anmeldevorgaengen. Standard 1 - wer eine Adresse hinterlegt
+            # hat, soll erfahren, wenn an seinem Konto gerueckt wird; abschalten laesst es
+            # sich im Profil. Ohne Adresse und ohne SMTP passiert ohnehin nichts.
+            "ALTER TABLE users ADD COLUMN warn_mails INTEGER NOT NULL DEFAULT 1",
         ]:
             try:
                 await db.execute(col)

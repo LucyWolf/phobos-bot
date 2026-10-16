@@ -1114,6 +1114,27 @@ async def _complete_login(request: Request, user: dict) -> None:
     request.session["sid"] = sid
     await db_exec("INSERT INTO user_sessions (sid, user_id, created_at, last_seen) "
                   "VALUES (?,?,?,?)", (_token_hash(sid), user["id"], now, now))
+
+    # Hier laeuft JEDE erfolgreiche Anmeldung durch, auch die mit zweitem Faktor - deshalb
+    # sitzt die Meldung ueber eine unbekannte Adresse an dieser Stelle und nicht in
+    # login_submit, wo der 2FA-Weg sie umgehen wuerde.
+    ip = _login_client(request)
+    if not await _ort_bekannt(user["id"], ip):
+        if not _warn_zu_frueh(f"neu:{user['id']}"):
+            await _warn_mail(user, f"{_app_name}: Anmeldung von einer neuen Adresse", [
+                f"Hallo {user.get('display_name') or user['username']},",
+                "",
+                "gerade hat sich jemand bei deinem Konto angemeldet — von einer Adresse, "
+                "von der aus das noch nie passiert ist:",
+                "",
+                f"    Konto:   {user['username']}",
+                f"    Adresse: {ip}",
+                f"    Zeit:    {_fmt_dt(now)}",
+                "",
+                "Warst du das, ist alles in Ordnung — diese Meldung kommt pro Adresse nur "
+                "einmal. Warst du es nicht, ändere sofort dein Passwort und schalte die "
+                "Zwei-Faktor-Anmeldung ein.",
+            ])
     # Sessions older than the cookie can possibly live are dead weight; clearing them here
     # costs one statement per login instead of a background task.
     try:
@@ -1219,6 +1240,76 @@ def _login_note_success(request: Request, username: str) -> None:
     _login_fails.pop(_login_keys(request, username)[1], None)
 
 
+# ── Warn-Mails bei Anmeldevorgaengen ─────────────────────────────────────────
+# Gedrosselt im Speicher: ein Angriff auf ein Konto wuerde sonst eine Mailflut ausloesen und
+# die Warnung selbst zur Belaestigung machen (und im Spam landen). Nach einem Neustart faengt
+# die Drosselung neu an - verschmerzbar, der Fall ist selten.
+_WARN_SPERRE_MINUTEN = 60
+_warn_zuletzt: dict[str, float] = {}
+
+
+def _warn_zu_frueh(schluessel: str) -> bool:
+    jetzt = time.monotonic()
+    letzte = _warn_zuletzt.get(schluessel)
+    if letzte and jetzt - letzte < _WARN_SPERRE_MINUTEN * 60:
+        return True
+    if len(_warn_zuletzt) > 2000:
+        for alt, _ in sorted(_warn_zuletzt.items(), key=lambda kv: kv[1])[:1000]:
+            _warn_zuletzt.pop(alt, None)
+    _warn_zuletzt[schluessel] = jetzt
+    return False
+
+
+async def _warn_mail(user: dict, betreff: str, zeilen: list) -> None:
+    """Schickt eine Sicherheitsmeldung an das Konto - oder eben nicht.
+
+    Stillschweigend uebersprungen, wenn kein SMTP eingerichtet ist, das Konto keine Adresse
+    hinterlegt hat oder die Meldungen dort abgeschaltet sind. Ein Fehler beim Versand wird
+    protokolliert, aber nie weitergereicht: eine Anmeldung darf nicht daran scheitern, dass
+    der Mailserver gerade zickt.
+    """
+    try:
+        adresse = (user or {}).get("email") or ""
+        if not adresse or not (user or {}).get("warn_mails", 1):
+            return
+        if not await smtp_bereit():
+            return
+        text = "\n".join(zeilen) + (
+            "\n\nDiese Meldung lässt sich im Dashboard unter Profil abschalten."
+        )
+        await _send_mail(adresse, betreff, text)
+    except Exception as e:
+        print(f"[warn-mail] fehlgeschlagen: {e}")
+
+
+def _ort_hash(ip: str) -> str:
+    """Erkennungsmerkmal einer Adresse, ohne sie selbst zu speichern."""
+    import hashlib
+    return hashlib.sha256(("ort:" + (ip or "?")).encode()).hexdigest()
+
+
+async def _ort_bekannt(user_id, ip: str) -> bool:
+    """War dieses Konto von dieser Adresse schon einmal erfolgreich angemeldet?
+
+    Merkt sich den Ort dabei gleich. Beim allerersten Login eines Kontos gilt die Adresse
+    als bekannt - sonst bekaeme jeder neue Nutzer sofort eine Warnung ueber sich selbst.
+    """
+    h = _ort_hash(ip)
+    treffer = await db_one(
+        "SELECT 1 FROM login_orte WHERE user_id=? AND ip_hash=?", (user_id, h))
+    schon_welche = await db_one(
+        "SELECT 1 FROM login_orte WHERE user_id=? LIMIT 1", (user_id,))
+    jetzt = datetime.datetime.utcnow().isoformat()
+    if treffer:
+        await db_exec("UPDATE login_orte SET zuletzt=? WHERE user_id=? AND ip_hash=?",
+                      (jetzt, user_id, h))
+        return True
+    await db_exec(
+        "INSERT OR IGNORE INTO login_orte (user_id, ip_hash, zuerst, zuletzt) "
+        "VALUES (?,?,?,?)", (user_id, h, jetzt, jetzt))
+    return not schon_welche
+
+
 @web.post("/login")
 async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     locked = _login_locked_seconds(request, username)
@@ -1239,6 +1330,25 @@ async def login_submit(request: Request, username: str = Form(...), password: st
         return RedirectResponse("/login?error=Ungültige+Zugangsdaten", status_code=302)
     if not verify_pw(password, user["password_hash"]):
         _login_note_failure(request, username)
+        # Erst wenn die Fehlversuche das Konto tatsaechlich dichtgemacht haben, geht eine
+        # Meldung raus - bei jedem einzelnen Versuch waere die Warnung bei einem Angriff
+        # selbst die Belaestigung und landete im Spam.
+        if _login_locked_seconds(request, username) and not _warn_zu_frueh(f"sperre:{user['id']}"):
+            await _warn_mail(user, f"{_app_name}: Anmeldeversuche an deinem Konto", [
+                f"Hallo {user.get('display_name') or user['username']},",
+                "",
+                "jemand hat mehrfach ein falsches Passwort für dein Konto eingegeben. "
+                "Die Anmeldung ist deshalb vorübergehend gesperrt:",
+                "",
+                f"    Konto:   {user['username']}",
+                f"    Adresse: {_login_client(request)}",
+                f"    Zeit:    {_fmt_dt(datetime.datetime.utcnow().isoformat())}",
+                "",
+                "Warst du das selbst, warte einfach die Sperre ab. Warst du es nicht, "
+                "sollte dein Passwort geändert werden — und die Zwei-Faktor-Anmeldung an.",
+                "",
+                "Weitere Meldungen dieser Art folgen frühestens in einer Stunde.",
+            ])
         return RedirectResponse("/login?error=Ungültige+Zugangsdaten", status_code=302)
     if not user.get("active", 1):
         # Counted too: a deactivated account is still a valid username, and leaving this path
@@ -1513,6 +1623,7 @@ async def profile_prefs_save(
     request: Request,
     lang: str = Form("de"),
     timezone: str = Form("Europe/Berlin"),
+    warn_mails: str = Form(""),
 ):
     if r := auth_redirect(request): return r
     if lang not in ("de", "en"):
@@ -1522,7 +1633,8 @@ async def profile_prefs_save(
     except Exception:
         timezone = "Europe/Berlin"
     uid = request.session.get("user_id")
-    await db_exec("UPDATE users SET language=?, timezone=? WHERE id=?", (lang, timezone, uid))
+    await db_exec("UPDATE users SET language=?, timezone=?, warn_mails=? WHERE id=?",
+                  (lang, timezone, 1 if warn_mails else 0, uid))
     request.session["lang"] = lang
     request.session["user_tz"] = timezone
     return RedirectResponse("/profile?success=Einstellungen+gespeichert", status_code=302)
@@ -2625,6 +2737,37 @@ async def server_backup_restore(request: Request, guild_id: int,
 
 
 # ── Password Reset ─────────────────────────────────────────────────────────────
+
+async def _send_mail(to_addr: str, betreff: str, text: str) -> None:
+    """Verschickt eine schlichte Textmail ueber den eingerichteten SMTP-Zugang.
+
+    Die gemeinsame Grundlage fuer alle Mails dieses Projekts - vorher trug jede Stelle ihre
+    eigene Kopie derselben zwanzig Zeilen. Wirft ValueError, wenn kein Zugang eingerichtet
+    ist; alles andere kommt unveraendert von smtplib.
+    """
+    host = await get_config("smtp_host") or ""
+    try:
+        port = int(await get_config("smtp_port") or 587)
+    except (ValueError, TypeError):
+        port = 587
+    user = await get_config("smtp_user") or ""
+    pw = await get_config("smtp_pass") or ""
+    frm = await get_config("smtp_from") or user
+    if not host or not user:
+        raise ValueError("SMTP nicht konfiguriert")
+
+    def _send():
+        msg = email.mime.text.MIMEText(text, "plain", "utf-8")
+        msg["Subject"] = betreff
+        msg["From"] = frm
+        msg["To"] = to_addr
+        with smtplib.SMTP(host, port, timeout=20) as srv:
+            srv.starttls()
+            srv.login(user, pw)
+            srv.send_message(msg)
+
+    await asyncio.get_event_loop().run_in_executor(None, _send)
+
 
 async def _send_email_code(to_addr: str, code: str):
     """Schickt den Bestaetigungscode an die NEUE Adresse.

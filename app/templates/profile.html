@@ -107,6 +107,15 @@
         <option value="{{ tz }}" {% if user_tz == tz %}selected{% endif %}>{{ tz }}</option>
         {% endfor %}
       </select>
+      {# Standard an: wer eine Adresse hinterlegt hat, soll erfahren, wenn an seinem Konto
+         gerueckt wird. `is not defined` faengt den Fall ab, dass die Vorlage ohne das Feld
+         gerendert wird - dann lieber angehakt zeigen als faelschlich aus. #}
+      <label style="display:flex;align-items:center;gap:0.5rem;font-weight:400;margin-bottom:0.4rem;">
+        <input type="checkbox" name="warn_mails" value="1" style="width:auto;margin:0;"
+               {% if user.warn_mails is not defined or user.warn_mails %}checked{% endif %}>
+        <span>{{ tr.prof_warn_mails }}</span>
+      </label>
+      <p class="hint" style="margin-top:0;margin-bottom:1rem;">{{ tr.prof_warn_mails_hint }}</p>
       <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
     </form>
   </div>
