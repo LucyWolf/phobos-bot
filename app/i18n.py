@@ -3331,6 +3331,7 @@ MELDUNGEN_EN = {
     'Ungültige Eingabe': 'Invalid input',
     'Ungültige Kategorie': 'Invalid category',
     'Ungültige Rolle': 'Invalid role',
+    'Ungültige Farbe': 'Invalid colour',
     'Ungültige Stundenzahl': 'Invalid number of hours',
     'Ungültige URL': 'Invalid URL',
     'Ungültige Verzögerung': 'Invalid delay',

@@ -27,10 +27,22 @@ _FONT_PATHS_REG = [p.replace("Bold", "").replace("-Bold", "") for p in _FONT_PAT
 
 
 def _hex_to_rgb(hex_color: str):
-    h = hex_color.lstrip("#")
+    """Farbe aus der Konfiguration, notfalls Weiss.
+
+    Die Laenge allein reicht als Pruefung nicht: "#GGGGGG" hat sechs Zeichen und liess
+    int(..., 16) fliegen. Die Farbfelder gehen in main.py durch den allgemeinen Text-Loop
+    und werden dort nicht geprueft - ein krummer Wert legte damit die Karte lahm, und zwar
+    bei jedem Beitritt neu, sichtbar nur als Notfall-Embed ohne Bild.
+    """
+    h = (hex_color or "").strip().lstrip("#")
+    if len(h) == 3:                      # Kurzschreibweise wie #fff
+        h = "".join(c * 2 for c in h)
     if len(h) != 6:
         return (255, 255, 255)
-    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+    try:
+        return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return (255, 255, 255)
 
 
 def _load_font(size: int, bold: bool = True):
@@ -76,6 +88,27 @@ def _fit_text(draw, text: str, font, max_width: int) -> str:
     return (text + "...") if text else "..."
 
 
+def _platzhalter_avatar(member, groesse: int):
+    """Ein schlichter Ersatz, wenn das Profilbild nicht geladen werden konnte.
+
+    Gedaempftes Grau mit dem ersten Buchstaben des Namens - wie Discords eigene
+    Standardbilder. Die Form bekommt es danach ueber dieselbe Maske wie ein echter Avatar.
+    """
+    from PIL import Image, ImageDraw
+    bild = Image.new("RGBA", (groesse, groesse), (88, 101, 242, 255))
+    zeichner = ImageDraw.Draw(bild)
+    name = (getattr(member, "display_name", "") or str(member) or "?").strip()
+    buchstabe = name[0].upper() if name else "?"
+    schrift = _load_font(max(12, int(groesse * 0.5)))
+    try:
+        l, o, r, u = zeichner.textbbox((0, 0), buchstabe, font=schrift)
+        zeichner.text(((groesse - (r - l)) / 2 - l, (groesse - (u - o)) / 2 - o),
+                      buchstabe, font=schrift, fill=(255, 255, 255, 255))
+    except Exception:
+        pass
+    return bild
+
+
 def _shape_mask(shape: str, w: int, h: int):
     """Builds an 'L'-mode 255/0 mask for the given avatar-frame shape - used for BOTH the
     avatar's own alpha mask and the colored ring drawn behind it, so the two can never end up
@@ -117,9 +150,19 @@ async def _make_card(member: discord.Member, circle_color: str, text_color: str,
     # explicit timeout=10 - this one didn't, so a slow/unresponsive Discord CDN response could
     # hang this specific join's card generation for aiohttp's much longer default before the
     # caller's try/except finally falls back to a plain embed.
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
-        async with session.get(avatar_url) as resp:
-            avatar_bytes = await resp.read()
+    # Ein fehlgeschlagener Avatar darf die Karte nicht kosten. Frueher lief der Abruf ohne
+    # Statuspruefung durch, und Image.open() weiter unten flog dann - nachdem Hintergrund,
+    # Ueberschrift und Text schon gezeichnet waren. Ergebnis fuer den Neuzugang: statt der
+    # Karte der Notfall-Embed, wegen eines Bildchens. Der Hintergrund hatte diesen Rueckfall
+    # laengst (siehe unten), der Avatar nicht.
+    avatar_bytes = None
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+            async with session.get(avatar_url) as resp:
+                if resp.status == 200:
+                    avatar_bytes = await resp.read()
+    except Exception as e:
+        print(f"[Welcome] avatar download failed for {member}: {e}")
 
     W, H = 800, 280
 
@@ -225,7 +268,15 @@ async def _make_card(member: discord.Member, circle_color: str, text_color: str,
 
     # --- Avatar (shape from avatar_shape, box from whichever position branch ran above) ---
     avatar_size = bw - 18
-    avatar_img = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA").resize((avatar_size, avatar_size), Image.LANCZOS)
+    avatar_img = None
+    if avatar_bytes:
+        try:
+            avatar_img = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA").resize(
+                (avatar_size, avatar_size), Image.LANCZOS)
+        except Exception:
+            avatar_img = None
+    if avatar_img is None:
+        avatar_img = _platzhalter_avatar(member, avatar_size)
     avatar_img.putalpha(_shape_mask(avatar_shape, avatar_size, avatar_size))
 
     border = Image.new("RGBA", (bw, bw), (0, 0, 0, 0))
@@ -279,7 +330,9 @@ def fill(template: str, member: discord.Member, *, plain_mention: bool = False) 
         "{user}": member.display_name if plain_mention else member.mention,
         "{username}": str(member),
         "{server}": member.guild.name,
-        "{count}": str(member.guild.member_count),
+        # member_count ist None, solange die Gilde noch nicht vollstaendig geladen ist -
+        # dann stuende woertlich "None" in der Begruessung.
+        "{count}": str(member.guild.member_count or "?"),
     }
     return _PLACEHOLDER_RE.sub(lambda m: values[m.group(0)], template)
 

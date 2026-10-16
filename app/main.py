@@ -9289,6 +9289,25 @@ async def server_config_save(request: Request, guild_id: int):
     # cogs/welcome.py's _make_card() additionally fits the SUBSTITUTED text to the actual pixel
     # budget at render time (_fit_text()) as the real backstop - this cap is just an early,
     # cheap rejection of an obviously-too-long template, not the only thing preventing overflow.
+    # Die Farben der Willkommenskarte gingen als Einzige ungeprueft durch den allgemeinen
+    # Text-Loop - anders als Kanaele, Rollen und Textlaengen daruber. Ein krummer Wert
+    # ("#GGGGGG" hat sechs Zeichen und sieht fuer eine Laengenpruefung richtig aus) landete
+    # so in der Datenbank und machte die Karte bei JEDEM Beitritt zum Notfall-Embed.
+    # cogs/welcome.py faengt das inzwischen ab und nimmt dann Weiss - aber still Weiss zu
+    # bekommen, wo man eine Farbe gewaehlt hat, ist keine Antwort: hier wird es gesagt.
+    color_fields = [
+        ("welcome_card_circle_color", "Rahmenfarbe"),
+        ("welcome_card_text_color", "Textfarbe"),
+        ("welcome_card_username_color", "Namensfarbe"),
+    ]
+    for field, label in color_fields:
+        wert = str(form.get(field, "")).strip()
+        if wert and not _HEX_COLOR_RE.match(wert):
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab={tab}&error=Ungültige+Farbe+({label})",
+                status_code=302,
+            )
+
     text_length_fields = [
         ("welcome_card_heading_text", 60, "Überschrift-Text"),
         ("welcome_card_subtitle_text", 80, "Untertitel-Text"),
@@ -10898,6 +10917,12 @@ async def welcome_card_bg_image(request: Request, guild_id: int):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
+    # Die Reiterliste gilt auch hier. Serverzugriff allein genuegt nicht: wer auf "Umfragen"
+    # beschraenkt ist, soll das Hintergrundbild des Willkommensreiters nicht abrufen koennen,
+    # nur weil diese Route ihren eigenen Weg an der Reiteransicht vorbei nimmt.
+    erlaubte = await _viewer_allowed_tabs(request, guild_id)
+    if erlaubte is not None and "welcome" not in erlaubte:
+        raise HTTPException(status_code=404)
     bg_b64 = await get_guild_config(guild_id, "welcome_card_bg_image")
     if not bg_b64:
         raise HTTPException(status_code=404)
@@ -10987,6 +11012,12 @@ async def welcome_card_preview(request: Request, guild_id: int):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
+    # Wie beim Hintergrundbild darueber: die Vorschau zeichnet das gespeicherte Hintergrund-
+    # und Aufleger-Bild mit, ein auf andere Reiter beschraenkter Moderator bekaeme sie hier
+    # also trotzdem zu sehen.
+    erlaubte = await _viewer_allowed_tabs(request, guild_id)
+    if erlaubte is not None and "welcome" not in erlaubte:
+        raise HTTPException(status_code=404)
     guild = bot.get_guild(guild_id)
     if not guild:
         raise HTTPException(status_code=404)
