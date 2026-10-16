@@ -3743,6 +3743,77 @@ async def verfuegbare_versionen() -> list:
         return _TAGS_CACHE["tags"]
 
 
+_AENDERUNGEN_URL = ("https://api.github.com/repos/LucyWolf/phobos-bot/commits"
+                    "?sha={zweig}&per_page=25")
+_AENDERUNGEN_CACHE: dict = {}
+
+
+async def aenderungen_holen(zweig: str) -> list:
+    """Was sich auf diesem Zweig zuletzt getan hat - als Liste fuer die Updates-Seite.
+
+    Quelle sind die Commit-Nachrichten des Repos. Die erste Zeile ist die Ueberschrift,
+    der Rest die Begruendung; beides wird getrennt zurueckgegeben, damit die Seite den
+    langen Teil einklappen kann. Wo ein Versionsschild auf genau diesen Commit zeigt,
+    steht die Nummer dabei.
+
+    Faellt der Abruf aus (kein Netz, GitHub zickt, Zugriffsgrenze erreicht), kommt die
+    zuletzt geholte Liste zurueck und sonst eine leere - die Updates-Seite soll daran
+    nicht scheitern, sie hat Wichtigeres zu tun.
+    """
+    jetzt = datetime.datetime.utcnow()
+    eintrag = _AENDERUNGEN_CACHE.get(zweig)
+    if eintrag and (jetzt - eintrag["at"]).total_seconds() < 600:
+        return eintrag["liste"]
+
+    def _fetch(url):
+        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json"})
+        with urllib.request.urlopen(req, timeout=6) as r:
+            return _djson.loads(r.read().decode())
+
+    schleife = asyncio.get_event_loop()
+    try:
+        roh = await schleife.run_in_executor(
+            None, _fetch, _AENDERUNGEN_URL.format(zweig=urllib.parse.quote(zweig)))
+    except Exception as e:
+        print(f"[update] Aenderungen fuer {zweig} nicht abrufbar: {e}")
+        return eintrag["liste"] if eintrag else []
+
+    # Versionsschilder einmal mitholen, um die Nummern zuordnen zu koennen. Schlaegt das
+    # fehl, bleibt die Liste trotzdem brauchbar - dann eben ohne Nummern.
+    nach_sha = {}
+    try:
+        for t in await schleife.run_in_executor(None, _fetch, _GITHUB_TAGS_URL):
+            name = (t or {}).get("name") or ""
+            sha = ((t or {}).get("commit") or {}).get("sha") or ""
+            if sha and re.fullmatch(r"v\d+\.\d+\.\d+", name):
+                nach_sha[sha] = name
+    except Exception:
+        pass
+
+    liste = []
+    for c in roh if isinstance(roh, list) else []:
+        if not isinstance(c, dict):
+            continue
+        nachricht = ((c.get("commit") or {}).get("message") or "").strip()
+        if not nachricht:
+            continue
+        kopf, _, rumpf = nachricht.partition("\n")
+        # Die Mitzeichnungszeilen am Ende gehoeren nicht in die Anzeige.
+        zeilen = [z for z in rumpf.strip().split("\n")
+                  if not z.lower().startswith(("co-authored-by:", "signed-off-by:"))]
+        datum = ((c.get("commit") or {}).get("author") or {}).get("date") or ""
+        sha = c.get("sha") or ""
+        liste.append({
+            "kopf": kopf.strip(),
+            "rumpf": "\n".join(zeilen).strip(),
+            "datum": _fmt_dt(datum.replace("Z", "+00:00")) if datum else "",
+            "sha": sha[:7],
+            "version": nach_sha.get(sha, ""),
+        })
+    _AENDERUNGEN_CACHE[zweig] = {"at": jetzt, "liste": liste}
+    return liste
+
+
 @web.get("/bot/update", response_class=HTMLResponse)
 async def bot_update_page(request: Request, success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
@@ -3765,6 +3836,10 @@ async def bot_update_page(request: Request, success: str = "", error: str = ""):
         # kein Zurueckpatchen, sondern ein Update - dafuer gibt es den Knopf darueber.
         "versionen": [v for v in await verfuegbare_versionen()
                       if _ver_tuple(v[1:]) < _ver_tuple(VERSION)][:30],
+        # Was sich auf beiden Zweigen zuletzt getan hat, damit man vor dem Einspielen
+        # sieht, was man bekommt - und auf der Beta, was man bekaeme.
+        "aenderungen_stable": await aenderungen_holen("main"),
+        "aenderungen_beta": await aenderungen_holen("beta"),
         "success": success, "error": error,
     })
 
