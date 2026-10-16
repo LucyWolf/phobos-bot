@@ -157,9 +157,9 @@
       </div>
     </div>
     <label>{{ tr.config_welcome_message_label }} <span style="color:var(--muted);font-size:0.75rem">{{ tr.config_welcome_message_hint }}</span></label>
-    <input type="text" name="welcome_message" value="{{ cfg.get('welcome_message', 'Willkommen {user} auf {server}! Du bist Mitglied #{count}.') }}">
+    <input type="text" name="welcome_message" value="{{ cfg.get('welcome_message', welcome_message_default) }}">
     <label>{{ tr.config_leave_message_label }}</label>
-    <input type="text" name="leave_message" value="{{ cfg.get('leave_message', '{username} hat den Server verlassen.') }}">
+    <input type="text" name="leave_message" value="{{ cfg.get('leave_message', leave_message_default) }}">
     <label>{{ tr.config_autorole_label }}</label>
     <select name="autorole">
       <option value="" {% if not cfg.get('autorole') %}selected{% endif %}>{{ tr.config_autorole_none_option }}</option>
@@ -6031,12 +6031,22 @@ if (wcToggle) {
 }
 
 // Sync color picker <-> hex text input
+// Auf oberster Ebene, nicht in einer Funktion - genau dort ist sie schon einmal gelandet
+// und warf dann "ReferenceError: ... is not defined" (v1.18.x, VRC_GRP_T).
+const WC_FARBE_UNGUELTIG = {{ tr.config_color_invalid | js }};
+
 function syncColor(hexInput, colorName) {
   const v = hexInput.value;
-  if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+  const gueltig = /^#[0-9a-fA-F]{6}$/.test(v);
+  if (gueltig) {
     const picker = document.querySelector('input[type=color][name="' + colorName + '"]');
     if (picker) picker.value = v;
   }
+  // Eine krumme Eingabe wurde vorher einfach verworfen: der Waehler behielt seine alte
+  // Farbe, gespeichert wurde die alte, und zu sehen war davon nichts - man tippt etwas
+  // ein, speichert, und es passiert nichts. Jetzt steht es wenigstens am Feld.
+  hexInput.style.borderColor = (v === "" || gueltig) ? "" : "#ef4444";
+  hexInput.title = (v === "" || gueltig) ? "" : WC_FARBE_UNGUELTIG;
 }
 document.querySelectorAll('input[type=color]').forEach(picker => {
   picker.addEventListener('input', () => {

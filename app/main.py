@@ -9024,6 +9024,11 @@ async def server_config(
         # Feld soll stehen, was tatsaechlich herausgeht, wenn man es leer laesst.
         "bot_sprache": _bot_sprache,
         "bot_sprachen": bot_sprachen(),
+        # Vorbelegung der Willkommens- und Austrittsnachricht in der Sprache des Bots -
+        # die Texte gehen an Discord-Mitglieder, richten sich also nach bot_lang und nicht
+        # nach der Sprache des Dashboards.
+        "welcome_message_default": bot_text("welcome_message", _bot_sprache),
+        "leave_message_default": bot_text("leave_message", _bot_sprache),
         "vrc_panel_title_default": bot_text("vrc_panel_title", _bot_sprache),
         "vrc_panel_text_default": bot_text("vrc_panel_text", _bot_sprache),
         "vrc_panel_button_default": bot_text("vrc_panel_button", _bot_sprache),

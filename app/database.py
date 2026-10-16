@@ -1590,6 +1590,11 @@ BOT_TEXTE = {
         "birthday_reply_error":       DEFAULT_BIRTHDAY_REPLY_ERROR,
         "tempvoice_panel_title":      DEFAULT_TEMPVOICE_PANEL_TITLE,
         "tempvoice_panel_text":       DEFAULT_TEMPVOICE_PANEL_TEXT,
+        # Die Vorbelegung der beiden Felder im Willkommensreiter. Stand hart deutsch in der
+        # Vorlage - ein englisch eingestellter Server bekam also deutschen Text ins Feld
+        # geschrieben und speicherte ihn beim ersten Sichern gleich mit ab.
+        "welcome_message":            "Willkommen {user} auf {server}! Du bist Mitglied #{count}.",
+        "leave_message":              "{username} hat den Server verlassen.",
     },
     "en": {
         "vrc_panel_title":            "\U0001f517 Link your VRChat account",
@@ -1624,6 +1629,8 @@ BOT_TEXTE = {
             "and let individual people in or throw them out.\n\n"
             "Once the channel is empty it disappears by itself."
         ),
+        "welcome_message":            "Welcome {user} to {server}! You are member #{count}.",
+        "leave_message":              "{username} has left the server.",
     },
 }
 
