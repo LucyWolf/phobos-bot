@@ -6033,7 +6033,7 @@ if (wcToggle) {
 // Sync color picker <-> hex text input
 // Auf oberster Ebene, nicht in einer Funktion - genau dort ist sie schon einmal gelandet
 // und warf dann "ReferenceError: ... is not defined" (v1.18.x, VRC_GRP_T).
-const WC_FARBE_UNGUELTIG = {{ tr.config_color_invalid | js }};
+const WC_FARBE_UNGUELTIG = {{ tr.config_color_invalid | jsraw }};
 
 function syncColor(hexInput, colorName) {
   const v = hexInput.value;
