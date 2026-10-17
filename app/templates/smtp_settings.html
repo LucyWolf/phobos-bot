@@ -1,36 +1,40 @@
-{# Admin-only outgoing-mail config, used only for password-reset emails (main.py's
-   "SMTP Settings" section / _send_reset_email). Provider dropdown just auto-fills the
-   host/port fields client-side - no server-side effect. #}
+{# Admin-only outgoing-mail config. Laengst nicht mehr nur fuer Passwort-Mails: auch der
+   Bestaetigungscode beim Adresswechsel und die beiden Anmeldewarnungen haengen daran -
+   die Info-Box oben zaehlt es auf. Das Anbieter-Menue fuellt nur Host und Port im Browser
+   vor, serverseitig passiert dabei nichts. #}
 {% extends "base.html" %}
 {% block title %}{{ app_name }} – {{ tr.nav_smtp }}{% endblock %}
 {% block page_title %}📧 {{ tr.nav_smtp }}{% endblock %}
 
 {% block content %}
+{# Gleiches Muster wie die Info-Knoepfe der Serverseite: ein kleines i, das einen Kasten
+   aufklappt, und ein Klick daneben macht ihn wieder zu. #}
+<div style="position:relative;margin-bottom:1.25rem;">
+  <button type="button" onclick="toggleSmtpInfo()" title="{{ tr.smtp_info_tooltip }}"
+    style="background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">ℹ</button>
+  <div id="smtp-info-box" style="display:none;position:absolute;z-index:50;left:0;top:100%;margin-top:0.4rem;
+       background:var(--surface);border:1px solid var(--accent);border-radius:0.6rem;padding:0.85rem 1rem;
+       font-size:0.78rem;min-width:300px;max-width:460px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <div style="font-weight:700;margin-bottom:0.5rem;color:#a78bfa;">{{ tr.smtp_uses_heading }}</div>
+    <ul style="margin:0;padding-left:1.1rem;color:var(--muted);line-height:1.7;">
+      <li>🔑 {{ tr.smtp_use_reset }}</li>
+      <li>✉️ {{ tr.smtp_use_code }}</li>
+      <li>🔒 {{ tr.smtp_use_lock }}</li>
+      <li>🌍 {{ tr.smtp_use_newip }}</li>
+    </ul>
+    <p style="margin:0.6rem 0 0;color:var(--muted);line-height:1.6;">{{ tr.smtp_use_optout }}</p>
+  </div>
+</div>
+
 {% if saved %}<div class="alert alert-success">✅ Gespeichert.</div>{% endif %}
 {% if test_ok %}<div class="alert alert-success">✅ Test-E-Mail erfolgreich gesendet.</div>{% endif %}
 {% if error %}<div class="alert alert-error">❌ {{ meldung(error, lang) }}</div>{% endif %}
 
 <div class="card" style="max-width:560px;">
   <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.3rem;">{{ tr.smtp_heading }}</div>
-  <p class="hint" style="margin-bottom:1rem;">
+  <p class="hint" style="margin-bottom:1.25rem;">
     {{ tr.smtp_hint }}
   </p>
-
-  {# Was ohne eingerichteten Versand still ausfaellt - gehoert hierher, weil man es sonst
-     erst merkt, wenn man es braucht (und dann hilft es niemandem mehr). #}
-  <div style="background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;
-              padding:0.9rem 1rem;margin-bottom:1.25rem;">
-    <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.55rem;">{{ tr.smtp_uses_heading }}</div>
-    <ul style="margin:0;padding-left:1.1rem;font-size:0.78rem;color:var(--muted);line-height:1.7;">
-      <li>🔑 {{ tr.smtp_use_reset }}</li>
-      <li>✉️ {{ tr.smtp_use_code }}</li>
-      <li>🔒 {{ tr.smtp_use_lock }}</li>
-      <li>🌍 {{ tr.smtp_use_newip }}</li>
-    </ul>
-    <p style="margin:0.6rem 0 0;font-size:0.74rem;color:var(--muted);line-height:1.6;">
-      {{ tr.smtp_use_optout }}
-    </p>
-  </div>
   <form method="post" action="/settings/smtp">
     <label>{{ tr.smtp_provider }} <span style="color:var(--muted);font-size:0.72rem">{{ tr.smtp_provider_hint }}</span></label>
     <select id="smtp-provider" onchange="applySmtpProvider()">
@@ -85,6 +89,17 @@
 </div>
 
 <script>
+function toggleSmtpInfo() {
+  const box = document.getElementById('smtp-info-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', function(e) {
+  const box = document.getElementById('smtp-info-box');
+  if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleSmtpInfo()"]')) {
+    box.style.display = 'none';
+  }
+});
+
 // Public, well-documented SMTP endpoints for the most common providers - not specific to any
 // one self-hoster's own mailbox (unlike the actual host/username/password stored per-instance
 // in the database), so safe to ship as generic presets in this shared, public codebase.

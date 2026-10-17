@@ -1181,9 +1181,9 @@ def _totp_lock_remaining_minutes(user: dict) -> int:
 # anything into. Somebody willing to rotate that header gets around this. It stops the attack
 # that was actually demonstrated - and a proxy-level limit or fail2ban is the answer to the
 # determined version, not application code.
-_LOGIN_MAX_PER_USER = 5          # Fehlversuche je Adresse UND Benutzername
+_LOGIN_MAX_PER_USER = 3          # Fehlversuche je Adresse UND Benutzername
 _LOGIN_MAX_PER_IP = 20           # Fehlversuche je Adresse über alle Benutzernamen
-_LOGIN_LOCK_SECONDS = 15 * 60
+_LOGIN_LOCK_SECONDS = 60 * 60    # eine Stunde
 _LOGIN_WINDOW_SECONDS = 15 * 60  # so lange zählt ein Fehlversuch mit
 _LOGIN_TRACK_MAX = 5000          # darüber fliegt die älteste Hälfte raus
 # key -> [Anzahl, erster Fehlversuch (monotonic), gesperrt bis (monotonic)]
@@ -1377,8 +1377,8 @@ async def login_submit(request: Request, username: str = Form(...), password: st
                              f"{_app_name}: Anmeldeversuche an deinem Konto", [
                 f"Hallo {user.get('display_name') or user['username']},",
                 "",
-                "jemand hat mehrfach ein falsches Passwort für dein Konto eingegeben. "
-                "Die Anmeldung ist deshalb vorübergehend gesperrt:",
+                "jemand hat dreimal hintereinander ein falsches Passwort für dein Konto "
+                "eingegeben. Die Anmeldung ist deshalb eine Stunde lang gesperrt:",
                 "",
                 f"    Konto:   {user['username']}",
                 f"    Adresse: {_login_client(request)}",
