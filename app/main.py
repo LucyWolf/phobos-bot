@@ -1118,10 +1118,14 @@ async def _complete_login(request: Request, user: dict) -> None:
     # Hier laeuft JEDE erfolgreiche Anmeldung durch, auch die mit zweitem Faktor - deshalb
     # sitzt die Meldung ueber eine unbekannte Adresse an dieser Stelle und nicht in
     # login_submit, wo der 2FA-Weg sie umgehen wuerde.
-    ip = _login_client(request)
-    if not await _ort_bekannt(user["id"], ip):
-        if not _warn_zu_frueh(f"neu:{user['id']}"):
-            await _warn_mail(user, f"{_app_name}: Anmeldung von einer neuen Adresse", [
+    # Vollstaendig abgesichert: an einer Meldung darf keine Anmeldung scheitern. Ohne das
+    # haette schon eine fehlende Tabelle (Migration noch nicht gelaufen) oder eine kurz
+    # gesperrte Datenbankdatei jeden ausgesperrt, der sich anmelden will.
+    try:
+        ip = _login_client(request)
+        if not await _ort_bekannt(user["id"], ip):
+            await _warn_mail(user, f"neu:{user['id']}",
+                             f"{_app_name}: Anmeldung von einer neuen Adresse", [
                 f"Hallo {user.get('display_name') or user['username']},",
                 "",
                 "gerade hat sich jemand bei deinem Konto angemeldet — von einer Adresse, "
@@ -1135,6 +1139,8 @@ async def _complete_login(request: Request, user: dict) -> None:
                 "einmal. Warst du es nicht, ändere sofort dein Passwort und schalte die "
                 "Zwei-Faktor-Anmeldung ein.",
             ])
+    except Exception as e:
+        print(f"[warn-mail] Ortspruefung fehlgeschlagen: {e}")
     # Sessions older than the cookie can possibly live are dead weight; clearing them here
     # costs one statement per login instead of a background task.
     try:
@@ -1245,13 +1251,18 @@ def _login_note_success(request: Request, username: str) -> None:
 # die Warnung selbst zur Belaestigung machen (und im Spam landen). Nach einem Neustart faengt
 # die Drosselung neu an - verschmerzbar, der Fall ist selten.
 _WARN_SPERRE_MINUTEN = 60
+# Die Meldung ueber eine neue Adresse bekommt eine eigene, laengere Bremse: wechselt das
+# Netz eines Anschlusses doch einmal taeglich, bleibt es bei einer Mail statt vierundzwanzig.
+_WARN_SPERRE_ORT_MINUTEN = 24 * 60
 _warn_zuletzt: dict[str, float] = {}
 
 
 def _warn_zu_frueh(schluessel: str) -> bool:
     jetzt = time.monotonic()
+    minuten = (_WARN_SPERRE_ORT_MINUTEN if schluessel.startswith("neu:")
+               else _WARN_SPERRE_MINUTEN)
     letzte = _warn_zuletzt.get(schluessel)
-    if letzte and jetzt - letzte < _WARN_SPERRE_MINUTEN * 60:
+    if letzte and jetzt - letzte < minuten * 60:
         return True
     if len(_warn_zuletzt) > 2000:
         for alt, _ in sorted(_warn_zuletzt.items(), key=lambda kv: kv[1])[:1000]:
@@ -1260,19 +1271,25 @@ def _warn_zu_frueh(schluessel: str) -> bool:
     return False
 
 
-async def _warn_mail(user: dict, betreff: str, zeilen: list) -> None:
+async def _warn_mail(user: dict, schluessel: str, betreff: str, zeilen: list) -> None:
     """Schickt eine Sicherheitsmeldung an das Konto - oder eben nicht.
 
     Stillschweigend uebersprungen, wenn kein SMTP eingerichtet ist, das Konto keine Adresse
     hinterlegt hat oder die Meldungen dort abgeschaltet sind. Ein Fehler beim Versand wird
     protokolliert, aber nie weitergereicht: eine Anmeldung darf nicht daran scheitern, dass
     der Mailserver gerade zickt.
+
+    Die Drosselung sitzt bewusst HIER und nicht beim Aufrufer, und zwar hinter allen
+    Bedingungen: wer sie vorher abfragt, verbraucht die Stunde auch dann, wenn gar nichts
+    verschickt wurde - und die naechste, echte Meldung bliebe aus, obwohl nie eine ankam.
     """
     try:
         adresse = (user or {}).get("email") or ""
         if not adresse or not (user or {}).get("warn_mails", 1):
             return
         if not await smtp_bereit():
+            return
+        if _warn_zu_frueh(schluessel):
             return
         text = "\n".join(zeilen) + (
             "\n\nDiese Meldung lässt sich im Dashboard unter Profil abschalten."
@@ -1282,10 +1299,32 @@ async def _warn_mail(user: dict, betreff: str, zeilen: list) -> None:
         print(f"[warn-mail] fehlgeschlagen: {e}")
 
 
+def _ort_netz(ip: str) -> str:
+    """Das Netz hinter einer Adresse - nicht die Adresse selbst.
+
+    Sonst waere die Meldung ueber eine "neue Adresse" wertlos: ein Privatanschluss bekommt
+    bei der naechtlichen Zwangstrennung eine andere IPv4, und unter IPv6 wechselt jedes
+    Geraet seine Adresse von sich aus staendig (Privacy Extensions) - es kaeme bei jeder
+    Anmeldung eine Warnung, und zwar ueber den Anschluss, an dem man selbst sitzt.
+
+    Das Netz bleibt dabei in aller Regel gleich: /64 ist unter IPv6 genau der Teil, den der
+    Anbieter vergibt und den die Privacy Extensions nicht anfassen. Unter IPv4 ist /24 ein
+    Kompromiss - es faengt den Wechsel innerhalb eines Anbieter-Pools, nicht jeden.
+    """
+    roh = (ip or "?").strip()
+    try:
+        import ipaddress
+        adresse = ipaddress.ip_address(roh)
+        praefix = 64 if adresse.version == 6 else 24
+        return str(ipaddress.ip_network(f"{roh}/{praefix}", strict=False))
+    except ValueError:
+        return roh
+
+
 def _ort_hash(ip: str) -> str:
-    """Erkennungsmerkmal einer Adresse, ohne sie selbst zu speichern."""
+    """Erkennungsmerkmal eines Netzes, ohne die Adresse selbst zu speichern."""
     import hashlib
-    return hashlib.sha256(("ort:" + (ip or "?")).encode()).hexdigest()
+    return hashlib.sha256(("ort:" + _ort_netz(ip)).encode()).hexdigest()
 
 
 async def _ort_bekannt(user_id, ip: str) -> bool:
@@ -1333,8 +1372,9 @@ async def login_submit(request: Request, username: str = Form(...), password: st
         # Erst wenn die Fehlversuche das Konto tatsaechlich dichtgemacht haben, geht eine
         # Meldung raus - bei jedem einzelnen Versuch waere die Warnung bei einem Angriff
         # selbst die Belaestigung und landete im Spam.
-        if _login_locked_seconds(request, username) and not _warn_zu_frueh(f"sperre:{user['id']}"):
-            await _warn_mail(user, f"{_app_name}: Anmeldeversuche an deinem Konto", [
+        if _login_locked_seconds(request, username):
+            await _warn_mail(user, f"sperre:{user['id']}",
+                             f"{_app_name}: Anmeldeversuche an deinem Konto", [
                 f"Hallo {user.get('display_name') or user['username']},",
                 "",
                 "jemand hat mehrfach ein falsches Passwort für dein Konto eingegeben. "
