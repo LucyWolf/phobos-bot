@@ -2787,13 +2787,17 @@ async def _send_mail(to_addr: str, betreff: str, text: str) -> None:
     """
     host = await get_config("smtp_host") or ""
     try:
-        port = int(await get_config("smtp_port") or 587)
+        port = int(str(await get_config("smtp_port") or 587).strip())
     except (ValueError, TypeError):
         port = 587
-    user = await get_config("smtp_user") or ""
-    pw = await get_config("smtp_pass") or ""
-    frm = await get_config("smtp_from") or user
-    if not host or not user:
+    # Ueberall strippen, damit hier dieselbe Antwort herauskommt wie bei smtp_bereit() -
+    # sonst gilt ein Passwort aus drei Leerzeichen an der einen Stelle als gesetzt und an
+    # der anderen nicht, und die Seite verspricht Post, die nie rausgeht.
+    host = host.strip()
+    user = (await get_config("smtp_user") or "").strip()
+    pw = (await get_config("smtp_pass") or "").strip()
+    frm = (await get_config("smtp_from") or "").strip() or user
+    if not host or not user or not pw:
         raise ValueError("SMTP nicht konfiguriert")
 
     def _send():
@@ -2801,12 +2805,43 @@ async def _send_mail(to_addr: str, betreff: str, text: str) -> None:
         msg["Subject"] = betreff
         msg["From"] = frm
         msg["To"] = to_addr
-        with smtplib.SMTP(host, port, timeout=20) as srv:
-            srv.starttls()
-            srv.login(user, pw)
-            srv.send_message(msg)
+        # Port 465 spricht von der ersten Zeile an verschluesselt - dort gibt es kein
+        # STARTTLS, der Befehl laeuft ins Leere und die Verbindung scheitert. Genau diesen
+        # Port verlangen aber viele eigene Mailserver und mehrere Anbieter (Strato, 1&1),
+        # und die Portpruefung beim Speichern laesst ihn durch. Fuer 587 und alles andere
+        # bleibt es beim bisherigen Weg: im Klartext verbinden, dann auf TLS hochstufen.
+        if port == 465:
+            with smtplib.SMTP_SSL(host, port, timeout=20) as srv:
+                srv.login(user, pw)
+                srv.send_message(msg)
+        else:
+            with smtplib.SMTP(host, port, timeout=20) as srv:
+                srv.ehlo()
+                srv.starttls()
+                srv.login(user, pw)
+                srv.send_message(msg)
 
     await asyncio.get_event_loop().run_in_executor(None, _send)
+
+
+async def smtp_bereit() -> bool:
+    """Kann ueberhaupt Post rausgehen?
+
+    Dieselbe Bedingung, an der _send_mail() scheitern wuerde - nur vorher gefragt, damit die
+    Seite es sagen kann, statt eine Mail zu versprechen, die nie ankommt.
+
+    Das Passwort gehoert ausdruecklich dazu: _send_mail meldet sich immer mit
+    login(user, pw) an. Fehlt es, scheiterte der Versand erst dort - das Dashboard haette
+    aber laengst "geht" gesagt, das Formular zum Zuruecksetzen angeboten und jemanden auf
+    Post warten lassen, die nie kommt. Genau der Fall, den der Hinweis verhindern soll.
+    """
+    # Nacheinander statt in einem all(...)-Ausdruck: ein Generator mit await darin ist ein
+    # asynchroner Generator, und den kann all() nicht durchlaufen - es gaebe einen TypeError
+    # statt einer Antwort.
+    for schluessel in ("smtp_host", "smtp_user", "smtp_pass"):
+        if not (await get_config(schluessel) or "").strip():
+            return False
+    return True
 
 
 async def _send_email_code(to_addr: str, code: str):
@@ -2815,76 +2850,24 @@ async def _send_email_code(to_addr: str, code: str):
     Genau darin liegt der Sinn: ankommen kann er nur, wenn die Adresse stimmt. Ein Vertipper
     traegt sonst eine Adresse ein, an die niemand herankommt - und wer sein Passwort
     vergisst, kommt nie wieder ins Konto."""
-    host = await get_config("smtp_host") or ""
-    try:
-        port = int(await get_config("smtp_port") or 587)
-    except (ValueError, TypeError):
-        port = 587
-    user = await get_config("smtp_user") or ""
-    pw = await get_config("smtp_pass") or ""
-    frm = await get_config("smtp_from") or user
-    if not host or not user:
-        raise ValueError("SMTP nicht konfiguriert")
-
-    def _send():
-        msg = email.mime.text.MIMEText(
-            f"Hallo,\n\ndein Bestätigungscode lautet:\n\n    {code}\n\n"
-            f"Gib ihn im Dashboard ein, damit diese Adresse übernommen wird.\n"
-            f"Der Code ist 30 Minuten gültig. Hast du das nicht veranlasst, ignoriere diese "
-            f"Nachricht — ohne den Code ändert sich nichts.\n\n{_app_name}",
-            "plain", "utf-8",
-        )
-        msg["Subject"] = f"{_app_name}: Bestätigungscode"
-        msg["From"] = frm
-        msg["To"] = to_addr
-        with smtplib.SMTP(host, port, timeout=20) as srv:
-            srv.starttls()
-            srv.login(user, pw)
-            srv.send_message(msg)
-
-    await asyncio.get_event_loop().run_in_executor(None, _send)
-
-
-async def smtp_bereit() -> bool:
-    """Kann ueberhaupt Post rausgehen?
-
-    Dieselbe Bedingung, an der _send_reset_email() scheitern wuerde - nur vorher gefragt,
-    damit die Seite es sagen kann, statt eine Mail zu versprechen, die nie ankommt."""
-    return bool((await get_config("smtp_host") or "").strip()
-                and (await get_config("smtp_user") or "").strip())
+    await _send_mail(
+        to_addr,
+        f"{_app_name}: Bestätigungscode",
+        f"Hallo,\n\ndein Bestätigungscode lautet:\n\n    {code}\n\n"
+        f"Gib ihn im Dashboard ein, damit diese Adresse übernommen wird.\n"
+        f"Der Code ist 30 Minuten gültig. Hast du das nicht veranlasst, ignoriere diese "
+        f"Nachricht — ohne den Code ändert sich nichts.\n\n{_app_name}",
+    )
 
 
 async def _send_reset_email(to_addr: str, reset_url: str):
-    host = await get_config("smtp_host") or ""
-    try:
-        port = int(await get_config("smtp_port") or 587)
-    except (ValueError, TypeError):
-        # smtp_settings_save validates this now, but a value saved before that guard existed
-        # could still be sitting in the DB - same defense-in-depth already applied elsewhere
-        # in the project for config values that are validated at save time but read unguarded.
-        port = 587
-    user = await get_config("smtp_user") or ""
-    pw   = await get_config("smtp_pass") or ""
-    frm  = await get_config("smtp_from") or user
-    if not host or not user:
-        raise ValueError("SMTP nicht konfiguriert")
-
-    def _send():
-        msg = email.mime.text.MIMEText(
-            f"Hallo,\n\nKlicke diesen Link um dein Passwort zurückzusetzen:\n{reset_url}\n\n"
-            f"Der Link ist 1 Stunde gültig.\n\n{_app_name}",
-            "plain", "utf-8",
-        )
-        msg["Subject"] = f"{_app_name} – Passwort zurücksetzen"
-        msg["From"] = frm
-        msg["To"] = to_addr
-        with smtplib.SMTP(host, port, timeout=10) as s:
-            s.ehlo()
-            s.starttls()
-            s.login(user, pw)
-            s.sendmail(frm, [to_addr], msg.as_string())
-
-    await asyncio.to_thread(_send)
+    """Schickt den Link zum Zuruecksetzen des Passworts."""
+    await _send_mail(
+        to_addr,
+        f"{_app_name} – Passwort zurücksetzen",
+        f"Hallo,\n\nKlicke diesen Link um dein Passwort zurückzusetzen:\n{reset_url}\n\n"
+        f"Der Link ist 1 Stunde gültig.\n\n{_app_name}",
+    )
 
 
 @web.get("/forgot-password", response_class=HTMLResponse)
