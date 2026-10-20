@@ -3669,29 +3669,15 @@ _UPDATE_CACHE: dict = {"latest": None, "at": None, "fehler": "", "fehler_at": No
 # (a cache-busting ?t=... param does not defeat it, verified directly) - with this project's
 # frequent version bumps, the update check could stay stuck on a stale VERSION for minutes
 # after every single push. The Contents API caches for only 60s and reflects new commits fast.
-# Ein Zugangstoken ist hier NICHT noetig - das Repo ist oeffentlich und jeder darf es
-# lesen. Es hebt allein die Zaehlgrenze: unangemeldet erlaubt GitHub 60 Anfragen je Stunde
-# und Adresse, angemeldet 5000. Dieses Dashboard kommt im dichtesten Fall auf etwa 30, also
-# reicht es ohne - eng wird es erst, wenn mehrere Installationen hinter derselben Adresse
-# haengen oder jemand die Updates-Seite dauernd neu laedt.
-#
-# Wer eines hinterlegt, nimmt dafuer bitte eines OHNE jedes Recht: zum Lesen oeffentlicher
-# Daten braucht es keines, und ein Token mit "repo" laege hier im Klartext in derselben
-# Datenbank wie der Discord-Token.
-_GITHUB_TOKEN_CACHE = {"at": None, "wert": ""}
+def _github_kopf_fest() -> dict:
+    """Die Kopfzeilen fuer eine Anfrage an GitHub.
 
-
-async def _github_kopf() -> dict:
-    """Die Kopfzeilen fuer eine Anfrage an GitHub - mit Anmeldung, falls hinterlegt."""
-    kopf = {"Accept": "application/vnd.github.v3+json", "User-Agent": "phobos-bot"}
-    jetzt = datetime.datetime.utcnow()
-    zwischen = _GITHUB_TOKEN_CACHE
-    if not zwischen["at"] or (jetzt - zwischen["at"]).total_seconds() > 60:
-        zwischen["wert"] = (await get_config("github_token") or "").strip()
-        zwischen["at"] = jetzt
-    if zwischen["wert"]:
-        kopf["Authorization"] = f"Bearer {zwischen['wert']}"
-    return kopf
+    Eine Stelle statt drei - vorher baute jeder der drei Abrufe seine eigene zusammen.
+    Angemeldet wird nicht: das Repo ist oeffentlich, zum Lesen braucht es nichts. GitHub
+    laesst unangemeldet 60 Abfragen je Stunde und Adresse zu, dieses Dashboard kommt auf
+    etwa 30.
+    """
+    return {"Accept": "application/vnd.github.v3+json", "User-Agent": "phobos-bot"}
 
 
 _GITHUB_VERSION_URL = "https://api.github.com/repos/LucyWolf/phobos-bot/contents/app/VERSION?ref=main"
@@ -3737,7 +3723,7 @@ async def check_latest_version(force: bool = False) -> str | None:
     try:
         ref = UPDATE_KANAELE.get(await update_kanal(), "main")
 
-        kopf = await _github_kopf()
+        kopf = _github_kopf_fest()
 
         def _fetch():
             if IS_ANDROID:
@@ -3916,7 +3902,7 @@ async def verfuegbare_versionen() -> list:
     if _TAGS_CACHE["at"] and (jetzt - _TAGS_CACHE["at"]).total_seconds() < 600:
         return _TAGS_CACHE["tags"]
 
-    kopf = await _github_kopf()
+    kopf = _github_kopf_fest()
 
     def _fetch():
         req = urllib.request.Request(_GITHUB_TAGS_URL, headers=kopf)
@@ -3958,7 +3944,7 @@ async def aenderungen_holen(zweig: str) -> list:
     if eintrag and (jetzt - eintrag["at"]).total_seconds() < 600:
         return eintrag["liste"]
 
-    kopf = await _github_kopf()
+    kopf = _github_kopf_fest()
 
     def _fetch(url):
         req = urllib.request.Request(url, headers=kopf)
@@ -4039,9 +4025,6 @@ async def bot_update_page(request: Request, success: str = "", error: str = ""):
         "update_kanaele": list(UPDATE_KANAELE),
         "update_sig_pflicht": (await get_config("update_signatur_pflicht") or "") == "1",
         "update_signierer": (await get_config("update_signierer") or ""),
-        # Nur ob eines hinterlegt ist - der Wert selbst gehoert nicht in eine Seite, die
-        # jemand ueber die Schulter mitlesen kann.
-        "github_token_da": bool((await get_config("github_token") or "").strip()),
         # Nur aeltere anbieten: "zurueck" auf die laufende oder eine neuere Fassung waere
         # kein Zurueckpatchen, sondern ein Update - dafuer gibt es den Knopf darueber.
         "versionen": [v for v in await verfuegbare_versionen()
@@ -4536,31 +4519,6 @@ async def bot_update_signatur(request: Request, pflicht: str = Form(""),
     await set_config("update_signatur_pflicht", an)
     await set_config("update_signierer", schluessel)
     return RedirectResponse("/bot/update?success=Gespeichert", status_code=302)
-
-
-@web.post("/bot/update/github-token")
-async def update_github_token(request: Request, token: str = Form("")):
-    """Hinterlegt ein GitHub-Token - oder nimmt es wieder weg.
-
-    Noetig ist es nicht: das Repo ist oeffentlich. Es hebt allein die Zaehlgrenze von 60
-    auf 5000 Anfragen je Stunde. Entsprechend genuegt ein Token OHNE jedes Recht, und mehr
-    sollte es auch nicht haben - es liegt hier im Klartext in derselben Datenbank wie der
-    Discord-Token.
-    """
-    if r := auth_redirect(request): return r
-    if r := admin_redirect(request): return r
-    wert = token.strip()
-    if wert and len(wert) > 255:
-        return RedirectResponse("/bot/update?error=Token+zu+lang", status_code=302)
-    # Die bekannten GitHub-Formen. Ein Tippfehler faellt so sofort auf, statt erst beim
-    # naechsten Abruf als stiller 401 zu enden.
-    if wert and not wert.startswith(("ghp_", "github_pat_", "gho_", "ghs_")):
-        return RedirectResponse("/bot/update?error=Sieht+nicht+nach+einem+GitHub-Token+aus",
-                                status_code=302)
-    await set_config("github_token", wert)
-    _GITHUB_TOKEN_CACHE["at"] = None        # beim naechsten Abruf frisch lesen
-    meldung = "Token+gespeichert" if wert else "Token+entfernt"
-    return RedirectResponse(f"/bot/update?success={meldung}", status_code=302)
 
 
 @web.post("/bot/update/kanal")
