@@ -139,6 +139,8 @@ docker compose up -d --build
 
 The dashboard is at `http://<server>:8080`. First login is `admin` / `admin` — change it right away.
 
+`BOT_CONTAINER_NAME` only matters if you run several instances on one server; without it the container is called `Phobos-Bot`. Nothing else needs configuring on the server side — the Discord token and everything else goes in through the dashboard.
+
 > The `.:/repo` mount gives the container access to the git repository itself, so the one-click update under **Settings → 🔄 Updates** can fetch and hard-reset to the new code (`git fetch` + `git reset --hard`, not a plain `git pull` — this forcibly overwrites any local drift instead of risking a merge conflict). It is optional if you prefer updating manually from the server shell (`git pull` + `docker compose up -d --build`).
 >
 > There is deliberately **no** `/var/run/docker.sock` mount. Handing the Docker socket to a container is effectively root on the host; the update restarts the process by itself instead, and `restart: unless-stopped` brings it back.
@@ -849,6 +851,8 @@ docker compose up -d --build
 ```
 
 Das Dashboard liegt unter `http://<server>:8080`. Erste Anmeldung mit `admin` / `admin` — und das bitte sofort ändern.
+
+`BOT_CONTAINER_NAME` braucht nur, wer mehrere Instanzen auf einem Server betreibt; ohne heißt der Container `Phobos-Bot`. Sonst ist serverseitig nichts einzustellen — der Discord-Token und alles Weitere kommt über das Dashboard hinein.
 
 > Der `.:/repo`-Mount gibt dem Container Zugriff auf das Git-Repository selbst, damit das Update unter **Einstellungen → 🔄 Updates** den neuen Stand per `git fetch` + `git reset --hard` holen kann (kein normales `git pull` — das würde bei lokalen Abweichungen mit einem Konflikt stehen bleiben, der harte Reset überschreibt sie absichtlich). Er ist optional, wenn Updates lieber von Hand über die Server-Shell laufen (`git pull` + `docker compose up -d --build`).
 >
