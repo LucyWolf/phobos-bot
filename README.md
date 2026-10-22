@@ -1,6 +1,18 @@
+<div align="center">
+
 # 🛡️ Phobos Bot
 
-🇬🇧 [English](#english) &nbsp;|&nbsp; 🇩🇪 [Deutsch](#deutsch)
+**A self-hosted Discord bot with a full web dashboard.**
+Open source, free, no subscription.
+
+![Version](https://img.shields.io/badge/version-1.18.51-7c3aed)
+![Python](https://img.shields.io/badge/Python-3.11-3776ab)
+![Docker](https://img.shields.io/badge/Docker-ready-2496ed)
+![Self-hosted](https://img.shields.io/badge/self--hosted-yes-22c55e)
+
+🇬🇧 [English](#english) &nbsp;·&nbsp; 🇩🇪 [Deutsch](#deutsch)
+
+</div>
 
 ---
 
@@ -113,14 +125,52 @@ services:
     volumes:
       - ./app:/app
       - ./data:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock
       - .:/repo
     environment:
       - TZ=Europe/Berlin
       - PYTHONUNBUFFERED=1
 ```
 
-> The `/var/run/docker.sock` mount lets the dashboard talk to the Docker Engine API directly (needed for the one-click update feature under **Settings → 🔄 Updates**). The `.:/repo` mount gives the container access to the git repository itself so updates can fetch and hard-reset to the new code (`git fetch` + `git reset --hard origin/main`, not a plain `git pull` — this forcibly overwrites any local drift instead of risking a merge conflict). Both are optional if you're fine doing updates manually from the server shell instead (`git pull` + `docker compose up -d --build`).
+Then:
+
+```bash
+docker compose up -d --build
+```
+
+The dashboard is at `http://<server>:8080`. First login is `admin` / `admin` — change it right away.
+
+> The `.:/repo` mount gives the container access to the git repository itself, so the one-click update under **Settings → 🔄 Updates** can fetch and hard-reset to the new code (`git fetch` + `git reset --hard`, not a plain `git pull` — this forcibly overwrites any local drift instead of risking a merge conflict). It is optional if you prefer updating manually from the server shell (`git pull` + `docker compose up -d --build`).
+>
+> There is deliberately **no** `/var/run/docker.sock` mount. Handing the Docker socket to a container is effectively root on the host; the update restarts the process by itself instead, and `restart: unless-stopped` brings it back.
+
+### Without Compose
+
+The same thing as a single command — useful if you only want to try it out:
+
+```bash
+# once, in the directory you cloned into:
+docker build -t phobos-bot:latest ./app
+
+docker run -d \
+  --name Phobos-Bot \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -v "$PWD/app:/app" \
+  -v "$PWD/data:/app/data" \
+  -v "$PWD:/repo" \
+  -e TZ=Europe/Berlin \
+  -e PYTHONUNBUFFERED=1 \
+  phobos-bot:latest
+```
+
+Updating then means doing by hand what Compose does for you:
+
+```bash
+git pull && docker build -t phobos-bot:latest ./app \
+  && docker rm -f Phobos-Bot && docker run -d ...   # same line as above
+```
+
+Compose is the shorter road for anything you keep running — the `docker run` line is here so you can see what it actually does.
 
 ---
 
@@ -786,14 +836,52 @@ services:
     volumes:
       - ./app:/app
       - ./data:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock
       - .:/repo
     environment:
       - TZ=Europe/Berlin
       - PYTHONUNBUFFERED=1
 ```
 
-> Der `/var/run/docker.sock`-Mount erlaubt dem Dashboard direkten Zugriff auf die Docker Engine API (nötig für das One-Click-Update unter **Einstellungen → 🔄 Updates**). Der `.:/repo`-Mount gibt dem Container Zugriff auf das Git-Repository selbst, damit Updates den neuen Code per `git fetch` + `git reset --hard origin/main` holen können (kein normales `git pull` — das würde bei lokalen Abweichungen mit einem Konflikt fehlschlagen, der harte Reset überschreibt stattdessen absichtlich alles). Beide sind optional, falls Updates lieber manuell über die Server-Shell laufen sollen (`git pull` + `docker compose up -d --build`).
+Dann:
+
+```bash
+docker compose up -d --build
+```
+
+Das Dashboard liegt unter `http://<server>:8080`. Erste Anmeldung mit `admin` / `admin` — und das bitte sofort ändern.
+
+> Der `.:/repo`-Mount gibt dem Container Zugriff auf das Git-Repository selbst, damit das Update unter **Einstellungen → 🔄 Updates** den neuen Stand per `git fetch` + `git reset --hard` holen kann (kein normales `git pull` — das würde bei lokalen Abweichungen mit einem Konflikt stehen bleiben, der harte Reset überschreibt sie absichtlich). Er ist optional, wenn Updates lieber von Hand über die Server-Shell laufen (`git pull` + `docker compose up -d --build`).
+>
+> Einen `/var/run/docker.sock`-Mount gibt es bewusst **nicht**. Den Docker-Socket in einen Container zu reichen heißt faktisch Root auf dem Wirt; das Update startet den Prozess stattdessen selbst neu, und `restart: unless-stopped` holt ihn zurück.
+
+### Ohne Compose
+
+Dasselbe als ein einzelner Befehl — praktisch, wenn man es nur ausprobieren will:
+
+```bash
+# einmalig, im geklonten Verzeichnis:
+docker build -t phobos-bot:latest ./app
+
+docker run -d \
+  --name Phobos-Bot \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -v "$PWD/app:/app" \
+  -v "$PWD/data:/app/data" \
+  -v "$PWD:/repo" \
+  -e TZ=Europe/Berlin \
+  -e PYTHONUNBUFFERED=1 \
+  phobos-bot:latest
+```
+
+Ein Update heißt dann von Hand, was Compose sonst übernimmt:
+
+```bash
+git pull && docker build -t phobos-bot:latest ./app \
+  && docker rm -f Phobos-Bot && docker run -d ...   # dieselbe Zeile wie oben
+```
+
+Für alles, was dauerhaft läuft, ist Compose der kürzere Weg — die `docker run`-Zeile steht hier, damit sichtbar ist, was dabei eigentlich passiert.
 
 ---
 
