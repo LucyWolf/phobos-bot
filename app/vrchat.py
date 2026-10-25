@@ -200,10 +200,11 @@ async def login(username: str, password: str, totp_secret: str = "",
                 if not code:
                     if not totp_secret:
                         raise VRChatError(
-                            "Das Konto verlangt Zwei-Faktor-Anmeldung. Trag entweder das "
-                            "2FA-Geheimnis ein (dann erneuert der Bot die Anmeldung selbst) "
-                            "oder einmalig den sechsstelligen Code aus deiner "
-                            "Authenticator-App.")
+                            "Benutzername und Passwort stimmen — VRChat verlangt zusätzlich "
+                            "den sechsstelligen Code aus der Authenticator-App des "
+                            "VRChat-Kontos. Trag ihn oben unter „Einmal-Code“ ein und "
+                            "speichere nochmal. Danach hält die Anmeldung etwa einen Monat, "
+                            "dann ist erneut ein Code nötig.")
                     import pyotp
                     try:
                         code = pyotp.TOTP(totp_secret.replace(" ", "")).now()
