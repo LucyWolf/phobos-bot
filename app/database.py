@@ -1265,6 +1265,14 @@ async def init_db():
             # hat, soll erfahren, wenn an seinem Konto gerueckt wird; abschalten laesst es
             # sich im Profil. Ohne Adresse und ohne SMTP passiert ohnehin nichts.
             "ALTER TABLE users ADD COLUMN warn_mails INTEGER NOT NULL DEFAULT 1",
+            # Mehrere VRChat-Bot-Konten. Die Spalte guild_id ist schon Primaerschluessel und
+            # lag bisher fest auf VRC_ACCOUNT_KEY ("0") - sie wird jetzt als Kontoschluessel
+            # benutzt, umbenannt wird nichts. Die vorhandene Zeile "0" bleibt damit Konto
+            # Nummer eins, und ein Server ohne eigene Zuweisung greift weiter genau darauf
+            # zu: nach dem Update laeuft eine bestehende Installation unveraendert weiter.
+            # label ist nur der Anzeigename in der Liste; leer heisst "nimm den
+            # VRChat-Benutzernamen", damit auch die Altzeile ohne Zutun sinnvoll dasteht.
+            "ALTER TABLE vrc_accounts ADD COLUMN label TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)
@@ -1461,9 +1469,50 @@ def normalize_reaction_emoji(raw: str) -> str:
     return f"<{animated}:{name}:{emoji_id}>"
 
 
-# The single row in vrc_accounts holding the installation-wide VRChat bot account. "0" can
-# never collide with a real Discord guild id, which are all far larger.
+# Der Schluessel des ersten VRChat-Bot-Kontos. Frueher war es das EINZIGE; seit es mehrere
+# geben kann, ist es nur noch der Standard - ein Server ohne eigene Zuweisung greift darauf
+# zu. "0" kann mit keiner echten Discord-Server-Kennung kollidieren, die sind alle weit
+# groesser. Der Wert darf sich nie aendern: bestehende Installationen haben genau diese
+# Zeile, und ein anderer Standard liesse sie ins Leere greifen.
 VRC_ACCOUNT_KEY = "0"
+
+
+async def vrc_accounts_list() -> list:
+    """Alle hinterlegten VRChat-Bot-Konten, das erste zuerst.
+
+    Das erste ist VRC_ACCOUNT_KEY, danach nach Anzeigename - damit die Liste sich nicht
+    umsortiert, sobald jemand ein Konto umbenennt, und das Standardkonto oben bleibt.
+    """
+    rows = await db_rows(
+        "SELECT * FROM vrc_accounts ORDER BY CASE WHEN guild_id=? THEN 0 ELSE 1 END, "
+        "COALESCE(NULLIF(label,''), username), guild_id", (VRC_ACCOUNT_KEY,))
+    return rows or []
+
+
+async def vrc_account_for_guild(guild_id) -> str:
+    """Welches Bot-Konto dieser Discord-Server benutzt.
+
+    Leere oder unbekannte Zuweisung faellt auf VRC_ACCOUNT_KEY zurueck. Das ist der Grund,
+    weshalb bestehende Installationen von alldem nichts merken: niemand hat eine Zuweisung,
+    also greifen alle weiter auf dieselbe Zeile wie vorher. Der Rueckfall gilt auch fuer ein
+    geloeschtes Konto - sonst stuende ein Server ploetzlich ohne VRChat da, ohne dass an ihm
+    etwas geaendert wurde.
+    """
+    wahl = (await get_guild_config(guild_id, "vrc_account") or "").strip()
+    if not wahl or wahl == VRC_ACCOUNT_KEY:
+        return VRC_ACCOUNT_KEY
+    da = await db_one("SELECT guild_id FROM vrc_accounts WHERE guild_id=?", (wahl,))
+    return wahl if da else VRC_ACCOUNT_KEY
+
+
+def vrc_account_name(row) -> str:
+    """Der Anzeigename eines Kontos: eigener Name, sonst der VRChat-Name, sonst die Kennung."""
+    if not row:
+        return ""
+    return ((row["label"] if "label" in row.keys() else "") or "").strip() \
+        or (row["vrc_display_name"] or "").strip() \
+        or (row["username"] or "").strip() \
+        or str(row["guild_id"])
 
 # How long a handed-out VRC-Link page stays usable. Long enough to fetch the code, alt-tab
 # into VRChat, edit the bio and come back; short enough that a link pasted somewhere public by

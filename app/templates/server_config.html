@@ -3450,6 +3450,17 @@ document.addEventListener('click', function(e) {
       <p class="hint" style="margin-bottom:0.9rem;">{{ tr.vrc_group_hint }}</p>
       <div class="grid-2" style="gap:1rem;">
         <div>
+          {# Welcher Bot fuer DIESEN Server. Steht vor der Gruppen-ID, weil die Gruppe nur
+             mit dem Konto zusammen Sinn ergibt: Rechte an einer VRChat-Gruppe haengen am
+             Konto, nicht am Server. #}
+          <label>{{ tr.vrc_account_pick_label }}</label>
+          <select name="vrc_account">
+            {% for k in vrc_konten %}
+            <option value="{{ k.id }}" {% if k.id == vrc_gewaehlt %}selected{% endif %}>{{ k.name }}{% if k.standard %} ({{ tr.vrc_account_default }}){% endif %}</option>
+            {% endfor %}
+          </select>
+          <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_account_pick_hint }}</div>
+
           <label>{{ tr.vrc_group_id_label }}</label>
           <input type="text" name="vrc_group_id" maxlength="64" spellcheck="false"
                  value="{{ cfg.get('vrc_group_id', '') }}" placeholder="grp_00000000-0000-0000-0000-000000000000">

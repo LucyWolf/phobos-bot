@@ -5,6 +5,60 @@
 {# Installation-wide, not per server: the bot signs in as one VRChat account for everything,
    the same way the Streaming-API page holds the Twitch apps every server then draws on. The
    per-server settings that build on it live in each server's "VRC-Link" tab. #}
+{# Ein Formular fuer "neu anlegen" UND "bearbeiten". Zwei getrennte waeren zwei Stellen,
+   an denen dieselben Regeln gelten muessten - und eine davon vergisst man.
+   konto="" legt neu an, sonst wird genau dieser Schluessel ueberschrieben. #}
+{% macro konto_formular(konto, label, username, hat_geheimnis, knopf) %}
+<form method="post" action="/settings/vrchat/save"
+      onsubmit="this.querySelector('button[type=submit]').disabled=true;this.querySelector('button[type=submit]').textContent='⏳';">
+  <input type="hidden" name="vrc_konto" value="{{ konto }}">
+  <div class="grid-2" style="gap:1rem;">
+    <div>
+      <label>{{ tr.vrc_label_label }}</label>
+      <input type="text" name="vrc_label" maxlength="60" value="{{ label or '' }}">
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_label_hint }}</div>
+    </div>
+    <div>
+      <label>{{ tr.vrc_account_user_label }}</label>
+      <input type="text" name="vrc_username" autocomplete="off" value="{{ username or '' }}">
+    </div>
+    <div>
+      <label>{{ tr.vrc_account_pass_label }}</label>
+      <div style="display:flex;gap:0.4rem;align-items:flex-start;">
+        <input type="password" name="vrc_password" autocomplete="new-password" style="flex:1;"
+               placeholder="{% if username %}{{ tr.vrc_account_unchanged }}{% endif %}">
+        <button type="button" class="btn btn-secondary" style="padding:0.5rem 0.65rem;"
+                onclick="vrcToggleSecret(this)" title="{{ tr.vrc_show_secret }}">👁</button>
+      </div>
+    </div>
+    <div>
+      <label>{{ tr.vrc_account_code_label }}</label>
+      <input type="text" name="vrc_code" autocomplete="off" inputmode="numeric" maxlength="6"
+             pattern="[0-9]{6}" placeholder="123456">
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_account_code_hint }}</div>
+    </div>
+    <div>
+      <label>{{ tr.vrc_secret_label }}</label>
+      <div style="display:flex;gap:0.4rem;align-items:flex-start;">
+        <input type="password" name="vrc_totp_secret" autocomplete="new-password" style="flex:1;"
+               placeholder="{% if hat_geheimnis %}{{ tr.vrc_secret_unchanged }}{% endif %}">
+        <button type="button" class="btn btn-secondary" style="padding:0.5rem 0.65rem;"
+                onclick="vrcToggleSecret(this)" title="{{ tr.vrc_show_secret }}">👁</button>
+      </div>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_secret_hint }}</div>
+      {% if hat_geheimnis %}
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;color:var(--muted);margin-top:0.3rem;font-weight:400;">
+        <input type="checkbox" name="vrc_totp_clear" value="1" style="width:auto;margin:0;">
+        {{ tr.vrc_secret_clear }}
+      </label>
+      {% endif %}
+    </div>
+    <div style="grid-column:1 / -1;font-size:0.72rem;color:var(--muted);">{{ tr.vrc_account_2fa_choice }}</div>
+  </div>
+  <button type="submit" class="btn btn-primary">{{ knopf }}</button>
+</form>
+{% endmacro %}
+
 {# Gleiches Muster wie auf der SMTP-Seite und den Serverreitern: ein kleines i, das einen
    Kasten aufklappt, und ein Klick daneben macht ihn wieder zu. #}
 <div style="position:relative;margin-bottom:1.25rem;">
@@ -28,106 +82,80 @@
 {% if success %}<div class="alert alert-success">✅ {{ meldung(success, lang) }}</div>{% endif %}
 
 <div class="card">
-  <div class="feat-header">{{ tr.vrc_account_heading }}</div>
-  <p class="hint" style="margin-bottom:0.5rem;">{{ tr.vrc_account_hint }}</p>
+  <div class="feat-header">{{ tr.vrc_accounts_heading }}</div>
+  <p class="hint" style="margin-bottom:0.5rem;">{{ tr.vrc_accounts_hint }}</p>
   <div style="background:rgba(245,158,11,0.12);border:1px solid #f59e0b;border-radius:0.5rem;padding:0.6rem 0.75rem;font-size:0.76rem;line-height:1.6;margin-bottom:0.9rem;">
     <strong style="color:#f59e0b;">{{ tr.vrc_account_warn_title }}</strong><br>{{ tr.vrc_account_warn }}
   </div>
 
-  {% if vrc_account and vrc_account.vrc_user_id %}
-  <div style="display:flex;align-items:center;gap:0.7rem;flex-wrap:wrap;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;padding:0.6rem 0.75rem;margin-bottom:0.9rem;">
-    <span style="font-size:1.1rem;">✅</span>
-    <div style="flex:1;min-width:180px;">
-      <div style="font-weight:600;font-size:0.88rem;">{{ vrc_account.vrc_display_name }}</div>
-      <div style="color:var(--muted);font-size:0.72rem;"><code>{{ vrc_account.vrc_user_id }}</code></div>
-      {# Der Unterschied, auf den es ankommt: haelt die Anmeldung von allein oder nicht.
-         Vorher stand nur "verbunden" da - und einen Monat spaeter ging nichts mehr. #}
-      {% if hat_geheimnis %}
-      <span title="{{ tr.vrc_state_permanent_t }}"
-            style="display:inline-block;margin-top:0.3rem;font-size:0.68rem;border-radius:999px;padding:0.1rem 0.5rem;background:rgba(34,197,94,0.15);border:1px solid #22c55e;color:#22c55e;">♾ {{ tr.vrc_state_permanent }}</span>
+  {% if not konten %}
+  <p class="hint">{{ tr.vrc_none_yet }}</p>
+  {% endif %}
+
+  {# Eine Karte je Konto - dasselbe Muster wie die Streaming-API-Seite. Jede Karte traegt
+     ihren eigenen Schluessel in jedem Formular mit, sonst wuerde der zweite Bot den ersten
+     ueberschreiben. #}
+  {% for k in konten %}
+  <div style="border:1px solid var(--border);border-radius:0.6rem;background:var(--bg);padding:0.7rem 0.8rem;margin-bottom:0.7rem;">
+    <div style="display:flex;align-items:center;gap:0.7rem;flex-wrap:wrap;">
+      <span style="font-size:1.1rem;">{% if k.vrc_user_id %}✅{% else %}⚠️{% endif %}</span>
+      <div style="flex:1;min-width:180px;">
+        <div style="font-weight:600;font-size:0.88rem;">
+          {{ k.anzeige }}
+          {% if k.ist_standard %}
+          <span title="{{ tr.vrc_account_default_t }}" style="font-size:0.64rem;font-weight:400;border-radius:999px;padding:0.05rem 0.45rem;background:var(--accent-light);border:1px solid var(--accent);color:#a78bfa;margin-left:0.3rem;">{{ tr.vrc_account_default }}</span>
+          {% endif %}
+        </div>
+        {% if k.vrc_user_id %}
+        <div style="color:var(--muted);font-size:0.72rem;"><code>{{ k.vrc_user_id }}</code></div>
+        {% endif %}
+        {% if k.hat_geheimnis %}
+        <span title="{{ tr.vrc_state_permanent_t }}" style="display:inline-block;margin-top:0.3rem;font-size:0.68rem;border-radius:999px;padding:0.1rem 0.5rem;background:rgba(34,197,94,0.15);border:1px solid #22c55e;color:#22c55e;">♾ {{ tr.vrc_state_permanent }}</span>
+        {% else %}
+        <span title="{{ tr.vrc_state_temporary_t }}" style="display:inline-block;margin-top:0.3rem;font-size:0.68rem;border-radius:999px;padding:0.1rem 0.5rem;background:rgba(245,158,11,0.15);border:1px solid #f59e0b;color:#f59e0b;">⏳ {{ tr.vrc_state_temporary }}</span>
+        {% endif %}
+        <div style="color:var(--muted);font-size:0.7rem;margin-top:0.3rem;">
+          {% if k.server %}{{ tr.vrc_used_by }} {{ k.server | join(", ") }}{% else %}{{ tr.vrc_used_by_none }}{% endif %}
+        </div>
+      </div>
+      <button type="button" class="btn btn-secondary" style="font-size:0.75rem;"
+              onclick="vrcTest({{ k.guild_id | js }})">{{ tr.vrc_test_btn }}</button>
+      <button type="button" class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;"
+              onclick="vrcEdit({{ k.guild_id | js }})" title="{{ tr.vrc_account_edit }}">⚙</button>
+      <form method="post" action="/settings/vrchat/delete" style="margin:0;"
+            onsubmit="return confirm({{ tr.vrc_account_confirm_delete | js }})">
+        <input type="hidden" name="konto" value="{{ k.guild_id }}">
+        <button type="submit" class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.5rem;"
+                title="{{ tr.vrc_account_remove }}">✕</button>
+      </form>
+    </div>
+    <div id="vrc-test-out-{{ k.guild_id }}" style="display:none;font-size:0.76rem;line-height:1.5;padding:0.45rem 0.7rem;margin-top:0.5rem;border-left:3px solid var(--border);background:var(--surface);border-radius:0 0.35rem 0.35rem 0;color:var(--muted);"></div>
+
+    {% if k.last_error %}
+    <div style="background:rgba(239,68,68,0.12);border:1px solid var(--danger);border-radius:0.5rem;padding:0.5rem 0.7rem;font-size:0.76rem;margin-top:0.5rem;">
+      ❌ {{ k.last_error }}
+      {% if k.veraltete_meldung %}
+      <div style="color:var(--muted);margin-top:0.4rem;border-top:1px solid var(--border);padding-top:0.4rem;">⚠ {{ tr.vrc_error_stale_version }}</div>
       {% else %}
-      <span title="{{ tr.vrc_state_temporary_t }}"
-            style="display:inline-block;margin-top:0.3rem;font-size:0.68rem;border-radius:999px;padding:0.1rem 0.5rem;background:rgba(245,158,11,0.15);border:1px solid #f59e0b;color:#f59e0b;">⏳ {{ tr.vrc_state_temporary }}</span>
+      <div style="color:var(--muted);margin-top:0.35rem;">{{ tr.vrc_error_check_hint }}</div>
       {% endif %}
     </div>
-    {# Neben dem Konto und nicht unten beim Debug: "laeuft es noch" ist die Frage, die man
-       beim Hinsehen hat, und sie darf nichts kosten - hier wird nur die gespeicherte
-       Sitzung abgefragt, kein Anmeldeversuch. #}
-    <button type="button" class="btn btn-secondary" id="vrc-test-btn"
-            onclick="vrcTest()" style="font-size:0.78rem;"
-            title="{{ tr.vrc_test_hint }}">{{ tr.vrc_test_btn }}</button>
-    <form method="post" action="/settings/vrchat/delete" style="margin:0;"
-          onsubmit="return confirm({{ tr.vrc_account_confirm_delete | js }})">
-      <button type="submit" class="btn btn-danger" style="font-size:0.78rem;">{{ tr.vrc_account_remove }}</button>
-    </form>
-  </div>
-  {# Schmaler Streifen mit Balken links statt rahmenlosem Vollkasten: das Ergebnis eines
-     Knopfdrucks ist eine Randnotiz und soll nicht wuchtiger wirken als das Konto darueber. #}
-  <div id="vrc-test-out" style="display:none;font-size:0.76rem;line-height:1.5;padding:0.45rem 0.7rem;margin:-0.55rem 0 0.9rem;border-left:3px solid var(--border);background:var(--bg);border-radius:0 0.35rem 0.35rem 0;color:var(--muted);"></div>
-  {% endif %}
-
-  {# Auch bei verbundenem Konto anzeigen, nicht nur statt der Verbindung. Eine Sitzung kann
-     spaeter sterben - der Zwei-Faktor-Keks haelt etwa einen Monat - und dann stand hier
-     weiterhin nur das gruene "verbunden", waehrend im Hintergrund nichts mehr ging. #}
-  {% if vrc_account and vrc_account.last_error %}
-  <div style="background:rgba(239,68,68,0.12);border:1px solid var(--danger);border-radius:0.5rem;padding:0.6rem 0.75rem;font-size:0.78rem;margin-bottom:0.9rem;">
-    ❌ {{ vrc_account.last_error }}
-    {% if veraltete_meldung %}
-    {# Steht nur bei Texten, die eine aeltere Fassung gespeichert hat. Loeschen waere
-       einfacher gewesen, nimmt aber die einzige Spur, die nach einem Fehlversuch bleibt. #}
-    <div style="color:var(--muted);margin-top:0.4rem;border-top:1px solid var(--border);padding-top:0.4rem;">⚠ {{ tr.vrc_error_stale_version }}</div>
-    {% else %}
-    <div style="color:var(--muted);margin-top:0.35rem;">{{ tr.vrc_error_check_hint }}</div>
     {% endif %}
-    {% if vrc_account.vrc_user_id %}
-    <div style="color:var(--muted);margin-top:0.35rem;">{{ tr.vrc_account_stale_hint }}</div>
-    {% endif %}
-  </div>
-  {% endif %}
 
-  <form method="post" action="/settings/vrchat/save"
-        onsubmit="this.querySelector('button[type=submit]').disabled=true;this.querySelector('button[type=submit]').textContent='⏳';">
-    <div class="grid-2" style="gap:1rem;">
-      <div>
-        <label>{{ tr.vrc_account_user_label }}</label>
-        <input type="text" name="vrc_username" autocomplete="off"
-               value="{{ vrc_account.username if vrc_account else '' }}">
-      </div>
-      <div>
-        <label>{{ tr.vrc_account_pass_label }}</label>
-        <div style="display:flex;gap:0.4rem;align-items:flex-start;">
-          <input type="password" name="vrc_password" autocomplete="new-password" style="flex:1;"
-                 placeholder="{% if vrc_account and vrc_account.username %}{{ tr.vrc_account_unchanged }}{% endif %}">
-          <button type="button" class="btn btn-secondary" style="padding:0.5rem 0.65rem;"
-                  onclick="vrcToggleSecret(this)" title="{{ tr.vrc_show_secret }}">👁</button>
-        </div>
-      </div>
-      <div>
-        <label>{{ tr.vrc_account_code_label }}</label>
-        <input type="text" name="vrc_code" autocomplete="off" inputmode="numeric" maxlength="6"
-               pattern="[0-9]{6}" placeholder="123456">
-        <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_account_code_hint }}</div>
-      </div>
-      <div>
-        <label>{{ tr.vrc_secret_label }}</label>
-        <div style="display:flex;gap:0.4rem;align-items:flex-start;">
-          <input type="password" name="vrc_totp_secret" autocomplete="new-password" style="flex:1;"
-                 placeholder="{% if hat_geheimnis %}{{ tr.vrc_secret_unchanged }}{% endif %}">
-          <button type="button" class="btn btn-secondary" style="padding:0.5rem 0.65rem;"
-                  onclick="vrcToggleSecret(this)" title="{{ tr.vrc_show_secret }}">👁</button>
-        </div>
-        <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_secret_hint }}</div>
-        {% if hat_geheimnis %}
-        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;color:var(--muted);margin-top:0.3rem;font-weight:400;">
-          <input type="checkbox" name="vrc_totp_clear" value="1" style="width:auto;margin:0;">
-          {{ tr.vrc_secret_clear }}
-        </label>
-        {% endif %}
-      </div>
-      <div style="grid-column:1 / -1;font-size:0.72rem;color:var(--muted);">{{ tr.vrc_account_2fa_choice }}</div>
+    {# Bearbeiten klappt dasselbe Formular auf, nur mit gesetztem Schluessel. Ein zweites
+       Formular daneben waere eine zweite Stelle, an der dieselben Regeln gelten muessen. #}
+    <div id="vrc-edit-{{ k.guild_id }}" style="display:none;border-top:1px solid var(--border);margin-top:0.6rem;padding-top:0.6rem;">
+      {{ konto_formular(k.guild_id, k.label, k.username, k.hat_geheimnis, tr.vrc_account_connect) }}
     </div>
-    <button type="submit" class="btn btn-primary">{{ tr.vrc_account_connect }}</button>
-  </form>
+  </div>
+  {% endfor %}
+
+  <button type="button" class="btn btn-primary" id="vrc-add-btn" onclick="vrcAdd()"
+          style="font-size:0.82rem;">{{ tr.vrc_account_add }}</button>
+  <div id="vrc-add-box" style="display:none;border:1px solid var(--border);border-radius:0.6rem;padding:0.8rem;margin-top:0.7rem;">
+    <div style="font-weight:600;font-size:0.85rem;margin-bottom:0.6rem;">{{ tr.vrc_account_new_heading }}</div>
+    {{ konto_formular("", "", "", False, tr.vrc_account_connect) }}
+  </div>
 </div>
 
 
@@ -138,6 +166,11 @@
     {{ tr.vrc_login_debug_warn }}
   </div>
   <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+    {# Welches Konto geprueft wird. Bei nur einem faellt die Auswahl nicht weiter auf, bei
+       mehreren waere ein Bericht ohne Angabe wertlos. #}
+    <select id="vrclogin-debug-konto" style="width:auto;font-size:0.8rem;padding:0.3rem 0.5rem;">
+      {% for k in konten %}<option value="{{ k.guild_id }}">{{ k.anzeige }}</option>{% endfor %}
+    </select>
     <button type="button" class="btn btn-secondary" id="vrclogin-debug-btn"
             onclick="vrcLoginDebug()">{{ tr.vrc_login_debug_btn }}</button>
     <button type="button" class="btn btn-secondary" id="vrclogin-debug-copy"
@@ -163,18 +196,20 @@
 </div>
 
 <script>
-async function vrcTest() {
-  // Fragt NUR die gespeicherte Sitzung ab. Kein Passwort, kein Anmeldeversuch - deshalb
-  // darf dieser Knopf auch mehrfach gedrueckt werden, anders als der Debug-Bericht.
-  const btn = document.getElementById('vrc-test-btn');
-  const out = document.getElementById('vrc-test-out');
-  btn.disabled = true;
+async function vrcTest(konto) {
+  // Fragt NUR die gespeicherte Sitzung des GEWAEHLTEN Kontos ab. Kein Passwort, kein
+  // Anmeldeversuch - deshalb darf dieser Knopf auch mehrfach gedrueckt werden, anders als
+  // der Debug-Bericht.
+  const out = document.getElementById('vrc-test-out-' + konto);
+  if (!out) return;
   out.style.display = '';
   out.style.borderLeftColor = 'var(--border)';
   out.style.color = 'var(--muted)';
   out.textContent = {{ tr.vrc_test_working | jsraw }};
   try {
-    const r = await fetch('/settings/vrchat/test', {method: 'POST'});
+    const f = new FormData();
+    f.append('konto', konto);
+    const r = await fetch('/settings/vrchat/test', {method: 'POST', body: f});
     const d = await r.json();
     out.textContent = (d.ok ? '\u2705 ' : '\u274C ') + d.text;
     out.style.borderLeftColor = d.ok ? '#22c55e' : 'var(--danger)';
@@ -182,7 +217,16 @@ async function vrcTest() {
   } catch (e) {
     out.textContent = '\u274C ' + String(e);
   }
-  btn.disabled = false;
+}
+
+function vrcEdit(konto) {
+  const box = document.getElementById('vrc-edit-' + konto);
+  if (box) box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+
+function vrcAdd() {
+  const box = document.getElementById('vrc-add-box');
+  box.style.display = box.style.display === 'none' ? '' : 'none';
 }
 
 function toggleVrcInfo() {
@@ -207,7 +251,9 @@ async function vrcLoginDebug() {
   note.textContent = {{ tr.vrc_debug_working | jsraw }};
   document.getElementById('vrclogin-debug-copy').style.display = 'none';
   try {
-    const r = await fetch('/settings/vrchat/debug', {method: 'POST'});
+    const f = new FormData();
+    f.append('konto', document.getElementById('vrclogin-debug-konto').value);
+    const r = await fetch('/settings/vrchat/debug', {method: 'POST', body: f});
     const d = await r.json();
     out.textContent = d.bericht || JSON.stringify(d, null, 2);
     out.style.display = '';
