@@ -172,12 +172,18 @@
     {% if k.pause_bis %}
     <div style="background:rgba(245,158,11,0.12);border:1px solid #f59e0b;border-radius:0.5rem;padding:0.5rem 0.7rem;font-size:0.76rem;margin-top:0.5rem;">
       ⏸ {{ tr.vrc_paused.replace("{zeit}", k.pause_bis) }}
+      {% if k.last_error %}
+      <div style="color:var(--muted);margin-top:0.4rem;border-top:1px solid var(--border);padding-top:0.4rem;">{{ k.last_error }}</div>
+      {% endif %}
     </div>
     {% endif %}
 
     <div id="vrc-test-out-{{ k.guild_id }}" style="display:none;font-size:0.76rem;line-height:1.5;padding:0.45rem 0.7rem;margin-top:0.5rem;border-left:3px solid var(--border);background:var(--surface);border-radius:0 0.35rem 0.35rem 0;color:var(--muted);"></div>
 
-    {% if k.last_error %}
+    {# Solange eine Sperre liegt, zeigt nur sie. Der gespeicherte Fehler stammt vom letzten
+       Anmeldeversuch und kann die Sperre gar nicht kennen - nebeneinander widersprechen
+       sich die beiden und man sucht an der falschen Stelle. #}
+    {% if k.last_error and not k.pause_bis %}
     <div style="background:rgba(239,68,68,0.12);border:1px solid var(--danger);border-radius:0.5rem;padding:0.5rem 0.7rem;font-size:0.76rem;margin-top:0.5rem;">
       ❌ {{ k.last_error }}
       {% if k.veraltete_meldung %}

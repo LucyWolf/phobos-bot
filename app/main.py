@@ -5094,6 +5094,35 @@ async def _vrc_apply(guild_id: int, user_id: str, vrchat_name: str, revoke: bool
         print(f"[vrc_link] dashboard apply failed for {user_id} in {guild_id}: {e}")
 
 
+async def _sperre_vermerken(konto: str, status: int, meldung: str) -> str:
+    """Eine von VRChat gemeldete Netzsperre in der Zeile festhalten.
+
+    Debug-Bericht und Verbindungstest klopfen selbst bei VRChat an und erfahren damit als
+    erste, dass eine Sperre liegt - haben das aber nur angezeigt und wieder vergessen. Auf
+    der Karte stand derweil der letzte Fehler des Minutenlaufs, der die Ursache gar nicht
+    kennen konnte. Drei Meldungen, von denen keine stimmte.
+
+    Gibt den Text zurueck, der dem Benutzer gezeigt werden soll, oder "" wenn keine Sperre
+    vorliegt.
+    """
+    tief = (meldung or "").lower()
+    gesperrt = status == 429 or "too many" in tief or "captcha" in tief
+    if not gesperrt:
+        return ""
+    bis = datetime.datetime.utcnow() + datetime.timedelta(minutes=60)
+    text = (f"VRChat hat zu viele fehlgeschlagene Anmeldungen aus diesem Netz gesehen und "
+            f"sperrt es vorübergehend. Das hat nichts mit Passwort oder 2FA zu tun. Der Bot "
+            f"versucht es bis {bis.strftime('%H:%M')} UTC nicht erneut — jeder weitere "
+            f"Versuch würde die Sperre verlängern.")
+    try:
+        await db_exec("UPDATE vrc_accounts SET retry_after=?, last_error=?, last_check=? "
+                      "WHERE guild_id=?",
+                      (bis.isoformat(), text, datetime.datetime.utcnow().isoformat(), konto))
+    except Exception as e:
+        print(f"[vrchat] Sperre nicht vermerkt: {e}")
+    return text
+
+
 def _geheimnis_taugt(roh: str) -> bool:
     """Laesst sich aus dieser Zeichenfolge wirklich ein Code rechnen?
 
@@ -5406,6 +5435,10 @@ async def vrc_account_test(request: Request):
                          str(data.get("id") or ""), konto))
                     return JSONResponse({"ok": True, "text":
                         f"Verbunden als {name}. Die Anmeldung läuft."})
+                from vrchat import _api_meldung
+                sperre = await _sperre_vermerken(konto, r.status, _api_meldung(data))
+                if sperre:
+                    return JSONResponse({"ok": False, "text": sperre})
                 return JSONResponse({"ok": False, "text":
                     f"Die gespeicherte Anmeldung gilt nicht mehr (HTTP {r.status}). "
                     f"VRChat lässt eine Sitzung etwa einen Monat gelten — oben einen "
@@ -5559,6 +5592,8 @@ async def vrc_account_debug(request: Request):
                         z.append("     von der Adresse aus Abschnitt 2. Eine Stunde nichts tun,")
                         z.append("     dann genau einmal speichern. Über das Passwort sagt das")
                         z.append("     nichts aus.")
+                        if await _sperre_vermerken(konto, r.status, _api_meldung(data)):
+                            z.append("     Der Bot pausiert ab jetzt von allein.")
                     elif r.status == 401:
                         z.append("  ⇒ ERGEBNIS: abgelehnt, ohne dass VRChat einen Grund nennt.")
                         z.append("     Möglich sind: Passwort wirklich falsch · E-Mail statt")
@@ -5569,7 +5604,14 @@ async def vrc_account_debug(request: Request):
                         z.append("     gesperrten Konten und bei einer offenen Bestätigung, die im")
                         z.append("     Browser abgenickt werden muss.")
                     elif r.status == 429:
-                        z.append("  ⇒ ERGEBNIS: zu viele Anfragen. Warten, nichts weiter tun.")
+                        z.append("  ⇒ ERGEBNIS: VRChat sperrt dieses Netz vorübergehend, weil")
+                        z.append("     zu viele Anmeldungen fehlgeschlagen sind. Das hat NICHTS")
+                        z.append("     mit Passwort oder 2FA zu tun — auch richtige Daten")
+                        z.append("     werden jetzt abgelehnt. Nur Warten hilft; jeder weitere")
+                        z.append("     Versuch verlängert die Sperre.")
+                        gemerkt = await _sperre_vermerken(konto, r.status, _api_meldung(data))
+                        if gemerkt:
+                            z.append("     Der Bot pausiert ab jetzt von allein.")
                     else:
                         z.append(f"  ⇒ ERGEBNIS: unerwarteter Status {r.status}.")
             except Exception as e:
