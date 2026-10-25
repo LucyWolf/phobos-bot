@@ -146,6 +146,31 @@ async def personal_link(guild_id, user_id) -> str | None:
     return f"{base}/vrc/{token}"
 
 
+async def _sitzung_aus_keks(row) -> dict | None:
+    """Prueft NUR die gespeicherte Sitzung - kein Anmeldeversuch, keine Sperrgefahr.
+
+    Gebraucht, solange eine Bremse liegt: VRChat zaehlt nur Anmeldungen, eine Abfrage mit
+    bestehendem Keks nicht. Laeuft die Sitzung noch, arbeitet der Bot normal weiter,
+    waehrend die Sperre von allein ablaeuft.
+    """
+    import aiohttp
+    from vrchat import API_BASE, TIMEOUT, _headers
+    try:
+        async with aiohttp.ClientSession() as s:
+            async with s.get(f"{API_BASE}/auth/user",
+                             headers=_headers(row["auth_cookie"], row["two_factor_cookie"]),
+                             timeout=TIMEOUT) as r:
+                if r.status != 200:
+                    return None
+                data = await r.json(content_type=None)
+                if not (data or {}).get("id"):
+                    return None
+                return {"auth_cookie": row["auth_cookie"],
+                        "two_factor_cookie": row["two_factor_cookie"]}
+    except Exception:
+        return None
+
+
 async def vrc_session(konto: str | None = None) -> dict | None:
     """Die VRChat-Sitzung eines Bot-Kontos, bei Bedarf erneuert.
 
@@ -171,6 +196,27 @@ async def vrc_session(konto: str | None = None) -> dict | None:
         schluessel = VRC_ACCOUNT_KEY
     if not row or not row["username"] or not row["password"]:
         return None
+    # Nach einem Fehlschlag eine Weile gar nicht erst versuchen. VRChat zaehlt
+    # Fehlversuche pro NETZ, nicht pro Konto ("too many failed login attempts from
+    # network", HTTP 429) - ein Minutenlauf, der stur weiterklopft, verlaengert damit
+    # genau die Sperre, die er abwarten muesste. Beobachtet an einer Installation, die
+    # sich auf diese Weise selbst ausgesperrt hielt.
+    #
+    # Die gespeicherte Sitzung wird trotzdem noch versucht: die kostet keinen
+    # Anmeldeversuch und ist genau der Weg, auf dem sich das von allein wieder einrenkt.
+    bremse = (row["retry_after"] if "retry_after" in row.keys() else "") or ""
+    if bremse:
+        try:
+            if datetime.datetime.utcnow() < datetime.datetime.fromisoformat(bremse):
+                if not row["auth_cookie"]:
+                    return None
+                nur_keks = await _sitzung_aus_keks(row)
+                if nur_keks:
+                    return nur_keks
+                return None
+        except ValueError:
+            pass
+
     # Ein unbrauchbares 2FA-Geheimnis blockiert ALLES: vrchat.login() bricht damit ab,
     # bevor es den Weg ueber einen eingetippten Code ueberhaupt anbietet. Der Minutenlauf
     # hat nie einen Code, scheitert also bei jedem Durchgang an derselben Zeichenfolge und
@@ -207,20 +253,39 @@ async def vrc_session(konto: str | None = None) -> dict | None:
         # Schreiboperation anfaellt.
         grund = str(e)[:300]
         print(f"[vrc_link] VRChat session unavailable: {grund}")
+        # Wie lange Ruhe: bei einer Netzsperre lange, sonst kurz. Ein fehlender Code
+        # loest sich nicht durch Warten, eine Sperre nur dadurch - und jeder weitere
+        # Versuch waehrenddessen verlaengert sie.
+        kurz = grund.lower()
+        if "429" in kurz or "bremst" in kurz or "too many" in kurz or "captcha" in kurz:
+            pause = 60
+        else:
+            pause = 15
+        bis = (datetime.datetime.utcnow()
+               + datetime.timedelta(minutes=pause)).isoformat()
         try:
             if (row["last_error"] or "") != grund:
                 await db_exec(
-                    "UPDATE vrc_accounts SET last_error=?, last_check=? WHERE guild_id=?",
-                    (grund, datetime.datetime.utcnow().isoformat(), schluessel))
+                    "UPDATE vrc_accounts SET last_error=?, last_check=?, retry_after=? "
+                    "WHERE guild_id=?",
+                    (grund, datetime.datetime.utcnow().isoformat(), bis, schluessel))
+            else:
+                await db_exec("UPDATE vrc_accounts SET retry_after=? WHERE guild_id=?",
+                              (bis, schluessel))
         except Exception as e2:
             print(f"[vrc_link] konnte den Anmeldefehler nicht vermerken: {e2}")
         return None
     try:
         if not result["reused"]:
+            # Mit dem Erfolg faellt auch die Bremse: sie soll den naechsten Versuch
+            # verzoegern, nicht einen gelungenen nachtraeglich bestrafen. Und needs_2fa
+            # haelt fest, ob VRChat ueberhaupt einen zweiten Faktor wollte - nur so laesst
+            # sich ein Konto ganz ohne 2FA von einem mit unterscheiden.
             await db_exec(
-                "UPDATE vrc_accounts SET auth_cookie=?, two_factor_cookie=?, last_error='' "
-                "WHERE guild_id=?",
-                (result["auth_cookie"], result["two_factor_cookie"], schluessel),
+                "UPDATE vrc_accounts SET auth_cookie=?, two_factor_cookie=?, last_error='', "
+                "retry_after='', needs_2fa=? WHERE guild_id=?",
+                (result["auth_cookie"], result["two_factor_cookie"],
+                 1 if result.get("two_factor") else 0, schluessel),
             )
         elif row["last_error"]:
             # Die Anmeldung laeuft - dann hat der alte Fehler nichts mehr zu melden. Vorher
@@ -231,8 +296,8 @@ async def vrc_session(konto: str | None = None) -> dict | None:
             # Fehlermeldung verschwindet.
             # Geschrieben wird nur, wenn wirklich etwas dasteht, sonst faellt bei jedem
             # Aufruf eine Schreiboperation an.
-            await db_exec("UPDATE vrc_accounts SET last_error='', last_check=? "
-                          "WHERE guild_id=?",
+            await db_exec("UPDATE vrc_accounts SET last_error='', retry_after='', "
+                          "last_check=? WHERE guild_id=?",
                           (datetime.datetime.utcnow().isoformat(), schluessel))
     except Exception as e:
         print(f"[vrc_link] could not store refreshed VRChat session: {e}")

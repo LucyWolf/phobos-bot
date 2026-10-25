@@ -5133,7 +5133,23 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
         # fuer Passwort und Kekse: die verlassen den Server nicht.
         # Nicht nur "da", sondern "brauchbar": ein kaputtes Geheimnis aus einer aelteren
         # Fassung darf nicht als dauerhafte Anmeldung durchgehen.
-        _e["hat_geheimnis"] = _geheimnis_taugt(_e.get("totp_secret") or "")
+        # Dauerhaft haelt die Anmeldung auf zwei Wegen: mit brauchbarem Geheimnis rechnet
+        # sich der Bot die Codes selbst aus - oder das Konto verlangt gar keinen zweiten
+        # Faktor, dann ist nichts zu erneuern. Nur den ersten zu pruefen hat bei einem
+        # Konto ohne 2FA faelschlich "laeuft monatlich ab" gemeldet.
+        _e["geheimnis_da"] = _geheimnis_taugt(_e.get("totp_secret") or "")
+        _e["ohne_2fa"] = (not _e["geheimnis_da"]) and _e.get("needs_2fa") == 0 \
+            and bool(_e.get("vrc_user_id"))
+        _e["hat_geheimnis"] = _e["geheimnis_da"] or _e["ohne_2fa"]
+        _e["pause_bis"] = ""
+        _roh = (_e.get("retry_after") or "").strip()
+        if _roh:
+            try:
+                _bis = datetime.datetime.fromisoformat(_roh)
+                if _bis > datetime.datetime.utcnow():
+                    _e["pause_bis"] = _bis.strftime("%H:%M")
+            except ValueError:
+                pass
         _e["anzeige"] = vrc_account_name(_row)
         _e["ist_standard"] = (_e["guild_id"] == VRC_ACCOUNT_KEY)
         _e["veraltete_meldung"] = "Benutzername oder Passwort wurde von VRChat abgelehnt" in (
@@ -5319,15 +5335,18 @@ async def vrc_account_save(request: Request):
     user = result["user"]
     await db_exec(
         "INSERT INTO vrc_accounts (guild_id, username, password, totp_secret, auth_cookie, "
-        "two_factor_cookie, vrc_user_id, vrc_display_name, last_check, last_error, label) "
-        "VALUES (?,?,?,?,?,?,?,?,?,'',?) ON CONFLICT(guild_id) DO UPDATE SET "
+        "two_factor_cookie, vrc_user_id, vrc_display_name, last_check, last_error, label, "
+        "needs_2fa, retry_after) "
+        "VALUES (?,?,?,?,?,?,?,?,?,'',?,?,'') ON CONFLICT(guild_id) DO UPDATE SET "
         "username=excluded.username, password=excluded.password, totp_secret=excluded.totp_secret, "
         "auth_cookie=excluded.auth_cookie, two_factor_cookie=excluded.two_factor_cookie, "
         "vrc_user_id=excluded.vrc_user_id, vrc_display_name=excluded.vrc_display_name, "
-        "last_check=excluded.last_check, last_error=''",
+        "last_check=excluded.last_check, last_error='', label=excluded.label, "
+        "needs_2fa=excluded.needs_2fa, retry_after=''",
         (konto, username, password, totp, result["auth_cookie"],
          result["two_factor_cookie"], str(user.get("id") or ""),
-         str(user.get("displayName") or ""), datetime.datetime.utcnow().isoformat(), label),
+         str(user.get("displayName") or ""), datetime.datetime.utcnow().isoformat(), label,
+         1 if result.get("two_factor") else 0),
     )
     who = urllib.parse.quote_plus(str(user.get("displayName") or username))
     # Mit Geheimnis erneuert der Bot selbst, ohne haengt die Sitzung an VRChats

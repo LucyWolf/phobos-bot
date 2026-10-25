@@ -1273,6 +1273,17 @@ async def init_db():
             # label ist nur der Anzeigename in der Liste; leer heisst "nimm den
             # VRChat-Benutzernamen", damit auch die Altzeile ohne Zutun sinnvoll dasteht.
             "ALTER TABLE vrc_accounts ADD COLUMN label TEXT NOT NULL DEFAULT ''",
+            # Verlangt dieses VRChat-Konto ueberhaupt eine Zwei-Faktor-Anmeldung? Steht
+            # erst nach der ersten echten Anmeldung fest, deshalb Standard 1: lieber
+            # "laeuft monatlich ab" melden und sich beim naechsten Login korrigieren, als
+            # eine Dauerhaftigkeit zu behaupten, die sich noch nicht zeigen konnte.
+            "ALTER TABLE vrc_accounts ADD COLUMN needs_2fa INTEGER NOT NULL DEFAULT 1",
+            # Fruehester naechster Anmeldeversuch des Minutenlaufs. Ohne diese Bremse
+            # versucht er es nach einem Fehlschlag jede Minute erneut - und weil VRChat pro
+            # NETZ zaehlt ("too many failed login attempts from network", HTTP 429), haelt
+            # der Bot die Sperre damit selbst aufrecht, die er gerade abwarten muesste.
+            # Leer heisst "jederzeit", bestehende Installationen aendern sich dadurch nicht.
+            "ALTER TABLE vrc_accounts ADD COLUMN retry_after TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

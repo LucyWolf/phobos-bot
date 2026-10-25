@@ -261,8 +261,14 @@ async def login(username: str, password: str, totp_secret: str = "",
 
         if not payload.get("id"):
             raise VRChatError("VRChat hat keine Kontodaten zurückgegeben.")
+        # "two_factor" sagt, ob VRChat bei DIESER Anmeldung einen zweiten Faktor wollte.
+        # Ohne die Angabe laesst sich nicht unterscheiden, ob eine Anmeldung dauerhaft haelt
+        # (Konto ohne 2FA, oder 2FA mit hinterlegtem Geheimnis) oder in etwa einem Monat
+        # ausfaellt - die Oberflaeche hat das vorher am Geheimnis festgemacht und deshalb
+        # bei einem Konto ganz ohne 2FA faelschlich "laeuft ab" gemeldet.
         return {"user": payload, "auth_cookie": new_auth,
-                "two_factor_cookie": two_factor_cookie, "reused": False}
+                "two_factor_cookie": two_factor_cookie, "reused": False,
+                "two_factor": bool(needed)}
 
 
 # ── Nutzerdaten lesen ────────────────────────────────────────────────────────
