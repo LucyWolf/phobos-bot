@@ -5094,6 +5094,24 @@ async def _vrc_apply(guild_id: int, user_id: str, vrchat_name: str, revoke: bool
         print(f"[vrc_link] dashboard apply failed for {user_id} in {guild_id}: {e}")
 
 
+def _geheimnis_taugt(roh: str) -> bool:
+    """Laesst sich aus dieser Zeichenfolge wirklich ein Code rechnen?
+
+    Die blosse Anwesenheit sagt nichts: was nicht als Base32 lesbar ist, erzeugt beim
+    Anmelden eine Ausnahme statt eines Codes. Die Seite haette sonst "Haelt dauerhaft"
+    gemeldet, waehrend die Anmeldung jedes Mal scheitert.
+    """
+    roh = (roh or "").strip().replace(" ", "")
+    if not roh:
+        return False
+    try:
+        import pyotp
+        pyotp.TOTP(roh).now()
+        return True
+    except Exception:
+        return False
+
+
 @web.get("/settings/vrchat", response_class=HTMLResponse)
 async def vrchat_settings_page(request: Request, error: str = "", success: str = ""):
     """The installation-wide VRChat bot account, alongside the other global settings.
@@ -5113,7 +5131,9 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
         _e = dict(_row)
         # Was die Seite wissen muss, ist OB ein Geheimnis liegt - nie welches. Dasselbe gilt
         # fuer Passwort und Kekse: die verlassen den Server nicht.
-        _e["hat_geheimnis"] = bool((_e.get("totp_secret") or "").strip())
+        # Nicht nur "da", sondern "brauchbar": ein kaputtes Geheimnis aus einer aelteren
+        # Fassung darf nicht als dauerhafte Anmeldung durchgehen.
+        _e["hat_geheimnis"] = _geheimnis_taugt(_e.get("totp_secret") or "")
         _e["anzeige"] = vrc_account_name(_row)
         _e["ist_standard"] = (_e["guild_id"] == VRC_ACCOUNT_KEY)
         _e["veraltete_meldung"] = "Benutzername oder Passwort wurde von VRChat abgelehnt" in (
@@ -5148,7 +5168,7 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
     if account:
         # Password and session cookies stay on the server - the page only needs to know that
         # an account is stored, plus whoever it turned out to be.
-        hat_geheimnis = bool((account.get("totp_secret") or "").strip())
+        hat_geheimnis = _geheimnis_taugt(account.get("totp_secret") or "")
         for _k in ("password", "totp_secret", "auth_cookie", "two_factor_cookie"):
             account[_k] = ""
         # Der rote Kasten zeigt den GESPEICHERTEN Text des letzten Fehlversuchs. Bis
@@ -5233,6 +5253,21 @@ async def vrc_account_save(request: Request):
     # Geheimnis nur noch durch Loeschen des ganzen Kontos zu entfernen.
     if form.get("vrc_totp_clear"):
         totp = ""
+    # Unbrauchbares gar nicht erst annehmen. Vorher landete jede Zeichenfolge in der
+    # Datenbank, die Karte meldete daraufhin "Haelt dauerhaft" - und die Anmeldung scheiterte
+    # trotzdem jedes Mal, weil sich daraus kein Code rechnen laesst. Zwei Angaben, die sich
+    # widersprechen, sind schlimmer als eine fehlende.
+    if totp:
+        try:
+            import pyotp
+            pyotp.TOTP(totp).now()
+        except Exception:
+            return RedirectResponse(
+                "/settings/vrchat?error=" + urllib.parse.quote_plus(
+                    "Das 2FA-Geheimnis ist unbrauchbar. Erwartet wird die Zeichenfolge, die "
+                    "beim Einrichten neben dem QR-Code steht — Buchstaben A–Z und Ziffern "
+                    "2–7, keine 0, 1 oder 8. Gespeichert wurde nichts."),
+                status_code=302)
     if not username or not password.strip():
         return RedirectResponse(
             f"/settings/vrchat?error=Benutzername+und+Passwort+erforderlich",

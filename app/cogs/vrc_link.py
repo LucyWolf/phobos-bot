@@ -193,15 +193,27 @@ async def vrc_session(konto: str | None = None) -> dict | None:
         except Exception as e2:
             print(f"[vrc_link] konnte den Anmeldefehler nicht vermerken: {e2}")
         return None
-    if not result["reused"]:
-        try:
+    try:
+        if not result["reused"]:
             await db_exec(
                 "UPDATE vrc_accounts SET auth_cookie=?, two_factor_cookie=?, last_error='' "
                 "WHERE guild_id=?",
                 (result["auth_cookie"], result["two_factor_cookie"], schluessel),
             )
-        except Exception as e:
-            print(f"[vrc_link] could not store refreshed VRChat session: {e}")
+        elif row["last_error"]:
+            # Die Anmeldung laeuft - dann hat der alte Fehler nichts mehr zu melden. Vorher
+            # wurde nur beim NEU-Anmelden aufgeraeumt, und das ist der seltene Fall: im
+            # Normalbetrieb wird die Sitzung wiederverwendet. Eine einmal gescheiterte
+            # Anmeldung blieb damit fuer immer rot auf der Seite stehen, obwohl laengst
+            # alles ging - und niemand speichert sein Konto neu, nur damit eine
+            # Fehlermeldung verschwindet.
+            # Geschrieben wird nur, wenn wirklich etwas dasteht, sonst faellt bei jedem
+            # Aufruf eine Schreiboperation an.
+            await db_exec("UPDATE vrc_accounts SET last_error='', last_check=? "
+                          "WHERE guild_id=?",
+                          (datetime.datetime.utcnow().isoformat(), schluessel))
+    except Exception as e:
+        print(f"[vrc_link] could not store refreshed VRChat session: {e}")
     return {"auth_cookie": result["auth_cookie"],
             "two_factor_cookie": result["two_factor_cookie"]}
 
