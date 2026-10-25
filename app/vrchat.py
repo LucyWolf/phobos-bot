@@ -56,6 +56,23 @@ def _basic_auth(username: str, password: str) -> str:
     return "Basic " + base64.b64encode(raw).decode()
 
 
+def _api_meldung(payload: dict) -> str:
+    """Den Klartext aus einer VRChat-Fehlerantwort holen, falls einer drinsteht.
+
+    VRChat legt ihn je nach Endpunkt nach error.message oder direkt nach message und wickelt
+    um den Text gern noch ein zweites Paar Anfuehrungszeichen.
+    """
+    fehler = payload.get("error")
+    roh = ""
+    if isinstance(fehler, dict):
+        roh = str(fehler.get("message") or "")
+    elif isinstance(fehler, str):
+        roh = fehler
+    if not roh:
+        roh = str(payload.get("message") or "")
+    return roh.strip().strip('"').strip()
+
+
 def _headers(auth_cookie: str = "", two_factor_cookie: str = "") -> dict:
     """Die Kopfzeilen jeder Anfrage: Sitzungs-Kekse und ein sprechender User-Agent.
 
@@ -137,16 +154,33 @@ async def login(username: str, password: str, totp_secret: str = "",
         # two apart. Taking the 401 at face value reported a perfectly correct password as
         # rejected, and sent people re-typing something that was never wrong.
         needed = [str(x) for x in (payload.get("requiresTwoFactorAuth") or [])]
+        meldung = _api_meldung(payload)
+        # Der Originaltext haengt an jeder dieser Meldungen dran. Ein 401 heisst bei VRChat
+        # naemlich laengst nicht nur "Passwort falsch": Captcha-Pflicht, eine Sperre nach zu
+        # vielen Versuchen und eine abgelaufene Sitzung kommen mit demselben Status. Die alte
+        # Fassung behauptete in allen Faellen, das Passwort sei abgelehnt worden - und schickte
+        # Leute tagelang hinter einem Tippfehler her, den es nie gab.
         if resp.status == 401 and not needed:
-            raise VRChatError("Benutzername oder Passwort wurde von VRChat abgelehnt.")
+            if payload.get("requiresCaptcha") or "captcha" in meldung.lower():
+                raise VRChatError(
+                    "VRChat verlangt für diese Anmeldung ein Captcha — das kann der Bot nicht "
+                    "lösen. Das kommt nach mehreren Fehlversuchen von derselben Adresse. Etwa "
+                    "eine Stunde nichts tun und dann genau einmal erneut speichern. "
+                    f"(VRChat sagt: {meldung or 'nichts'})")
+            raise VRChatError(
+                "VRChat hat die Anmeldung abgelehnt. Meist stimmt das Passwort nicht — es kann "
+                "aber auch eine vorübergehende Sperre wegen zu vieler Versuche sein, dann hilft "
+                f"nur warten. (VRChat sagt: {meldung or 'nichts'})")
         if resp.status == 429:
             raise VRChatError("VRChat bremst gerade zu viele Anmeldeversuche aus. "
-                              "Bitte später nochmal versuchen.")
+                              f"Bitte später nochmal versuchen. (VRChat sagt: {meldung or 'nichts'})")
         if resp.status == 403:
             raise VRChatError("VRChat hat die Anfrage abgelehnt (403). Das passiert auch, wenn "
-                              "das Konto gesperrt ist oder eine Bestätigung im Browser aussteht.")
+                              "das Konto gesperrt ist oder eine Bestätigung im Browser aussteht. "
+                              f"(VRChat sagt: {meldung or 'nichts'})")
         if resp.status not in (200, 401):
-            raise VRChatError(f"VRChat antwortete mit Status {resp.status}.")
+            raise VRChatError(f"VRChat antwortete mit Status {resp.status}. "
+                              f"(VRChat sagt: {meldung or 'nichts'})")
 
         new_auth = _cookie_from(resp, "auth") or auth_cookie
 

@@ -5134,7 +5134,10 @@ async def vrc_account_save(request: Request):
     if r := admin_redirect(request): return r
     form = await request.form()
     username = (form.get("vrc_username") or "").strip()
-    password = (form.get("vrc_password") or "").strip()
+    # Nicht gestrippt: ein Passwort darf vorne oder hinten ein Leerzeichen haben, und VRChat
+    # nimmt es dann auch so an. Wegschneiden heisst hier "Passwort falsch" bei einem Passwort,
+    # das im Browser einwandfrei funktioniert.
+    password = form.get("vrc_password") or ""
     # The 2FA secret is deliberately not asked for any more - the form offers the one-time code
     # only. Anything a previous version stored is left alone in the row but no longer used, so
     # the behaviour here does not depend on what happens to be sitting in that column.
@@ -5149,9 +5152,9 @@ async def vrc_account_save(request: Request):
     # An empty password field means "leave it alone" - the form never renders the stored one
     # back into the page, so clearing the box would otherwise wipe the password every time
     # somebody corrects a typo in the username.
-    if not password and existing:
+    if not password.strip() and existing:
         password = existing["password"]
-    if not username or not password:
+    if not username or not password.strip():
         return RedirectResponse(
             f"/settings/vrchat?error=Benutzername+und+Passwort+erforderlich",
             status_code=302)
