@@ -171,10 +171,32 @@ async def vrc_session(konto: str | None = None) -> dict | None:
         schluessel = VRC_ACCOUNT_KEY
     if not row or not row["username"] or not row["password"]:
         return None
+    # Ein unbrauchbares 2FA-Geheimnis blockiert ALLES: vrchat.login() bricht damit ab,
+    # bevor es den Weg ueber einen eingetippten Code ueberhaupt anbietet. Der Minutenlauf
+    # hat nie einen Code, scheitert also bei jedem Durchgang an derselben Zeichenfolge und
+    # setzt die rote Meldung sofort wieder - sie liess sich nicht wegbekommen.
+    #
+    # Weggeraeumt statt nur uebergangen: es kann nachweislich nie funktionieren (kein
+    # lesbares Base32), es haelt die Anmeldung auf, und ueber die Oberflaeche ist es nicht
+    # mehr zu erreichen - der Entfernen-Haken erscheint nur bei einem brauchbaren.
+    geheimnis = (row["totp_secret"] or "").strip().replace(" ", "")
+    if geheimnis:
+        try:
+            import pyotp
+            pyotp.TOTP(geheimnis).now()
+        except Exception:
+            print(f"[vrc_link] unbrauchbares 2FA-Geheimnis bei Konto {schluessel} verworfen")
+            geheimnis = ""
+            try:
+                await db_exec("UPDATE vrc_accounts SET totp_secret='' WHERE guild_id=?",
+                              (schluessel,))
+            except Exception as e:
+                print(f"[vrc_link] konnte es nicht entfernen: {e}")
+
     try:
         from vrchat import login as vrc_login
         result = await vrc_login(
-            row["username"], row["password"], row["totp_secret"],
+            row["username"], row["password"], geheimnis,
             auth_cookie=row["auth_cookie"], two_factor_cookie=row["two_factor_cookie"],
         )
     except Exception as e:
