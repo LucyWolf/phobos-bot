@@ -5427,6 +5427,14 @@ async def vrc_account_save(request: Request):
             one_time_code=one_time,
         )
     except VRChatError as e:
+        # Wer keinen E-Mail-Code erwartet, will die Meldung dazu auch nicht auf der Karte
+        # kleben haben. Sie steht trotzdem einmal oben in der Umleitung - was gerade
+        # passiert ist, soll man sehen; was dauerhaft gilt, gehoert in die Zeile. Bisher
+        # wurde sie hier festgeschrieben und blieb bis zur naechsten gelungenen Anmeldung
+        # stehen; der Haken wirkte nur im Hintergrundlauf.
+        _text = str(e)[:500]
+        if kein_email and ("e-mail" in _text.lower() or "email" in _text.lower()):
+            _text = ""
         await db_exec(
             "INSERT INTO vrc_accounts (guild_id, username, password, totp_secret, last_check, "
             "last_error, label, needs_2fa, needs_email) "
@@ -5435,7 +5443,7 @@ async def vrc_account_save(request: Request):
             "last_check=excluded.last_check, last_error=excluded.last_error, label=excluded.label, "
             "needs_2fa=excluded.needs_2fa, needs_email=excluded.needs_email",
             (konto, username, password, totp,
-             datetime.datetime.utcnow().isoformat(), str(e)[:500], label,
+             datetime.datetime.utcnow().isoformat(), _text, label,
              0 if kein_2fa else 1, 0 if kein_email else 1),
         )
         return RedirectResponse(

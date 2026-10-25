@@ -222,13 +222,8 @@
          Genau daran ist hier stundenlang am falschen Ende gesucht worden. #}
       <span style="color:var(--muted);font-size:0.7rem;">({{ tr.vrc_error_when.replace("{zeit}", k.fehler_zeit) }})</span>
       {% endif %}
-      {% if k.fehler_alt %}
-      <div style="color:var(--muted);margin-top:0.4rem;border-top:1px solid var(--border);padding-top:0.4rem;">⏱ {{ tr.vrc_error_old }}</div>
-      {% endif %}
       {% if k.veraltete_meldung %}
       <div style="color:var(--muted);margin-top:0.4rem;border-top:1px solid var(--border);padding-top:0.4rem;">⚠ {{ tr.vrc_error_stale_version }}</div>
-      {% else %}
-      <div style="color:var(--muted);margin-top:0.35rem;">{{ tr.vrc_error_check_hint }}</div>
       {% endif %}
     </div>
     {% endif %}
