@@ -75,6 +75,13 @@
     </ul>
     <p style="margin:0.6rem 0 0;color:var(--muted);line-height:1.6;">{{ tr.vrc_info_once }}</p>
     <p style="margin:0.5rem 0 0;color:var(--muted);line-height:1.6;">{{ tr.vrc_info_2fa }}</p>
+    {# Die Warnung steht hier statt als eigener Block auf der Seite. Sie ist wichtig, aber
+       sie aendert sich nie - und etwas, das immer gleich dasteht, liest nach dem dritten
+       Mal niemand mehr und nimmt nur den Platz des Kontos weg. #}
+    <div style="margin-top:0.7rem;border-top:1px solid var(--border);padding-top:0.6rem;line-height:1.6;">
+      <strong style="color:#f59e0b;">⚠ {{ tr.vrc_account_warn_title }}</strong><br>
+      <span style="color:var(--muted);">{{ tr.vrc_account_warn }}</span>
+    </div>
   </div>
 </div>
 
@@ -84,10 +91,6 @@
 <div class="card">
   <div class="feat-header">{{ tr.vrc_accounts_heading }}</div>
   <p class="hint" style="margin-bottom:0.5rem;">{{ tr.vrc_accounts_hint }}</p>
-  <div style="background:rgba(245,158,11,0.12);border:1px solid #f59e0b;border-radius:0.5rem;padding:0.6rem 0.75rem;font-size:0.76rem;line-height:1.6;margin-bottom:0.9rem;">
-    <strong style="color:#f59e0b;">{{ tr.vrc_account_warn_title }}</strong><br>{{ tr.vrc_account_warn }}
-  </div>
-
   {% if not konten %}
   <p class="hint">{{ tr.vrc_none_yet }}</p>
   {% endif %}
