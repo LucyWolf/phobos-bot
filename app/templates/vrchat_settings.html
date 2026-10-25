@@ -8,7 +8,7 @@
 {# Ein Formular fuer "neu anlegen" UND "bearbeiten". Zwei getrennte waeren zwei Stellen,
    an denen dieselben Regeln gelten muessten - und eine davon vergisst man.
    konto="" legt neu an, sonst wird genau dieser Schluessel ueberschrieben. #}
-{% macro konto_formular(konto, label, username, hat_geheimnis, knopf) %}
+{% macro konto_formular(konto, label, username, hat_geheimnis, knopf, ohne_2fa=False) %}
 <form method="post" action="/settings/vrchat/save"
       onsubmit="this.querySelector('button[type=submit]').disabled=true;this.querySelector('button[type=submit]').textContent='⏳';">
   <input type="hidden" name="vrc_konto" value="{{ konto }}">
@@ -31,13 +31,24 @@
                 onclick="vrcToggleSecret(this)" title="{{ tr.vrc_show_secret }}">👁</button>
       </div>
     </div>
-    <div>
+    <div class="vrc-2fa-felder">
       <label>{{ tr.vrc_account_code_label }}</label>
       <input type="text" name="vrc_code" autocomplete="off" inputmode="numeric" maxlength="6"
              pattern="[0-9]{6}" placeholder="123456">
       <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_account_code_hint }}</div>
     </div>
-    <div>
+    {# Vor dem Geheimnis-Feld, weil es die Antwort auf die Frage DAVOR ist: wer hier
+       anhakt, braucht darunter nichts mehr einzutragen. #}
+    <div style="grid-column:1 / -1;">
+      <label style="display:flex;align-items:center;gap:0.5rem;font-weight:400;margin:0;">
+        <input type="checkbox" name="vrc_kein_2fa" value="1" style="width:auto;margin:0;"
+               {% if ohne_2fa %}checked{% endif %}
+               onchange="vrcKein2fa(this)">
+        <strong>{{ tr.vrc_no2fa_label }}</strong>
+      </label>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_no2fa_hint }}</div>
+    </div>
+    <div class="vrc-2fa-felder">
       <label>{{ tr.vrc_secret_label }}</label>
       <div style="display:flex;gap:0.4rem;align-items:flex-start;">
         <input type="password" name="vrc_totp_secret" autocomplete="new-password" style="flex:1;"
@@ -203,7 +214,7 @@
     {# Bearbeiten klappt dasselbe Formular auf, nur mit gesetztem Schluessel. Ein zweites
        Formular daneben waere eine zweite Stelle, an der dieselben Regeln gelten muessen. #}
     <div id="vrc-edit-{{ k.guild_id }}" style="display:none;border-top:1px solid var(--border);margin-top:0.6rem;padding-top:0.6rem;">
-      {{ konto_formular(k.guild_id, k.label, k.username, k.hat_geheimnis, tr.vrc_account_connect) }}
+      {{ konto_formular(k.guild_id, k.label, k.username, k.geheimnis_da, tr.vrc_account_connect, k.ohne_2fa) }}
     </div>
   </div>
   {% endfor %}
@@ -276,6 +287,21 @@ async function vrcTest(konto) {
     out.textContent = '\u274C ' + String(e);
   }
 }
+
+function vrcKein2fa(box) {
+  // Wer kein 2FA hat, braucht weder Code noch Geheimnis. Die Felder bleiben im Formular -
+  // ausgeblendet statt entfernt, damit ein versehentlicher Haken nichts verschluckt.
+  const form = box.closest('form');
+  if (!form) return;
+  form.querySelectorAll('.vrc-2fa-felder').forEach(function (f) {
+    f.style.display = box.checked ? 'none' : '';
+  });
+}
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('input[name="vrc_kein_2fa"]').forEach(function (b) {
+    vrcKein2fa(b);
+  });
+});
 
 function vrcServer(konto) {
   const box = document.getElementById('vrc-server-' + konto);

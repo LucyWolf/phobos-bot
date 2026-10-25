@@ -5179,8 +5179,7 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
                 print(f"[vrchat] unbrauchbares 2FA-Geheimnis bei {_e['guild_id']} verworfen")
             except Exception as _ex:
                 print(f"[vrchat] konnte es nicht verwerfen: {_ex}")
-        _e["ohne_2fa"] = (not _e["geheimnis_da"]) and _e.get("needs_2fa") == 0 \
-            and bool(_e.get("vrc_user_id"))
+        _e["ohne_2fa"] = (not _e["geheimnis_da"]) and _e.get("needs_2fa") == 0
         _e["hat_geheimnis"] = _e["geheimnis_da"] or _e["ohne_2fa"]
         # Wann der Fehler entstand. Ohne diese Angabe sieht eine Meldung von vor einer
         # Stunde genauso aus wie eine von gerade eben - und man sucht nach einer Ursache,
@@ -5326,6 +5325,23 @@ async def vrc_account_save(request: Request):
     # Geheimnis nur noch durch Loeschen des ganzen Kontos zu entfernen.
     if form.get("vrc_totp_clear"):
         totp = ""
+    # Ausdrueckliche Ansage des Betreibers: dieses Konto verlangt keinen zweiten Faktor.
+    # Bisher konnte der Bot das nur erraten - er nimmt 2FA an, bis eine Anmeldung ohne
+    # durchlief. Geht die Anmeldung aber gar nicht erst durch, bleibt die Annahme stehen,
+    # und mit ihr ein Geheimnis und eine Fehlermeldung, die beide gegenstandslos sind.
+    # Der Haken raeumt deshalb auf, statt nur ein Haekchen zu setzen.
+    kein_2fa = bool(form.get("vrc_kein_2fa"))
+    if kein_2fa:
+        totp = ""
+        # Ein gespeicherter Fehler, der sich um den zweiten Faktor dreht, ist mit dieser
+        # Ansage erledigt. Stehen zu lassen hiesse: der Betreiber sagt "kein 2FA", und die
+        # Seite widerspricht ihm weiter mit einer Meldung von vorhin.
+        if existing and "2fa" in (existing["last_error"] or "").lower():
+            try:
+                await db_exec("UPDATE vrc_accounts SET last_error='' WHERE guild_id=?",
+                              (konto,))
+            except Exception as _ex:
+                print(f"[vrchat] alten 2FA-Fehler nicht entfernt: {_ex}")
     # Unbrauchbares gar nicht erst annehmen. Vorher landete jede Zeichenfolge in der
     # Datenbank, die Karte meldete daraufhin "Haelt dauerhaft" - und die Anmeldung scheiterte
     # trotzdem jedes Mal, weil sich daraus kein Code rechnen laesst. Zwei Angaben, die sich
@@ -5371,12 +5387,15 @@ async def vrc_account_save(request: Request):
         )
     except VRChatError as e:
         await db_exec(
-            "INSERT INTO vrc_accounts (guild_id, username, password, totp_secret, last_check, last_error, label) "
-            "VALUES (?,?,?,?,?,?,?) ON CONFLICT(guild_id) DO UPDATE SET username=excluded.username, "
+            "INSERT INTO vrc_accounts (guild_id, username, password, totp_secret, last_check, "
+            "last_error, label, needs_2fa) "
+            "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(guild_id) DO UPDATE SET username=excluded.username, "
             "password=excluded.password, totp_secret=excluded.totp_secret, "
-            "last_check=excluded.last_check, last_error=excluded.last_error, label=excluded.label",
+            "last_check=excluded.last_check, last_error=excluded.last_error, label=excluded.label, "
+            "needs_2fa=excluded.needs_2fa",
             (konto, username, password, totp,
-             datetime.datetime.utcnow().isoformat(), str(e)[:500], label),
+             datetime.datetime.utcnow().isoformat(), str(e)[:500], label,
+             0 if kein_2fa else 1),
         )
         return RedirectResponse(
             f"/settings/vrchat?error={urllib.parse.quote_plus(str(e))}",
@@ -5403,7 +5422,7 @@ async def vrc_account_save(request: Request):
         (konto, username, password, totp, result["auth_cookie"],
          result["two_factor_cookie"], str(user.get("id") or ""),
          str(user.get("displayName") or ""), datetime.datetime.utcnow().isoformat(), label,
-         1 if result.get("two_factor") else 0),
+         0 if kein_2fa else (1 if result.get("two_factor") else 0)),
     )
     who = urllib.parse.quote_plus(str(user.get("displayName") or username))
     # Mit Geheimnis erneuert der Bot selbst, ohne haengt die Sitzung an VRChats
@@ -5549,6 +5568,34 @@ async def vrc_account_debug(request: Request):
             z.append(f"  nicht ermittelbar ({type(e).__name__})")
         z.append("")
 
+        # ── 2b. Ist die Schnittstelle ueberhaupt offen? ──────────────────────
+        # /config verlangt keine Anmeldung und zaehlt deshalb auch nicht als Fehlversuch.
+        # Der Abschnitt trennt zwei Faelle, die sich sonst gleich anfuehlen: eine Sperre,
+        # die nur den Anmeldeweg trifft - oder eine, die diese Adresse ganz aussperrt.
+        # Nach drei Stunden immer noch 429 heisst naemlich nicht mehr "kurz warten".
+        z.append("── 2b. Schnittstelle ohne Anmeldung (/config) ──")
+        try:
+            async with s_http.get(f"{API_BASE}/config",
+                                  headers={"User-Agent": USER_AGENT,
+                                           "Accept": "application/json"},
+                                  timeout=TIMEOUT) as r:
+                text = await r.text()
+                z.append(f"  HTTP {r.status}")
+                if r.status == 200:
+                    z.append("  → Die Schnittstelle antwortet dieser Adresse normal.")
+                    z.append("    Gesperrt ist also nur der Anmeldeweg, nicht die Adresse.")
+                else:
+                    z.append(f"  {text[:300]}")
+                    z.append("  → Auch ohne Anmeldung abgewiesen: die Sperre trifft diese")
+                    z.append("    Adresse insgesamt, nicht nur das Anmelden.")
+        except Exception as e:
+            z.append(f"  nicht erreichbar: {type(e).__name__}: {str(e)[:200]}")
+            z.append("  → Das ist kein VRChat-Problem, sondern Netz oder DNS auf diesem")
+            z.append("    Server. Alles Weitere unten ist dann ohne Aussage.")
+        z.append("")
+
+        # Ohne Anmeldung, aber MIT dem gespeicherten Keks: antwortet VRChat hier anders,
+        # liegt es am Keks und nicht an der Adresse.
         # ── 3. Gespeicherte Sitzung ──────────────────────────────────────────
         z.append("── 3. Gespeicherte Sitzung (kostet keinen Anmeldeversuch) ──")
         sitzung_lebt = False
