@@ -5105,17 +5105,28 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
     account = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,))
+    veraltete_meldung = False
     if account:
         # Password and session cookies stay on the server - the page only needs to know that
         # an account is stored, plus whoever it turned out to be.
         for _k in ("password", "totp_secret", "auth_cookie", "two_factor_cookie"):
             account[_k] = ""
+        # Der rote Kasten zeigt den GESPEICHERTEN Text des letzten Fehlversuchs. Bis
+        # v1.18.52 behauptete der bei jedem 401 "Benutzername oder Passwort wurde
+        # abgelehnt", obwohl VRChat so auch auf Captcha und Sperren antwortet. Nach dem
+        # Update steht die falsche Behauptung also weiter da - niemand speichert extra
+        # neu, nur damit sich eine Fehlermeldung aktualisiert. Deswegen wird sie hier als
+        # veraltet erkannt und im Kasten eingeordnet, statt sie stillschweigend
+        # weiterzuzeigen.
+        veraltete_meldung = "Benutzername oder Passwort wurde von VRChat abgelehnt" in (
+            account.get("last_error") or "")
     return templates.TemplateResponse("vrchat_settings.html", {
         **session(request), "request": request,
         "guilds": await _guild_list(request),
         "token_set": await _token_configured(),
         "active": "vrchat",
         "vrc_account": account,
+        "veraltete_meldung": veraltete_meldung,
         "error": error, "success": success,
     })
 

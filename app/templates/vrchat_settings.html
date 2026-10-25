@@ -35,6 +35,13 @@
   {% if vrc_account and vrc_account.last_error %}
   <div style="background:rgba(239,68,68,0.12);border:1px solid var(--danger);border-radius:0.5rem;padding:0.6rem 0.75rem;font-size:0.78rem;margin-bottom:0.9rem;">
     ❌ {{ vrc_account.last_error }}
+    {% if veraltete_meldung %}
+    {# Steht nur bei Texten, die eine aeltere Fassung gespeichert hat. Loeschen waere
+       einfacher gewesen, nimmt aber die einzige Spur, die nach einem Fehlversuch bleibt. #}
+    <div style="color:var(--muted);margin-top:0.4rem;border-top:1px solid var(--border);padding-top:0.4rem;">⚠ {{ tr.vrc_error_stale_version }}</div>
+    {% else %}
+    <div style="color:var(--muted);margin-top:0.35rem;">{{ tr.vrc_error_check_hint }}</div>
+    {% endif %}
     {% if vrc_account.vrc_user_id %}
     <div style="color:var(--muted);margin-top:0.35rem;">{{ tr.vrc_account_stale_hint }}</div>
     {% endif %}
