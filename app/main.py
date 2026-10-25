@@ -5180,6 +5180,7 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
             except Exception as _ex:
                 print(f"[vrchat] konnte es nicht verwerfen: {_ex}")
         _e["ohne_2fa"] = (not _e["geheimnis_da"]) and _e.get("needs_2fa") == 0
+        _e["ohne_email"] = _e.get("needs_email") == 0
         _e["hat_geheimnis"] = _e["geheimnis_da"] or _e["ohne_2fa"]
         # Wann der Fehler entstand. Ohne diese Angabe sieht eine Meldung von vor einer
         # Stunde genauso aus wie eine von gerade eben - und man sucht nach einer Ursache,
@@ -5330,6 +5331,13 @@ async def vrc_account_save(request: Request):
     # durchlief. Geht die Anmeldung aber gar nicht erst durch, bleibt die Annahme stehen,
     # und mit ihr ein Geheimnis und eine Fehlermeldung, die beide gegenstandslos sind.
     # Der Haken raeumt deshalb auf, statt nur ein Haekchen zu setzen.
+    # Zweiter Haken, getrennt vom ersten: der E-Mail-Code hat mit der
+    # Zwei-Faktor-Anmeldung nichts zu tun. VRChat schickt ihn bei jeder Anmeldung von einer
+    # Adresse, die das Konto noch nicht kennt - auch ohne 2FA. Abschalten laesst sich damit
+    # nicht VRChats Verhalten, sondern nur die Erwartung des Bots: er haelt einen
+    # angeforderten Code dann fuer einen Fehler statt fuer den normalen Weg, und die
+    # Meldung dazu wird weggeraeumt.
+    kein_email = bool(form.get("vrc_kein_email"))
     kein_2fa = bool(form.get("vrc_kein_2fa"))
     if kein_2fa:
         totp = ""
@@ -5342,6 +5350,11 @@ async def vrc_account_save(request: Request):
                               (konto,))
             except Exception as _ex:
                 print(f"[vrchat] alten 2FA-Fehler nicht entfernt: {_ex}")
+    if kein_email and existing and "e-mail" in (existing["last_error"] or "").lower():
+        try:
+            await db_exec("UPDATE vrc_accounts SET last_error='' WHERE guild_id=?", (konto,))
+        except Exception as _ex:
+            print(f"[vrchat] alte E-Mail-Code-Meldung nicht entfernt: {_ex}")
     # Unbrauchbares gar nicht erst annehmen. Vorher landete jede Zeichenfolge in der
     # Datenbank, die Karte meldete daraufhin "Haelt dauerhaft" - und die Anmeldung scheiterte
     # trotzdem jedes Mal, weil sich daraus kein Code rechnen laesst. Zwei Angaben, die sich
@@ -5388,14 +5401,14 @@ async def vrc_account_save(request: Request):
     except VRChatError as e:
         await db_exec(
             "INSERT INTO vrc_accounts (guild_id, username, password, totp_secret, last_check, "
-            "last_error, label, needs_2fa) "
-            "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(guild_id) DO UPDATE SET username=excluded.username, "
+            "last_error, label, needs_2fa, needs_email) "
+            "VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(guild_id) DO UPDATE SET username=excluded.username, "
             "password=excluded.password, totp_secret=excluded.totp_secret, "
             "last_check=excluded.last_check, last_error=excluded.last_error, label=excluded.label, "
-            "needs_2fa=excluded.needs_2fa",
+            "needs_2fa=excluded.needs_2fa, needs_email=excluded.needs_email",
             (konto, username, password, totp,
              datetime.datetime.utcnow().isoformat(), str(e)[:500], label,
-             0 if kein_2fa else 1),
+             0 if kein_2fa else 1, 0 if kein_email else 1),
         )
         return RedirectResponse(
             f"/settings/vrchat?error={urllib.parse.quote_plus(str(e))}",
@@ -5412,17 +5425,18 @@ async def vrc_account_save(request: Request):
     await db_exec(
         "INSERT INTO vrc_accounts (guild_id, username, password, totp_secret, auth_cookie, "
         "two_factor_cookie, vrc_user_id, vrc_display_name, last_check, last_error, label, "
-        "needs_2fa, retry_after) "
-        "VALUES (?,?,?,?,?,?,?,?,?,'',?,?,'') ON CONFLICT(guild_id) DO UPDATE SET "
+        "needs_2fa, needs_email, retry_after) "
+        "VALUES (?,?,?,?,?,?,?,?,?,'',?,?,?,'') ON CONFLICT(guild_id) DO UPDATE SET "
         "username=excluded.username, password=excluded.password, totp_secret=excluded.totp_secret, "
         "auth_cookie=excluded.auth_cookie, two_factor_cookie=excluded.two_factor_cookie, "
         "vrc_user_id=excluded.vrc_user_id, vrc_display_name=excluded.vrc_display_name, "
         "last_check=excluded.last_check, last_error='', label=excluded.label, "
-        "needs_2fa=excluded.needs_2fa, retry_after=''",
+        "needs_2fa=excluded.needs_2fa, needs_email=excluded.needs_email, retry_after=''",
         (konto, username, password, totp, result["auth_cookie"],
          result["two_factor_cookie"], str(user.get("id") or ""),
          str(user.get("displayName") or ""), datetime.datetime.utcnow().isoformat(), label,
-         0 if kein_2fa else (1 if result.get("two_factor") else 0)),
+         0 if kein_2fa else (1 if result.get("two_factor") else 0),
+         0 if (kein_email or not result.get("reused", True)) else 1),
     )
     who = urllib.parse.quote_plus(str(user.get("displayName") or username))
     # Mit Geheimnis erneuert der Bot selbst, ohne haengt die Sitzung an VRChats

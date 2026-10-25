@@ -1284,6 +1284,11 @@ async def init_db():
             # der Bot die Sperre damit selbst aufrecht, die er gerade abwarten muesste.
             # Leer heisst "jederzeit", bestehende Installationen aendern sich dadurch nicht.
             "ALTER TABLE vrc_accounts ADD COLUMN retry_after TEXT NOT NULL DEFAULT ''",
+            # Erwartet dieses Konto den Code, den VRChat bei einer Anmeldung von einer
+            # unbekannten Adresse per E-Mail schickt? Standard 1, weil VRChat das bei jedem
+            # neuen Server tut. Abschalten laesst sich damit nicht VRChats Verhalten - nur
+            # die Erwartung des Bots und die Meldung, die sonst stehen bleibt.
+            "ALTER TABLE vrc_accounts ADD COLUMN needs_email INTEGER NOT NULL DEFAULT 1",
         ]:
             try:
                 await db.execute(col)
