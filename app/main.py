@@ -5188,6 +5188,17 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
         # sich der Bot die Codes selbst aus - oder das Konto verlangt gar keinen zweiten
         # Faktor, dann ist nichts zu erneuern. Nur den ersten zu pruefen hat bei einem
         # Konto ohne 2FA faelschlich "laeuft monatlich ab" gemeldet.
+        # Aus aelteren Fassungen koennen solche Aufforderungen noch in der Zeile stehen.
+        # Sie gehoeren dort nicht hin und bekommt man sonst nur mit einer gelungenen
+        # Anmeldung weg - also hier beim Hinsehen verwerfen.
+        _alt_text = (_e.get("last_error") or "")
+        if "e-mail" in _alt_text.lower() or "email" in _alt_text.lower():
+            try:
+                await db_exec("UPDATE vrc_accounts SET last_error='' WHERE guild_id=?",
+                              (_e["guild_id"],))
+                _e["last_error"] = ""
+            except Exception as _ex:
+                print(f"[vrchat] E-Mail-Aufforderung nicht verworfen: {_ex}")
         _e["geheimnis_da"] = _geheimnis_taugt(_e.get("totp_secret") or "")
         # Weggeraeumt wurde ein unbrauchbares Geheimnis bisher nur in vrc_session() - und
         # die laeuft im Hintergrund NUR, wenn fuer einen Server ein Abgleichintervall
@@ -5432,8 +5443,13 @@ async def vrc_account_save(request: Request):
         # passiert ist, soll man sehen; was dauerhaft gilt, gehoert in die Zeile. Bisher
         # wurde sie hier festgeschrieben und blieb bis zur naechsten gelungenen Anmeldung
         # stehen; der Haken wirkte nur im Hintergrundlauf.
+        # Die Aufforderung, einen per E-Mail geschickten Code einzutragen, ist kein
+        # Fehlerzustand, sondern ein naechster Schritt. Sie steht einmal oben in der
+        # Umleitung und wird NICHT in die Zeile geschrieben - dort bliebe sie bis zur
+        # naechsten gelungenen Anmeldung stehen, auch bei jemandem, der diesen Weg gar
+        # nicht geht. Das galt bisher nur mit gesetztem Haken; jetzt immer.
         _text = str(e)[:500]
-        if kein_email and ("e-mail" in _text.lower() or "email" in _text.lower()):
+        if "e-mail" in _text.lower() or "email" in _text.lower():
             _text = ""
         await db_exec(
             "INSERT INTO vrc_accounts (guild_id, username, password, totp_secret, last_check, "
