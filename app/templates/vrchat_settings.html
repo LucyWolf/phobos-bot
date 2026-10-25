@@ -114,8 +114,6 @@
         {% endif %}
         {% if k.hat_geheimnis %}
         <span title="{% if k.ohne_2fa %}{{ tr.vrc_state_no2fa_t }}{% else %}{{ tr.vrc_state_permanent_t }}{% endif %}" style="display:inline-block;margin-top:0.3rem;font-size:0.68rem;border-radius:999px;padding:0.1rem 0.5rem;background:rgba(34,197,94,0.15);border:1px solid #22c55e;color:#22c55e;">♾ {{ tr.vrc_state_permanent }}</span>
-        {% else %}
-        <span title="{{ tr.vrc_state_temporary_t }}" style="display:inline-block;margin-top:0.3rem;font-size:0.68rem;border-radius:999px;padding:0.1rem 0.5rem;background:rgba(245,158,11,0.15);border:1px solid #f59e0b;color:#f59e0b;">⏳ {{ tr.vrc_state_temporary }}</span>
         {% endif %}
         <div style="color:var(--muted);font-size:0.7rem;margin-top:0.3rem;">
           {% if k.server %}{{ tr.vrc_used_by }} {{ k.server | join(", ") }}{% else %}{{ tr.vrc_used_by_none }}{% endif %}
