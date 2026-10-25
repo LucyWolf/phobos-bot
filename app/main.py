@@ -5550,7 +5550,23 @@ async def vrc_account_debug(request: Request):
 
         # ── 4. Ein Anmeldeversuch ────────────────────────────────────────────
         z.append("── 4. Anmeldung mit Benutzername und Passwort (genau ein Versuch) ──")
-        if sitzung_lebt:
+        # Liegt eine Bremse, bleibt auch dieser Bericht still. Sonst waere ausgerechnet das
+        # Werkzeug, mit dem man die Sperre untersucht, das, was sie verlaengert - und wer
+        # nachsieht, ob sie weg ist, haelt sie damit aufrecht.
+        _pause = (row["retry_after"] if "retry_after" in row.keys() else "") or ""
+        _wartet = False
+        if _pause:
+            try:
+                _bis = datetime.datetime.fromisoformat(_pause)
+                _wartet = _bis > datetime.datetime.utcnow()
+            except ValueError:
+                _wartet = False
+        if _wartet and not sitzung_lebt:
+            z.append(f"  übersprungen — VRChat sperrt dieses Netz gerade. Der nächste")
+            z.append(f"  Versuch ist ab {_bis.strftime('%H:%M')} UTC sinnvoll; bis dahin")
+            z.append(f"  würde jeder weitere die Sperre nur verlängern. Das gilt auch für")
+            z.append(f"  diesen Bericht — deswegen fragt er jetzt nicht nach.")
+        elif sitzung_lebt:
             # Anklopfen, obwohl die Tuer offen steht: der Versuch koennte nur schaden -
             # Anmeldeversuche sind es, die VRChats Sperre ausloesen.
             z.append("  übersprungen — die gespeicherte Sitzung läuft (Abschnitt 3).")
