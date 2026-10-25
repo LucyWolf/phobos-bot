@@ -5223,6 +5223,58 @@ async def vrc_account_save(request: Request):
     return RedirectResponse(f"/settings/vrchat?success={msg}", status_code=303)
 
 
+@web.post("/settings/vrchat/test")
+async def vrc_account_test(request: Request):
+    """Haelt die gespeicherte Anmeldung noch? Ohne Anmeldeversuch.
+
+    Fragt nur mit dem gespeicherten Keks nach, wem die Sitzung gehoert. Das zaehlt bei
+    VRChat nicht als Anmeldung und kann deshalb keine Sperre ausloesen - im Gegensatz zum
+    vollen Debug-Bericht, der zum Schluss einmal mit Passwort anklopft. Genau dafuer gibt
+    es den Knopf getrennt: "laeuft es noch" ist die haeufigere Frage und darf nichts kosten.
+    """
+    if r := admin_redirect(request): return r
+
+    import aiohttp
+    from vrchat import API_BASE, TIMEOUT, _headers
+
+    row = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,))
+    if not row:
+        return JSONResponse({"ok": False, "text": "Kein Konto hinterlegt."})
+    if not row["auth_cookie"]:
+        return JSONResponse({"ok": False, "text":
+            "Keine gespeicherte Sitzung. Zum Prüfen müsste sich der Bot neu anmelden — "
+            "dafür unten den Debug-Bericht nehmen."})
+
+    try:
+        async with aiohttp.ClientSession() as s_http:
+            async with s_http.get(
+                    f"{API_BASE}/auth/user",
+                    headers=_headers(row["auth_cookie"], row["two_factor_cookie"]),
+                    timeout=TIMEOUT) as r:
+                try:
+                    data = await r.json(content_type=None)
+                except Exception:
+                    data = {}
+                if r.status == 200 and data.get("id"):
+                    name = data.get("displayName") or row["vrc_display_name"] or "?"
+                    # Der gespeicherte Fehler ist mit einer lebenden Sitzung ueberholt -
+                    # sonst steht der rote Kasten noch da, waehrend alles laeuft.
+                    await db_exec(
+                        "UPDATE vrc_accounts SET last_error='', last_check=?, "
+                        "vrc_display_name=?, vrc_user_id=? WHERE guild_id=?",
+                        (datetime.datetime.utcnow().isoformat(), name,
+                         str(data.get("id") or ""), VRC_ACCOUNT_KEY))
+                    return JSONResponse({"ok": True, "text":
+                        f"Verbunden als {name}. Die Anmeldung läuft."})
+                return JSONResponse({"ok": False, "text":
+                    f"Die gespeicherte Anmeldung gilt nicht mehr (HTTP {r.status}). "
+                    f"VRChat lässt eine Sitzung etwa einen Monat gelten — oben einen "
+                    f"neuen Code eintragen und speichern."})
+    except Exception as e:
+        return JSONResponse({"ok": False, "text":
+            f"VRChat war nicht erreichbar ({type(e).__name__})."})
+
+
 @web.post("/settings/vrchat/debug")
 async def vrc_account_debug(request: Request):
     """Sagt, WARUM die Anmeldung scheitert - als Text zum Kopieren.
@@ -5296,6 +5348,7 @@ async def vrc_account_debug(request: Request):
 
         # ── 3. Gespeicherte Sitzung ──────────────────────────────────────────
         z.append("── 3. Gespeicherte Sitzung (kostet keinen Anmeldeversuch) ──")
+        sitzung_lebt = False
         if not row["auth_cookie"]:
             z.append("  keine gespeichert")
         else:
@@ -5312,6 +5365,7 @@ async def vrc_account_debug(request: Request):
                         except Exception:
                             z.append(f"  {text[:200]}")
                         z.append("  → Die Sitzung lebt. Das Problem liegt NICHT bei den Zugangsdaten.")
+                        sitzung_lebt = True
                     else:
                         z.append(f"  {text[:400]}")
                         z.append("  → abgelaufen, deshalb der Anmeldeversuch unten")
@@ -5321,7 +5375,12 @@ async def vrc_account_debug(request: Request):
 
         # ── 4. Ein Anmeldeversuch ────────────────────────────────────────────
         z.append("── 4. Anmeldung mit Benutzername und Passwort (genau ein Versuch) ──")
-        if not user or not pw:
+        if sitzung_lebt:
+            # Anklopfen, obwohl die Tuer offen steht: der Versuch koennte nur schaden -
+            # Anmeldeversuche sind es, die VRChats Sperre ausloesen.
+            z.append("  übersprungen — die gespeicherte Sitzung läuft (Abschnitt 3).")
+            z.append("  Ein Anmeldeversuch könnte hier nur eine Sperre auslösen.")
+        elif not user or not pw:
             z.append("  übersprungen — Benutzername oder Passwort fehlt")
         else:
             try:

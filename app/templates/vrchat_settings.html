@@ -41,11 +41,18 @@
       <div style="font-weight:600;font-size:0.88rem;">{{ vrc_account.vrc_display_name }}</div>
       <div style="color:var(--muted);font-size:0.72rem;"><code>{{ vrc_account.vrc_user_id }}</code></div>
     </div>
+    {# Neben dem Konto und nicht unten beim Debug: "laeuft es noch" ist die Frage, die man
+       beim Hinsehen hat, und sie darf nichts kosten - hier wird nur die gespeicherte
+       Sitzung abgefragt, kein Anmeldeversuch. #}
+    <button type="button" class="btn btn-secondary" id="vrc-test-btn"
+            onclick="vrcTest()" style="font-size:0.78rem;"
+            title="{{ tr.vrc_test_hint }}">{{ tr.vrc_test_btn }}</button>
     <form method="post" action="/settings/vrchat/delete" style="margin:0;"
           onsubmit="return confirm({{ tr.vrc_account_confirm_delete | js }})">
       <button type="submit" class="btn btn-danger" style="font-size:0.78rem;">{{ tr.vrc_account_remove }}</button>
     </form>
   </div>
+  <div id="vrc-test-out" style="display:none;font-size:0.78rem;border-radius:0.5rem;padding:0.5rem 0.7rem;margin:-0.5rem 0 0.9rem;"></div>
   {% endif %}
 
   {# Auch bei verbundenem Konto anzeigen, nicht nur statt der Verbindung. Eine Sitzung kann
@@ -129,6 +136,30 @@
 </div>
 
 <script>
+async function vrcTest() {
+  // Fragt NUR die gespeicherte Sitzung ab. Kein Passwort, kein Anmeldeversuch - deshalb
+  // darf dieser Knopf auch mehrfach gedrueckt werden, anders als der Debug-Bericht.
+  const btn = document.getElementById('vrc-test-btn');
+  const out = document.getElementById('vrc-test-out');
+  btn.disabled = true;
+  out.style.display = '';
+  out.style.background = 'var(--bg)';
+  out.style.border = '1px solid var(--border)';
+  out.style.color = 'var(--muted)';
+  out.textContent = {{ tr.vrc_test_working | jsraw }};
+  try {
+    const r = await fetch('/settings/vrchat/test', {method: 'POST'});
+    const d = await r.json();
+    out.textContent = (d.ok ? '\u2705 ' : '\u274C ') + d.text;
+    out.style.background = d.ok ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)';
+    out.style.border = '1px solid ' + (d.ok ? '#22c55e' : 'var(--danger)');
+    out.style.color = '';
+  } catch (e) {
+    out.textContent = '\u274C ' + String(e);
+  }
+  btn.disabled = false;
+}
+
 function toggleVrcInfo() {
   const box = document.getElementById('vrc-info-box');
   box.style.display = box.style.display === 'none' ? '' : 'none';
