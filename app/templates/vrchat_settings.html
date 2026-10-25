@@ -72,6 +72,23 @@
 
 
 <div class="card">
+  <div class="feat-header">{{ tr.vrc_login_debug_heading }}</div>
+  <p class="hint" style="margin-bottom:0.5rem;">{{ tr.vrc_login_debug_hint }}</p>
+  <div style="background:rgba(245,158,11,0.12);border:1px solid #f59e0b;border-radius:0.5rem;padding:0.5rem 0.7rem;font-size:0.74rem;margin-bottom:0.8rem;">
+    {{ tr.vrc_login_debug_warn }}
+  </div>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+    <button type="button" class="btn btn-secondary" id="vrclogin-debug-btn"
+            onclick="vrcLoginDebug()">{{ tr.vrc_login_debug_btn }}</button>
+    <button type="button" class="btn btn-secondary" id="vrclogin-debug-copy"
+            onclick="vrcLoginDebugCopy()" style="display:none;">{{ tr.vrc_debug_copy }}</button>
+    <span id="vrclogin-debug-note" style="font-size:0.74rem;color:var(--muted);"></span>
+  </div>
+  <pre id="vrclogin-debug-out" style="display:none;white-space:pre-wrap;word-break:break-word;font-family:monospace;font-size:0.7rem;line-height:1.5;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;padding:0.7rem;margin-top:0.7rem;max-height:420px;overflow:auto;"></pre>
+</div>
+
+
+<div class="card">
   <div class="feat-header">{{ tr.vrc_settings_next_heading }}</div>
   <p class="hint" style="margin-bottom:0.75rem;">{{ tr.vrc_settings_next_hint }}</p>
   {% if guilds %}
@@ -86,6 +103,51 @@
 </div>
 
 <script>
+async function vrcLoginDebug() {
+  // Ein Druck = hoechstens ein Anmeldeversuch bei VRChat. Der Knopf sperrt sich deshalb,
+  // solange der Bericht laeuft: zweimal schnell geklickt waere zweimal versucht, und genau
+  // das verlaengert die Sperre, die wir gerade messen wollen.
+  const btn  = document.getElementById('vrclogin-debug-btn');
+  const out  = document.getElementById('vrclogin-debug-out');
+  const note = document.getElementById('vrclogin-debug-note');
+  btn.disabled = true;
+  note.textContent = {{ tr.vrc_debug_working | jsraw }};
+  document.getElementById('vrclogin-debug-copy').style.display = 'none';
+  try {
+    const r = await fetch('/settings/vrchat/debug', {method: 'POST'});
+    const d = await r.json();
+    out.textContent = d.bericht || JSON.stringify(d, null, 2);
+    out.style.display = '';
+    document.getElementById('vrclogin-debug-copy').style.display = '';
+    note.textContent = '';
+  } catch (e) {
+    out.textContent = String(e);
+    out.style.display = '';
+    note.textContent = '';
+  }
+  btn.disabled = false;
+}
+
+function vrcLoginDebugCopy() {
+  const out  = document.getElementById('vrclogin-debug-out');
+  const note = document.getElementById('vrclogin-debug-note');
+  const fertig = function () { note.textContent = {{ tr.vrc_debug_copied | jsraw }}; };
+  // Der zweite Weg ist nicht Zierde: navigator.clipboard gibt es nur ueber HTTPS, und viele
+  // Installationen laufen im eigenen Netz auf http - dort waere der Knopf sonst tot.
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(out.textContent).then(fertig, function () {});
+  } else {
+    const f = document.createElement('textarea');
+    f.value = out.textContent;
+    f.style.position = 'fixed';
+    f.style.opacity = '0';
+    document.body.appendChild(f);
+    f.select();
+    try { document.execCommand('copy'); fertig(); } catch (e) {}
+    document.body.removeChild(f);
+  }
+}
+
 function vrcToggleSecret(btn) {
   // Reveals what is CURRENTLY TYPED IN - the stored password is never sent to the page at all,
   // so there is nothing else here to show. This button exists to check a paste, not to read

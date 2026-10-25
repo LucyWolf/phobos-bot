@@ -167,10 +167,14 @@ async def login(username: str, password: str, totp_secret: str = "",
                     "lösen. Das kommt nach mehreren Fehlversuchen von derselben Adresse. Etwa "
                     "eine Stunde nichts tun und dann genau einmal erneut speichern. "
                     f"(VRChat sagt: {meldung or 'nichts'})")
+            # Keine eigene Deutung mehr. Welcher Grund hinter einem 401 steckt, weiss hier
+            # niemand - "Passwort falsch" zu behaupten hat einen Betreiber tagelang ein
+            # Passwort pruefen lassen, das die ganze Zeit richtig war. Was VRChat gesagt hat,
+            # steht da; alles weitere beantwortet der Debug-Bericht auf der Seite.
             raise VRChatError(
-                "VRChat hat die Anmeldung abgelehnt. Meist stimmt das Passwort nicht — es kann "
-                "aber auch eine vorübergehende Sperre wegen zu vieler Versuche sein, dann hilft "
-                f"nur warten. (VRChat sagt: {meldung or 'nichts'})")
+                f"VRChat hat die Anmeldung abgelehnt (401). VRChat sagt dazu: "
+                f"{meldung or '(kein Text)'}. Woran es liegt, zeigt der Debug-Bericht weiter "
+                f"unten auf dieser Seite.")
         if resp.status == 429:
             raise VRChatError("VRChat bremst gerade zu viele Anmeldeversuche aus. "
                               f"Bitte später nochmal versuchen. (VRChat sagt: {meldung or 'nichts'})")

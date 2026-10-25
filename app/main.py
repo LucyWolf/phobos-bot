@@ -5212,6 +5212,162 @@ async def vrc_account_save(request: Request):
     return RedirectResponse(f"/settings/vrchat?success={msg}", status_code=303)
 
 
+@web.post("/settings/vrchat/debug")
+async def vrc_account_debug(request: Request):
+    """Sagt, WARUM die Anmeldung scheitert - als Text zum Kopieren.
+
+    Gebaut, weil die Seite vorher bei jedem abgelehnten Login "Benutzername oder Passwort
+    wurde abgelehnt" behauptete. VRChat antwortet mit demselben 401 aber auch bei
+    Captcha-Pflicht und bei einer Sperre nach zu vielen Versuchen; der Antworttext sagt,
+    welches davon es ist. Ein Betreiber hat deshalb tagelang ein Passwort geprueft, das die
+    ganze Zeit richtig war.
+
+    Macht hoechstens EINEN Anmeldeversuch: jeder weitere verlaengert eine moegliche Sperre.
+    Die gespeicherte Sitzung wird vorher getestet, weil die nichts kostet - lebt sie, liegt
+    es ohnehin nicht an den Zugangsdaten. Passwort, Geheimnis und Kekse stehen nicht drin.
+    """
+    if r := admin_redirect(request): return r
+
+    import aiohttp
+    from vrchat import API_BASE, USER_AGENT, TIMEOUT, _headers, _basic_auth, _api_meldung
+
+    row = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,))
+    z = []
+    z.append("═══ Phobos VRChat-Anmeldung — Debug ═══")
+    z.append(f"Erzeugt: {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC · Phobos v{VERSION}")
+    z.append("")
+
+    if not row:
+        z.append("Kein VRChat-Konto hinterlegt — oben eintragen und speichern.")
+        return JSONResponse({"bericht": "\n".join(z)})
+
+    user = (row["username"] or "")
+    pw = (row["password"] or "")
+
+    # ── 1. Was hinterlegt ist ────────────────────────────────────────────────
+    # Ohne Passwort, aber mit allem, woran man ein falsch eingetragenes erkennt: Laenge,
+    # Leerzeichen am Rand, Nicht-ASCII. Genau diese drei faellt beim Hinsehen niemandem auf.
+    z.append("── 1. Hinterlegtes Konto ──")
+    z.append(f"  Benutzername:    {user!r}")
+    if "@" in user:
+        z.append("                   ⚠ sieht aus wie eine E-Mail-Adresse. Die VRChat-Website")
+        z.append("                     nimmt beides an, diese Schnittstelle verlangt den")
+        z.append("                     Benutzernamen. Einmal damit versuchen.")
+    if user != user.strip():
+        z.append("                   ⚠ Leerzeichen am Rand")
+    hinweise = []
+    if pw != pw.strip():
+        hinweise.append("MIT Leerzeichen am Rand")
+    if any(ord(c) > 127 for c in pw):
+        hinweise.append("enthält Sonderzeichen außerhalb ASCII")
+    z.append(f"  Passwort:        {len(pw)} Zeichen"
+             + (" — " + ", ".join(hinweise) if hinweise else ""))
+    z.append(f"  auth-Keks:       {'vorhanden' if row['auth_cookie'] else 'keiner'}")
+    z.append(f"  2FA-Keks:        {'vorhanden' if row['two_factor_cookie'] else 'keiner'}")
+    z.append(f"  Erkannt als:     {row['vrc_display_name'] or '—'} [{row['vrc_user_id'] or '—'}]")
+    z.append(f"  Letzte Prüfung:  {row['last_check'] or '—'}")
+    z.append(f"  Letzter Fehler:  {row['last_error'] or '—'}")
+    z.append("")
+
+    async with aiohttp.ClientSession() as s_http:
+        # ── 2. Welche Adresse sieht VRChat ───────────────────────────────────
+        # Eine Captcha-Sperre haengt an der Adresse, nicht am Konto. Deshalb kann dasselbe
+        # Konto im Browser zu Hause laufen und hier abgelehnt werden - das ist der Punkt,
+        # der von aussen nie zu sehen ist.
+        z.append("── 2. Adresse dieses Servers (VRChat sperrt pro Adresse) ──")
+        try:
+            async with s_http.get("https://api.ipify.org",
+                                  timeout=aiohttp.ClientTimeout(total=10)) as r:
+                z.append(f"  {await r.text()}")
+        except Exception as e:
+            z.append(f"  nicht ermittelbar ({type(e).__name__})")
+        z.append("")
+
+        # ── 3. Gespeicherte Sitzung ──────────────────────────────────────────
+        z.append("── 3. Gespeicherte Sitzung (kostet keinen Anmeldeversuch) ──")
+        if not row["auth_cookie"]:
+            z.append("  keine gespeichert")
+        else:
+            try:
+                async with s_http.get(
+                        f"{API_BASE}/auth/user",
+                        headers=_headers(row["auth_cookie"], row["two_factor_cookie"]),
+                        timeout=TIMEOUT) as r:
+                    text = await r.text()
+                    z.append(f"  HTTP {r.status}")
+                    if r.status == 200:
+                        try:
+                            z.append(f"  angemeldet als: {_djson.loads(text).get('displayName')}")
+                        except Exception:
+                            z.append(f"  {text[:200]}")
+                        z.append("  → Die Sitzung lebt. Das Problem liegt NICHT bei den Zugangsdaten.")
+                    else:
+                        z.append(f"  {text[:400]}")
+                        z.append("  → abgelaufen, deshalb der Anmeldeversuch unten")
+            except Exception as e:
+                z.append(f"  Fehler: {type(e).__name__}: {str(e)[:200]}")
+        z.append("")
+
+        # ── 4. Ein Anmeldeversuch ────────────────────────────────────────────
+        z.append("── 4. Anmeldung mit Benutzername und Passwort (genau ein Versuch) ──")
+        if not user or not pw:
+            z.append("  übersprungen — Benutzername oder Passwort fehlt")
+        else:
+            try:
+                h = _headers(two_factor_cookie=row["two_factor_cookie"])
+                h["Authorization"] = _basic_auth(user, pw)
+                async with s_http.get(f"{API_BASE}/auth/user", headers=h, timeout=TIMEOUT) as r:
+                    text = await r.text()
+                    try:
+                        data = _djson.loads(text)
+                    except Exception:
+                        data = {}
+                    z.append(f"  HTTP {r.status}")
+                    gesetzt = [n for n in ("auth", "twoFactorAuth")
+                               if any(c.startswith(f"{n}=") for c in r.headers.getall("Set-Cookie", []))]
+                    z.append(f"  Set-Cookie:      {', '.join(gesetzt) if gesetzt else '(keiner)'}")
+                    z.append(f"  VRChat sagt:     {_api_meldung(data) or '(kein Text)'}")
+                    z.append(f"  Rohe Antwort:    {text[:600]}")
+                    z.append("")
+                    noetig = data.get("requiresTwoFactorAuth") or []
+                    if r.status == 200 and data.get("id"):
+                        z.append("  ⇒ ERGEBNIS: Die Anmeldung funktioniert. Benutzername und")
+                        z.append("     Passwort sind richtig.")
+                    elif noetig:
+                        z.append("  ⇒ ERGEBNIS: Benutzername und Passwort sind RICHTIG.")
+                        z.append(f"     VRChat will zusätzlich: {', '.join(str(x) for x in noetig)}")
+                        if any("email" in str(x).lower() for x in noetig):
+                            z.append("     Ein Code liegt im Postfach des VRChat-Kontos. Oben ins")
+                            z.append("     Code-Feld eintragen und speichern.")
+                        else:
+                            z.append("     Den Code aus der Authenticator-App oben eintragen.")
+                    elif data.get("requiresCaptcha") or "captcha" in (_api_meldung(data) or "").lower():
+                        z.append("  ⇒ ERGEBNIS: VRChat verlangt ein Captcha. Das löst der Bot nicht.")
+                        z.append("     Ursache ist fast immer eine Sperre nach zu vielen Versuchen")
+                        z.append("     von der Adresse aus Abschnitt 2. Eine Stunde nichts tun,")
+                        z.append("     dann genau einmal speichern. Über das Passwort sagt das")
+                        z.append("     nichts aus.")
+                    elif r.status == 401:
+                        z.append("  ⇒ ERGEBNIS: abgelehnt, ohne dass VRChat einen Grund nennt.")
+                        z.append("     Möglich sind: Passwort wirklich falsch · E-Mail statt")
+                        z.append("     Benutzername eingetragen · eine Sperre auf der Adresse aus")
+                        z.append("     Abschnitt 2. Der Text unter „VRChat sagt“ entscheidet.")
+                    elif r.status == 403:
+                        z.append("  ⇒ ERGEBNIS: VRChat weist die Anfrage ab (403). Das kommt bei")
+                        z.append("     gesperrten Konten und bei einer offenen Bestätigung, die im")
+                        z.append("     Browser abgenickt werden muss.")
+                    elif r.status == 429:
+                        z.append("  ⇒ ERGEBNIS: zu viele Anfragen. Warten, nichts weiter tun.")
+                    else:
+                        z.append(f"  ⇒ ERGEBNIS: unerwarteter Status {r.status}.")
+            except Exception as e:
+                z.append(f"  Fehler beim Versuch: {type(e).__name__}: {str(e)[:300]}")
+
+    z.append("")
+    z.append("Diese Ausgabe enthält kein Passwort und keine Sitzungsdaten.")
+    return JSONResponse({"bericht": "\n".join(z)})
+
+
 @web.post("/settings/vrchat/delete")
 async def vrc_account_delete(request: Request):
     # Admin-only for the same reason as saving it - see there.
