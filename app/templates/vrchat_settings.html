@@ -119,6 +119,10 @@
         {% endif %}
         <div style="color:var(--muted);font-size:0.7rem;margin-top:0.3rem;">
           {% if k.server %}{{ tr.vrc_used_by }} {{ k.server | join(", ") }}{% else %}{{ tr.vrc_used_by_none }}{% endif %}
+          {% if alle_server %}
+          <button type="button" onclick="vrcServer({{ k.guild_id | js }})"
+                  style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.7rem;padding:0 0 0 0.3rem;">✏</button>
+          {% endif %}
         </div>
       </div>
       <button type="button" class="btn btn-secondary" style="font-size:0.75rem;"
@@ -132,6 +136,37 @@
                 title="{{ tr.vrc_account_remove }}">✕</button>
       </form>
     </div>
+    {# Die Zuordnung von der Kontoseite aus. Im VRC-Link-Reiter jedes Servers steht
+       dieselbe Wahl aus der anderen Richtung - geschrieben wird derselbe Schluessel,
+       sonst gaebe es zwei Wahrheiten ueber dieselbe Sache.
+       Beim Standardkonto sind die Kaestchen gesperrt: ein Server ohne eigene Wahl landet
+       dort ohnehin, Abhaken haette also keine Wirkung ausser Verwirrung. Weggeben laesst
+       er sich, indem man ihn bei einem anderen Bot anhakt. #}
+    {% if alle_server %}
+    <div id="vrc-server-{{ k.guild_id }}" style="display:none;border-top:1px solid var(--border);margin-top:0.6rem;padding-top:0.6rem;">
+      <form method="post" action="/settings/vrchat/server">
+        <input type="hidden" name="konto" value="{{ k.guild_id }}">
+        <div style="font-size:0.78rem;font-weight:600;margin-bottom:0.4rem;">{{ tr.vrc_servers_label }}</div>
+        {% if k.ist_standard %}
+        <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.4rem;">{{ tr.vrc_servers_default_t }}</div>
+        {% endif %}
+        <div style="display:flex;flex-direction:column;gap:0.25rem;margin-bottom:0.6rem;">
+          {% for srv in alle_server %}
+          <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.78rem;font-weight:400;margin:0;">
+            <input type="checkbox" name="server" value="{{ srv.id }}" style="width:auto;margin:0;"
+                   {% if srv.id in k.server_ids %}checked{% endif %}
+                   {% if k.ist_standard %}disabled{% endif %}>
+            {{ srv.name }}
+          </label>
+          {% endfor %}
+        </div>
+        {% if not k.ist_standard %}
+        <button type="submit" class="btn btn-secondary" style="font-size:0.76rem;">{{ tr.vrc_servers_save }}</button>
+        {% endif %}
+      </form>
+    </div>
+    {% endif %}
+
     <div id="vrc-test-out-{{ k.guild_id }}" style="display:none;font-size:0.76rem;line-height:1.5;padding:0.45rem 0.7rem;margin-top:0.5rem;border-left:3px solid var(--border);background:var(--surface);border-radius:0 0.35rem 0.35rem 0;color:var(--muted);"></div>
 
     {% if k.last_error %}
@@ -220,6 +255,11 @@ async function vrcTest(konto) {
   } catch (e) {
     out.textContent = '\u274C ' + String(e);
   }
+}
+
+function vrcServer(konto) {
+  const box = document.getElementById('vrc-server-' + konto);
+  if (box) box.style.display = box.style.display === 'none' ? '' : 'none';
 }
 
 function vrcEdit(konto) {

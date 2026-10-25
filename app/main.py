@@ -5124,15 +5124,23 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
 
     # Welche Server welches Konto benutzen - damit vor dem Loeschen sichtbar ist, wen es
     # trifft, statt es hinterher zu merken.
+    _zuord, _zuord_ids = {}, {}
     try:
-        _zuord = {}
         for _g in await _guild_list(request):
-            _zuord.setdefault(await vrc_account_for_guild(_g["id"]), []).append(_g["name"])
+            _konto_des_servers = await vrc_account_for_guild(_g["id"])
+            _zuord.setdefault(_konto_des_servers, []).append(_g["name"])
+            _zuord_ids[str(_g["id"])] = _konto_des_servers
     except Exception as e:
         print(f"[vrchat] Zuordnung der Server nicht ermittelbar: {e}")
-        _zuord = {}
+    # Fuer die Kaestchen an jeder Karte: alle Server, und je Konto die, die darauf stehen.
+    try:
+        _alle_server = [{"id": str(_g["id"]), "name": _g["name"]}
+                        for _g in await _guild_list(request)]
+    except Exception:
+        _alle_server = []
     for _e in konten:
         _e["server"] = _zuord.get(_e["guild_id"], [])
+        _e["server_ids"] = {_sid for _sid, _k in _zuord_ids.items() if _k == _e["guild_id"]}
 
     account = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,))
     veraltete_meldung = False
@@ -5159,6 +5167,7 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
         "active": "vrchat",
         "vrc_account": account,
         "konten": konten,
+        "alle_server": _alle_server,
         "veraltete_meldung": veraltete_meldung,
         "hat_geheimnis": hat_geheimnis,
         "error": error, "success": success,
@@ -5515,6 +5524,44 @@ async def vrc_account_debug(request: Request):
     z.append("")
     z.append("Diese Ausgabe enthält kein Passwort und keine Sitzungsdaten.")
     return JSONResponse({"bericht": "\n".join(z)})
+
+
+@web.post("/settings/vrchat/server")
+async def vrc_account_server(request: Request):
+    """Welche Discord-Server diesen Bot benutzen - von der Kontokarte aus gesetzt.
+
+    Dieselbe Zuordnung, die auch im VRC-Link-Reiter jedes Servers steht, nur von der
+    anderen Seite betrachtet: dort waehlt ein Server seinen Bot, hier waehlt ein Bot seine
+    Server. Geschrieben wird in beiden Faellen derselbe Schluessel, sonst haette man zwei
+    Wahrheiten ueber dieselbe Sache.
+
+    Ein Server kann immer nur EINEN Bot haben. Deshalb wird hier nicht nur gesetzt, sondern
+    auch weggenommen: wer vorher auf diesem Konto stand und jetzt nicht mehr angehakt ist,
+    verliert seine Zuweisung und faellt damit auf das Standardkonto zurueck.
+    """
+    if r := admin_redirect(request): return r
+    form = await request.form()
+    konto = (form.get("konto") or "").strip()
+    if not konto:
+        return RedirectResponse("/settings/vrchat?error=Kein+Konto+angegeben", status_code=302)
+    if not await db_one("SELECT guild_id FROM vrc_accounts WHERE guild_id=?", (konto,)):
+        return RedirectResponse("/settings/vrchat?error=Dieses+Konto+gibt+es+nicht",
+                                status_code=302)
+
+    # Nur Server, die dieser Anmeldung ueberhaupt offenstehen - sonst liesse sich ueber ein
+    # gefaelschtes Formular die Zuordnung fremder Server umstellen.
+    erlaubt = {str(g["id"]) for g in await _guild_list(request)}
+    gewaehlt = {str(x) for x in form.getlist("server")} & erlaubt
+
+    for gid in erlaubt:
+        vorher = (await get_guild_config(int(gid), "vrc_account") or "").strip()
+        if gid in gewaehlt:
+            if vorher != konto:
+                await set_guild_config(int(gid), "vrc_account", konto)
+        elif vorher == konto:
+            # Abgehakt: Zuweisung weg, der Server faellt auf das Standardkonto zurueck.
+            await set_guild_config(int(gid), "vrc_account", "")
+    return RedirectResponse("/settings/vrchat?success=Zuordnung+gespeichert", status_code=303)
 
 
 @web.post("/settings/vrchat/delete")
