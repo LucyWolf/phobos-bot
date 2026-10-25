@@ -186,6 +186,14 @@
     {% if k.last_error and not k.pause_bis %}
     <div style="background:rgba(239,68,68,0.12);border:1px solid var(--danger);border-radius:0.5rem;padding:0.5rem 0.7rem;font-size:0.76rem;margin-top:0.5rem;">
       ❌ {{ k.last_error }}
+      {% if k.fehler_zeit %}
+      {# Ohne Uhrzeit sieht eine Meldung von vor einer Stunde aus wie eine von gerade eben.
+         Genau daran ist hier stundenlang am falschen Ende gesucht worden. #}
+      <span style="color:var(--muted);font-size:0.7rem;">({{ tr.vrc_error_when.replace("{zeit}", k.fehler_zeit) }})</span>
+      {% endif %}
+      {% if k.fehler_alt %}
+      <div style="color:var(--muted);margin-top:0.4rem;border-top:1px solid var(--border);padding-top:0.4rem;">⏱ {{ tr.vrc_error_old }}</div>
+      {% endif %}
       {% if k.veraltete_meldung %}
       <div style="color:var(--muted);margin-top:0.4rem;border-top:1px solid var(--border);padding-top:0.4rem;">⚠ {{ tr.vrc_error_stale_version }}</div>
       {% else %}

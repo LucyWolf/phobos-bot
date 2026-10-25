@@ -5167,9 +5167,37 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
         # Faktor, dann ist nichts zu erneuern. Nur den ersten zu pruefen hat bei einem
         # Konto ohne 2FA faelschlich "laeuft monatlich ab" gemeldet.
         _e["geheimnis_da"] = _geheimnis_taugt(_e.get("totp_secret") or "")
+        # Weggeraeumt wurde ein unbrauchbares Geheimnis bisher nur in vrc_session() - und
+        # die laeuft im Hintergrund NUR, wenn fuer einen Server ein Abgleichintervall
+        # gesetzt ist. Steht ueberall 0 (der Standard), kam der Aufraeumer nie vorbei: die
+        # Zeichenfolge blieb liegen, blockierte jede Anmeldung und die Fehlermeldung dazu
+        # fror ein. Deshalb auch hier, wo jemand hinsieht.
+        if (_e.get("totp_secret") or "").strip() and not _e["geheimnis_da"]:
+            try:
+                await db_exec("UPDATE vrc_accounts SET totp_secret='' WHERE guild_id=?",
+                              (_e["guild_id"],))
+                print(f"[vrchat] unbrauchbares 2FA-Geheimnis bei {_e['guild_id']} verworfen")
+            except Exception as _ex:
+                print(f"[vrchat] konnte es nicht verwerfen: {_ex}")
         _e["ohne_2fa"] = (not _e["geheimnis_da"]) and _e.get("needs_2fa") == 0 \
             and bool(_e.get("vrc_user_id"))
         _e["hat_geheimnis"] = _e["geheimnis_da"] or _e["ohne_2fa"]
+        # Wann der Fehler entstand. Ohne diese Angabe sieht eine Meldung von vor einer
+        # Stunde genauso aus wie eine von gerade eben - und man sucht nach einer Ursache,
+        # die laengst behoben ist. Genau so ist hier stundenlang am falschen Ende gesucht
+        # worden: auf der Karte stand ein 2FA-Fehler, waehrend das Konto schon gar kein
+        # 2FA mehr verlangte.
+        _e["fehler_zeit"] = ""
+        _e["fehler_alt"] = False
+        _rohz = (_e.get("last_check") or "").strip()
+        if _rohz and _e.get("last_error"):
+            try:
+                _z = datetime.datetime.fromisoformat(_rohz)
+                _e["fehler_zeit"] = _z.strftime("%H:%M")
+                _e["fehler_alt"] = (datetime.datetime.utcnow() - _z
+                                    ) > datetime.timedelta(minutes=10)
+            except ValueError:
+                pass
         _e["pause_bis"] = ""
         _roh = (_e.get("retry_after") or "").strip()
         if _roh:
