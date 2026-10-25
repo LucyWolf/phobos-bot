@@ -1515,10 +1515,26 @@ async def vrc_account_for_guild(guild_id) -> str:
     etwas geaendert wurde.
     """
     wahl = (await get_guild_config(guild_id, "vrc_account") or "").strip()
-    if not wahl or wahl == VRC_ACCOUNT_KEY:
+    if wahl and wahl != VRC_ACCOUNT_KEY:
+        da = await db_one("SELECT guild_id FROM vrc_accounts WHERE guild_id=?", (wahl,))
+        if da:
+            return wahl
+    # Ohne (gueltige) Wahl das Standardkonto - aber nur, wenn es das noch gibt. Wird es
+    # geloescht, waehrend ein anderes bestehen bleibt, zeigten sonst ALLE Server auf eine
+    # Zeile, die es nicht mehr gibt: die Seite listet ein Konto, und benutzen kann es
+    # keiner. Dann uebernimmt das erste verbliebene.
+    if await db_one("SELECT guild_id FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,)):
         return VRC_ACCOUNT_KEY
-    da = await db_one("SELECT guild_id FROM vrc_accounts WHERE guild_id=?", (wahl,))
-    return wahl if da else VRC_ACCOUNT_KEY
+    # Wurde VRC_ACCOUNT_KEY geloescht, steht der Nachfolger in der Konfiguration. Ihn aus
+    # der Liste zu errechnen waere unstabil: sie ist nach Anzeigename sortiert, also waere
+    # nach jedem Umbenennen ein anderes Konto Standard - und alle Server ohne eigene Wahl
+    # sprangen mit.
+    gesetzt = (await get_config("vrc_standard_konto") or "").strip()
+    if gesetzt and await db_one("SELECT guild_id FROM vrc_accounts WHERE guild_id=?",
+                                (gesetzt,)):
+        return gesetzt
+    liste = await vrc_accounts_list()
+    return liste[0]["guild_id"] if liste else VRC_ACCOUNT_KEY
 
 
 def vrc_account_name(row) -> str:

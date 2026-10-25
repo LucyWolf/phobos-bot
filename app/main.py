@@ -5123,6 +5123,22 @@ async def _sperre_vermerken(konto: str, status: int, meldung: str) -> str:
     return text
 
 
+async def _standard_konto() -> str:
+    """Welches Konto gerade die Standardrolle hat.
+
+    Normalerweise VRC_ACCOUNT_KEY. Wird das geloescht, waehrend andere bestehen bleiben,
+    uebernimmt das erste verbliebene - sonst zeigten alle Server ohne eigene Wahl auf eine
+    Zeile, die es nicht mehr gibt.
+    """
+    alle = await vrc_accounts_list()
+    if not alle or any(r["guild_id"] == VRC_ACCOUNT_KEY for r in alle):
+        return VRC_ACCOUNT_KEY
+    gesetzt = (await get_config("vrc_standard_konto") or "").strip()
+    if gesetzt and any(r["guild_id"] == gesetzt for r in alle):
+        return gesetzt
+    return alle[0]["guild_id"]
+
+
 def _geheimnis_taugt(roh: str) -> bool:
     """Laesst sich aus dieser Zeichenfolge wirklich ein Code rechnen?
 
@@ -5155,8 +5171,14 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
 
     # Die ganze Liste statt einer Zeile. Das Standardkonto steht vorn - es ist das, auf das
     # jeder Server ohne eigene Zuweisung zugreift, und gehoert deshalb nach oben.
+    # Welches Konto faktisch Standard ist. Normalerweise VRC_ACCOUNT_KEY - ist das aber
+    # geloescht worden, uebernimmt das erste verbliebene, und dann muss auch das Abzeichen
+    # dort stehen. Sonst traegt keine Karte eines, waehrend ein Konto die Rolle hat.
+    _alle = await vrc_accounts_list()
+    _standard = await _standard_konto()
+
     konten = []
-    for _row in await vrc_accounts_list():
+    for _row in _alle:
         _e = dict(_row)
         # Was die Seite wissen muss, ist OB ein Geheimnis liegt - nie welches. Dasselbe gilt
         # fuer Passwort und Kekse: die verlassen den Server nicht.
@@ -5208,7 +5230,7 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
             except ValueError:
                 pass
         _e["anzeige"] = vrc_account_name(_row)
-        _e["ist_standard"] = (_e["guild_id"] == VRC_ACCOUNT_KEY)
+        _e["ist_standard"] = (_e["guild_id"] == _standard)
         _e["veraltete_meldung"] = "Benutzername oder Passwort wurde von VRChat abgelehnt" in (
             _e.get("last_error") or "")
         for _geheim in ("password", "totp_secret", "auth_cookie", "two_factor_cookie"):
@@ -5306,7 +5328,13 @@ async def vrc_account_save(request: Request):
     label = " ".join((form.get("vrc_label") or "").split())[:60]
     if not konto:
         vorhanden = await vrc_accounts_list()
-        if not any(r["guild_id"] == VRC_ACCOUNT_KEY for r in vorhanden):
+        # VRC_ACCOUNT_KEY bekommt nur das ALLERERSTE Konto einer Installation. Geprueft
+        # wurde vorher, ob gerade kein Konto diesen Schluessel traegt - nach dem Loeschen
+        # des Standardkontos war er damit wieder frei, und der naechste angelegte Bot
+        # bekam ihn. Weil jeder Server ohne eigene Wahl auf diesen Schluessel zugreift,
+        # hat ein frisch angelegter Bot auf diese Weise stillschweigend alle Server
+        # uebernommen, die vorher auf ein anderes Konto zeigten.
+        if not vorhanden:
             konto = VRC_ACCOUNT_KEY
         else:
             # Eigener Schluessel, der mit keiner Discord-Kennung kollidiert: die sind
@@ -5436,7 +5464,7 @@ async def vrc_account_save(request: Request):
          result["two_factor_cookie"], str(user.get("id") or ""),
          str(user.get("displayName") or ""), datetime.datetime.utcnow().isoformat(), label,
          0 if kein_2fa else (1 if result.get("two_factor") else 0),
-         0 if (kein_email or not result.get("reused", True)) else 1),
+         0 if kein_email else 1),
     )
     who = urllib.parse.quote_plus(str(user.get("displayName") or username))
     # Mit Geheimnis erneuert der Bot selbst, ohne haengt die Sitzung an VRChats
@@ -5490,8 +5518,8 @@ async def vrc_account_test(request: Request):
                     # Der gespeicherte Fehler ist mit einer lebenden Sitzung ueberholt -
                     # sonst steht der rote Kasten noch da, waehrend alles laeuft.
                     await db_exec(
-                        "UPDATE vrc_accounts SET last_error='', last_check=?, "
-                        "vrc_display_name=?, vrc_user_id=? WHERE guild_id=?",
+                        "UPDATE vrc_accounts SET last_error='', retry_after='', "
+                        "last_check=?, vrc_display_name=?, vrc_user_id=? WHERE guild_id=?",
                         (datetime.datetime.utcnow().isoformat(), name,
                          str(data.get("id") or ""), konto))
                     return JSONResponse({"ok": True, "text":
@@ -5751,6 +5779,12 @@ async def vrc_account_server(request: Request):
 
     # Nur Server, die dieser Anmeldung ueberhaupt offenstehen - sonst liesse sich ueber ein
     # gefaelschtes Formular die Zuordnung fremder Server umstellen.
+    # Beim Standardkonto gibt es nichts zu setzen: wer keine eigene Wahl hat, landet dort
+    # von selbst. Sein Formular traegt gesperrte Kaestchen und keinen Knopf - abgeschickt
+    # wuerde es trotzdem alle Zuweisungen loeschen, weil gesperrte Felder nicht mitkommen.
+    if konto == await _standard_konto():
+        return RedirectResponse("/settings/vrchat", status_code=303)
+
     erlaubt = {str(g["id"]) for g in await _guild_list(request)}
     gewaehlt = {str(x) for x in form.getlist("server")} & erlaubt
 
@@ -5798,6 +5832,20 @@ async def vrc_account_delete(request: Request):
         await db_exec("DELETE FROM guild_configs WHERE key='vrc_account' AND value=?", (konto,))
     except Exception as e:
         print(f"[vrchat] Zuweisungen zu {konto} nicht aufgeraeumt: {e}")
+    # War das gerade das Standardkonto, bekommt der Nachfolger die Rolle fest zugeteilt.
+    # Ihn jedes Mal neu zu errechnen waere unstabil - die Liste ist nach Anzeigename
+    # sortiert, also haette ein Umbenennen den Standard verschoben und alle Server ohne
+    # eigene Wahl mitgenommen.
+    try:
+        uebrig = await vrc_accounts_list()
+        if uebrig and not any(r["guild_id"] == VRC_ACCOUNT_KEY for r in uebrig):
+            jetzt = (await get_config("vrc_standard_konto") or "").strip()
+            if not jetzt or not any(r["guild_id"] == jetzt for r in uebrig):
+                await set_config("vrc_standard_konto", uebrig[0]["guild_id"])
+        elif not uebrig:
+            await set_config("vrc_standard_konto", "")
+    except Exception as e:
+        print(f"[vrchat] Nachfolger fuer das Standardkonto nicht gesetzt: {e}")
     return RedirectResponse("/settings/vrchat?success=VRChat-Konto+entfernt", status_code=303)
 
 

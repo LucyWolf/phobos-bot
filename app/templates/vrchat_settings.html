@@ -192,7 +192,14 @@
     <div style="background:rgba(245,158,11,0.12);border:1px solid #f59e0b;border-radius:0.5rem;padding:0.5rem 0.7rem;font-size:0.76rem;margin-top:0.5rem;">
       ⏸ {{ tr.vrc_paused.replace("{zeit}", k.pause_bis) }}
       {% if k.last_error %}
-      <div style="color:var(--muted);margin-top:0.4rem;border-top:1px solid var(--border);padding-top:0.4rem;">{{ k.last_error }}</div>
+      <div style="color:var(--muted);margin-top:0.4rem;border-top:1px solid var(--border);padding-top:0.4rem;">
+        <form method="post" action="/settings/vrchat/meldung" style="float:right;margin:0 0 0 0.5rem;">
+          <input type="hidden" name="konto" value="{{ k.guild_id }}">
+          <button type="submit" title="{{ tr.vrc_error_dismiss }}"
+                  style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.9rem;line-height:1;padding:0;">✕</button>
+        </form>
+        {{ k.last_error }}
+      </div>
       {% endif %}
     </div>
     {% endif %}
