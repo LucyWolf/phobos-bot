@@ -5765,6 +5765,25 @@ async def vrc_account_server(request: Request):
     return RedirectResponse("/settings/vrchat?success=Zuordnung+gespeichert", status_code=303)
 
 
+@web.post("/settings/vrchat/meldung")
+async def vrc_meldung_weg(request: Request):
+    """Die gespeicherte Fehlermeldung eines Kontos wegraeumen.
+
+    Sie ist ein Zustand von damals, kein Live-Status: geschrieben beim letzten
+    Anmeldeversuch, geloescht erst beim naechsten erfolgreichen. Wer VRChat gerade nicht
+    aktiv nutzt, hat damit einen roten Kasten auf der Seite, den nichts wegbekommt -
+    "diese warnungen sind unrelevant" trifft es genau.
+
+    Geloescht wird nur die Anzeige. Tritt der Fehler wieder auf, steht er wieder da; das
+    ist der Unterschied zwischen Wegraeumen und Verstecken.
+    """
+    if r := admin_redirect(request): return r
+    form = await request.form()
+    konto = (form.get("konto") or VRC_ACCOUNT_KEY).strip() or VRC_ACCOUNT_KEY
+    await db_exec("UPDATE vrc_accounts SET last_error='' WHERE guild_id=?", (konto,))
+    return RedirectResponse("/settings/vrchat", status_code=303)
+
+
 @web.post("/settings/vrchat/delete")
 async def vrc_account_delete(request: Request):
     # Admin-only for the same reason as saving it - see there.

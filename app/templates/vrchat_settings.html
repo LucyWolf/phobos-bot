@@ -204,6 +204,11 @@
        sich die beiden und man sucht an der falschen Stelle. #}
     {% if k.last_error and not k.pause_bis %}
     <div style="background:rgba(239,68,68,0.12);border:1px solid var(--danger);border-radius:0.5rem;padding:0.5rem 0.7rem;font-size:0.76rem;margin-top:0.5rem;">
+      <form method="post" action="/settings/vrchat/meldung" style="float:right;margin:0 0 0 0.5rem;">
+        <input type="hidden" name="konto" value="{{ k.guild_id }}">
+        <button type="submit" title="{{ tr.vrc_error_dismiss }}"
+                style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.9rem;line-height:1;padding:0;">✕</button>
+      </form>
       ❌ {{ k.last_error }}
       {% if k.fehler_zeit %}
       {# Ohne Uhrzeit sieht eine Meldung von vor einer Stunde aus wie eine von gerade eben.

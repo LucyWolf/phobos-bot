@@ -253,6 +253,18 @@ async def vrc_session(konto: str | None = None) -> dict | None:
         # Schreiboperation anfaellt.
         grund = str(e)[:300]
         print(f"[vrc_link] VRChat session unavailable: {grund}")
+        # Wer gesagt hat, dass er keinen E-Mail-Code erwartet, will die Meldung dazu auch
+        # nicht sehen. VRChat verlangt ihn nur bei einer Anmeldung von einer unbekannten
+        # Adresse - laeuft die Verbindung ansonsten, ist das keine Stoerung, sondern eine
+        # Nachricht ueber einen Weg, den dieser Betreiber nicht gehen will. Vermerkt wird
+        # sie dann nicht; im Log steht sie weiterhin.
+        _will_email = True
+        try:
+            _will_email = row["needs_email"] != 0
+        except (IndexError, KeyError):
+            pass
+        if not _will_email and ("e-mail" in grund.lower() or "email" in grund.lower()):
+            return None
         # Wie lange Ruhe: bei einer Netzsperre lange, sonst kurz. Ein fehlender Code
         # loest sich nicht durch Warten, eine Sperre nur dadurch - und jeder weitere
         # Versuch waehrenddessen verlaengert sie.
