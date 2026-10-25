@@ -5106,9 +5106,11 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
     if r := admin_redirect(request): return r
     account = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,))
     veraltete_meldung = False
+    hat_geheimnis = False
     if account:
         # Password and session cookies stay on the server - the page only needs to know that
         # an account is stored, plus whoever it turned out to be.
+        hat_geheimnis = bool((account.get("totp_secret") or "").strip())
         for _k in ("password", "totp_secret", "auth_cookie", "two_factor_cookie"):
             account[_k] = ""
         # Der rote Kasten zeigt den GESPEICHERTEN Text des letzten Fehlversuchs. Bis
@@ -5127,6 +5129,7 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
         "active": "vrchat",
         "vrc_account": account,
         "veraltete_meldung": veraltete_meldung,
+        "hat_geheimnis": hat_geheimnis,
         "error": error, "success": success,
     })
 
@@ -5149,13 +5152,17 @@ async def vrc_account_save(request: Request):
     # nimmt es dann auch so an. Wegschneiden heisst hier "Passwort falsch" bei einem Passwort,
     # das im Browser einwandfrei funktioniert.
     password = form.get("vrc_password") or ""
-    # The 2FA secret is deliberately not asked for any more - the form offers the one-time code
-    # only. Anything a previous version stored is left alone in the row but no longer used, so
-    # the behaviour here does not depend on what happens to be sitting in that column.
-    # Written into the row as-is, which also clears anything an older version stored there.
-    # Leaving a stale secret lying in the database when nothing reads it any more would be
-    # keeping a credential around for no reason at all.
-    totp = ""
+    # Das 2FA-Geheimnis ist der einzige Weg zu einer Anmeldung, die nicht nach etwa einem
+    # Monat ausfaellt: vrc_session() in cogs/vrc_link.py erneuert damit selbsttaetig, weil
+    # der Bot sich die Codes dann selbst ausrechnen kann. Ohne Geheimnis haelt nur VRChats
+    # twoFactorAuth-Keks, und danach muss jemand von Hand einen Code eintippen.
+    #
+    # Das Feld war zwischenzeitlich aus dem Formular genommen - die Erneuerung lief
+    # unveraendert weiter und las eine Spalte, die nichts mehr fuellen konnte. Schlimmer:
+    # gespeichert wurde hart "", womit jedes Speichern ein vorhandenes Geheimnis geloescht
+    # hat. Eine Installation, die vorher monatelang allein lief, brauchte danach jeden Monat
+    # Handarbeit - ohne dass sich etwas Sichtbares geaendert haette.
+    totp = (form.get("vrc_totp_secret") or "").strip().replace(" ", "")
     # Typed in for this one login. Never written to the database - it is valid for about thirty
     # seconds, so keeping it would be storing nothing useful.
     one_time = (form.get("vrc_code") or "").strip().replace(" ", "")
@@ -5165,6 +5172,14 @@ async def vrc_account_save(request: Request):
     # somebody corrects a typo in the username.
     if not password.strip() and existing:
         password = existing["password"]
+    # Leer heisst auch hier "so lassen" - die Seite zeigt das gespeicherte Geheimnis nie an,
+    # ein leeres Feld waere sonst bei jedem Tippfehler im Benutzernamen ein Loeschbefehl.
+    if not totp and existing:
+        totp = existing["totp_secret"] or ""
+    # ... und ein ausdruecklicher Weg wieder heraus. Ohne den waere ein einmal eingetragenes
+    # Geheimnis nur noch durch Loeschen des ganzen Kontos zu entfernen.
+    if form.get("vrc_totp_clear"):
+        totp = ""
     if not username or not password.strip():
         return RedirectResponse(
             f"/settings/vrchat?error=Benutzername+und+Passwort+erforderlich",
@@ -5215,11 +5230,15 @@ async def vrc_account_save(request: Request):
          str(user.get("displayName") or ""), datetime.datetime.utcnow().isoformat()),
     )
     who = urllib.parse.quote_plus(str(user.get("displayName") or username))
-    # The session now always rests on VRChat's twoFactorAuth cookie, which expires after roughly
-    # a month. Said every time, because a connection that quietly stops working in four weeks
-    # with nobody knowing why is the worst way for this to end.
-    msg = (f"Verbunden+als+{who}"
-           "+—+in+etwa+einem+Monat+ist+erneut+ein+Code+nötig")
+    # Mit Geheimnis erneuert der Bot selbst, ohne haengt die Sitzung an VRChats
+    # twoFactorAuth-Keks und faellt nach etwa einem Monat aus. Der Unterschied wird jedes Mal
+    # gesagt: eine Verbindung, die in vier Wochen stillschweigend aufhoert und niemand weiss
+    # warum, ist das schlechteste Ende fuer diese Seite.
+    if totp:
+        msg = f"Verbunden+als+{who}+—+die+Anmeldung+hält+dauerhaft"
+    else:
+        msg = (f"Verbunden+als+{who}"
+               "+—+in+etwa+einem+Monat+ist+erneut+ein+Code+nötig")
     return RedirectResponse(f"/settings/vrchat?success={msg}", status_code=303)
 
 
