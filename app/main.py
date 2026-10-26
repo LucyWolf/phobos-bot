@@ -5406,15 +5406,15 @@ async def vrc_account_save(request: Request):
     # Zweimal dasselbe VRChat-Konto anzulegen hilft niemandem: es waeren zwei Karten mit
     # denselben Zugangsdaten, zwei getrennte Sitzungen auf demselben Konto - und damit
     # doppelt so viele Anmeldungen, also genau das, was VRChats Sperre ausloest.
-    if not existing:
-        doppelt = await db_one(
-            "SELECT guild_id FROM vrc_accounts WHERE LOWER(username)=LOWER(?)", (username,))
-        if doppelt:
-            return RedirectResponse(
-                "/settings/vrchat?error=" + urllib.parse.quote_plus(
-                    f"Für „{username}“ gibt es schon ein Konto. Bearbeite es über das "
-                    f"Zahnrad statt ein zweites anzulegen."),
-                status_code=302)
+    doppelt = await db_one(
+        "SELECT guild_id FROM vrc_accounts WHERE LOWER(username)=LOWER(?) AND guild_id<>?",
+        (username, konto))
+    if doppelt:
+        return RedirectResponse(
+            "/settings/vrchat?error=" + urllib.parse.quote_plus(
+                f"Für „{username}“ gibt es schon ein Konto. Bearbeite es über das "
+                f"Zahnrad statt ein zweites anzulegen."),
+            status_code=302)
 
     from vrchat import login as vrc_login, VRChatError
     # The cached session is only reusable while the username is unchanged; pointing the entry
@@ -5446,14 +5446,19 @@ async def vrc_account_save(request: Request):
             _text = ""
         await db_exec(
             "INSERT INTO vrc_accounts (guild_id, username, password, totp_secret, last_check, "
-            "last_error, label, needs_2fa, needs_email) "
-            "VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(guild_id) DO UPDATE SET username=excluded.username, "
+            "last_error, label, needs_2fa, needs_email, auth_cookie, two_factor_cookie) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(guild_id) DO UPDATE SET username=excluded.username, "
             "password=excluded.password, totp_secret=excluded.totp_secret, "
             "last_check=excluded.last_check, last_error=excluded.last_error, label=excluded.label, "
-            "needs_2fa=excluded.needs_2fa, needs_email=excluded.needs_email",
+            "needs_2fa=excluded.needs_2fa, needs_email=excluded.needs_email, "
+            "auth_cookie=excluded.auth_cookie, two_factor_cookie=excluded.two_factor_cookie",
             (konto, username, password, totp,
              datetime.datetime.utcnow().isoformat(), _text, label,
-             0 if kein_2fa else 1, 1),
+             0 if kein_2fa else (existing["needs_2fa"] if existing else 1),
+             existing["needs_email"] if existing else 1,
+             # Kekse nur behalten, solange es dasselbe VRChat-Konto ist.
+             existing["auth_cookie"] if (existing and same_account) else "",
+             existing["two_factor_cookie"] if (existing and same_account) else ""),
         )
         return RedirectResponse(
             f"/settings/vrchat?error={urllib.parse.quote_plus(str(e))}",
