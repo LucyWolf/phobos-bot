@@ -139,7 +139,7 @@ async def login(username: str, password: str, totp_secret: str = "",
 
     async with aiohttp.ClientSession() as session:
         # ── 1. Cached session ────────────────────────────────────────────────
-        if auth_cookie:
+        if auth_cookie and not one_time_code:
             payload, resp = await _get_user(session, _headers(auth_cookie, two_factor_cookie))
             if resp.status == 200 and payload.get("id"):
                 return {"user": payload, "auth_cookie": auth_cookie,
@@ -197,7 +197,15 @@ async def login(username: str, password: str, totp_secret: str = "",
             if code and (not code.isdigit() or len(code) != 6):
                 raise VRChatError("Der eingegebene Code muss aus sechs Ziffern bestehen.")
 
-            if "totp" in lowered or "otp" in lowered:
+            # Bietet VRChat beide Wege an, entscheidet das hinterlegte Geheimnis: damit
+            # laesst sich ein Authenticator-Code rechnen, ohne nicht. Wer dann einen Code
+            # eingetippt hat, hat ihn aus der E-Mail - und der muss auch dort geprueft
+            # werden, sonst wird ein richtiger Code abgelehnt.
+            _hat_totp = "totp" in lowered or "otp" in lowered
+            _hat_mail = "emailotp" in lowered
+            if _hat_totp and _hat_mail and not totp_secret:
+                _hat_totp = False
+            if _hat_totp:
                 method = "totp"
                 if not code:
                     if not totp_secret:
@@ -215,7 +223,7 @@ async def login(username: str, password: str, totp_secret: str = "",
                         raise VRChatError(
                             "Das 2FA-Geheimnis ist unbrauchbar — erwartet wird die "
                             "Zeichenfolge, die beim Einrichten neben dem QR-Code steht.")
-            elif "emailotp" in lowered:
+            elif _hat_mail:
                 # VRChat sends a code to the account's mailbox whenever a login comes from an
                 # address it has not seen before - and it does that even for accounts that have
                 # an authenticator app set up. A server signing in for the first time therefore

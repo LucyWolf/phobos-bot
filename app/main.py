@@ -5544,11 +5544,15 @@ async def vrc_account_test(request: Request):
                     name = data.get("displayName") or row["vrc_display_name"] or "?"
                     # Der gespeicherte Fehler ist mit einer lebenden Sitzung ueberholt -
                     # sonst steht der rote Kasten noch da, waehrend alles laeuft.
+                    from vrchat import _cookie_from
+                    _neuer = _cookie_from(r, "twoFactorAuth")
                     await db_exec(
                         "UPDATE vrc_accounts SET last_error='', retry_after='', "
-                        "last_check=?, vrc_display_name=?, vrc_user_id=? WHERE guild_id=?",
+                        "last_check=?, vrc_display_name=?, vrc_user_id=?, "
+                        "two_factor_cookie=? WHERE guild_id=?",
                         (datetime.datetime.utcnow().isoformat(), name,
-                         str(data.get("id") or ""), konto))
+                         str(data.get("id") or ""),
+                         _neuer or row["two_factor_cookie"], konto))
                     return JSONResponse({"ok": True, "text":
                         f"Verbunden als {name}. Die Anmeldung läuft."})
                 from vrchat import _api_meldung

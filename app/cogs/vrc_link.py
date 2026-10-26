@@ -165,8 +165,19 @@ async def _sitzung_aus_keks(row) -> dict | None:
                 data = await r.json(content_type=None)
                 if not (data or {}).get("id"):
                     return None
+                # Auch hier kann ein frischer twoFactorAuth-Keks dabei sein. Ihn zu
+                # verwerfen hiesse: der gespeicherte laeuft irgendwann ab, obwohl gerade
+                # ein gueltiger geliefert wurde - und VRChat verlangt wieder einen Code.
+                from vrchat import _cookie_from
+                neuer = _cookie_from(r, "twoFactorAuth")
+                if neuer and neuer != (row["two_factor_cookie"] or ""):
+                    try:
+                        await db_exec("UPDATE vrc_accounts SET two_factor_cookie=? "
+                                      "WHERE guild_id=?", (neuer, row["guild_id"]))
+                    except Exception as e:
+                        print(f"[vrc_link] neuen 2FA-Keks nicht gespeichert: {e}")
                 return {"auth_cookie": row["auth_cookie"],
-                        "two_factor_cookie": row["two_factor_cookie"]}
+                        "two_factor_cookie": neuer or row["two_factor_cookie"]}
     except Exception:
         return None
 
@@ -294,6 +305,11 @@ async def vrc_session(konto: str | None = None) -> dict | None:
                 (result["auth_cookie"], result["two_factor_cookie"],
                  1 if result.get("two_factor") else 0, schluessel),
             )
+        elif result["two_factor_cookie"] and \
+                result["two_factor_cookie"] != (row["two_factor_cookie"] or ""):
+            await db_exec("UPDATE vrc_accounts SET two_factor_cookie=?, last_error='', "
+                          "retry_after='' WHERE guild_id=?",
+                          (result["two_factor_cookie"], schluessel))
         elif row["last_error"]:
             # Die Anmeldung laeuft - dann hat der alte Fehler nichts mehr zu melden. Vorher
             # wurde nur beim NEU-Anmelden aufgeraeumt, und das ist der seltene Fall: im
