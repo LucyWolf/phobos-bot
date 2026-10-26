@@ -8,7 +8,7 @@
 {# Ein Formular fuer "neu anlegen" UND "bearbeiten". Zwei getrennte waeren zwei Stellen,
    an denen dieselben Regeln gelten muessten - und eine davon vergisst man.
    konto="" legt neu an, sonst wird genau dieser Schluessel ueberschrieben. #}
-{% macro konto_formular(konto, label, username, haelt_dauerhaft, knopf, ohne_2fa=False) %}
+{% macro konto_formular(konto, label, username, haelt_dauerhaft_secret, knopf) %}
 <form method="post" action="/settings/vrchat/save"
       onsubmit="this.querySelector('button[type=submit]').disabled=true;this.querySelector('button[type=submit]').textContent='⏳';">
   <input type="hidden" name="vrc_konto" value="{{ konto }}">
@@ -37,32 +37,42 @@
              pattern="[0-9]{6}" placeholder="123456">
       <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_account_code_hint }}</div>
     </div>
-    {# Vor dem Geheimnis-Feld, weil es die Antwort auf die Frage DAVOR ist: wer hier
-       anhakt, braucht darunter nichts mehr einzutragen. #}
+    {# Ein echtes Entweder-Oder: entweder der Bot rechnet sich die Codes selbst aus, oder
+       jemand traegt sie ein. Beides zugleich gibt es nicht, und keins von beiden auch
+       nicht - deshalb zwei Knoepfe statt zweier Haken.
+       Nicht gemeint ist damit VRChats E-Mail-Code bei neuem Anmeldeort: den schickt
+       VRChat in beiden Faellen, das steht als Hinweis darunter. #}
     <div style="grid-column:1 / -1;">
-      <label style="display:flex;align-items:center;gap:0.5rem;font-weight:400;margin:0;">
-        <input type="checkbox" name="vrc_kein_2fa" value="1" style="width:auto;margin:0;"
-               {% if ohne_2fa %}checked{% endif %}
-               onchange="vrcKein2fa(this)">
-        <strong>{{ tr.vrc_no2fa_label }}</strong>
-      </label>
-      <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_no2fa_hint }}</div>
+      <div style="font-weight:600;font-size:0.82rem;margin-bottom:0.4rem;">{{ tr.vrc_modus_label }}</div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+        <label class="vrc-modus" style="flex:1;min-width:220px;display:block;border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.7rem;cursor:pointer;font-weight:400;margin:0;">
+          <span style="display:flex;align-items:center;gap:0.5rem;">
+            <input type="radio" name="vrc_modus" value="geheimnis" style="width:auto;margin:0;"
+                   {% if haelt_dauerhaft_secret %}checked{% endif %} onchange="vrcModus(this)">
+            <strong>♾ {{ tr.vrc_modus_secret }}</strong>
+          </span>
+          <span style="display:block;font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_modus_secret_hint }}</span>
+        </label>
+        <label class="vrc-modus" style="flex:1;min-width:220px;display:block;border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.7rem;cursor:pointer;font-weight:400;margin:0;">
+          <span style="display:flex;align-items:center;gap:0.5rem;">
+            <input type="radio" name="vrc_modus" value="code" style="width:auto;margin:0;"
+                   {% if not haelt_dauerhaft_secret %}checked{% endif %} onchange="vrcModus(this)">
+            <strong>⌨ {{ tr.vrc_modus_code }}</strong>
+          </span>
+          <span style="display:block;font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_modus_code_hint }}</span>
+        </label>
+      </div>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:0.4rem;">ℹ {{ tr.vrc_modus_mail_note }}</div>
     </div>
     <div class="vrc-2fa-felder">
       <label>{{ tr.vrc_secret_label }}</label>
       <div style="display:flex;gap:0.4rem;align-items:flex-start;">
         <input type="password" name="vrc_totp_secret" autocomplete="new-password" style="flex:1;"
-               placeholder="{% if haelt_dauerhaft %}{{ tr.vrc_secret_unchanged }}{% endif %}">
+               placeholder="{% if haelt_dauerhaft_secret %}{{ tr.vrc_secret_unchanged }}{% endif %}">
         <button type="button" class="btn btn-secondary" style="padding:0.5rem 0.65rem;"
                 onclick="vrcToggleSecret(this)" title="{{ tr.vrc_show_secret }}">👁</button>
       </div>
       <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_secret_hint }}</div>
-      {% if haelt_dauerhaft %}
-      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;color:var(--muted);margin-top:0.3rem;font-weight:400;">
-        <input type="checkbox" name="vrc_totp_clear" value="1" style="width:auto;margin:0;">
-        {{ tr.vrc_secret_clear }}
-      </label>
-      {% endif %}
     </div>
     <div style="grid-column:1 / -1;font-size:0.72rem;color:var(--muted);">{{ tr.vrc_account_2fa_choice }}</div>
   </div>
@@ -223,7 +233,7 @@
     {# Bearbeiten klappt dasselbe Formular auf, nur mit gesetztem Schluessel. Ein zweites
        Formular daneben waere eine zweite Stelle, an der dieselben Regeln gelten muessen. #}
     <div id="vrc-edit-{{ k.guild_id }}" style="display:none;border-top:1px solid var(--border);margin-top:0.6rem;padding-top:0.6rem;">
-      {{ konto_formular(k.guild_id, k.label, k.username, k.geheimnis_da, tr.vrc_account_connect, k.ohne_2fa) }}
+      {{ konto_formular(k.guild_id, k.label, k.username, k.geheimnis_da, tr.vrc_account_connect) }}
     </div>
   </div>
   {% endfor %}
@@ -297,19 +307,26 @@ async function vrcTest(konto) {
   }
 }
 
-function vrcKein2fa(box) {
-  // Wer kein 2FA hat, braucht weder Code noch Geheimnis. Die Felder bleiben im Formular -
-  // ausgeblendet statt entfernt, damit ein versehentlicher Haken nichts verschluckt.
-  const form = box.closest('form');
+function vrcModus(radio) {
+  // Das Geheimnis-Feld gehoert zum einen Weg, nicht zum anderen. Ausgeblendet statt
+  // entfernt: ein versehentliches Umschalten soll nichts verschlucken, was schon getippt
+  // ist. Das Feld fuer den Einmal-Code bleibt immer stehen - VRChat kann in beiden
+  // Faellen danach fragen.
+  const form = radio.closest('form');
   if (!form) return;
+  const geheimnis = form.querySelector('input[name="vrc_modus"][value="geheimnis"]');
+  const an = geheimnis && geheimnis.checked;
   form.querySelectorAll('.vrc-2fa-felder').forEach(function (f) {
-    f.style.display = box.checked ? 'none' : '';
+    f.style.display = an ? '' : 'none';
+  });
+  form.querySelectorAll('.vrc-modus').forEach(function (l) {
+    const r = l.querySelector('input[type="radio"]');
+    l.style.borderColor = r && r.checked ? 'var(--accent)' : 'var(--border)';
+    l.style.background = r && r.checked ? 'var(--accent-light)' : '';
   });
 }
 document.addEventListener('DOMContentLoaded', function () {
-  document.querySelectorAll('input[name="vrc_kein_2fa"]').forEach(function (b) {
-    vrcKein2fa(b);
-  });
+  document.querySelectorAll('input[name="vrc_modus"]:checked').forEach(vrcModus);
 });
 
 function vrcServer(konto) {

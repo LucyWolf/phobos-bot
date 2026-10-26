@@ -5385,17 +5385,23 @@ async def vrc_account_save(request: Request):
     # ein leeres Feld waere sonst bei jedem Tippfehler im Benutzernamen ein Loeschbefehl.
     if not totp and existing:
         totp = existing["totp_secret"] or ""
-    # ... und ein ausdruecklicher Weg wieder heraus. Ohne den waere ein einmal eingetragenes
-    # Geheimnis nur noch durch Loeschen des ganzen Kontos zu entfernen.
-    if form.get("vrc_totp_clear"):
-        totp = ""
-    # Ausdrueckliche Ansage des Betreibers: dieses Konto verlangt keinen zweiten Faktor.
-    # Bisher konnte der Bot das nur erraten - er nimmt 2FA an, bis eine Anmeldung ohne
-    # durchlief. Geht die Anmeldung aber gar nicht erst durch, bleibt die Annahme stehen,
-    # und mit ihr ein Geheimnis und eine Fehlermeldung, die beide gegenstandslos sind.
-    # Der Haken raeumt deshalb auf, statt nur ein Haekchen zu setzen.
-    kein_2fa = bool(form.get("vrc_kein_2fa"))
-    if kein_2fa:
+    # Womit sich der Bot anmeldet - ein echtes Entweder-Oder. "geheimnis": er rechnet die
+    # Codes selbst aus und die Anmeldung haelt dauerhaft. "code": kein Geheimnis, VRChat
+    # fragt bei Bedarf nach einem Code. Fehlt die Angabe (altes Formular, fremder Aufruf),
+    # bleibt es beim bisherigen Zustand des Kontos - umgestellt wird nur, wenn es jemand
+    # ausdruecklich sagt.
+    modus = (form.get("vrc_modus") or "").strip()
+    getipptes_geheimnis = bool((form.get("vrc_totp_secret") or "").strip())
+    if modus not in ("geheimnis", "code"):
+        if getipptes_geheimnis:
+            modus = "geheimnis"
+        else:
+            modus = "code" if (existing and not (existing["totp_secret"] or "").strip()) \
+                else "geheimnis"
+    if modus == "code" and not getipptes_geheimnis:
+        # Beim Umschalten faellt das Geheimnis weg: es gehoert zum anderen Weg, und stehen
+        # zu lassen hiesse, der Bot rechnet weiter Codes aus, waehrend die Seite sagt, dass
+        # von Hand eingetragen wird.
         totp = ""
         # Ein gespeicherter Fehler, der sich um den zweiten Faktor dreht, ist mit dieser
         # Ansage erledigt. Stehen zu lassen hiesse: der Betreiber sagt "kein 2FA", und die
@@ -5476,7 +5482,7 @@ async def vrc_account_save(request: Request):
             "auth_cookie=excluded.auth_cookie, two_factor_cookie=excluded.two_factor_cookie",
             (konto, username, password, totp,
              datetime.datetime.utcnow().isoformat(), _text, label,
-             0 if kein_2fa else (existing["needs_2fa"] if existing else 1),
+             existing["needs_2fa"] if existing else 1,
              existing["needs_email"] if existing else 1,
              # Kekse nur behalten, solange es dasselbe VRChat-Konto ist.
              existing["auth_cookie"] if (existing and same_account) else "",
@@ -5507,7 +5513,7 @@ async def vrc_account_save(request: Request):
         (konto, username, password, totp, result["auth_cookie"],
          result["two_factor_cookie"], str(user.get("id") or ""),
          str(user.get("displayName") or ""), datetime.datetime.utcnow().isoformat(), label,
-         0 if kein_2fa else (1 if result.get("two_factor") else 0),
+         1 if result.get("two_factor") else 0,
          1),
     )
     who = urllib.parse.quote_plus(str(user.get("displayName") or username))
