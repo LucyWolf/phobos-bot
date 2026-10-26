@@ -72,10 +72,7 @@
           <input type="text" name="vrc_code" autocomplete="off" inputmode="numeric" maxlength="6"
                  pattern="[0-9]{6}" placeholder="123456" style="width:100%;"
                  onclick="event.stopPropagation()">
-          <span style="display:block;font-size:0.72rem;color:var(--muted);margin-top:0.3rem;">
-            <span class="vrc-code-hint-code">{{ tr.vrc_code_hint_code }}</span>
-            <span class="vrc-code-hint-geheimnis">{{ tr.vrc_code_hint_secret }}</span>
-          </span>
+          <span style="display:block;font-size:0.72rem;color:var(--muted);margin-top:0.3rem;">{{ tr.vrc_code_hint_code }}</span>
         </span>
       </label>
       <div style="font-size:0.72rem;color:var(--muted);margin-top:0.4rem;">ℹ {{ tr.vrc_modus_mail_note }}</div>
@@ -325,15 +322,11 @@ function vrcModus(radio) {
   form.querySelectorAll('.vrc-feld-geheimnis').forEach(function (f) {
     f.style.display = an ? '' : 'none';
   });
-  // Das Code-Feld bleibt in beiden Stellungen stehen: VRChat fragt auch bei hinterlegtem
-  // Geheimnis danach, sobald die Anmeldung von einer unbekannten Adresse kommt. Ein Klick
-  // hinein bewegt den Umschalter nicht (stopPropagation am Feld) - sonst wuerde das
-  // Geheimnis beim Speichern verworfen, nur weil jemand einen Code eintippt.
-  form.querySelectorAll('.vrc-code-hint-code').forEach(function (f) {
+  // Beide Felder klappen mit ihrem Knopf auf und zu. Der Klick-Schutz am Code-Feld
+  // bleibt trotzdem: ohne ihn wuerde ein Klick ins Eingabefeld den Umschalter bewegen,
+  // waehrend man gerade tippt.
+  form.querySelectorAll('.vrc-feld-code').forEach(function (f) {
     f.style.display = an ? 'none' : '';
-  });
-  form.querySelectorAll('.vrc-code-hint-geheimnis').forEach(function (f) {
-    f.style.display = an ? '' : 'none';
   });
   form.querySelectorAll('.vrc-modus').forEach(function (l) {
     const r = l.querySelector('input[type="radio"]');
