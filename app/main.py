@@ -5123,6 +5123,27 @@ async def _sperre_vermerken(konto: str, status: int, meldung: str) -> str:
     return text
 
 
+def _antwort_kurz(data: dict, roh: str) -> str:
+    """Was von einer VRChat-Antwort im Bericht stehen darf.
+
+    Der Bericht ist zum Kopieren und Weitergeben gedacht. VRChats /auth/user liefert bei
+    einer gelungenen Anmeldung das vollstaendige Kontoprofil - E-Mail-Adresse,
+    Geburtsdatum, Freundesliste, Raeume. Das roh hineinzuschreiben heisst, dass es bei
+    jedem landet, dem der Bericht weitergereicht wird.
+
+    Durchgelassen wird deshalb nur, was die Diagnose braucht. Fehlerantworten sind klein
+    und enthalten nichts weiter als die Meldung - die bleiben vollstaendig.
+    """
+    if not isinstance(data, dict) or not data.get("id"):
+        return roh[:600]
+    erlaubt = ("id", "displayName", "requiresTwoFactorAuth", "requiresCaptcha",
+               "twoFactorAuthEnabled", "emailVerified", "state")
+    teile = [f'"{k}": {_djson.dumps(data[k])}' for k in erlaubt if k in data]
+    weggelassen = len(data) - len(teile)
+    rest = f"  (+{weggelassen} weitere Felder nicht angezeigt)" if weggelassen > 0 else ""
+    return "{" + ", ".join(teile) + "}" + rest
+
+
 async def _standard_konto() -> str:
     """Welches Konto gerade die Standardrolle hat.
 
@@ -5313,11 +5334,11 @@ async def vrc_account_save(request: Request):
     # result of trying.
     if r := admin_redirect(request): return r
     form = await request.form()
-    username = (form.get("vrc_username") or "").strip()
+    username = (form.get("vrc_username") or "").strip()[:200]
     # Nicht gestrippt: ein Passwort darf vorne oder hinten ein Leerzeichen haben, und VRChat
     # nimmt es dann auch so an. Wegschneiden heisst hier "Passwort falsch" bei einem Passwort,
     # das im Browser einwandfrei funktioniert.
-    password = form.get("vrc_password") or ""
+    password = (form.get("vrc_password") or "")[:500]
     # Das 2FA-Geheimnis ist der einzige Weg zu einer Anmeldung, die nicht nach etwa einem
     # Monat ausfaellt: vrc_session() in cogs/vrc_link.py erneuert damit selbsttaetig, weil
     # der Bot sich die Codes dann selbst ausrechnen kann. Ohne Geheimnis haelt nur VRChats
@@ -5328,10 +5349,10 @@ async def vrc_account_save(request: Request):
     # gespeichert wurde hart "", womit jedes Speichern ein vorhandenes Geheimnis geloescht
     # hat. Eine Installation, die vorher monatelang allein lief, brauchte danach jeden Monat
     # Handarbeit - ohne dass sich etwas Sichtbares geaendert haette.
-    totp = (form.get("vrc_totp_secret") or "").strip().replace(" ", "")
+    totp = (form.get("vrc_totp_secret") or "").strip().replace(" ", "")[:200]
     # Typed in for this one login. Never written to the database - it is valid for about thirty
     # seconds, so keeping it would be storing nothing useful.
-    one_time = (form.get("vrc_code") or "").strip().replace(" ", "")
+    one_time = (form.get("vrc_code") or "").strip().replace(" ", "")[:16]
     # Welches Konto bearbeitet wird. Leer heisst "ein neues anlegen"; der allererste bekommt
     # VRC_ACCOUNT_KEY, damit eine frische Installation genau die Zeile hat, auf die alles
     # ohne eigene Zuweisung zugreift.
@@ -5686,6 +5707,8 @@ async def vrc_account_debug(request: Request):
                         try:
                             z.append(f"  angemeldet als: {_djson.loads(text).get('displayName')}")
                         except Exception:
+                            # Kein lesbares JSON - dann ist es auch kein Kontoprofil, aber
+                            # kurz gehalten bleibt es trotzdem.
                             z.append(f"  {text[:200]}")
                         z.append("  → Die Sitzung lebt. Das Problem liegt NICHT bei den Zugangsdaten.")
                         sitzung_lebt = True
@@ -5736,7 +5759,7 @@ async def vrc_account_debug(request: Request):
                                if any(c.startswith(f"{n}=") for c in r.headers.getall("Set-Cookie", []))]
                     z.append(f"  Set-Cookie:      {', '.join(gesetzt) if gesetzt else '(keiner)'}")
                     z.append(f"  VRChat sagt:     {_api_meldung(data) or '(kein Text)'}")
-                    z.append(f"  Rohe Antwort:    {text[:600]}")
+                    z.append(f"  Antwort:         {_antwort_kurz(data, text)}")
                     z.append("")
                     noetig = data.get("requiresTwoFactorAuth") or []
                     if r.status == 200 and data.get("id"):
