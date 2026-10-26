@@ -8,7 +8,7 @@
 {# Ein Formular fuer "neu anlegen" UND "bearbeiten". Zwei getrennte waeren zwei Stellen,
    an denen dieselben Regeln gelten muessten - und eine davon vergisst man.
    konto="" legt neu an, sonst wird genau dieser Schluessel ueberschrieben. #}
-{% macro konto_formular(konto, label, username, hat_geheimnis, knopf, ohne_2fa=False, ohne_email=False) %}
+{% macro konto_formular(konto, label, username, haelt_dauerhaft, knopf, ohne_2fa=False) %}
 <form method="post" action="/settings/vrchat/save"
       onsubmit="this.querySelector('button[type=submit]').disabled=true;this.querySelector('button[type=submit]').textContent='⏳';">
   <input type="hidden" name="vrc_konto" value="{{ konto }}">
@@ -48,26 +48,16 @@
       </label>
       <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_no2fa_hint }}</div>
     </div>
-    {# Getrennt vom 2FA-Haken, weil es zwei verschiedene Dinge sind: der eine betrifft die
-       Authenticator-App des Kontos, der andere VRChats Pruefung des Anmeldeortes. #}
-    <div style="grid-column:1 / -1;">
-      <label style="display:flex;align-items:center;gap:0.5rem;font-weight:400;margin:0;">
-        <input type="checkbox" name="vrc_kein_email" value="1" style="width:auto;margin:0;"
-               {% if ohne_email %}checked{% endif %}>
-        <strong>{{ tr.vrc_noemail_label }}</strong>
-      </label>
-      <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_noemail_hint }}</div>
-    </div>
     <div class="vrc-2fa-felder">
       <label>{{ tr.vrc_secret_label }}</label>
       <div style="display:flex;gap:0.4rem;align-items:flex-start;">
         <input type="password" name="vrc_totp_secret" autocomplete="new-password" style="flex:1;"
-               placeholder="{% if hat_geheimnis %}{{ tr.vrc_secret_unchanged }}{% endif %}">
+               placeholder="{% if haelt_dauerhaft %}{{ tr.vrc_secret_unchanged }}{% endif %}">
         <button type="button" class="btn btn-secondary" style="padding:0.5rem 0.65rem;"
                 onclick="vrcToggleSecret(this)" title="{{ tr.vrc_show_secret }}">👁</button>
       </div>
       <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_secret_hint }}</div>
-      {% if hat_geheimnis %}
+      {% if haelt_dauerhaft %}
       <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;color:var(--muted);margin-top:0.3rem;font-weight:400;">
         <input type="checkbox" name="vrc_totp_clear" value="1" style="width:auto;margin:0;">
         {{ tr.vrc_secret_clear }}
@@ -134,7 +124,7 @@
         {% if k.vrc_user_id %}
         <div style="color:var(--muted);font-size:0.72rem;"><code>{{ k.vrc_user_id }}</code></div>
         {% endif %}
-        {% if k.hat_geheimnis %}
+        {% if k.haelt_dauerhaft %}
         <span title="{% if k.ohne_2fa %}{{ tr.vrc_state_no2fa_t }}{% else %}{{ tr.vrc_state_permanent_t }}{% endif %}" style="display:inline-block;margin-top:0.3rem;font-size:0.68rem;border-radius:999px;padding:0.1rem 0.5rem;background:rgba(34,197,94,0.15);border:1px solid #22c55e;color:#22c55e;">♾ {{ tr.vrc_state_permanent }}</span>
         {% endif %}
         <div style="color:var(--muted);font-size:0.7rem;margin-top:0.3rem;">
@@ -146,6 +136,7 @@
         </div>
       </div>
       <button type="button" class="btn btn-secondary" style="font-size:0.75rem;"
+              title="{{ tr.vrc_test_hint }}"
               onclick="vrcTest({{ k.guild_id | js }})">{{ tr.vrc_test_btn }}</button>
       <button type="button" class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;"
               onclick="vrcEdit({{ k.guild_id | js }})" title="{{ tr.vrc_account_edit }}">⚙</button>
@@ -232,7 +223,7 @@
     {# Bearbeiten klappt dasselbe Formular auf, nur mit gesetztem Schluessel. Ein zweites
        Formular daneben waere eine zweite Stelle, an der dieselben Regeln gelten muessen. #}
     <div id="vrc-edit-{{ k.guild_id }}" style="display:none;border-top:1px solid var(--border);margin-top:0.6rem;padding-top:0.6rem;">
-      {{ konto_formular(k.guild_id, k.label, k.username, k.geheimnis_da, tr.vrc_account_connect, k.ohne_2fa, k.ohne_email) }}
+      {{ konto_formular(k.guild_id, k.label, k.username, k.geheimnis_da, tr.vrc_account_connect, k.ohne_2fa) }}
     </div>
   </div>
   {% endfor %}

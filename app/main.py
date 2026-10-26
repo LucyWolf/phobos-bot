@@ -5234,8 +5234,10 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
             except Exception as _ex:
                 print(f"[vrchat] konnte es nicht verwerfen: {_ex}")
         _e["ohne_2fa"] = (not _e["geheimnis_da"]) and _e.get("needs_2fa") == 0
-        _e["ohne_email"] = _e.get("needs_email") == 0
-        _e["hat_geheimnis"] = _e["geheimnis_da"] or _e["ohne_2fa"]
+        # Haelt die Anmeldung ohne Zutun? Entweder weil ein brauchbares Geheimnis
+        # hinterlegt ist, oder weil das Konto gar keinen zweiten Faktor verlangt. Hiess
+        # frueher hat_geheimnis und meinte beides - zwei Bedeutungen, ein Name.
+        _e["haelt_dauerhaft"] = _e["geheimnis_da"] or _e["ohne_2fa"]
         # Wann der Fehler entstand. Ohne diese Angabe sieht eine Meldung von vor einer
         # Stunde genauso aus wie eine von gerade eben - und man sucht nach einer Ursache,
         # die laengst behoben ist. Genau so ist hier stundenlang am falschen Ende gesucht
@@ -5289,34 +5291,13 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
         _e["server"] = _zuord.get(_e["guild_id"], [])
         _e["server_ids"] = {_sid for _sid, _k in _zuord_ids.items() if _k == _e["guild_id"]}
 
-    account = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,))
-    veraltete_meldung = False
-    hat_geheimnis = False
-    if account:
-        # Password and session cookies stay on the server - the page only needs to know that
-        # an account is stored, plus whoever it turned out to be.
-        hat_geheimnis = _geheimnis_taugt(account.get("totp_secret") or "")
-        for _k in ("password", "totp_secret", "auth_cookie", "two_factor_cookie"):
-            account[_k] = ""
-        # Der rote Kasten zeigt den GESPEICHERTEN Text des letzten Fehlversuchs. Bis
-        # v1.18.52 behauptete der bei jedem 401 "Benutzername oder Passwort wurde
-        # abgelehnt", obwohl VRChat so auch auf Captcha und Sperren antwortet. Nach dem
-        # Update steht die falsche Behauptung also weiter da - niemand speichert extra
-        # neu, nur damit sich eine Fehlermeldung aktualisiert. Deswegen wird sie hier als
-        # veraltet erkannt und im Kasten eingeordnet, statt sie stillschweigend
-        # weiterzuzeigen.
-        veraltete_meldung = "Benutzername oder Passwort wurde von VRChat abgelehnt" in (
-            account.get("last_error") or "")
     return templates.TemplateResponse("vrchat_settings.html", {
         **session(request), "request": request,
         "guilds": await _guild_list(request),
         "token_set": await _token_configured(),
         "active": "vrchat",
-        "vrc_account": account,
         "konten": konten,
         "alle_server": _alle_server,
-        "veraltete_meldung": veraltete_meldung,
-        "hat_geheimnis": hat_geheimnis,
         "error": error, "success": success,
     })
 
@@ -5391,13 +5372,6 @@ async def vrc_account_save(request: Request):
     # durchlief. Geht die Anmeldung aber gar nicht erst durch, bleibt die Annahme stehen,
     # und mit ihr ein Geheimnis und eine Fehlermeldung, die beide gegenstandslos sind.
     # Der Haken raeumt deshalb auf, statt nur ein Haekchen zu setzen.
-    # Zweiter Haken, getrennt vom ersten: der E-Mail-Code hat mit der
-    # Zwei-Faktor-Anmeldung nichts zu tun. VRChat schickt ihn bei jeder Anmeldung von einer
-    # Adresse, die das Konto noch nicht kennt - auch ohne 2FA. Abschalten laesst sich damit
-    # nicht VRChats Verhalten, sondern nur die Erwartung des Bots: er haelt einen
-    # angeforderten Code dann fuer einen Fehler statt fuer den normalen Weg, und die
-    # Meldung dazu wird weggeraeumt.
-    kein_email = bool(form.get("vrc_kein_email"))
     kein_2fa = bool(form.get("vrc_kein_2fa"))
     if kein_2fa:
         totp = ""
@@ -5410,11 +5384,6 @@ async def vrc_account_save(request: Request):
                               (konto,))
             except Exception as _ex:
                 print(f"[vrchat] alten 2FA-Fehler nicht entfernt: {_ex}")
-    if kein_email and existing and "e-mail" in (existing["last_error"] or "").lower():
-        try:
-            await db_exec("UPDATE vrc_accounts SET last_error='' WHERE guild_id=?", (konto,))
-        except Exception as _ex:
-            print(f"[vrchat] alte E-Mail-Code-Meldung nicht entfernt: {_ex}")
     # Unbrauchbares gar nicht erst annehmen. Vorher landete jede Zeichenfolge in der
     # Datenbank, die Karte meldete daraufhin "Haelt dauerhaft" - und die Anmeldung scheiterte
     # trotzdem jedes Mal, weil sich daraus kein Code rechnen laesst. Zwei Angaben, die sich
@@ -5484,7 +5453,7 @@ async def vrc_account_save(request: Request):
             "needs_2fa=excluded.needs_2fa, needs_email=excluded.needs_email",
             (konto, username, password, totp,
              datetime.datetime.utcnow().isoformat(), _text, label,
-             0 if kein_2fa else 1, 0 if kein_email else 1),
+             0 if kein_2fa else 1, 1),
         )
         return RedirectResponse(
             f"/settings/vrchat?error={urllib.parse.quote_plus(str(e))}",
@@ -5512,7 +5481,7 @@ async def vrc_account_save(request: Request):
          result["two_factor_cookie"], str(user.get("id") or ""),
          str(user.get("displayName") or ""), datetime.datetime.utcnow().isoformat(), label,
          0 if kein_2fa else (1 if result.get("two_factor") else 0),
-         0 if kein_email else 1),
+         1),
     )
     who = urllib.parse.quote_plus(str(user.get("displayName") or username))
     # Mit Geheimnis erneuert der Bot selbst, ohne haengt die Sitzung an VRChats
