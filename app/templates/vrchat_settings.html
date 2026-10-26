@@ -31,12 +31,6 @@
                 onclick="vrcToggleSecret(this)" title="{{ tr.vrc_show_secret }}">👁</button>
       </div>
     </div>
-    <div>
-      <label>{{ tr.vrc_account_code_label }}</label>
-      <input type="text" name="vrc_code" autocomplete="off" inputmode="numeric" maxlength="6"
-             pattern="[0-9]{6}" placeholder="123456">
-      <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_account_code_hint }}</div>
-    </div>
     {# Ein echtes Entweder-Oder: entweder der Bot rechnet sich die Codes selbst aus, oder
        jemand traegt sie ein. Beides zugleich gibt es nicht, und keins von beiden auch
        nicht - deshalb zwei Knoepfe statt zweier Haken.
@@ -63,6 +57,20 @@
         </label>
       </div>
       <div style="font-size:0.72rem;color:var(--muted);margin-top:0.4rem;">ℹ {{ tr.vrc_modus_mail_note }}</div>
+    </div>
+    {# Unter jedem Knopf sein Feld: beim einen das Geheimnis, beim anderen der Code.
+       Das Code-Feld bleibt allerdings in BEIDEN Stellungen stehen - VRChat kann auch bei
+       hinterlegtem Geheimnis danach fragen, naemlich bei einer Anmeldung von einer
+       unbekannten Adresse. Es waere genau dann weg, wenn es gebraucht wird. Was sich
+       aendert, ist der Hinweis darunter. #}
+    <div class="vrc-code-felder">
+      <label>{{ tr.vrc_account_code_label }}</label>
+      <input type="text" name="vrc_code" autocomplete="off" inputmode="numeric" maxlength="6"
+             pattern="[0-9]{6}" placeholder="123456">
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">
+        <span class="vrc-code-hint-code">{{ tr.vrc_code_hint_code }}</span>
+        <span class="vrc-code-hint-geheimnis">{{ tr.vrc_code_hint_secret }}</span>
+      </div>
     </div>
     <div class="vrc-2fa-felder">
       <label>{{ tr.vrc_secret_label }}</label>
@@ -317,6 +325,14 @@ function vrcModus(radio) {
   const geheimnis = form.querySelector('input[name="vrc_modus"][value="geheimnis"]');
   const an = geheimnis && geheimnis.checked;
   form.querySelectorAll('.vrc-2fa-felder').forEach(function (f) {
+    f.style.display = an ? '' : 'none';
+  });
+  // Das Code-Feld bleibt immer stehen, nur sein Hinweis wechselt: einmal "hier eintragen",
+  // einmal "nur falls VRChat danach fragt".
+  form.querySelectorAll('.vrc-code-hint-code').forEach(function (f) {
+    f.style.display = an ? 'none' : '';
+  });
+  form.querySelectorAll('.vrc-code-hint-geheimnis').forEach(function (f) {
     f.style.display = an ? '' : 'none';
   });
   form.querySelectorAll('.vrc-modus').forEach(function (l) {
