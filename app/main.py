@@ -5095,6 +5095,17 @@ async def _vrc_apply(guild_id: int, user_id: str, vrchat_name: str, revoke: bool
         print(f"[vrc_link] dashboard apply failed for {user_id} in {guild_id}: {e}")
 
 
+def _konto_schluessel_ok(roh: str) -> bool:
+    """Does this look like a key this code hands out?
+
+    Accepted are exactly three shapes: VRC_ACCOUNT_KEY, "vrc_" plus twelve hex digits, and
+    a Discord snowflake from older data. Everything else is made up - and the value ends up
+    both as a database key and as an element id on the page, so taking it as given would
+    mean a row with any key at all and ids that fall apart.
+    """
+    return bool(roh) and bool(re.fullmatch(r"(0|vrc_[0-9a-f]{12}|[1-9]\d{0,19})", roh))
+
+
 async def _sperre_vermerken(konto: str, status: int, meldung: str) -> str:
     """Record a network block VRChat reported, and return the text to show.
 
@@ -5349,7 +5360,14 @@ async def vrc_account_save(request: Request):
     one_time = (form.get("vrc_code") or "").strip().replace(" ", "")[:16]
 
     # Which account row is being edited. Empty means "create a new one".
-    konto = (form.get("vrc_konto") or "").strip()
+    #
+    # Checked against the shape this code hands out, not taken as given: the value ends up
+    # as a database key AND as an element id on the page. An unchecked one could create a
+    # row with any key at all - unbounded in length, with characters that break the ids.
+    konto = (form.get("vrc_konto") or "").strip()[:64]
+    if konto and not _konto_schluessel_ok(konto):
+        return RedirectResponse("/settings/vrchat?error=Ungültiger+Kontoschlüssel",
+                                status_code=302)
 
     # The display name for the list. Collapses runs of whitespace so an all-space label
     # ends up empty rather than looking like a name made of nothing.
@@ -5565,7 +5583,11 @@ async def vrc_account_test(request: Request):
 
     # Which account to check. Falls back to the default key so an older form still works.
     form = await request.form()
-    konto = (form.get("konto") or VRC_ACCOUNT_KEY).strip() or VRC_ACCOUNT_KEY
+    # Unbekannte Form heisst Standardkonto - der Wert geht zwar nur in parametrisierte
+    # Abfragen, aber was nicht wie ein Schluessel aussieht, ist auch keiner.
+    konto = (form.get("konto") or VRC_ACCOUNT_KEY).strip()[:64]
+    if not _konto_schluessel_ok(konto):
+        konto = VRC_ACCOUNT_KEY
     row = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (konto,))
     if not row:
         return JSONResponse({"ok": False, "text": "Kein Konto hinterlegt."})
@@ -5647,7 +5669,11 @@ async def vrc_account_debug(request: Request):
     from vrchat import API_BASE, USER_AGENT, TIMEOUT, _headers, _basic_auth, _api_meldung
 
     form = await request.form()
-    konto = (form.get("konto") or VRC_ACCOUNT_KEY).strip() or VRC_ACCOUNT_KEY
+    # Unbekannte Form heisst Standardkonto - der Wert geht zwar nur in parametrisierte
+    # Abfragen, aber was nicht wie ein Schluessel aussieht, ist auch keiner.
+    konto = (form.get("konto") or VRC_ACCOUNT_KEY).strip()[:64]
+    if not _konto_schluessel_ok(konto):
+        konto = VRC_ACCOUNT_KEY
     row = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (konto,))
     z = []
     z.append("═══ Phobos VRChat-Anmeldung — Debug ═══")
@@ -5862,7 +5888,7 @@ async def vrc_account_server(request: Request):
     """
     if r := admin_redirect(request): return r
     form = await request.form()
-    konto = (form.get("konto") or "").strip()
+    konto = (form.get("konto") or "").strip()[:64]
     if not konto:
         return RedirectResponse("/settings/vrchat?error=Kein+Konto+angegeben", status_code=302)
     if not await db_one("SELECT guild_id FROM vrc_accounts WHERE guild_id=?", (konto,)):
@@ -5904,7 +5930,11 @@ async def vrc_meldung_weg(request: Request):
     """
     if r := admin_redirect(request): return r
     form = await request.form()
-    konto = (form.get("konto") or VRC_ACCOUNT_KEY).strip() or VRC_ACCOUNT_KEY
+    # Unbekannte Form heisst Standardkonto - der Wert geht zwar nur in parametrisierte
+    # Abfragen, aber was nicht wie ein Schluessel aussieht, ist auch keiner.
+    konto = (form.get("konto") or VRC_ACCOUNT_KEY).strip()[:64]
+    if not _konto_schluessel_ok(konto):
+        konto = VRC_ACCOUNT_KEY
     # Only the message. The brake stays: it protects against extending a block, and that
     # has nothing to do with whether anyone has read the message.
     await db_exec("UPDATE vrc_accounts SET last_error='' WHERE guild_id=?", (konto,))
@@ -5925,7 +5955,7 @@ async def vrc_account_server(request: Request):
     """
     if r := admin_redirect(request): return r
     form = await request.form()
-    konto = (form.get("konto") or "").strip()
+    konto = (form.get("konto") or "").strip()[:64]
     if not konto:
         return RedirectResponse("/settings/vrchat?error=Kein+Konto+angegeben", status_code=302)
     # Assigning to an account that does not exist would leave guilds pointing nowhere.
@@ -5964,7 +5994,11 @@ async def vrc_account_delete(request: Request):
     # Admin-only for the same reason as saving it - see there.
     if r := admin_redirect(request): return r
     form = await request.form()
-    konto = (form.get("konto") or VRC_ACCOUNT_KEY).strip() or VRC_ACCOUNT_KEY
+    # Unbekannte Form heisst Standardkonto - der Wert geht zwar nur in parametrisierte
+    # Abfragen, aber was nicht wie ein Schluessel aussieht, ist auch keiner.
+    konto = (form.get("konto") or VRC_ACCOUNT_KEY).strip()[:64]
+    if not _konto_schluessel_ok(konto):
+        konto = VRC_ACCOUNT_KEY
     await db_exec("DELETE FROM vrc_accounts WHERE guild_id=?", (konto,))
     # Guilds that pointed here would otherwise point nowhere. vrc_account_for_guild()
     # catches that and falls back, but the tab would still show an account that is gone.
