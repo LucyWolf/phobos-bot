@@ -1265,6 +1265,30 @@ async def init_db():
             # hat, soll erfahren, wenn an seinem Konto gerueckt wird; abschalten laesst es
             # sich im Profil. Ohne Adresse und ohne SMTP passiert ohnehin nichts.
             "ALTER TABLE users ADD COLUMN warn_mails INTEGER NOT NULL DEFAULT 1",
+            # Mehrere VRChat-Bot-Konten. Die Spalte guild_id ist schon Primaerschluessel und
+            # lag bisher fest auf VRC_ACCOUNT_KEY ("0") - sie wird jetzt als Kontoschluessel
+            # benutzt, umbenannt wird nichts. Die vorhandene Zeile "0" bleibt damit Konto
+            # Nummer eins, und ein Server ohne eigene Zuweisung greift weiter genau darauf
+            # zu: nach dem Update laeuft eine bestehende Installation unveraendert weiter.
+            # label ist nur der Anzeigename in der Liste; leer heisst "nimm den
+            # VRChat-Benutzernamen", damit auch die Altzeile ohne Zutun sinnvoll dasteht.
+            "ALTER TABLE vrc_accounts ADD COLUMN label TEXT NOT NULL DEFAULT ''",
+            # Verlangt dieses VRChat-Konto ueberhaupt eine Zwei-Faktor-Anmeldung? Steht
+            # erst nach der ersten echten Anmeldung fest, deshalb Standard 1: lieber
+            # "laeuft monatlich ab" melden und sich beim naechsten Login korrigieren, als
+            # eine Dauerhaftigkeit zu behaupten, die sich noch nicht zeigen konnte.
+            "ALTER TABLE vrc_accounts ADD COLUMN needs_2fa INTEGER NOT NULL DEFAULT 1",
+            # Fruehester naechster Anmeldeversuch des Minutenlaufs. Ohne diese Bremse
+            # versucht er es nach einem Fehlschlag jede Minute erneut - und weil VRChat pro
+            # NETZ zaehlt ("too many failed login attempts from network", HTTP 429), haelt
+            # der Bot die Sperre damit selbst aufrecht, die er gerade abwarten muesste.
+            # Leer heisst "jederzeit", bestehende Installationen aendern sich dadurch nicht.
+            "ALTER TABLE vrc_accounts ADD COLUMN retry_after TEXT NOT NULL DEFAULT ''",
+            # Erwartet dieses Konto den Code, den VRChat bei einer Anmeldung von einer
+            # unbekannten Adresse per E-Mail schickt? Standard 1, weil VRChat das bei jedem
+            # neuen Server tut. Abschalten laesst sich damit nicht VRChats Verhalten - nur
+            # die Erwartung des Bots und die Meldung, die sonst stehen bleibt.
+            "ALTER TABLE vrc_accounts ADD COLUMN needs_email INTEGER NOT NULL DEFAULT 1",
         ]:
             try:
                 await db.execute(col)
@@ -1461,9 +1485,76 @@ def normalize_reaction_emoji(raw: str) -> str:
     return f"<{animated}:{name}:{emoji_id}>"
 
 
-# The single row in vrc_accounts holding the installation-wide VRChat bot account. "0" can
-# never collide with a real Discord guild id, which are all far larger.
+# Der Schluessel des ersten VRChat-Bot-Kontos. Frueher war es das EINZIGE; seit es mehrere
+# geben kann, ist es nur noch der Standard - ein Server ohne eigene Zuweisung greift darauf
+# zu. "0" kann mit keiner echten Discord-Server-Kennung kollidieren, die sind alle weit
+# groesser. Der Wert darf sich nie aendern: bestehende Installationen haben genau diese
+# Zeile, und ein anderer Standard liesse sie ins Leere greifen.
 VRC_ACCOUNT_KEY = "0"
+
+
+async def vrc_accounts_list() -> list:
+    """Alle hinterlegten VRChat-Bot-Konten, das erste zuerst.
+
+    Das erste ist VRC_ACCOUNT_KEY, danach nach Anzeigename - damit die Liste sich nicht
+    umsortiert, sobald jemand ein Konto umbenennt, und das Standardkonto oben bleibt.
+    """
+    rows = await db_rows(
+        "SELECT * FROM vrc_accounts ORDER BY CASE WHEN guild_id=? THEN 0 ELSE 1 END, "
+        "COALESCE(NULLIF(label,''), username), guild_id", (VRC_ACCOUNT_KEY,))
+    return rows or []
+
+
+async def vrc_standard_konto() -> str:
+    """Welches Konto die Standardrolle hat - die eine Stelle, die das entscheidet.
+
+    Normalerweise VRC_ACCOUNT_KEY. Wird genau diese Zeile geloescht, waehrend andere
+    bestehen bleiben, uebernimmt der in der Konfiguration vermerkte Nachfolger; fehlt der,
+    das erste der Liste. Den Nachfolger zu errechnen statt ihn festzuhalten waere unstabil:
+    die Liste ist nach Anzeigename sortiert, also waere nach jedem Umbenennen ein anderes
+    Konto Standard - und alle Server ohne eigene Wahl sprangen mit.
+    """
+    if await db_one("SELECT guild_id FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,)):
+        return VRC_ACCOUNT_KEY
+    gesetzt = (await get_config("vrc_standard_konto") or "").strip()
+    if gesetzt and await db_one("SELECT guild_id FROM vrc_accounts WHERE guild_id=?",
+                                (gesetzt,)):
+        return gesetzt
+    liste = await vrc_accounts_list()
+    return liste[0]["guild_id"] if liste else VRC_ACCOUNT_KEY
+
+
+async def vrc_account_for_guild(guild_id) -> str:
+    """Welches Bot-Konto dieser Discord-Server benutzt.
+
+    Leere oder unbekannte Zuweisung faellt auf VRC_ACCOUNT_KEY zurueck. Das ist der Grund,
+    weshalb bestehende Installationen von alldem nichts merken: niemand hat eine Zuweisung,
+    also greifen alle weiter auf dieselbe Zeile wie vorher. Der Rueckfall gilt auch fuer ein
+    geloeschtes Konto - sonst stuende ein Server ploetzlich ohne VRChat da, ohne dass an ihm
+    etwas geaendert wurde.
+    """
+    wahl = ""
+    if guild_id is not None:
+        wahl = (await get_guild_config(guild_id, "vrc_account") or "").strip()
+    if wahl and wahl != VRC_ACCOUNT_KEY:
+        da = await db_one("SELECT guild_id FROM vrc_accounts WHERE guild_id=?", (wahl,))
+        if da:
+            return wahl
+    # Ohne (gueltige) Wahl das Standardkonto - aber nur, wenn es das noch gibt. Wird es
+    # geloescht, waehrend ein anderes bestehen bleibt, zeigten sonst ALLE Server auf eine
+    # Zeile, die es nicht mehr gibt: die Seite listet ein Konto, und benutzen kann es
+    # keiner.
+    return await vrc_standard_konto()
+
+
+def vrc_account_name(row) -> str:
+    """Der Anzeigename eines Kontos: eigener Name, sonst der VRChat-Name, sonst die Kennung."""
+    if not row:
+        return ""
+    return ((row["label"] if "label" in row.keys() else "") or "").strip() \
+        or (row["vrc_display_name"] or "").strip() \
+        or (row["username"] or "").strip() \
+        or str(row["guild_id"])
 
 # How long a handed-out VRC-Link page stays usable. Long enough to fetch the code, alt-tab
 # into VRChat, edit the bio and come back; short enough that a link pasted somewhere public by

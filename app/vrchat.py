@@ -56,6 +56,23 @@ def _basic_auth(username: str, password: str) -> str:
     return "Basic " + base64.b64encode(raw).decode()
 
 
+def _api_meldung(payload: dict) -> str:
+    """Den Klartext aus einer VRChat-Fehlerantwort holen, falls einer drinsteht.
+
+    VRChat legt ihn je nach Endpunkt nach error.message oder direkt nach message und wickelt
+    um den Text gern noch ein zweites Paar Anfuehrungszeichen.
+    """
+    fehler = payload.get("error")
+    roh = ""
+    if isinstance(fehler, dict):
+        roh = str(fehler.get("message") or "")
+    elif isinstance(fehler, str):
+        roh = fehler
+    if not roh:
+        roh = str(payload.get("message") or "")
+    return roh.strip().strip('"').strip()
+
+
 def _headers(auth_cookie: str = "", two_factor_cookie: str = "") -> dict:
     """Die Kopfzeilen jeder Anfrage: Sitzungs-Kekse und ein sprechender User-Agent.
 
@@ -122,11 +139,12 @@ async def login(username: str, password: str, totp_secret: str = "",
 
     async with aiohttp.ClientSession() as session:
         # ── 1. Cached session ────────────────────────────────────────────────
-        if auth_cookie:
+        if auth_cookie and not one_time_code:
             payload, resp = await _get_user(session, _headers(auth_cookie, two_factor_cookie))
             if resp.status == 200 and payload.get("id"):
                 return {"user": payload, "auth_cookie": auth_cookie,
-                        "two_factor_cookie": two_factor_cookie, "reused": True}
+                        "two_factor_cookie": _cookie_from(resp, "twoFactorAuth")
+                        or two_factor_cookie, "reused": True}
 
         # ── 2. Password login ────────────────────────────────────────────────
         headers = _headers(two_factor_cookie=two_factor_cookie)
@@ -137,18 +155,40 @@ async def login(username: str, password: str, totp_secret: str = "",
         # two apart. Taking the 401 at face value reported a perfectly correct password as
         # rejected, and sent people re-typing something that was never wrong.
         needed = [str(x) for x in (payload.get("requiresTwoFactorAuth") or [])]
+        meldung = _api_meldung(payload)
+        # Der Originaltext haengt an jeder dieser Meldungen dran. Ein 401 heisst bei VRChat
+        # naemlich laengst nicht nur "Passwort falsch": Captcha-Pflicht, eine Sperre nach zu
+        # vielen Versuchen und eine abgelaufene Sitzung kommen mit demselben Status. Die alte
+        # Fassung behauptete in allen Faellen, das Passwort sei abgelehnt worden - und schickte
+        # Leute tagelang hinter einem Tippfehler her, den es nie gab.
         if resp.status == 401 and not needed:
-            raise VRChatError("Benutzername oder Passwort wurde von VRChat abgelehnt.")
+            if payload.get("requiresCaptcha") or "captcha" in meldung.lower():
+                raise VRChatError(
+                    "VRChat verlangt für diese Anmeldung ein Captcha — das kann der Bot nicht "
+                    "lösen. Das kommt nach mehreren Fehlversuchen von derselben Adresse. Etwa "
+                    "eine Stunde nichts tun und dann genau einmal erneut speichern. "
+                    f"(VRChat sagt: {meldung or 'nichts'})")
+            # Keine eigene Deutung mehr. Welcher Grund hinter einem 401 steckt, weiss hier
+            # niemand - "Passwort falsch" zu behaupten hat einen Betreiber tagelang ein
+            # Passwort pruefen lassen, das die ganze Zeit richtig war. Was VRChat gesagt hat,
+            # steht da; alles weitere beantwortet der Debug-Bericht auf der Seite.
+            raise VRChatError(
+                f"VRChat hat die Anmeldung abgelehnt (401). VRChat sagt dazu: "
+                f"{meldung or '(kein Text)'}. Woran es liegt, zeigt der Debug-Bericht weiter "
+                f"unten auf dieser Seite.")
         if resp.status == 429:
             raise VRChatError("VRChat bremst gerade zu viele Anmeldeversuche aus. "
-                              "Bitte später nochmal versuchen.")
+                              f"Bitte später nochmal versuchen. (VRChat sagt: {meldung or 'nichts'})")
         if resp.status == 403:
             raise VRChatError("VRChat hat die Anfrage abgelehnt (403). Das passiert auch, wenn "
-                              "das Konto gesperrt ist oder eine Bestätigung im Browser aussteht.")
+                              "das Konto gesperrt ist oder eine Bestätigung im Browser aussteht. "
+                              f"(VRChat sagt: {meldung or 'nichts'})")
         if resp.status not in (200, 401):
-            raise VRChatError(f"VRChat antwortete mit Status {resp.status}.")
+            raise VRChatError(f"VRChat antwortete mit Status {resp.status}. "
+                              f"(VRChat sagt: {meldung or 'nichts'})")
 
         new_auth = _cookie_from(resp, "auth") or auth_cookie
+        two_factor_cookie = _cookie_from(resp, "twoFactorAuth") or two_factor_cookie
 
         # ── 3. Two-factor, if this login needs it ────────────────────────────
         if needed:
@@ -157,15 +197,25 @@ async def login(username: str, password: str, totp_secret: str = "",
             if code and (not code.isdigit() or len(code) != 6):
                 raise VRChatError("Der eingegebene Code muss aus sechs Ziffern bestehen.")
 
-            if "totp" in lowered or "otp" in lowered:
+            # Bietet VRChat beide Wege an, entscheidet das hinterlegte Geheimnis: damit
+            # laesst sich ein Authenticator-Code rechnen, ohne nicht. Wer dann einen Code
+            # eingetippt hat, hat ihn aus der E-Mail - und der muss auch dort geprueft
+            # werden, sonst wird ein richtiger Code abgelehnt.
+            _hat_totp = "totp" in lowered or "otp" in lowered
+            _hat_mail = "emailotp" in lowered
+            if _hat_totp and _hat_mail and not totp_secret:
+                _hat_totp = False
+            if _hat_totp:
                 method = "totp"
                 if not code:
                     if not totp_secret:
                         raise VRChatError(
-                            "Das Konto verlangt Zwei-Faktor-Anmeldung. Trag entweder das "
-                            "2FA-Geheimnis ein (dann erneuert der Bot die Anmeldung selbst) "
-                            "oder einmalig den sechsstelligen Code aus deiner "
-                            "Authenticator-App.")
+                            "Benutzername und Passwort stimmen — VRChat verlangt zusätzlich "
+                            "den zweiten Faktor. Zwei Wege: den sechsstelligen Code aus der "
+                            "Authenticator-App oben unter „Einmal-Code“ eintragen (hält etwa "
+                            "einen Monat), oder das 2FA-Geheimnis eintragen — dann rechnet "
+                            "sich der Bot die Codes selbst aus und die Anmeldung hält "
+                            "dauerhaft.")
                     import pyotp
                     try:
                         code = pyotp.TOTP(totp_secret.replace(" ", "")).now()
@@ -173,7 +223,7 @@ async def login(username: str, password: str, totp_secret: str = "",
                         raise VRChatError(
                             "Das 2FA-Geheimnis ist unbrauchbar — erwartet wird die "
                             "Zeichenfolge, die beim Einrichten neben dem QR-Code steht.")
-            elif "emailotp" in lowered:
+            elif _hat_mail:
                 # VRChat sends a code to the account's mailbox whenever a login comes from an
                 # address it has not seen before - and it does that even for accounts that have
                 # an authenticator app set up. A server signing in for the first time therefore
@@ -216,13 +266,20 @@ async def login(username: str, password: str, totp_secret: str = "",
             # again once the challenge is done.
             payload, resp = await _get_user(session, _headers(new_auth, two_factor_cookie))
             new_auth = _cookie_from(resp, "auth") or new_auth
+            two_factor_cookie = _cookie_from(resp, "twoFactorAuth") or two_factor_cookie
             if resp.status != 200 or not payload.get("id"):
                 raise VRChatError("Nach der Zwei-Faktor-Anmeldung kamen keine Kontodaten zurück.")
 
         if not payload.get("id"):
             raise VRChatError("VRChat hat keine Kontodaten zurückgegeben.")
+        # "two_factor" sagt, ob VRChat bei DIESER Anmeldung einen zweiten Faktor wollte.
+        # Ohne die Angabe laesst sich nicht unterscheiden, ob eine Anmeldung dauerhaft haelt
+        # (Konto ohne 2FA, oder 2FA mit hinterlegtem Geheimnis) oder in etwa einem Monat
+        # ausfaellt - die Oberflaeche hat das vorher am Geheimnis festgemacht und deshalb
+        # bei einem Konto ganz ohne 2FA faelschlich "laeuft ab" gemeldet.
         return {"user": payload, "auth_cookie": new_auth,
-                "two_factor_cookie": two_factor_cookie, "reused": False}
+                "two_factor_cookie": two_factor_cookie, "reused": False,
+                "two_factor": bool(needed)}
 
 
 # ── Nutzerdaten lesen ────────────────────────────────────────────────────────

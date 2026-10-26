@@ -52,7 +52,8 @@ from database import (db_rows, db_one, db_exec, get_config, get_guild_config,
                       DEFAULT_VRC_INSTANCE_COUNT_LABEL, DEFAULT_VRC_INSTANCE_FOOTER,
                       DEFAULT_VRC_INSTANCE_LOCKED, DEFAULT_VRC_INSTANCE_LOCKED_TITLE,
                       human_duration, bot_text, bot_lang,
-                      VRC_ACCOUNT_KEY, VRC_TOKEN_TTL_MINUTES,
+                      VRC_ACCOUNT_KEY, VRC_TOKEN_TTL_MINUTES, vrc_account_for_guild,
+                      vrc_standard_konto,
                       VRC_STATE_UNVERIFIED, VRC_STATE_PENDING, VRC_STATE_APPROVED)
 
 # VRChat display names are at most 32 characters; anything longer is not a name, it is a paste
@@ -146,24 +147,117 @@ async def personal_link(guild_id, user_id) -> str | None:
     return f"{base}/vrc/{token}"
 
 
-async def vrc_session() -> dict | None:
-    """The installation's VRChat session, renewed if the cached one has gone stale.
+async def _sitzung_aus_keks(row) -> dict | None:
+    """Prueft NUR die gespeicherte Sitzung - kein Anmeldeversuch, keine Sperrgefahr.
+
+    Gebraucht, solange eine Bremse liegt: VRChat zaehlt nur Anmeldungen, eine Abfrage mit
+    bestehendem Keks nicht. Laeuft die Sitzung noch, arbeitet der Bot normal weiter,
+    waehrend die Sperre von allein ablaeuft.
+    """
+    import aiohttp
+    from vrchat import API_BASE, TIMEOUT, _headers
+    try:
+        async with aiohttp.ClientSession() as s:
+            async with s.get(f"{API_BASE}/auth/user",
+                             headers=_headers(row["auth_cookie"], row["two_factor_cookie"]),
+                             timeout=TIMEOUT) as r:
+                if r.status != 200:
+                    return None
+                data = await r.json(content_type=None)
+                if not (data or {}).get("id"):
+                    return None
+                # Auch hier kann ein frischer twoFactorAuth-Keks dabei sein. Ihn zu
+                # verwerfen hiesse: der gespeicherte laeuft irgendwann ab, obwohl gerade
+                # ein gueltiger geliefert wurde - und VRChat verlangt wieder einen Code.
+                from vrchat import _cookie_from
+                neuer = _cookie_from(r, "twoFactorAuth")
+                if neuer and neuer != (row["two_factor_cookie"] or ""):
+                    try:
+                        await db_exec("UPDATE vrc_accounts SET two_factor_cookie=? "
+                                      "WHERE guild_id=?", (neuer, row["guild_id"]))
+                    except Exception as e:
+                        print(f"[vrc_link] neuen 2FA-Keks nicht gespeichert: {e}")
+                return {"auth_cookie": row["auth_cookie"],
+                        "two_factor_cookie": neuer or row["two_factor_cookie"]}
+    except Exception:
+        return None
+
+
+async def vrc_session(konto: str | None = None) -> dict | None:
+    """Die VRChat-Sitzung eines Bot-Kontos, bei Bedarf erneuert.
 
     Returns {"auth_cookie", "two_factor_cookie"} or None when no account is connected. Written
     back to the row whenever the cookies changed, so the next caller starts from the fresh ones
     instead of signing in again - see app/vrchat.py for why repeated password logins are
     something to avoid rather than merely wasteful.
 
+    `konto` ist der Schluessel in vrc_accounts; ohne Angabe das Standardkonto. Der Standard
+    ist der Grund, weshalb alle bisherigen Aufrufe unveraendert weiterlaufen - wer nicht
+    weiss, fuer welchen Server er arbeitet, bekommt dasselbe Konto wie vorher. Fuer die
+    Stellen, die einen Server kennen, gibt es vrc_session_fuer_guild().
+
     Everything is swallowed into a None: this runs behind a member's page load, and a VRChat
     outage should degrade the page, not break it.
     """
-    row = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,))
+    schluessel = (konto or await vrc_standard_konto())
+    row = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (schluessel,))
+    if not row:
+        # Zugewiesenes Konto geloescht: lieber auf das Standardkonto zurueckfallen als den
+        # Server stillschweigend ohne VRChat dastehen zu lassen. Welches das ist, sagt
+        # vrc_account_for_guild() - dieselbe Regel, die auch die Seite anwendet.
+        ersatz = await vrc_standard_konto()
+        if ersatz != schluessel:
+            row = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (ersatz,))
+            schluessel = ersatz
     if not row or not row["username"] or not row["password"]:
         return None
+    # Nach einem Fehlschlag eine Weile gar nicht erst versuchen. VRChat zaehlt
+    # Fehlversuche pro NETZ, nicht pro Konto ("too many failed login attempts from
+    # network", HTTP 429) - ein Minutenlauf, der stur weiterklopft, verlaengert damit
+    # genau die Sperre, die er abwarten muesste. Beobachtet an einer Installation, die
+    # sich auf diese Weise selbst ausgesperrt hielt.
+    #
+    # Die gespeicherte Sitzung wird trotzdem noch versucht: die kostet keinen
+    # Anmeldeversuch und ist genau der Weg, auf dem sich das von allein wieder einrenkt.
+    bremse = (row["retry_after"] if "retry_after" in row.keys() else "") or ""
+    if bremse:
+        try:
+            if datetime.datetime.utcnow() < datetime.datetime.fromisoformat(bremse):
+                if not row["auth_cookie"]:
+                    return None
+                nur_keks = await _sitzung_aus_keks(row)
+                if nur_keks:
+                    return nur_keks
+                return None
+        except ValueError:
+            pass
+
+    # Ein unbrauchbares 2FA-Geheimnis blockiert ALLES: vrchat.login() bricht damit ab,
+    # bevor es den Weg ueber einen eingetippten Code ueberhaupt anbietet. Der Minutenlauf
+    # hat nie einen Code, scheitert also bei jedem Durchgang an derselben Zeichenfolge und
+    # setzt die rote Meldung sofort wieder - sie liess sich nicht wegbekommen.
+    #
+    # Weggeraeumt statt nur uebergangen: es kann nachweislich nie funktionieren (kein
+    # lesbares Base32), es haelt die Anmeldung auf, und ueber die Oberflaeche ist es nicht
+    # mehr zu erreichen - der Entfernen-Haken erscheint nur bei einem brauchbaren.
+    geheimnis = (row["totp_secret"] or "").strip().replace(" ", "")
+    if geheimnis:
+        try:
+            import pyotp
+            pyotp.TOTP(geheimnis).now()
+        except Exception:
+            print(f"[vrc_link] unbrauchbares 2FA-Geheimnis bei Konto {schluessel} verworfen")
+            geheimnis = ""
+            try:
+                await db_exec("UPDATE vrc_accounts SET totp_secret='' WHERE guild_id=?",
+                              (schluessel,))
+            except Exception as e:
+                print(f"[vrc_link] konnte es nicht entfernen: {e}")
+
     try:
         from vrchat import login as vrc_login
         result = await vrc_login(
-            row["username"], row["password"], row["totp_secret"],
+            row["username"], row["password"], geheimnis,
             auth_cookie=row["auth_cookie"], two_factor_cookie=row["two_factor_cookie"],
         )
     except Exception as e:
@@ -174,28 +268,86 @@ async def vrc_session() -> dict | None:
         # Schreiboperation anfaellt.
         grund = str(e)[:300]
         print(f"[vrc_link] VRChat session unavailable: {grund}")
+        # Die Aufforderung, einen per E-Mail geschickten Code einzutragen, ist kein
+        # Fehlerzustand, sondern ein naechster Schritt - und einer, den der Hintergrundlauf
+        # ohnehin nicht gehen kann, weil dort niemand etwas eintragen wird. In die Zeile
+        # geschrieben bliebe sie bis zur naechsten gelungenen Anmeldung stehen. Im Log
+        # steht sie weiterhin.
+        if "e-mail" in grund.lower() or "email" in grund.lower():
+            return None
+        # Wie lange Ruhe: bei einer Netzsperre lange, sonst kurz. Ein fehlender Code
+        # loest sich nicht durch Warten, eine Sperre nur dadurch - und jeder weitere
+        # Versuch waehrenddessen verlaengert sie.
+        kurz = grund.lower()
+        if "429" in kurz or "bremst" in kurz or "too many" in kurz or "captcha" in kurz:
+            pause = 60
+        else:
+            pause = 15
+        bis = (datetime.datetime.utcnow()
+               + datetime.timedelta(minutes=pause)).isoformat()
         try:
             if (row["last_error"] or "") != grund:
                 await db_exec(
-                    "UPDATE vrc_accounts SET last_error=?, last_check=? WHERE guild_id=?",
-                    (grund, datetime.datetime.utcnow().isoformat(), VRC_ACCOUNT_KEY))
+                    "UPDATE vrc_accounts SET last_error=?, last_check=?, retry_after=? "
+                    "WHERE guild_id=?",
+                    (grund, datetime.datetime.utcnow().isoformat(), bis, schluessel))
+            else:
+                await db_exec("UPDATE vrc_accounts SET retry_after=? WHERE guild_id=?",
+                              (bis, schluessel))
         except Exception as e2:
             print(f"[vrc_link] konnte den Anmeldefehler nicht vermerken: {e2}")
         return None
-    if not result["reused"]:
-        try:
+    try:
+        if not result["reused"]:
+            # Mit dem Erfolg faellt auch die Bremse: sie soll den naechsten Versuch
+            # verzoegern, nicht einen gelungenen nachtraeglich bestrafen. Und needs_2fa
+            # haelt fest, ob VRChat ueberhaupt einen zweiten Faktor wollte - nur so laesst
+            # sich ein Konto ganz ohne 2FA von einem mit unterscheiden.
             await db_exec(
-                "UPDATE vrc_accounts SET auth_cookie=?, two_factor_cookie=?, last_error='' "
-                "WHERE guild_id=?",
-                (result["auth_cookie"], result["two_factor_cookie"], VRC_ACCOUNT_KEY),
+                "UPDATE vrc_accounts SET auth_cookie=?, two_factor_cookie=?, last_error='', "
+                "retry_after='', needs_2fa=? WHERE guild_id=?",
+                (result["auth_cookie"], result["two_factor_cookie"],
+                 1 if result.get("two_factor") else 0, schluessel),
             )
-        except Exception as e:
-            print(f"[vrc_link] could not store refreshed VRChat session: {e}")
+        elif result["two_factor_cookie"] and \
+                result["two_factor_cookie"] != (row["two_factor_cookie"] or ""):
+            await db_exec("UPDATE vrc_accounts SET two_factor_cookie=?, last_error='', "
+                          "retry_after='' WHERE guild_id=?",
+                          (result["two_factor_cookie"], schluessel))
+        elif row["last_error"]:
+            # Die Anmeldung laeuft - dann hat der alte Fehler nichts mehr zu melden. Vorher
+            # wurde nur beim NEU-Anmelden aufgeraeumt, und das ist der seltene Fall: im
+            # Normalbetrieb wird die Sitzung wiederverwendet. Eine einmal gescheiterte
+            # Anmeldung blieb damit fuer immer rot auf der Seite stehen, obwohl laengst
+            # alles ging - und niemand speichert sein Konto neu, nur damit eine
+            # Fehlermeldung verschwindet.
+            # Geschrieben wird nur, wenn wirklich etwas dasteht, sonst faellt bei jedem
+            # Aufruf eine Schreiboperation an.
+            await db_exec("UPDATE vrc_accounts SET last_error='', retry_after='', "
+                          "last_check=? WHERE guild_id=?",
+                          (datetime.datetime.utcnow().isoformat(), schluessel))
+    except Exception as e:
+        print(f"[vrc_link] could not store refreshed VRChat session: {e}")
     return {"auth_cookie": result["auth_cookie"],
             "two_factor_cookie": result["two_factor_cookie"]}
 
 
-async def resolve_vrchat(name: str) -> tuple:
+async def vrc_session_fuer_guild(guild_id) -> dict | None:
+    """Die Sitzung des Kontos, das DIESER Server benutzt."""
+    return await vrc_session(await vrc_account_for_guild(guild_id))
+
+
+async def _sitzung(guild_id=None) -> dict | None:
+    """Sitzung fuer einen Server, oder die des Standardkontos ohne Angabe.
+
+    Ohne guild_id verhaelt sich alles wie vor den mehreren Konten. Die Funktionen unten
+    reichen den Server durch, wo ihre Aufrufer einen haben - und das haben sie inzwischen
+    alle, auch die oeffentlichen Seiten (ueber den Token am Link).
+    """
+    return await (vrc_session_fuer_guild(guild_id) if guild_id is not None else vrc_session())
+
+
+async def resolve_vrchat(name: str, guild_id=None) -> tuple:
     """Look a typed display name up at VRChat and return the FULL profile.
 
     Returns (status, user) where status is one of:
@@ -211,7 +363,7 @@ async def resolve_vrchat(name: str) -> tuple:
     or keeps still - the profile text is what this flow depends on, so it is read from the endpoint
     that is actually defined to carry it rather than hoped for on the search hit.
     """
-    session = await vrc_session()
+    session = await _sitzung(guild_id)
     if not session:
         return "unavailable", None
     try:
@@ -228,9 +380,9 @@ async def resolve_vrchat(name: str) -> tuple:
     return ("ok", user) if user else ("not_found", None)
 
 
-async def fetch_profile(vrc_user_id: str) -> tuple:
+async def fetch_profile(vrc_user_id: str, guild_id=None) -> tuple:
     """Re-read a known VRChat profile by id. Same (status, user) contract as resolve_vrchat()."""
-    session = await vrc_session()
+    session = await _sitzung(guild_id)
     if not session:
         return "unavailable", None
     try:
@@ -253,7 +405,7 @@ GRUPPENSTAND_TAKT = 600
 GRUPPENSTAND_JE_LAUF = 6
 
 
-async def group_membership(group_id: str, vrc_user_id: str) -> tuple:
+async def group_membership(group_id: str, vrc_user_id: str, guild_id=None) -> tuple:
     """Whether this VRChat account is in the configured group.
 
     Returns (status, member) with status "ok" | "unavailable" and member a bool that only
@@ -263,7 +415,7 @@ async def group_membership(group_id: str, vrc_user_id: str) -> tuple:
     """
     if not group_id or not vrc_user_id:
         return "unavailable", False
-    session = await vrc_session()
+    session = await _sitzung(guild_id)
     if not session:
         return "unavailable", False
     try:
@@ -279,7 +431,7 @@ async def group_membership(group_id: str, vrc_user_id: str) -> tuple:
     return "ok", bool(row)
 
 
-async def send_group_invite(group_id: str, vrc_user_id: str) -> tuple:
+async def send_group_invite(group_id: str, vrc_user_id: str, guild_id=None) -> tuple:
     """Invite one VRChat account into the group.
 
     Returns (status, detail): "sent", "already" (invited or a member already), or "error" with
@@ -290,7 +442,7 @@ async def send_group_invite(group_id: str, vrc_user_id: str) -> tuple:
     """
     if not group_id or not vrc_user_id:
         return "error", "Keine Gruppe oder kein VRChat-Konto hinterlegt."
-    session = await vrc_session()
+    session = await _sitzung(guild_id)
     if not session:
         return "error", "Es ist kein VRChat-Konto verbunden."
     try:
@@ -460,7 +612,7 @@ async def sync_vrc_roles(guild, member: discord.Member, link) -> list:
     if want == had:
         return []
 
-    session = await vrc_session()
+    session = await vrc_session_fuer_guild(guild.id)
     if not session:
         # Ohne Anmeldung bei VRChat passiert hier gar nichts - frueher lautlos, und niemand
         # konnte sehen, warum Rollen ausblieben. Jetzt steht es im Protokoll und auf der
@@ -638,7 +790,7 @@ async def strip_vrc_roles(guild_id, link) -> int:
         hatte = set()
     if not hatte:
         return 0
-    session = await vrc_session()
+    session = await vrc_session_fuer_guild(guild_id)
     if not session:
         # Lieber nichts als ein halbes Ergebnis: die Zeile verschwindet gleich, aber der
         # Vermerk bleibt so wenigstens im Log stehen.
@@ -939,7 +1091,7 @@ async def _announce_instances(bot, guild) -> int:
     if channel is None:
         return 0
 
-    session = await vrc_session()
+    session = await vrc_session_fuer_guild(guild.id)
     if not session:
         return 0
     try:
@@ -1450,7 +1602,7 @@ class VRCLink(commands.Cog):
         automatisch = (await get_guild_config(guild.id, "vrc_auto_invite") or "") == "1"
         for row in offen[:GRUPPENSTAND_JE_LAUF]:
             try:
-                state, is_member = await group_membership(group_id, row["vrc_user_id"])
+                state, is_member = await group_membership(group_id, row["vrc_user_id"], guild.id)
                 if state != "ok":
                     continue
                 if not is_member:
@@ -1477,7 +1629,7 @@ class VRCLink(commands.Cog):
                     # ginge bei jedem Durchgang eine neue Einladung an VRChat, und
                     # wiederholtes Schreiben ist das Muster, das Bot-Konten auffaellig macht.
                     if automatisch and not row["vrc_group_invited"]:
-                        zustand, detail = await send_group_invite(group_id, row["vrc_user_id"])
+                        zustand, detail = await send_group_invite(group_id, row["vrc_user_id"], guild.id)
                         await db_exec(
                             "UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
                             (datetime.datetime.utcnow().isoformat(), row["id"]),
