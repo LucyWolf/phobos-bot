@@ -5429,7 +5429,10 @@ async def vrc_account_save(request: Request):
     from vrchat import login as vrc_login, VRChatError
     # The cached session is only reusable while the username is unchanged; pointing the entry
     # at a different account has to start a real login.
-    same_account = bool(existing and existing["username"] == username)
+    def _gleich(a, b):
+        return (a or "").strip().casefold() == (b or "").strip().casefold()
+
+    same_account = bool(existing and _gleich(existing["username"], username))
     try:
         result = await vrc_login(
             username, password, totp,

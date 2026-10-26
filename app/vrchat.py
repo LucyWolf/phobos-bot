@@ -143,7 +143,8 @@ async def login(username: str, password: str, totp_secret: str = "",
             payload, resp = await _get_user(session, _headers(auth_cookie, two_factor_cookie))
             if resp.status == 200 and payload.get("id"):
                 return {"user": payload, "auth_cookie": auth_cookie,
-                        "two_factor_cookie": two_factor_cookie, "reused": True}
+                        "two_factor_cookie": _cookie_from(resp, "twoFactorAuth")
+                        or two_factor_cookie, "reused": True}
 
         # ── 2. Password login ────────────────────────────────────────────────
         headers = _headers(two_factor_cookie=two_factor_cookie)
@@ -187,6 +188,7 @@ async def login(username: str, password: str, totp_secret: str = "",
                               f"(VRChat sagt: {meldung or 'nichts'})")
 
         new_auth = _cookie_from(resp, "auth") or auth_cookie
+        two_factor_cookie = _cookie_from(resp, "twoFactorAuth") or two_factor_cookie
 
         # ── 3. Two-factor, if this login needs it ────────────────────────────
         if needed:
@@ -256,6 +258,7 @@ async def login(username: str, password: str, totp_secret: str = "",
             # again once the challenge is done.
             payload, resp = await _get_user(session, _headers(new_auth, two_factor_cookie))
             new_auth = _cookie_from(resp, "auth") or new_auth
+            two_factor_cookie = _cookie_from(resp, "twoFactorAuth") or two_factor_cookie
             if resp.status != 200 or not payload.get("id"):
                 raise VRChatError("Nach der Zwei-Faktor-Anmeldung kamen keine Kontodaten zurück.")
 
