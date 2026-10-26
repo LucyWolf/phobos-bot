@@ -5096,20 +5096,23 @@ async def _vrc_apply(guild_id: int, user_id: str, vrchat_name: str, revoke: bool
 
 
 async def _sperre_vermerken(konto: str, status: int, meldung: str) -> str:
-    """Eine von VRChat gemeldete Netzsperre in der Zeile festhalten.
+    """Record a network block VRChat reported, and return the text to show.
 
-    Debug-Bericht und Verbindungstest klopfen selbst bei VRChat an und erfahren damit als
-    erste, dass eine Sperre liegt - haben das aber nur angezeigt und wieder vergessen. Auf
-    der Karte stand derweil der letzte Fehler des Minutenlaufs, der die Ursache gar nicht
-    kennen konnte. Drei Meldungen, von denen keine stimmte.
+    The debug report and the connection test knock at VRChat themselves, so they are the
+    first to learn about a block - but they used to only display it and forget. Meanwhile
+    the card showed the last error of the background run, which cannot know about it.
+    Three messages, none of them right.
 
-    Gibt den Text zurueck, der dem Benutzer gezeigt werden soll, oder "" wenn keine Sperre
-    vorliegt.
+    Returns the text to show the user, or "" when there is no block.
     """
     tief = (meldung or "").lower()
+    # 429 is the plain rate limit; the captcha demand is the same thing wearing a different
+    # hat - VRChat asks for one after too many failed attempts from an address.
     gesperrt = status == 429 or "too many" in tief or "captcha" in tief
     if not gesperrt:
         return ""
+    # An hour is an estimate, not a documented figure - VRChat does not say how long it
+    # holds. Long enough that the block is not kept alive by our own retries.
     bis = datetime.datetime.utcnow() + datetime.timedelta(minutes=60)
     text = (f"VRChat hat zu viele fehlgeschlagene Anmeldungen aus diesem Netz gesehen und "
             f"sperrt es vorübergehend. Das hat nichts mit Passwort oder 2FA zu tun. Der Bot "
@@ -5120,80 +5123,50 @@ async def _sperre_vermerken(konto: str, status: int, meldung: str) -> str:
                       "WHERE guild_id=?",
                       (bis.isoformat(), text, datetime.datetime.utcnow().isoformat(), konto))
     except Exception as e:
+        # Not being able to write it down is no reason to withhold the finding.
         print(f"[vrchat] Sperre nicht vermerkt: {e}")
     return text
 
 
 def _antwort_kurz(data: dict, roh: str) -> str:
-    """Was von einer VRChat-Antwort im Bericht stehen darf.
+    """What of a VRChat response may appear in the report.
 
-    Der Bericht ist zum Kopieren und Weitergeben gedacht. VRChats /auth/user liefert bei
-    einer gelungenen Anmeldung das vollstaendige Kontoprofil - E-Mail-Adresse,
-    Geburtsdatum, Freundesliste, Raeume. Das roh hineinzuschreiben heisst, dass es bei
-    jedem landet, dem der Bericht weitergereicht wird.
+    The report is meant to be copied and passed on. VRChat's /auth/user hands back the
+    complete account profile on a successful sign-in - email address, date joined, friend
+    list, worlds. Writing that in raw means it reaches everyone the report is forwarded to.
 
-    Durchgelassen wird deshalb nur, was die Diagnose braucht. Fehlerantworten sind klein
-    und enthalten nichts weiter als die Meldung - die bleiben vollstaendig.
+    So only what the diagnosis needs gets through. Error responses are small and contain
+    nothing but the message, so those stay whole.
     """
+    # No account id means this is not a profile - an error body, or something unparsable.
+    # Those are short and safe to show as they came.
     if not isinstance(data, dict) or not data.get("id"):
         return roh[:600]
+    # Exactly the fields that answer "who is this and what does VRChat want".
     erlaubt = ("id", "displayName", "requiresTwoFactorAuth", "requiresCaptcha",
                "twoFactorAuthEnabled", "emailVerified", "state")
     teile = [f'"{k}": {_djson.dumps(data[k])}' for k in erlaubt if k in data]
+    # Say how much was held back, so nobody wonders whether the report is truncated.
     weggelassen = len(data) - len(teile)
     rest = f"  (+{weggelassen} weitere Felder nicht angezeigt)" if weggelassen > 0 else ""
     return "{" + ", ".join(teile) + "}" + rest
-
-
-def _antwort_kurz(data: dict, roh: str) -> str:
-    """Was von einer VRChat-Antwort im Bericht stehen darf.
-
-    Der Bericht ist zum Kopieren und Weitergeben gedacht. VRChats /auth/user liefert bei
-    einer gelungenen Anmeldung das vollstaendige Kontoprofil - E-Mail-Adresse,
-    Geburtsdatum, Freundesliste, Raeume. Das roh hineinzuschreiben heisst, dass es bei
-    jedem landet, dem der Bericht weitergereicht wird.
-
-    Durchgelassen wird deshalb nur, was die Diagnose braucht. Fehlerantworten sind klein
-    und enthalten nichts weiter als die Meldung - die bleiben vollstaendig.
-    """
-    if not isinstance(data, dict) or not data.get("id"):
-        return roh[:600]
-    erlaubt = ("id", "displayName", "requiresTwoFactorAuth", "requiresCaptcha",
-               "twoFactorAuthEnabled", "emailVerified", "state")
-    teile = [f'"{k}": {_djson.dumps(data[k])}' for k in erlaubt if k in data]
-    weggelassen = len(data) - len(teile)
-    rest = f"  (+{weggelassen} weitere Felder nicht angezeigt)" if weggelassen > 0 else ""
-    return "{" + ", ".join(teile) + "}" + rest
-
-
-async def _standard_konto() -> str:
-    """Welches Konto gerade die Standardrolle hat.
-
-    Normalerweise VRC_ACCOUNT_KEY. Wird das geloescht, waehrend andere bestehen bleiben,
-    uebernimmt das erste verbliebene - sonst zeigten alle Server ohne eigene Wahl auf eine
-    Zeile, die es nicht mehr gibt.
-    """
-    alle = await vrc_accounts_list()
-    if not alle or any(r["guild_id"] == VRC_ACCOUNT_KEY for r in alle):
-        return VRC_ACCOUNT_KEY
-    gesetzt = (await get_config("vrc_standard_konto") or "").strip()
-    if gesetzt and any(r["guild_id"] == gesetzt for r in alle):
-        return gesetzt
-    return alle[0]["guild_id"]
 
 
 def _geheimnis_taugt(roh: str) -> bool:
-    """Laesst sich aus dieser Zeichenfolge wirklich ein Code rechnen?
+    """Can a code actually be computed from this string?
 
-    Die blosse Anwesenheit sagt nichts: was nicht als Base32 lesbar ist, erzeugt beim
-    Anmelden eine Ausnahme statt eines Codes. Die Seite haette sonst "Haelt dauerhaft"
-    gemeldet, waehrend die Anmeldung jedes Mal scheitert.
+    Mere presence says nothing: anything that is not readable base32 raises when signing
+    in instead of producing a code. The page would otherwise report "lasts indefinitely"
+    while every sign-in fails.
     """
+    # VRChat shows the secret in groups of four; the spaces are display only.
     roh = (roh or "").strip().replace(" ", "")
     if not roh:
         return False
     try:
         import pyotp
+        # Computing one is the only honest test - a format check would have to repeat
+        # pyotp's own rules and would drift away from them.
         pyotp.TOTP(roh).now()
         return True
     except Exception:
@@ -5202,69 +5175,67 @@ def _geheimnis_taugt(roh: str) -> bool:
 
 @web.get("/settings/vrchat", response_class=HTMLResponse)
 async def vrchat_settings_page(request: Request, error: str = "", success: str = ""):
-    """The installation-wide VRChat bot account, alongside the other global settings.
+    """The VRChat bot accounts of this installation, as cards.
 
-    Not in a server's own tab: the bot signs in as ONE account for everything it does, so
-    asking for it per server would mean typing the same credentials again and again - and
-    VRChat counting each one as another login. Same arrangement as the Streaming-API page,
-    which holds the Twitch apps that every server's settings then draw on.
+    Not inside a guild's own tab: an account can serve several guilds, and asking for the
+    credentials per guild would mean typing them again and again - with VRChat counting
+    each one as another sign-in. Same arrangement as the Streaming-API page, which holds
+    the Twitch apps every guild's settings then draw on.
     """
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
 
-    # Die ganze Liste statt einer Zeile. Das Standardkonto steht vorn - es ist das, auf das
-    # jeder Server ohne eigene Zuweisung zugreift, und gehoert deshalb nach oben.
-    # Welches Konto faktisch Standard ist. Normalerweise VRC_ACCOUNT_KEY - ist das aber
-    # geloescht worden, uebernimmt das erste verbliebene, und dann muss auch das Abzeichen
-    # dort stehen. Sonst traegt keine Karte eines, waehrend ein Konto die Rolle hat.
+    # Every account, default first. The list drives both the cards and everything derived
+    # below, so it is fetched once.
     _alle = await vrc_accounts_list()
+    # Which one currently holds the default role - normally VRC_ACCOUNT_KEY, but a
+    # recorded successor once that row is gone.
     _standard = await vrc_standard_konto()
 
     konten = []
     for _row in _alle:
         _e = dict(_row)
-        # Was die Seite wissen muss, ist OB ein Geheimnis liegt - nie welches. Dasselbe gilt
-        # fuer Passwort und Kekse: die verlassen den Server nicht.
-        # Nicht nur "da", sondern "brauchbar": ein kaputtes Geheimnis aus einer aelteren
-        # Fassung darf nicht als dauerhafte Anmeldung durchgehen.
-        # Dauerhaft haelt die Anmeldung auf zwei Wegen: mit brauchbarem Geheimnis rechnet
-        # sich der Bot die Codes selbst aus - oder das Konto verlangt gar keinen zweiten
-        # Faktor, dann ist nichts zu erneuern. Nur den ersten zu pruefen hat bei einem
-        # Konto ohne 2FA faelschlich "laeuft monatlich ab" gemeldet.
-        # Aus aelteren Fassungen koennen solche Aufforderungen noch in der Zeile stehen.
-        # Sie gehoeren dort nicht hin und bekommt man sonst nur mit einer gelungenen
-        # Anmeldung weg - also hier beim Hinsehen verwerfen.
+
+        # An unusable secret from an older version may still be sitting in the row. It
+        # blocks every sign-in - vrchat.login() aborts on it before it even offers the
+        # route via a typed code - and used to be cleared only by vrc_session(), which
+        # touches VRChat solely when a guild has a sync interval set. With all of them at
+        # zero, the default, nothing ever came by. So it is discarded here, where somebody
+        # is looking.
         _alt_text = (_e.get("last_error") or "")
         if "e-mail" in _alt_text.lower() or "email" in _alt_text.lower():
+            # A prompt to enter an emailed code is not a fault but a next step. In the row
+            # it would sit until the next successful sign-in - that is, exactly while none
+            # is happening.
             try:
                 await db_exec("UPDATE vrc_accounts SET last_error='' WHERE guild_id=?",
                               (_e["guild_id"],))
                 _e["last_error"] = ""
             except Exception as _ex:
                 print(f"[vrchat] E-Mail-Aufforderung nicht verworfen: {_ex}")
+
+        # Is a usable secret stored? Decides the badge, the placeholder and which side of
+        # the switch is preselected.
         _e["geheimnis_da"] = _geheimnis_taugt(_e.get("totp_secret") or "")
-        # Weggeraeumt wurde ein unbrauchbares Geheimnis bisher nur in vrc_session() - und
-        # die laeuft im Hintergrund NUR, wenn fuer einen Server ein Abgleichintervall
-        # gesetzt ist. Steht ueberall 0 (der Standard), kam der Aufraeumer nie vorbei: die
-        # Zeichenfolge blieb liegen, blockierte jede Anmeldung und die Fehlermeldung dazu
-        # fror ein. Deshalb auch hier, wo jemand hinsieht.
         if (_e.get("totp_secret") or "").strip() and not _e["geheimnis_da"]:
+            # Present but unusable: discard it, for the same reason as above.
             try:
                 await db_exec("UPDATE vrc_accounts SET totp_secret='' WHERE guild_id=?",
                               (_e["guild_id"],))
                 print(f"[vrchat] unbrauchbares 2FA-Geheimnis bei {_e['guild_id']} verworfen")
             except Exception as _ex:
                 print(f"[vrchat] konnte es nicht verwerfen: {_ex}")
+
+        # The account needs no second factor at all - established by a successful sign-in,
+        # never assumed. Only meaningful without a secret; with one the other path applies.
         _e["ohne_2fa"] = (not _e["geheimnis_da"]) and _e.get("needs_2fa") == 0
-        # Haelt die Anmeldung ohne Zutun? Entweder weil ein brauchbares Geheimnis
-        # hinterlegt ist, oder weil das Konto gar keinen zweiten Faktor verlangt. Hiess
-        # frueher hat_geheimnis und meinte beides - zwei Bedeutungen, ein Name.
+        # Does the sign-in hold without anyone doing anything? Either because a usable
+        # secret is stored, or because the account asks for no second factor.
         _e["haelt_dauerhaft"] = _e["geheimnis_da"] or _e["ohne_2fa"]
-        # Wann der Fehler entstand. Ohne diese Angabe sieht eine Meldung von vor einer
-        # Stunde genauso aus wie eine von gerade eben - und man sucht nach einer Ursache,
-        # die laengst behoben ist. Genau so ist hier stundenlang am falschen Ende gesucht
-        # worden: auf der Karte stand ein 2FA-Fehler, waehrend das Konto schon gar kein
-        # 2FA mehr verlangte.
+
+        # When the stored error happened. Without it a message from an hour ago looks
+        # exactly like one from a moment ago, and people go hunting for a cause that is
+        # long gone - which is how an entire evening was spent at the wrong end.
         _e["fehler_zeit"] = ""
         _e["fehler_alt"] = False
         _rohz = (_e.get("last_check") or "").strip()
@@ -5275,7 +5246,10 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
                 _e["fehler_alt"] = (datetime.datetime.utcnow() - _z
                                     ) > datetime.timedelta(minutes=10)
             except ValueError:
+                # An unreadable timestamp is no reason to drop the page.
                 pass
+
+        # Until when sign-in attempts are paused. Only shown while it is still ahead of us.
         _e["pause_bis"] = ""
         _roh = (_e.get("retry_after") or "").strip()
         if _roh:
@@ -5285,25 +5259,41 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
                     _e["pause_bis"] = _bis.strftime("%H:%M")
             except ValueError:
                 pass
+
         _e["anzeige"] = vrc_account_name(_row)
         _e["ist_standard"] = (_e["guild_id"] == _standard)
+        # Did an older version leave its "username or password was rejected" behind? That
+        # claim is wrong often enough to be worth flagging rather than repeating.
         _e["veraltete_meldung"] = "Benutzername oder Passwort wurde von VRChat abgelehnt" in (
             _e.get("last_error") or "")
+        # Password, secret and cookies stay on the server. The page only needs to know
+        # THAT something is stored, never what.
         for _geheim in ("password", "totp_secret", "auth_cookie", "two_factor_cookie"):
             _e[_geheim] = ""
         konten.append(_e)
 
-    # Welche Server welches Konto benutzen - damit vor dem Loeschen sichtbar ist, wen es
-    # trifft, statt es hinterher zu merken.
+    # Which guilds use which account - so it is visible who a deletion would affect,
+    # rather than being noticed afterwards.
     _zuord, _zuord_ids = {}, {}
     try:
+        # All assignments in one query. Asking vrc_account_for_guild() per guild was two
+        # queries each - over a hundred for a page with fifty guilds. The fallback rule is
+        # the same one it applies: an empty or unknown assignment means the default.
+        _zuweisungen = {
+            str(_r["guild_id"]): (_r["value"] or "").strip()
+            for _r in await db_rows(
+                "SELECT guild_id, value FROM guild_configs WHERE key='vrc_account'")}
+        _vorhanden = {_r["guild_id"] for _r in _alle}
         for _g in await _guild_list(request):
-            _konto_des_servers = await vrc_account_for_guild(_g["id"])
+            _wahl = _zuweisungen.get(str(_g["id"]), "")
+            _konto_des_servers = _wahl if (_wahl and _wahl in _vorhanden) else _standard
             _zuord.setdefault(_konto_des_servers, []).append(_g["name"])
             _zuord_ids[str(_g["id"])] = _konto_des_servers
     except Exception as e:
+        # The assignment is extra information; without it the page still works.
         print(f"[vrchat] Zuordnung der Server nicht ermittelbar: {e}")
-    # Fuer die Kaestchen an jeder Karte: alle Server, und je Konto die, die darauf stehen.
+
+    # For the tick boxes on each card: every guild, and per account the ones on it.
     try:
         _alle_server = [{"id": str(_g["id"]), "name": _g["name"]}
                         for _g in await _guild_list(request)]
@@ -5326,98 +5316,111 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
 
 @web.post("/settings/vrchat/save")
 async def vrc_account_save(request: Request):
-    """Store the VRChat bot account and immediately try to sign in with it.
+    """Store a VRChat bot account and immediately try to sign in with it.
 
     Testing right here rather than offering a separate button: credentials that are only
     checked the first time something needs them fail hours later, in a background task, where
     the person who typed them is no longer looking.
     """
-    # Admin-only rather than per-server: this one account serves the whole installation, so a
-    # moderator of a single server must not be able to point it somewhere else - or read the
-    # result of trying.
+    # Admin-only, not per-server: one account can serve every guild, so a moderator of a
+    # single guild must not be able to point it elsewhere - or read the result of trying.
     if r := admin_redirect(request): return r
+
+    # Read the submitted form once; everything below works off this snapshot.
     form = await request.form()
+
+    # The VRChat login name. Trimmed because leading spaces are always a typo here, and
+    # capped so an oversized field cannot be written to the database or sent to VRChat.
     username = (form.get("vrc_username") or "").strip()[:200]
-    # Nicht gestrippt: ein Passwort darf vorne oder hinten ein Leerzeichen haben, und VRChat
-    # nimmt es dann auch so an. Wegschneiden heisst hier "Passwort falsch" bei einem Passwort,
-    # das im Browser einwandfrei funktioniert.
+
+    # The password, NOT trimmed: a password may legitimately start or end with a space and
+    # VRChat accepts it that way. Trimming turned a password that works in the browser into
+    # "wrong password" here.
     password = (form.get("vrc_password") or "")[:500]
-    # Das 2FA-Geheimnis ist der einzige Weg zu einer Anmeldung, die nicht nach etwa einem
-    # Monat ausfaellt: vrc_session() in cogs/vrc_link.py erneuert damit selbsttaetig, weil
-    # der Bot sich die Codes dann selbst ausrechnen kann. Ohne Geheimnis haelt nur VRChats
-    # twoFactorAuth-Keks, und danach muss jemand von Hand einen Code eintippen.
-    #
-    # Das Feld war zwischenzeitlich aus dem Formular genommen - die Erneuerung lief
-    # unveraendert weiter und las eine Spalte, die nichts mehr fuellen konnte. Schlimmer:
-    # gespeichert wurde hart "", womit jedes Speichern ein vorhandenes Geheimnis geloescht
-    # hat. Eine Installation, die vorher monatelang allein lief, brauchte danach jeden Monat
-    # Handarbeit - ohne dass sich etwas Sichtbares geaendert haette.
+
+    # The 2FA secret. With it stored, vrc_session() in cogs/vrc_link.py renews the sign-in
+    # on its own because the bot can compute the codes itself - that is the only way a
+    # sign-in lasts beyond VRChat's roughly monthly cookie. Spaces are stripped because
+    # VRChat displays the secret in groups of four.
     totp = (form.get("vrc_totp_secret") or "").strip().replace(" ", "")[:200]
-    # Typed in for this one login. Never written to the database - it is valid for about thirty
-    # seconds, so keeping it would be storing nothing useful.
+
+    # A code typed in for this one sign-in. Never written to the database: it is valid for
+    # about thirty seconds, so keeping it would store nothing useful.
     one_time = (form.get("vrc_code") or "").strip().replace(" ", "")[:16]
-    # Welches Konto bearbeitet wird. Leer heisst "ein neues anlegen"; der allererste bekommt
-    # VRC_ACCOUNT_KEY, damit eine frische Installation genau die Zeile hat, auf die alles
-    # ohne eigene Zuweisung zugreift.
+
+    # Which account row is being edited. Empty means "create a new one".
     konto = (form.get("vrc_konto") or "").strip()
+
+    # The display name for the list. Collapses runs of whitespace so an all-space label
+    # ends up empty rather than looking like a name made of nothing.
     label = " ".join((form.get("vrc_label") or "").split())[:60]
+
     if not konto:
+        # Creating: find out whether this installation has any account at all.
         vorhanden = await vrc_accounts_list()
-        # VRC_ACCOUNT_KEY bekommt nur das ALLERERSTE Konto einer Installation. Geprueft
-        # wurde vorher, ob gerade kein Konto diesen Schluessel traegt - nach dem Loeschen
-        # des Standardkontos war er damit wieder frei, und der naechste angelegte Bot
-        # bekam ihn. Weil jeder Server ohne eigene Wahl auf diesen Schluessel zugreift,
-        # hat ein frisch angelegter Bot auf diese Weise stillschweigend alle Server
-        # uebernommen, die vorher auf ein anderes Konto zeigten.
         if not vorhanden:
+            # The very first account of an installation gets VRC_ACCOUNT_KEY, because every
+            # guild without a choice of its own falls back to exactly that key.
             konto = VRC_ACCOUNT_KEY
         else:
-            # Eigener Schluessel, der mit keiner Discord-Kennung kollidiert: die sind
-            # Snowflakes und damit immer rein numerisch.
+            # Every later account gets a key of its own. Checking "is VRC_ACCOUNT_KEY free"
+            # instead was a bug: after deleting the default account the key was free again,
+            # so the next account created silently inherited every guild that had no choice
+            # of its own. Hex, prefixed, so it can never collide with a Discord snowflake.
             konto = "vrc_" + secrets.token_hex(6)
+
+    # The row as it currently stands - None when creating. Everything below compares
+    # against it to decide what "leave it alone" means.
     existing = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (konto,))
-    # An empty password field means "leave it alone" - the form never renders the stored one
-    # back into the page, so clearing the box would otherwise wipe the password every time
-    # somebody corrects a typo in the username.
+
+    # An empty password box means "keep the stored one". The page never renders the saved
+    # password back, so clearing the box would otherwise wipe it on every typo fix.
     if not password.strip() and existing:
         password = existing["password"]
-    # Leer heisst auch hier "so lassen" - die Seite zeigt das gespeicherte Geheimnis nie an,
-    # ein leeres Feld waere sonst bei jedem Tippfehler im Benutzernamen ein Loeschbefehl.
+
+    # Same for the secret: the page never shows it, so an empty box is not a delete command.
     if not totp and existing:
         totp = existing["totp_secret"] or ""
-    # Womit sich der Bot anmeldet - ein echtes Entweder-Oder. "geheimnis": er rechnet die
-    # Codes selbst aus und die Anmeldung haelt dauerhaft. "code": kein Geheimnis, VRChat
-    # fragt bei Bedarf nach einem Code. Fehlt die Angabe (altes Formular, fremder Aufruf),
-    # bleibt es beim bisherigen Zustand des Kontos - umgestellt wird nur, wenn es jemand
-    # ausdruecklich sagt.
+
+    # How the bot signs in - a genuine either/or. "geheimnis": it computes the codes from a
+    # stored secret and the sign-in lasts indefinitely. "code": no secret, VRChat asks for a
+    # code when it needs one.
     modus = (form.get("vrc_modus") or "").strip()
+
+    # Whether the form carried a secret. Note this reads the FORM, not `totp` - by now that
+    # may hold the stored one.
     getipptes_geheimnis = bool((form.get("vrc_totp_secret") or "").strip())
+
     if modus not in ("geheimnis", "code"):
+        # No usable choice submitted (an older form, or a request from elsewhere).
         if getipptes_geheimnis:
+            # Somebody typed a secret - that is the intent, whatever else is missing.
             modus = "geheimnis"
         else:
+            # Otherwise keep whatever this account already does; nothing is switched over
+            # unless it was asked for.
             modus = "code" if (existing and not (existing["totp_secret"] or "").strip()) \
                 else "geheimnis"
+
     if modus == "code":
-        # Beim Umschalten faellt das Geheimnis weg: es gehoert zum anderen Weg, und stehen
-        # zu lassen hiesse, der Bot rechnet weiter Codes aus, waehrend die Seite sagt, dass
-        # von Hand eingetragen wird. Ohne Ausnahme fuer ein mitgeschicktes Feld: ein
-        # zugeklapptes Eingabefeld wird vom Browser trotzdem abgeschickt, es genuegte also
-        # einmal Tippen und dann Umschalten.
+        # Drop the secret: it belongs to the other way. Keeping it would mean the bot goes
+        # on computing codes while the page says they are entered by hand. No exception for
+        # a secret that came along with the request - a collapsed input is still submitted
+        # by the browser, so typing one and then switching would otherwise keep it.
         totp = ""
-        # Ein gespeicherter Fehler, der sich um den zweiten Faktor dreht, ist mit dieser
-        # Ansage erledigt. Stehen zu lassen hiesse: der Betreiber sagt "kein 2FA", und die
-        # Seite widerspricht ihm weiter mit einer Meldung von vorhin.
+        # A stored error about the second factor is moot once the operator says there is
+        # none. Leaving it would have the page contradict them with a message from before.
         if existing and "2fa" in (existing["last_error"] or "").lower():
             try:
                 await db_exec("UPDATE vrc_accounts SET last_error='' WHERE guild_id=?",
                               (konto,))
             except Exception as _ex:
                 print(f"[vrchat] alten 2FA-Fehler nicht entfernt: {_ex}")
-    # Unbrauchbares gar nicht erst annehmen. Vorher landete jede Zeichenfolge in der
-    # Datenbank, die Karte meldete daraufhin "Haelt dauerhaft" - und die Anmeldung scheiterte
-    # trotzdem jedes Mal, weil sich daraus kein Code rechnen laesst. Zwei Angaben, die sich
-    # widersprechen, sind schlimmer als eine fehlende.
+
+    # Reject an unusable secret before it reaches the database. Previously any string was
+    # stored, the card then claimed "lasts indefinitely", and every sign-in failed anyway
+    # because no code can be derived from it. Two statements that contradict each other are
+    # worse than one that is missing.
     if totp:
         try:
             import pyotp
@@ -5429,13 +5432,16 @@ async def vrc_account_save(request: Request):
                     "beim Einrichten neben dem QR-Code steht — Buchstaben A–Z und Ziffern "
                     "2–7, keine 0, 1 oder 8. Gespeichert wurde nichts."),
                 status_code=302)
+
+    # Without both of these there is nothing to try, and an empty row would only confuse.
     if not username or not password.strip():
         return RedirectResponse(
             f"/settings/vrchat?error=Benutzername+und+Passwort+erforderlich",
             status_code=302)
-    # Zweimal dasselbe VRChat-Konto anzulegen hilft niemandem: es waeren zwei Karten mit
-    # denselben Zugangsdaten, zwei getrennte Sitzungen auf demselben Konto - und damit
-    # doppelt so viele Anmeldungen, also genau das, was VRChats Sperre ausloest.
+
+    # Two rows for the same VRChat user would mean two sessions on one account, hence twice
+    # the sign-ins - which is exactly what triggers VRChat's rate limiting. The account
+    # being edited is excluded, otherwise every save would be a duplicate of itself.
     doppelt = await db_one(
         "SELECT guild_id FROM vrc_accounts WHERE LOWER(username)=LOWER(?) AND guild_id<>?",
         (username, konto))
@@ -5447,13 +5453,20 @@ async def vrc_account_save(request: Request):
             status_code=302)
 
     from vrchat import login as vrc_login, VRChatError
-    # The cached session is only reusable while the username is unchanged; pointing the entry
-    # at a different account has to start a real login.
+
+    # Compares case- and whitespace-insensitively. A different spelling used to count as a
+    # different account, which threw both cookies away - VRChat then saw a brand new sign-in
+    # and asked for a code again.
     def _gleich(a, b):
         return (a or "").strip().casefold() == (b or "").strip().casefold()
 
+    # Only the same VRChat user may reuse the stored session. Pointing the row at another
+    # account has to start a real sign-in.
     same_account = bool(existing and _gleich(existing["username"], username))
+
     try:
+        # The actual sign-in. Returns a reused session where possible, and carries VRChat's
+        # cookies plus whether a second factor was involved.
         result = await vrc_login(
             username, password, totp,
             auth_cookie=existing["auth_cookie"] if same_account else "",
@@ -5461,17 +5474,13 @@ async def vrc_account_save(request: Request):
             one_time_code=one_time,
         )
     except VRChatError as e:
-        # Wer keinen E-Mail-Code erwartet, will die Meldung dazu auch nicht auf der Karte
-        # kleben haben. Sie steht trotzdem einmal oben in der Umleitung - was gerade
-        # passiert ist, soll man sehen; was dauerhaft gilt, gehoert in die Zeile. Bisher
-        # wurde sie hier festgeschrieben und blieb bis zur naechsten gelungenen Anmeldung
-        # stehen; der Haken wirkte nur im Hintergrundlauf.
-        # Die Aufforderung, einen per E-Mail geschickten Code einzutragen, ist kein
-        # Fehlerzustand, sondern ein naechster Schritt. Sie steht einmal oben in der
-        # Umleitung und wird NICHT in die Zeile geschrieben - dort bliebe sie bis zur
-        # naechsten gelungenen Anmeldung stehen, auch bei jemandem, der diesen Weg gar
-        # nicht geht. Das galt bisher nur mit gesetztem Haken; jetzt immer.
+        # The sign-in was refused. The credentials are still stored - they are what the
+        # operator just entered, and losing them on every failed attempt would mean typing
+        # them again each time.
         _text = str(e)[:500]
+        # One exception: the prompt to enter an emailed code is not a fault, it is the next
+        # step. Written into the row it would sit there until the next successful sign-in -
+        # that is, exactly while none is happening. It still shows once in the redirect.
         if "e-mail" in _text.lower() or "email" in _text.lower():
             _text = ""
         await db_exec(
@@ -5484,9 +5493,13 @@ async def vrc_account_save(request: Request):
             "auth_cookie=excluded.auth_cookie, two_factor_cookie=excluded.two_factor_cookie",
             (konto, username, password, totp,
              datetime.datetime.utcnow().isoformat(), _text, label,
+             # Whether the account needs a second factor is something only a successful
+             # sign-in establishes. Writing a guess here would undo a measurement.
              existing["needs_2fa"] if existing else 1,
              existing["needs_email"] if existing else 1,
-             # Kekse nur behalten, solange es dasselbe VRChat-Konto ist.
+             # Keep the cookies only while this is still the same VRChat account. Pointing
+             # the row at another one and failing used to leave the old session behind -
+             # the next attempt then matched by name and sent a stranger's cookies along.
              existing["auth_cookie"] if (existing and same_account) else "",
              existing["two_factor_cookie"] if (existing and same_account) else ""),
         )
@@ -5494,13 +5507,14 @@ async def vrc_account_save(request: Request):
             f"/settings/vrchat?error={urllib.parse.quote_plus(str(e))}",
             status_code=302)
     except Exception as e:
-        # A network failure, a DNS hiccup, VRChat handing back something unparseable - none of
-        # it should surface as a 500 on a page the admin is mid-way through filling in.
+        # A network failure, a DNS hiccup, VRChat handing back something unparseable - none
+        # of it should surface as a 500 on a page somebody is mid-way through filling in.
         print(f"[vrchat] unexpected error during login as {username!r}: {e!r}")
         return RedirectResponse(
             f"/settings/vrchat?error=VRChat+war+nicht+erreichbar",
             status_code=302)
 
+    # From here the sign-in worked. VRChat's own account data tells us who it actually is.
     user = result["user"]
     await db_exec(
         "INSERT INTO vrc_accounts (guild_id, username, password, totp_secret, auth_cookie, "
@@ -5515,14 +5529,15 @@ async def vrc_account_save(request: Request):
         (konto, username, password, totp, result["auth_cookie"],
          result["two_factor_cookie"], str(user.get("id") or ""),
          str(user.get("displayName") or ""), datetime.datetime.utcnow().isoformat(), label,
+         # Now it is measured rather than assumed: VRChat either asked for a second factor
+         # during this sign-in or it did not.
          1 if result.get("two_factor") else 0,
          1),
     )
     who = urllib.parse.quote_plus(str(user.get("displayName") or username))
-    # Mit Geheimnis erneuert der Bot selbst, ohne haengt die Sitzung an VRChats
-    # twoFactorAuth-Keks und faellt nach etwa einem Monat aus. Der Unterschied wird jedes Mal
-    # gesagt: eine Verbindung, die in vier Wochen stillschweigend aufhoert und niemand weiss
-    # warum, ist das schlechteste Ende fuer diese Seite.
+    # Said on every save, because the difference decides whether anyone has to come back:
+    # with a secret the bot renews by itself, without one VRChat's cookie runs out in about
+    # a month and the connection stops with nobody knowing why.
     if totp:
         msg = f"Verbunden+als+{who}+—+die+Anmeldung+hält+dauerhaft"
     else:
@@ -5533,30 +5548,38 @@ async def vrc_account_save(request: Request):
 
 @web.post("/settings/vrchat/test")
 async def vrc_account_test(request: Request):
-    """Haelt die gespeicherte Anmeldung noch? Ohne Anmeldeversuch.
+    """Is the stored sign-in still good? Without attempting one.
 
-    Fragt nur mit dem gespeicherten Keks nach, wem die Sitzung gehoert. Das zaehlt bei
-    VRChat nicht als Anmeldung und kann deshalb keine Sperre ausloesen - im Gegensatz zum
-    vollen Debug-Bericht, der zum Schluss einmal mit Passwort anklopft. Genau dafuer gibt
-    es den Knopf getrennt: "laeuft es noch" ist die haeufigere Frage und darf nichts kosten.
+    Only asks, with the stored cookie, who the session belongs to. VRChat does not count
+    that as a sign-in, so it cannot trigger a block - unlike the full debug report, which
+    knocks once with the password at the end. That is why this is a button of its own:
+    "is it still up" is the more frequent question and must cost nothing.
     """
+    # Admin-only, same reason as saving: this account serves the whole installation.
     if r := admin_redirect(request): return r
 
+    # Imported here rather than at module level so a missing VRChat module cannot keep the
+    # dashboard from starting.
     import aiohttp
     from vrchat import API_BASE, TIMEOUT, _headers
 
+    # Which account to check. Falls back to the default key so an older form still works.
     form = await request.form()
     konto = (form.get("konto") or VRC_ACCOUNT_KEY).strip() or VRC_ACCOUNT_KEY
     row = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (konto,))
     if not row:
         return JSONResponse({"ok": False, "text": "Kein Konto hinterlegt."})
     if not row["auth_cookie"]:
+        # No stored session means there is nothing to check without signing in - and that
+        # is what the debug report is for.
         return JSONResponse({"ok": False, "text":
             "Keine gespeicherte Sitzung. Zum Prüfen müsste sich der Bot neu anmelden — "
             "dafür unten den Debug-Bericht nehmen."})
 
     try:
         async with aiohttp.ClientSession() as s_http:
+            # /auth/user with the stored cookies: returns the account when the session is
+            # still valid, and an error when it is not.
             async with s_http.get(
                     f"{API_BASE}/auth/user",
                     headers=_headers(row["auth_cookie"], row["two_factor_cookie"]),
@@ -5564,14 +5587,21 @@ async def vrc_account_test(request: Request):
                 try:
                     data = await r.json(content_type=None)
                 except Exception:
+                    # Not JSON - treat it as "nothing usable came back" rather than raising.
                     data = {}
                 if r.status == 200 and data.get("id"):
+                    # Session is alive. Prefer VRChat's current display name; it may have
+                    # changed since the row was written.
                     name = data.get("displayName") or row["vrc_display_name"] or "?"
-                    # Der gespeicherte Fehler ist mit einer lebenden Sitzung ueberholt -
-                    # sonst steht der rote Kasten noch da, waehrend alles laeuft.
                     from vrchat import _cookie_from
+                    # VRChat renews the twoFactorAuth cookie even on a plain query.
+                    # Dropping it would let the stored one expire while a fresh one was
+                    # handed over - and then VRChat asks for a code again.
                     _neuer = _cookie_from(r, "twoFactorAuth")
                     await db_exec(
+                        # The brake is moot while the session runs: it is meant to delay
+                        # the next sign-in attempt, and none is needed. Left standing, the
+                        # card reported "paused" while everything was fine.
                         "UPDATE vrc_accounts SET last_error='', retry_after='', "
                         "last_check=?, vrc_display_name=?, vrc_user_id=?, "
                         "two_factor_cookie=? WHERE guild_id=?",
@@ -5580,6 +5610,9 @@ async def vrc_account_test(request: Request):
                          _neuer or row["two_factor_cookie"], konto))
                     return JSONResponse({"ok": True, "text":
                         f"Verbunden als {name}. Die Anmeldung läuft."})
+                # Not a valid session. Before blaming the cookie, check whether VRChat is
+                # rate-limiting this network - that reads the same from here but means
+                # something entirely different.
                 from vrchat import _api_meldung
                 sperre = await _sperre_vermerken(konto, r.status, _api_meldung(data))
                 if sperre:
@@ -5589,23 +5622,24 @@ async def vrc_account_test(request: Request):
                     f"VRChat lässt eine Sitzung etwa einen Monat gelten — oben einen "
                     f"neuen Code eintragen und speichern."})
     except Exception as e:
+        # Network trouble, DNS, a hung connection: say so plainly instead of failing the
+        # request. The type alone is enough here; the detail would only be noise.
         return JSONResponse({"ok": False, "text":
             f"VRChat war nicht erreichbar ({type(e).__name__})."})
 
 
 @web.post("/settings/vrchat/debug")
 async def vrc_account_debug(request: Request):
-    """Sagt, WARUM die Anmeldung scheitert - als Text zum Kopieren.
+    """Says WHY the sign-in fails - as text to copy.
 
-    Gebaut, weil die Seite vorher bei jedem abgelehnten Login "Benutzername oder Passwort
-    wurde abgelehnt" behauptete. VRChat antwortet mit demselben 401 aber auch bei
-    Captcha-Pflicht und bei einer Sperre nach zu vielen Versuchen; der Antworttext sagt,
-    welches davon es ist. Ein Betreiber hat deshalb tagelang ein Passwort geprueft, das die
-    ganze Zeit richtig war.
+    Built because the page used to claim "username or password was rejected" on every
+    refusal. VRChat answers with that same 401 for a captcha demand and for a block after
+    too many attempts; only the response body says which it is. An operator spent days
+    checking a password that had been right the whole time.
 
-    Macht hoechstens EINEN Anmeldeversuch: jeder weitere verlaengert eine moegliche Sperre.
-    Die gespeicherte Sitzung wird vorher getestet, weil die nichts kostet - lebt sie, liegt
-    es ohnehin nicht an den Zugangsdaten. Passwort, Geheimnis und Kekse stehen nicht drin.
+    Makes at most ONE sign-in attempt: every further one extends a possible block. The
+    stored session is checked first because that costs nothing - if it is alive, the
+    credentials are not the problem anyway. Password, secret and cookies are left out.
     """
     if r := admin_redirect(request): return r
 
@@ -5628,8 +5662,8 @@ async def vrc_account_debug(request: Request):
     pw = (row["password"] or "")
 
     # ── 1. Was hinterlegt ist ────────────────────────────────────────────────
-    # Ohne Passwort, aber mit allem, woran man ein falsch eingetragenes erkennt: Laenge,
-    # Leerzeichen am Rand, Nicht-ASCII. Genau diese drei faellt beim Hinsehen niemandem auf.
+    # No password, but everything that gives away a mistyped one: length, edge spaces,
+    # non-ASCII. Those three are exactly what nobody spots by looking.
     z.append("── 1. Hinterlegtes Konto ──")
     z.append(f"  Benutzername:    {user!r}")
     if "@" in user:
@@ -5654,9 +5688,9 @@ async def vrc_account_debug(request: Request):
 
     async with aiohttp.ClientSession() as s_http:
         # ── 2. Welche Adresse sieht VRChat ───────────────────────────────────
-        # Eine Captcha-Sperre haengt an der Adresse, nicht am Konto. Deshalb kann dasselbe
-        # Konto im Browser zu Hause laufen und hier abgelehnt werden - das ist der Punkt,
-        # der von aussen nie zu sehen ist.
+        # A captcha block attaches to the address, not the account. That is why the same
+        # account can work in a browser at home and be refused here - the one thing that
+        # is never visible from outside.
         z.append("── 2. Adresse dieses Servers (VRChat sperrt pro Adresse) ──")
         try:
             async with s_http.get("https://api.ipify.org",
@@ -5667,10 +5701,10 @@ async def vrc_account_debug(request: Request):
         z.append("")
 
         # ── 2b. Ist die Schnittstelle ueberhaupt offen? ──────────────────────
-        # /config verlangt keine Anmeldung und zaehlt deshalb auch nicht als Fehlversuch.
-        # Der Abschnitt trennt zwei Faelle, die sich sonst gleich anfuehlen: eine Sperre,
-        # die nur den Anmeldeweg trifft - oder eine, die diese Adresse ganz aussperrt.
-        # Nach drei Stunden immer noch 429 heisst naemlich nicht mehr "kurz warten".
+        # /config needs no sign-in and therefore does not count as a failed attempt. This
+        # section separates two cases that otherwise feel identical: a block that only hits
+        # the sign-in route, or one that shuts this address out entirely. Still 429 after
+        # three hours does not mean "wait a moment" any more.
         z.append("── 2b. Schnittstelle ohne Anmeldung (/config) ──")
         try:
             async with s_http.get(f"{API_BASE}/config",
@@ -5692,8 +5726,8 @@ async def vrc_account_debug(request: Request):
             z.append("    Server. Alles Weitere unten ist dann ohne Aussage.")
         z.append("")
 
-        # Ohne Anmeldung, aber MIT dem gespeicherten Keks: antwortet VRChat hier anders,
-        # liegt es am Keks und nicht an der Adresse.
+        # No sign-in, but WITH the stored cookie: if VRChat answers differently here, it
+        # is the cookie and not the address.
         # ── 3. Gespeicherte Sitzung ──────────────────────────────────────────
         z.append("── 3. Gespeicherte Sitzung (kostet keinen Anmeldeversuch) ──")
         sitzung_lebt = False
@@ -5725,9 +5759,9 @@ async def vrc_account_debug(request: Request):
 
         # ── 4. Ein Anmeldeversuch ────────────────────────────────────────────
         z.append("── 4. Anmeldung mit Benutzername und Passwort (genau ein Versuch) ──")
-        # Liegt eine Bremse, bleibt auch dieser Bericht still. Sonst waere ausgerechnet das
-        # Werkzeug, mit dem man die Sperre untersucht, das, was sie verlaengert - und wer
-        # nachsieht, ob sie weg ist, haelt sie damit aufrecht.
+        # While a brake is on, this report stays quiet too. Otherwise the very tool used
+        # to investigate the block would be what extends it - and checking whether it is
+        # over would keep it alive.
         _pause = (row["retry_after"] if "retry_after" in row.keys() else "") or ""
         _wartet = False
         if _pause:
@@ -5742,8 +5776,8 @@ async def vrc_account_debug(request: Request):
             z.append(f"  würde jeder weitere die Sperre nur verlängern. Das gilt auch für")
             z.append(f"  diesen Bericht — deswegen fragt er jetzt nicht nach.")
         elif sitzung_lebt:
-            # Anklopfen, obwohl die Tuer offen steht: der Versuch koennte nur schaden -
-            # Anmeldeversuche sind es, die VRChats Sperre ausloesen.
+            # Knocking while the door stands open could only do harm - sign-in attempts
+            # are what trigger VRChat's block.
             z.append("  übersprungen — die gespeicherte Sitzung läuft (Abschnitt 3).")
             z.append("  Ein Anmeldeversuch könnte hier nur eine Sperre auslösen.")
         elif not user or not pw:
@@ -5859,41 +5893,89 @@ async def vrc_account_server(request: Request):
 
 @web.post("/settings/vrchat/meldung")
 async def vrc_meldung_weg(request: Request):
-    """Die gespeicherte Fehlermeldung eines Kontos wegraeumen.
+    """Clear an account's stored error message.
 
-    Sie ist ein Zustand von damals, kein Live-Status: geschrieben beim letzten
-    Anmeldeversuch, geloescht erst beim naechsten erfolgreichen. Wer VRChat gerade nicht
-    aktiv nutzt, hat damit einen roten Kasten auf der Seite, den nichts wegbekommt -
-    "diese warnungen sind unrelevant" trifft es genau.
+    It is a state from back then, not a live status: written on the last sign-in attempt
+    and cleared only on the next successful one. Someone not actively using VRChat is left
+    with a red box that nothing removes.
 
-    Geloescht wird nur die Anzeige. Tritt der Fehler wieder auf, steht er wieder da; das
-    ist der Unterschied zwischen Wegraeumen und Verstecken.
+    Only the display is cleared. If the error happens again it comes back - that is the
+    difference between clearing and hiding.
     """
     if r := admin_redirect(request): return r
     form = await request.form()
     konto = (form.get("konto") or VRC_ACCOUNT_KEY).strip() or VRC_ACCOUNT_KEY
+    # Only the message. The brake stays: it protects against extending a block, and that
+    # has nothing to do with whether anyone has read the message.
     await db_exec("UPDATE vrc_accounts SET last_error='' WHERE guild_id=?", (konto,))
     return RedirectResponse("/settings/vrchat", status_code=303)
 
 
+@web.post("/settings/vrchat/server")
+async def vrc_account_server(request: Request):
+    """Which Discord guilds use this bot - set from the account card.
+
+    The same assignment that sits in each guild's VRC-Link tab, seen from the other side:
+    there a guild picks its bot, here a bot picks its guilds. Both write the same key,
+    otherwise there would be two truths about one thing.
+
+    A guild can only ever have ONE bot. So this does not just set, it also takes away:
+    whoever was on this account and is no longer ticked loses the assignment and falls
+    back to the default account.
+    """
+    if r := admin_redirect(request): return r
+    form = await request.form()
+    konto = (form.get("konto") or "").strip()
+    if not konto:
+        return RedirectResponse("/settings/vrchat?error=Kein+Konto+angegeben", status_code=302)
+    # Assigning to an account that does not exist would leave guilds pointing nowhere.
+    if not await db_one("SELECT guild_id FROM vrc_accounts WHERE guild_id=?", (konto,)):
+        return RedirectResponse("/settings/vrchat?error=Dieses+Konto+gibt+es+nicht",
+                                status_code=302)
+
+    # Nothing to set for the default account: a guild without a choice of its own ends up
+    # there anyway. Its boxes are disabled and it has no submit button - but a submitted
+    # form would still act, and disabled fields are not sent, so it would clear every
+    # assignment pointing at it.
+    if konto == await vrc_standard_konto():
+        return RedirectResponse("/settings/vrchat", status_code=303)
+
+    # Only guilds this session may actually see. Without that, a forged form could move
+    # the assignments of guilds the user has no business with.
+    erlaubt = {str(g["id"]) for g in await _guild_list(request)}
+    gewaehlt = {str(x) for x in form.getlist("server")} & erlaubt
+
+    for gid in erlaubt:
+        vorher = (await get_guild_config(int(gid), "vrc_account") or "").strip()
+        if gid in gewaehlt:
+            # Ticked: point it here, unless it already does.
+            if vorher != konto:
+                await set_guild_config(int(gid), "vrc_account", konto)
+        elif vorher == konto:
+            # Unticked and it used to be here: drop the assignment, which sends the guild
+            # back to the default account.
+            await set_guild_config(int(gid), "vrc_account", "")
+    return RedirectResponse("/settings/vrchat?success=Zuordnung+gespeichert", status_code=303)
+
+
 @web.post("/settings/vrchat/delete")
 async def vrc_account_delete(request: Request):
+    """Remove one account row, and clean up what pointed at it."""
     # Admin-only for the same reason as saving it - see there.
     if r := admin_redirect(request): return r
     form = await request.form()
     konto = (form.get("konto") or VRC_ACCOUNT_KEY).strip() or VRC_ACCOUNT_KEY
     await db_exec("DELETE FROM vrc_accounts WHERE guild_id=?", (konto,))
-    # Server, die auf dieses Konto zeigten, zeigen sonst ins Leere. vrc_account_for_guild()
-    # faengt das zwar ab und faellt aufs Standardkonto zurueck, aber dann stuende im Reiter
-    # weiter ein Konto, das es nicht mehr gibt - also hier gleich aufraeumen.
+    # Guilds that pointed here would otherwise point nowhere. vrc_account_for_guild()
+    # catches that and falls back, but the tab would still show an account that is gone.
     try:
         await db_exec("DELETE FROM guild_configs WHERE key='vrc_account' AND value=?", (konto,))
     except Exception as e:
         print(f"[vrchat] Zuweisungen zu {konto} nicht aufgeraeumt: {e}")
-    # War das gerade das Standardkonto, bekommt der Nachfolger die Rolle fest zugeteilt.
-    # Ihn jedes Mal neu zu errechnen waere unstabil - die Liste ist nach Anzeigename
-    # sortiert, also haette ein Umbenennen den Standard verschoben und alle Server ohne
-    # eigene Wahl mitgenommen.
+    # If that was the default account, hand the role to a remaining one and write it down.
+    # Recomputing it every time would be unstable: the list is sorted by display name, so
+    # renaming an account would move the default and drag every guild without a choice
+    # along with it.
     try:
         uebrig = await vrc_accounts_list()
         if uebrig and not any(r["guild_id"] == VRC_ACCOUNT_KEY for r in uebrig):
@@ -5901,6 +5983,7 @@ async def vrc_account_delete(request: Request):
             if not jetzt or not any(r["guild_id"] == jetzt for r in uebrig):
                 await set_config("vrc_standard_konto", uebrig[0]["guild_id"])
         elif not uebrig:
+            # Nothing left - clear the note so a fresh account starts from scratch.
             await set_config("vrc_standard_konto", "")
     except Exception as e:
         print(f"[vrchat] Nachfolger fuer das Standardkonto nicht gesetzt: {e}")
