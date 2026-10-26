@@ -159,6 +159,7 @@ from database import (
     DEFAULT_TEMPVOICE_PANEL_TEXT, DEFAULT_TEMPVOICE_LABELS, parse_panel_labels,
     DEFAULT_VRC_NICKNAME_FORMAT, vrc_nickname, VRC_ACCOUNT_KEY,
     vrc_accounts_list, vrc_account_for_guild, vrc_account_name,
+    vrc_standard_konto,
     DEFAULT_VRC_PANEL_TITLE, DEFAULT_VRC_PANEL_TEXT, DEFAULT_VRC_PANEL_BUTTON,
     DEFAULT_VRC_INSTANCE_MESSAGE, DEFAULT_VRC_INSTANCE_BUTTON,
     DEFAULT_VRC_INSTANCE_CLOSED, DEFAULT_VRC_INSTANCE_TITLE,
@@ -5144,6 +5145,27 @@ def _antwort_kurz(data: dict, roh: str) -> str:
     return "{" + ", ".join(teile) + "}" + rest
 
 
+def _antwort_kurz(data: dict, roh: str) -> str:
+    """Was von einer VRChat-Antwort im Bericht stehen darf.
+
+    Der Bericht ist zum Kopieren und Weitergeben gedacht. VRChats /auth/user liefert bei
+    einer gelungenen Anmeldung das vollstaendige Kontoprofil - E-Mail-Adresse,
+    Geburtsdatum, Freundesliste, Raeume. Das roh hineinzuschreiben heisst, dass es bei
+    jedem landet, dem der Bericht weitergereicht wird.
+
+    Durchgelassen wird deshalb nur, was die Diagnose braucht. Fehlerantworten sind klein
+    und enthalten nichts weiter als die Meldung - die bleiben vollstaendig.
+    """
+    if not isinstance(data, dict) or not data.get("id"):
+        return roh[:600]
+    erlaubt = ("id", "displayName", "requiresTwoFactorAuth", "requiresCaptcha",
+               "twoFactorAuthEnabled", "emailVerified", "state")
+    teile = [f'"{k}": {_djson.dumps(data[k])}' for k in erlaubt if k in data]
+    weggelassen = len(data) - len(teile)
+    rest = f"  (+{weggelassen} weitere Felder nicht angezeigt)" if weggelassen > 0 else ""
+    return "{" + ", ".join(teile) + "}" + rest
+
+
 async def _standard_konto() -> str:
     """Welches Konto gerade die Standardrolle hat.
 
@@ -5196,7 +5218,7 @@ async def vrchat_settings_page(request: Request, error: str = "", success: str =
     # geloescht worden, uebernimmt das erste verbliebene, und dann muss auch das Abzeichen
     # dort stehen. Sonst traegt keine Karte eines, waehrend ein Konto die Rolle hat.
     _alle = await vrc_accounts_list()
-    _standard = await _standard_konto()
+    _standard = await vrc_standard_konto()
 
     konten = []
     for _row in _alle:
@@ -5810,7 +5832,7 @@ async def vrc_account_server(request: Request):
     # Beim Standardkonto gibt es nichts zu setzen: wer keine eigene Wahl hat, landet dort
     # von selbst. Sein Formular traegt gesperrte Kaestchen und keinen Knopf - abgeschickt
     # wuerde es trotzdem alle Zuweisungen loeschen, weil gesperrte Felder nicht mitkommen.
-    if konto == await _standard_konto():
+    if konto == await vrc_standard_konto():
         return RedirectResponse("/settings/vrchat", status_code=303)
 
     erlaubt = {str(g["id"]) for g in await _guild_list(request)}

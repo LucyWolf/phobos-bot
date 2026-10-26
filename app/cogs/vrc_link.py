@@ -53,6 +53,7 @@ from database import (db_rows, db_one, db_exec, get_config, get_guild_config,
                       DEFAULT_VRC_INSTANCE_LOCKED, DEFAULT_VRC_INSTANCE_LOCKED_TITLE,
                       human_duration, bot_text, bot_lang,
                       VRC_ACCOUNT_KEY, VRC_TOKEN_TTL_MINUTES, vrc_account_for_guild,
+                      vrc_standard_konto,
                       VRC_STATE_UNVERIFIED, VRC_STATE_PENDING, VRC_STATE_APPROVED)
 
 # VRChat display names are at most 32 characters; anything longer is not a name, it is a paste
@@ -198,13 +199,16 @@ async def vrc_session(konto: str | None = None) -> dict | None:
     Everything is swallowed into a None: this runs behind a member's page load, and a VRChat
     outage should degrade the page, not break it.
     """
-    schluessel = (konto or VRC_ACCOUNT_KEY)
+    schluessel = (konto or await vrc_standard_konto())
     row = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (schluessel,))
-    if not row and schluessel != VRC_ACCOUNT_KEY:
+    if not row:
         # Zugewiesenes Konto geloescht: lieber auf das Standardkonto zurueckfallen als den
-        # Server stillschweigend ohne VRChat dastehen zu lassen.
-        row = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (VRC_ACCOUNT_KEY,))
-        schluessel = VRC_ACCOUNT_KEY
+        # Server stillschweigend ohne VRChat dastehen zu lassen. Welches das ist, sagt
+        # vrc_account_for_guild() - dieselbe Regel, die auch die Seite anwendet.
+        ersatz = await vrc_standard_konto()
+        if ersatz != schluessel:
+            row = await db_one("SELECT * FROM vrc_accounts WHERE guild_id=?", (ersatz,))
+            schluessel = ersatz
     if not row or not row["username"] or not row["password"]:
         return None
     # Nach einem Fehlschlag eine Weile gar nicht erst versuchen. VRChat zaehlt
