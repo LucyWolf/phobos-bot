@@ -5398,10 +5398,12 @@ async def vrc_account_save(request: Request):
         else:
             modus = "code" if (existing and not (existing["totp_secret"] or "").strip()) \
                 else "geheimnis"
-    if modus == "code" and not getipptes_geheimnis:
+    if modus == "code":
         # Beim Umschalten faellt das Geheimnis weg: es gehoert zum anderen Weg, und stehen
         # zu lassen hiesse, der Bot rechnet weiter Codes aus, waehrend die Seite sagt, dass
-        # von Hand eingetragen wird.
+        # von Hand eingetragen wird. Ohne Ausnahme fuer ein mitgeschicktes Feld: ein
+        # zugeklapptes Eingabefeld wird vom Browser trotzdem abgeschickt, es genuegte also
+        # einmal Tippen und dann Umschalten.
         totp = ""
         # Ein gespeicherter Fehler, der sich um den zweiten Faktor dreht, ist mit dieser
         # Ansage erledigt. Stehen zu lassen hiesse: der Betreiber sagt "kein 2FA", und die

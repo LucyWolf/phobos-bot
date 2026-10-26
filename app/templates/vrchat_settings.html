@@ -8,7 +8,8 @@
 {# Ein Formular fuer "neu anlegen" UND "bearbeiten". Zwei getrennte waeren zwei Stellen,
    an denen dieselben Regeln gelten muessten - und eine davon vergisst man.
    konto="" legt neu an, sonst wird genau dieser Schluessel ueberschrieben. #}
-{% macro konto_formular(konto, label, username, haelt_dauerhaft_secret, knopf) %}
+{% macro konto_formular(konto, label, username, haelt_dauerhaft_secret, knopf, modus_geheimnis=None) %}
+{% set geheimnis_gewaehlt = haelt_dauerhaft_secret if modus_geheimnis is none else modus_geheimnis %}
 <form method="post" action="/settings/vrchat/save"
       onsubmit="this.querySelector('button[type=submit]').disabled=true;this.querySelector('button[type=submit]').textContent='⏳';">
   <input type="hidden" name="vrc_konto" value="{{ konto }}">
@@ -44,7 +45,7 @@
       <label class="vrc-modus" style="display:block;border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.7rem;cursor:pointer;font-weight:400;margin:0 0 0.5rem;">
         <span style="display:flex;align-items:center;gap:0.5rem;">
           <input type="radio" name="vrc_modus" value="geheimnis" style="width:auto;margin:0;"
-                 {% if haelt_dauerhaft_secret %}checked{% endif %} onchange="vrcModus(this)">
+                 {% if geheimnis_gewaehlt %}checked{% endif %} onchange="vrcModus(this)">
           <strong>♾ {{ tr.vrc_modus_secret }}</strong>
         </span>
         <span style="display:block;font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_modus_secret_hint }}</span>
@@ -62,7 +63,7 @@
       <label class="vrc-modus" style="display:block;border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.7rem;cursor:pointer;font-weight:400;margin:0;">
         <span style="display:flex;align-items:center;gap:0.5rem;">
           <input type="radio" name="vrc_modus" value="code" style="width:auto;margin:0;"
-                 {% if not haelt_dauerhaft_secret %}checked{% endif %} onchange="vrcModus(this)">
+                 {% if not geheimnis_gewaehlt %}checked{% endif %} onchange="vrcModus(this)">
           <strong>⌨ {{ tr.vrc_modus_code }}</strong>
         </span>
         <span style="display:block;font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_modus_code_hint }}</span>
@@ -245,7 +246,7 @@
           style="font-size:0.82rem;">{{ tr.vrc_account_add }}</button>
   <div id="vrc-add-box" style="display:none;border:1px solid var(--border);border-radius:0.6rem;padding:0.8rem;margin-top:0.7rem;">
     <div style="font-weight:600;font-size:0.85rem;margin-bottom:0.6rem;">{{ tr.vrc_account_new_heading }}</div>
-    {{ konto_formular("", "", "", False, tr.vrc_account_connect) }}
+    {{ konto_formular("", "", "", False, tr.vrc_account_connect, True) }}
   </div>
 </div>
 
