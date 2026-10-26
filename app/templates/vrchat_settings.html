@@ -38,49 +38,55 @@
        VRChat in beiden Faellen, das steht als Hinweis darunter. #}
     <div style="grid-column:1 / -1;">
       <div style="font-weight:600;font-size:0.82rem;margin-bottom:0.4rem;">{{ tr.vrc_modus_label }}</div>
-      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-        <label class="vrc-modus" style="flex:1;min-width:220px;display:block;border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.7rem;cursor:pointer;font-weight:400;margin:0;">
-          <span style="display:flex;align-items:center;gap:0.5rem;">
-            <input type="radio" name="vrc_modus" value="geheimnis" style="width:auto;margin:0;"
-                   {% if haelt_dauerhaft_secret %}checked{% endif %} onchange="vrcModus(this)">
-            <strong>♾ {{ tr.vrc_modus_secret }}</strong>
+      {# Untereinander statt nebeneinander: nebeneinander rutschte der zweite Knopf aus dem
+         sichtbaren Bereich, und wer ihn nicht sieht, kann nicht umschalten. Unter jedem
+         Knopf steht das Feld, das zu ihm gehoert - eingeblendet, wenn er gewaehlt ist. #}
+      <label class="vrc-modus" style="display:block;border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.7rem;cursor:pointer;font-weight:400;margin:0 0 0.5rem;">
+        <span style="display:flex;align-items:center;gap:0.5rem;">
+          <input type="radio" name="vrc_modus" value="geheimnis" style="width:auto;margin:0;"
+                 {% if haelt_dauerhaft_secret %}checked{% endif %} onchange="vrcModus(this)">
+          <strong>♾ {{ tr.vrc_modus_secret }}</strong>
+        </span>
+        <span style="display:block;font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_modus_secret_hint }}</span>
+        <span class="vrc-feld-geheimnis" style="display:block;margin-top:0.6rem;border-top:1px solid var(--border);padding-top:0.6rem;">
+          <span style="display:block;font-size:0.76rem;font-weight:600;margin-bottom:0.3rem;">{{ tr.vrc_secret_label }}</span>
+          <span style="display:flex;gap:0.4rem;align-items:flex-start;">
+            <input type="password" name="vrc_totp_secret" autocomplete="new-password" style="flex:1;"
+                   placeholder="{% if haelt_dauerhaft_secret %}{{ tr.vrc_secret_unchanged }}{% endif %}">
+            <button type="button" class="btn btn-secondary" style="padding:0.5rem 0.65rem;"
+                    onclick="vrcToggleSecret(this)" title="{{ tr.vrc_show_secret }}">👁</button>
           </span>
-          <span style="display:block;font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_modus_secret_hint }}</span>
-        </label>
-        <label class="vrc-modus" style="flex:1;min-width:220px;display:block;border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.7rem;cursor:pointer;font-weight:400;margin:0;">
-          <span style="display:flex;align-items:center;gap:0.5rem;">
-            <input type="radio" name="vrc_modus" value="code" style="width:auto;margin:0;"
-                   {% if not haelt_dauerhaft_secret %}checked{% endif %} onchange="vrcModus(this)">
-            <strong>⌨ {{ tr.vrc_modus_code }}</strong>
+          <span style="display:block;font-size:0.72rem;color:var(--muted);margin-top:0.3rem;">{{ tr.vrc_secret_hint }}</span>
+          {# VRChat kann auch hier nach einem Code fragen - bei einer Anmeldung von einer
+             unbekannten Adresse. Dieser Knopf klappt das Code-Feld auf, OHNE den
+             Umschalter zu bewegen: umschalten wuerde das Geheimnis verwerfen. #}
+          <span style="display:block;margin-top:0.4rem;">
+            <button type="button" onclick="vrcCodeZeigen(this)"
+                    style="background:none;border:none;color:var(--accent);cursor:pointer;padding:0;font-size:0.72rem;text-decoration:underline;">{{ tr.vrc_code_aufklappen }}</button>
           </span>
-          <span style="display:block;font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_modus_code_hint }}</span>
-        </label>
+        </span>
+      </label>
+      <label class="vrc-modus" style="display:block;border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.7rem;cursor:pointer;font-weight:400;margin:0;">
+        <span style="display:flex;align-items:center;gap:0.5rem;">
+          <input type="radio" name="vrc_modus" value="code" style="width:auto;margin:0;"
+                 {% if not haelt_dauerhaft_secret %}checked{% endif %} onchange="vrcModus(this)">
+          <strong>⌨ {{ tr.vrc_modus_code }}</strong>
+        </span>
+        <span style="display:block;font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_modus_code_hint }}</span>
+      </label>
+      {# EIN Code-Feld fuer beide Wege. Zwei Eingabefelder mit demselben Namen wuerden beide
+         abgeschickt und das letzte gewaenne - deshalb steht es einmal hier und wird
+         eingeblendet, wenn "Code von Hand" gewaehlt ist oder oben darauf geklickt wurde. #}
+      <div class="vrc-feld-code" style="margin-top:0.5rem;border:1px solid var(--border);border-radius:0.5rem;padding:0.55rem 0.7rem;">
+        <label style="font-size:0.76rem;">{{ tr.vrc_account_code_label }}</label>
+        <input type="text" name="vrc_code" autocomplete="off" inputmode="numeric" maxlength="6"
+               pattern="[0-9]{6}" placeholder="123456">
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">
+          <span class="vrc-code-hint-code">{{ tr.vrc_code_hint_code }}</span>
+          <span class="vrc-code-hint-geheimnis">{{ tr.vrc_code_hint_secret }}</span>
+        </div>
       </div>
       <div style="font-size:0.72rem;color:var(--muted);margin-top:0.4rem;">ℹ {{ tr.vrc_modus_mail_note }}</div>
-    </div>
-    {# Unter jedem Knopf sein Feld: beim einen das Geheimnis, beim anderen der Code.
-       Das Code-Feld bleibt allerdings in BEIDEN Stellungen stehen - VRChat kann auch bei
-       hinterlegtem Geheimnis danach fragen, naemlich bei einer Anmeldung von einer
-       unbekannten Adresse. Es waere genau dann weg, wenn es gebraucht wird. Was sich
-       aendert, ist der Hinweis darunter. #}
-    <div class="vrc-code-felder">
-      <label>{{ tr.vrc_account_code_label }}</label>
-      <input type="text" name="vrc_code" autocomplete="off" inputmode="numeric" maxlength="6"
-             pattern="[0-9]{6}" placeholder="123456">
-      <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">
-        <span class="vrc-code-hint-code">{{ tr.vrc_code_hint_code }}</span>
-        <span class="vrc-code-hint-geheimnis">{{ tr.vrc_code_hint_secret }}</span>
-      </div>
-    </div>
-    <div class="vrc-2fa-felder">
-      <label>{{ tr.vrc_secret_label }}</label>
-      <div style="display:flex;gap:0.4rem;align-items:flex-start;">
-        <input type="password" name="vrc_totp_secret" autocomplete="new-password" style="flex:1;"
-               placeholder="{% if haelt_dauerhaft_secret %}{{ tr.vrc_secret_unchanged }}{% endif %}">
-        <button type="button" class="btn btn-secondary" style="padding:0.5rem 0.65rem;"
-                onclick="vrcToggleSecret(this)" title="{{ tr.vrc_show_secret }}">👁</button>
-      </div>
-      <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_secret_hint }}</div>
     </div>
     <div style="grid-column:1 / -1;font-size:0.72rem;color:var(--muted);">{{ tr.vrc_account_2fa_choice }}</div>
   </div>
@@ -315,6 +321,20 @@ async function vrcTest(konto) {
   }
 }
 
+function vrcCodeZeigen(btn) {
+  // Klappt das Code-Feld auf, ohne den Umschalter zu bewegen. Umschalten wuerde das
+  // hinterlegte Geheimnis verwerfen - und das waere der falsche Preis dafuer, einmal
+  // einen Code einzutragen, den VRChat bei neuem Anmeldeort verlangt.
+  const form = btn.closest('form');
+  if (!form) return;
+  const feld = form.querySelector('.vrc-feld-code');
+  if (!feld) return;
+  feld.dataset.offen = '1';
+  feld.style.display = '';
+  const eingabe = feld.querySelector('input');
+  if (eingabe) eingabe.focus();
+}
+
 function vrcModus(radio) {
   // Das Geheimnis-Feld gehoert zum einen Weg, nicht zum anderen. Ausgeblendet statt
   // entfernt: ein versehentliches Umschalten soll nichts verschlucken, was schon getippt
@@ -324,11 +344,15 @@ function vrcModus(radio) {
   if (!form) return;
   const geheimnis = form.querySelector('input[name="vrc_modus"][value="geheimnis"]');
   const an = geheimnis && geheimnis.checked;
-  form.querySelectorAll('.vrc-2fa-felder').forEach(function (f) {
+  form.querySelectorAll('.vrc-feld-geheimnis').forEach(function (f) {
     f.style.display = an ? '' : 'none';
   });
-  // Das Code-Feld bleibt immer stehen, nur sein Hinweis wechselt: einmal "hier eintragen",
-  // einmal "nur falls VRChat danach fragt".
+  // Das Code-Feld gehoert zum anderen Weg - aber es bleibt erreichbar, falls VRChat auch
+  // bei hinterlegtem Geheimnis danach fragt. Wer oben darauf geklickt hat, behaelt es
+  // sichtbar; das Merkmal haelt das ueber einen Moduswechsel hinweg fest.
+  form.querySelectorAll('.vrc-feld-code').forEach(function (f) {
+    f.style.display = (!an || f.dataset.offen === '1') ? '' : 'none';
+  });
   form.querySelectorAll('.vrc-code-hint-code').forEach(function (f) {
     f.style.display = an ? 'none' : '';
   });
