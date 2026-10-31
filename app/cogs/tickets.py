@@ -9,6 +9,8 @@ already imports from this module)."""
 # IMPORT ausgewertet werden - das Modul wirft einen TypeError, bevor irgendetwas laeuft.
 # Diese Zeile macht alle Annotationen zu Zeichenketten, die nie ausgewertet werden.
 from __future__ import annotations
+import datetime
+import io
 import json
 import re
 
@@ -25,6 +27,8 @@ TICKET_TEXTE = {
     "de": {
         "close_btn":      "Ticket schließen",
         "open_btn":       "Ticket öffnen",
+        # Steht in der Auswahlliste, solange nichts eingetragen ist.
+        "select_placeholder": "Kategorie wählen",
         "close_this":     "Dieses Ticket schließen",
         "already_closed": "Dieses Ticket ist bereits geschlossen.",
         "closing":        "Ticket wird geschlossen...",
@@ -42,6 +46,7 @@ TICKET_TEXTE = {
     "en": {
         "close_btn":      "Close ticket",
         "open_btn":       "Open ticket",
+        "select_placeholder": "Choose a category",
         "close_this":     "Close this ticket",
         "already_closed": "This ticket is already closed.",
         "closing":        "Closing the ticket...",
@@ -99,6 +104,80 @@ def _parse_ticket_blocks(raw) -> list:
     return [raw]
 
 
+async def ticket_transcript(channel, guild: discord.Guild, panel: dict | None,
+                            grund: str = "") -> bool:
+    """Den Gespraechsverlauf als Datei in den Log-Kanal legen, bevor das Ticket verschwindet.
+
+    Ohne das ist der Verlauf weg, sobald der Kanal geloescht wird - und geloescht wird er
+    immer dann, wenn keine Archiv-Kategorie eingestellt ist. Wer spaeter wissen will, was
+    besprochen wurde, hat dann nichts.
+
+    Laeuft nur, wenn es am Panel eingeschaltet ist. Standard ist aus: ein Ticket kann eine
+    Bewerbung oder eine Beschwerde enthalten, und was bisher nicht mitgeschrieben wurde,
+    soll nicht durch ein Update anfangen mitgeschrieben zu werden.
+
+    Gibt True zurueck, wenn eine Datei abgelegt wurde. Ein Fehlschlag ist nie ein Grund,
+    das Schliessen abzubrechen - lieber ein Ticket ohne Mitschrift als eines, das sich
+    nicht schliessen laesst.
+    """
+    if not panel or not panel.get("transcript"):
+        return False
+    ziel = None
+    if panel.get("log_channel_id"):
+        try:
+            ziel = guild.get_channel(int(panel["log_channel_id"]))
+        except (ValueError, TypeError):
+            ziel = None
+    if not isinstance(ziel, discord.TextChannel):
+        # Ohne Log-Kanal gaebe es keinen Ort dafuer. Still bleiben statt zu raten: in den
+        # Ticketkanal selbst zu schreiben waere sinnlos, der verschwindet gleich.
+        print(f"[Tickets] Transcript uebersprungen: kein Log-Kanal fuer Panel "
+              f"{panel.get('id')}")
+        return False
+    try:
+        zeilen = []
+        # Aelteste zuerst, damit die Datei von oben nach unten gelesen werden kann.
+        # limit=None holt den ganzen Kanal; Tickets sind kurz, und ein abgeschnittener
+        # Verlauf waere schlimmer als keiner - man wuesste nicht, dass etwas fehlt.
+        async for m in channel.history(limit=None, oldest_first=True):
+            zeit = m.created_at.strftime("%d.%m.%Y %H:%M")
+            wer = f"{m.author.display_name} ({m.author.id})"
+            text = m.content or ""
+            for e in m.embeds:
+                # Embeds tragen oft den eigentlichen Inhalt - die Begruessung des Bots etwa.
+                teile = [t for t in (e.title, e.description) if t]
+                teile += [f"{f.name}: {f.value}" for f in e.fields]
+                if teile:
+                    text += ("\n" if text else "") + "\n".join(teile)
+            for a in m.attachments:
+                # Die Datei selbst wird nicht kopiert - nur vermerkt, dass es sie gab. Sie
+                # liegt auf Discords Seite und waere nach dem Loeschen ohnehin fort.
+                text += ("\n" if text else "") + f"[Anhang: {a.filename}]"
+            zeilen.append(f"[{zeit}] {wer}: {text}" if text else f"[{zeit}] {wer}: (leer)")
+        kopf = [
+            f"Ticket-Mitschrift · #{channel.name}",
+            f"Server: {guild.name} ({guild.id})",
+            f"Panel: {panel.get('name', '?')}",
+            f"Geschlossen: {datetime.datetime.utcnow().strftime('%d.%m.%Y %H:%M')} UTC"
+            + (f" · {grund}" if grund else ""),
+            f"Nachrichten: {len(zeilen)}",
+            "─" * 60, "",
+        ]
+        inhalt = "\n".join(kopf + zeilen).encode("utf-8")
+        datei = discord.File(io.BytesIO(inhalt), filename=f"ticket-{channel.name}.txt")
+        await ziel.send(
+            f"📄 Mitschrift zu **#{channel.name}**" + (f" · {grund}" if grund else ""),
+            file=datei)
+        return True
+    except discord.Forbidden:
+        # Fehlende Rechte im Log-Kanal oder auf den Verlauf - vermerken und weitermachen.
+        print(f"[Tickets] Transcript fuer #{channel.name}: keine Berechtigung")
+        return False
+    except Exception as e:
+        print(f"[Tickets] Transcript fuer #{channel.name} fehlgeschlagen: {e}")
+        return False
+
+
 async def close_ticket_channel(channel, guild: discord.Guild, panel: dict | None, reason: str) -> bool:
     """Shared by all three "close a ticket" entry points (the in-channel button, /ticket-close,
     and the dashboard's close route in main.py - imported from there, safe in that one
@@ -116,6 +195,10 @@ async def close_ticket_channel(channel, guild: discord.Guild, panel: dict | None
                 archive_category = cat
         except (ValueError, TypeError):
             pass
+    # Zuerst die Mitschrift, dann erst anfassen: nach dem Loeschen gibt es keinen Verlauf
+    # mehr zu holen, und auch ein Verschieben kann fehlschlagen und den Kanal in einem
+    # Zustand hinterlassen, in dem niemand mehr nachliest.
+    await ticket_transcript(channel, guild, panel, reason)
     try:
         if archive_category:
             await channel.edit(category=archive_category, reason=reason)
@@ -175,6 +258,86 @@ class CloseTicketView(ui.View):
         self.add_item(_CloseTicketButton(label))
 
 
+async def panel_optionen(panel_id: int) -> list:
+    """Die Auswahleintraege eines Panels, in der eingestellten Reihenfolge.
+
+    Ein Panel ohne Eintraege verhaelt sich wie bisher: ein Knopf, der direkt ein Ticket
+    oeffnet. Mit mehreren wird daraus eine Auswahlliste - erst dann lohnt sie sich, und so
+    aendert sich an bestehenden Panels nichts, ohne dass jemand etwas angefasst hat.
+    """
+    return await db_rows(
+        "SELECT * FROM ticket_panel_options WHERE panel_id=? ORDER BY sortierung, id",
+        (panel_id,)) or []
+
+
+def panel_mit_option(panel: dict, opt: dict | None) -> dict:
+    """Die Panel-Werte, ueberschrieben von denen des gewaehlten Eintrags.
+
+    Jeder Eintrag darf eigene Zustaendige, eine eigene Kategorie und einen eigenen
+    Begruessungstext haben - eine Bewerbung landet bei anderen Leuten als eine
+    Supportfrage. Leer gelassene Felder fallen auf das Panel zurueck, damit man nur
+    eintragen muss, was sich wirklich unterscheidet.
+    """
+    if not opt:
+        return panel
+    zusammen = dict(panel)
+    for feld in ("support_role_id", "category_id", "ticket_message"):
+        wert = (opt[feld] if feld in opt.keys() else "") or ""
+        if wert.strip():
+            zusammen[feld] = wert
+    # Der Name geht in den Kanalnamen und in die Ueberschrift - bei einer Auswahl soll dort
+    # stehen, wofuer das Ticket ist, nicht wie das Panel heisst.
+    if (opt["label"] or "").strip():
+        zusammen["name"] = opt["label"]
+    if (opt["emoji"] or "").strip():
+        zusammen["emoji"] = opt["emoji"]
+    return zusammen
+
+
+class PanelSelect(ui.Select):
+    """Die Auswahlliste eines Panels mit mehreren Eintraegen.
+
+    Traegt dieselbe feste custom_id-Form wie der Knopf, damit Discord sie nach einem
+    Neustart wiedererkennt und die Nachricht im Kanal bedienbar bleibt.
+    """
+
+    def __init__(self, panel_id: int, optionen: list, platzhalter: str = "Kategorie wählen"):
+        self._optionen = optionen
+        super().__init__(
+            placeholder=platzhalter,
+            min_values=1,
+            max_values=1,
+            custom_id=f"open_ticket_select:{panel_id}",
+            options=[
+                discord.SelectOption(
+                    label=(o["label"] or "Ticket")[:100],
+                    # Discord verlangt eindeutige Werte je Eintrag; die Zeilennummer ist das.
+                    value=str(o["id"]),
+                    description=(o["description"] or "")[:100] or None,
+                    emoji=(o["emoji"] or None),
+                )
+                for o in optionen[:25]   # Discord nimmt hoechstens 25 Eintraege
+            ],
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        panel_id = int(self.custom_id.split(":")[1])
+        option_id = int(self.values[0])
+        guild = interaction.guild
+        # Derselbe Schutz wie beim Knopf: zwei gleichzeitige Auswahlen wuerden sonst beide
+        # "kein offenes Ticket" lesen und je einen Kanal anlegen.
+        lock_key = (guild.id, interaction.user.id, panel_id)
+        if lock_key in PanelButton._in_progress:
+            await interaction.response.send_message(
+                await tt(interaction.guild_id, "in_progress"), ephemeral=True)
+            return
+        PanelButton._in_progress.add(lock_key)
+        try:
+            await PanelButton._create_ticket(self, interaction, guild, panel_id, option_id)
+        finally:
+            PanelButton._in_progress.discard(lock_key)
+
+
 class PanelButton(ui.Button):
     # In-Flight-Guard gegen Doppelklick/retried Interaction — sonst können zwei
     # gleichzeitige Callbacks beide "kein offenes Ticket" lesen und je einen Channel anlegen.
@@ -203,8 +366,18 @@ class PanelButton(ui.Button):
         finally:
             PanelButton._in_progress.discard(lock_key)
 
-    async def _create_ticket(self, interaction: discord.Interaction, guild: discord.Guild, panel_id: int):
+    async def _create_ticket(self, interaction: discord.Interaction, guild: discord.Guild,
+                             panel_id: int, option_id: int | None = None):
         panel = await db_one("SELECT * FROM ticket_panels WHERE id=?", (panel_id,))
+        if panel and option_id:
+            # Die Werte des gewaehlten Eintrags gehen vor. Gibt es ihn nicht mehr - geloescht,
+            # waehrend die Nachricht im Kanal stand -, bleibt es beim Panel; ein Ticket zu
+            # oeffnen ist besser als eine Fehlermeldung fuer etwas, das der Benutzer nicht
+            # beeinflussen kann.
+            opt = await db_one(
+                "SELECT * FROM ticket_panel_options WHERE id=? AND panel_id=?",
+                (option_id, panel_id))
+            panel = panel_mit_option(panel, opt)
         if not panel:
             await interaction.response.send_message(await tt(interaction.guild_id, "panel_gone"), ephemeral=True)
             return
@@ -334,9 +507,20 @@ class PanelButton(ui.Button):
 
 
 class OpenTicketView(ui.View):
-    def __init__(self, panel_id: int, label: str = "Ticket öffnen", emoji: str = "🎫"):
+    """Was unter einer Panel-Nachricht steht.
+
+    Ohne Eintraege oder mit genau einem: ein Knopf wie bisher. Mit mehreren: eine
+    Auswahlliste. Die Entscheidung faellt an der Anzahl, damit bestehende Panels sich
+    nicht veraendern, ohne dass jemand etwas eingetragen hat.
+    """
+
+    def __init__(self, panel_id: int, label: str = "Ticket öffnen", emoji: str = "🎫",
+                 optionen: list | None = None, platzhalter: str = "Kategorie wählen"):
         super().__init__(timeout=None)
-        self.add_item(PanelButton(panel_id, label, emoji))
+        if optionen and len(optionen) > 1:
+            self.add_item(PanelSelect(panel_id, optionen, platzhalter))
+        else:
+            self.add_item(PanelButton(panel_id, label, emoji))
 
 
 class Tickets(commands.Cog):
@@ -351,10 +535,15 @@ class Tickets(commands.Cog):
             "SELECT id, guild_id, button_label, emoji FROM ticket_panels WHERE status='published'"
         )
         for p in panels:
+            # Die Eintraege muessen beim Wiederherstellen bekannt sein: Discord ordnet eine
+            # Auswahlliste nur dann wieder ihrer Nachricht zu, wenn die View dieselbe Form
+            # hat wie beim Abschicken.
             self.bot.add_view(OpenTicketView(
                 p["id"],
                 p.get("button_label") or await tt(p["guild_id"], "open_btn"),
                 p.get("emoji") or "🎫",
+                await panel_optionen(p["id"]),
+                await tt(p["guild_id"], "select_placeholder"),
             ))
 
     @app_commands.command(name="ticket-close", description="Dieses Ticket schließen")

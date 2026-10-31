@@ -310,6 +310,23 @@ async def init_db():
             )
         """)
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS ticket_panel_options (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                panel_id INTEGER NOT NULL,
+                label TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL DEFAULT '',
+                emoji TEXT NOT NULL DEFAULT '',
+                support_role_id TEXT NOT NULL DEFAULT '',
+                category_id TEXT NOT NULL DEFAULT '',
+                ticket_message TEXT NOT NULL DEFAULT '',
+                sortierung INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        # Jedes Panel fragt seine Eintraege einzeln ab - ohne Index waere das ein voller
+        # Durchlauf der Tabelle, jedes Mal wenn jemand ein Ticket-Panel oeffnet.
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tpo_panel ON ticket_panel_options(panel_id)")
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS ticket_panels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id INTEGER NOT NULL,
@@ -1289,6 +1306,11 @@ async def init_db():
             # neuen Server tut. Abschalten laesst sich damit nicht VRChats Verhalten - nur
             # die Erwartung des Bots und die Meldung, die sonst stehen bleibt.
             "ALTER TABLE vrc_accounts ADD COLUMN needs_email INTEGER NOT NULL DEFAULT 1",
+            # Gespraechsverlauf beim Schliessen als Datei in den Log-Kanal. Standard 0:
+            # ein Ticket kann Bewerbungen oder Beschwerden enthalten, und was bisher nicht
+            # mitgeschrieben wurde, soll nicht durch ein Update anfangen mitgeschrieben zu
+            # werden. Wer es will, schaltet es je Panel ein.
+            "ALTER TABLE ticket_panels ADD COLUMN transcript INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await db.execute(col)
