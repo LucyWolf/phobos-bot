@@ -120,7 +120,10 @@ except ImportError:
     # No prebuilt Android wheel and no C toolchain available under Chaquopy - the rest of the
     # bot doesn't need it, only get_system_stats() below (the Bot-Info dashboard page) does.
     psutil = None
-from cogs.tickets import OpenTicketView as _TicketView, close_ticket_channel as _close_ticket_channel
+from cogs.tickets import (OpenTicketView as _TicketView,
+                          close_ticket_channel as _close_ticket_channel,
+                          panel_optionen as _panel_optionen,
+                          tt as _tt)
 from cogs.leveling import xp_for_level as _xp_for_level, cumulative_xp_for_level as _cumulative_xp_for_level
 from cogs.welcome import (_make_card as _welcome_make_card, fill as _welcome_fill,
                           KARTE_BREITE as _KARTE_BREITE, KARTE_HOEHE as _KARTE_HOEHE)
@@ -9608,6 +9611,11 @@ async def server_config(
                 p["channel_name"] = None
         p["description_blocks"] = _parse_ticket_blocks(p.get("description")) or [""]
         p["ticket_message_blocks"] = _parse_ticket_blocks(p.get("ticket_message")) or [""]
+        # Die Auswahleintraege dieses Panels. Ab zwei wird aus dem Knopf eine Liste - die
+        # Seite zeigt das an, damit niemand raetselt, warum die Nachricht anders aussieht.
+        p["optionen"] = await db_rows(
+            "SELECT * FROM ticket_panel_options WHERE panel_id=? ORDER BY sortierung, id",
+            (p["id"],)) or []
 
     embed_posts = await db_rows(
         "SELECT * FROM embed_posts WHERE guild_id=? ORDER BY created_at DESC", (guild_id,)
@@ -10738,6 +10746,8 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     support_role_id = form.get("support_role_id", "")
     category_id = form.get("category_id", "")
     archive_category_id = form.get("archive_category_id", "")
+    # Gespraechsverlauf beim Schliessen mitschreiben. Standard aus - siehe die Migration.
+    transcript = 1 if form.get("transcript") else 0
     # Each is a LIST of blocks now, one <textarea> per block in the form - "+" adds a genuinely
     # separate Discord embed, not just another line inside the same one ("es ist bewusst zwei
     # einbettungen ... wenn ich bei den text + mache das es auch eine neuen einbettung ist").
@@ -10803,9 +10813,9 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     new_ticket_message = _djson.dumps(ticket_message_blocks)
     await db_exec(
         "UPDATE ticket_panels SET name=?, button_label=?, close_button_label=?, description=?, ticket_message=?, emoji=?, "
-        "support_role_id=?, category_id=?, archive_category_id=? WHERE id=? AND guild_id=?",
+        "support_role_id=?, category_id=?, archive_category_id=?, transcript=? WHERE id=? AND guild_id=?",
         (new_name, new_label, new_close_label, new_description, new_ticket_message, new_emoji,
-         support_role_id, category_id, archive_category_id, panel_id, guild_id),
+         support_role_id, category_id, archive_category_id, transcript, panel_id, guild_id),
     )
     # A published panel's button/embed lives on an already-sent Discord message - saving name/
     # button_label/emoji/description here only touched the DB row until now, so the dashboard
@@ -10819,12 +10829,156 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
                 if ch:
                     msg = await ch.fetch_message(int(panel_before["message_id"]))
                     embeds = _build_panel_embeds(new_name, new_emoji, new_description)
-                    view = _TicketView(panel_id, new_label, new_emoji)
+                    view = _TicketView(panel_id, new_label, new_emoji,
+                                       await _panel_optionen(panel_id),
+                                       await _tt(guild_id, "select_placeholder"))
                     await msg.edit(embeds=embeds, view=view)
                     b.add_view(view)
             except Exception:
                 pass
     return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Panel+gespeichert", status_code=302)
+
+
+async def _panel_nachricht_auffrischen(guild_id: int, panel_id: int) -> None:
+    """Die bereits abgeschickte Panel-Nachricht an den aktuellen Stand anpassen.
+
+    Ein veroeffentlichtes Panel haengt an einer Discord-Nachricht, die irgendwann einmal
+    gesendet wurde. Wer einen Eintrag hinzufuegt oder loescht, aendert damit zunaechst nur
+    die Datenbank - im Kanal stuende weiter die alte Auswahl, und ein geloeschter Eintrag
+    liesse sich dort weiter anklicken. Deshalb nach jeder Aenderung an den Eintraegen.
+
+    Jeder Fehler bleibt hier: die Nachricht kann geloescht, der Kanal weg oder die
+    Berechtigung entzogen sein. Nichts davon ist ein Grund, das Speichern scheitern zu
+    lassen - die Eintraege sind gesichert, nur die Anzeige hinkt dann hinterher.
+    """
+    panel = await db_one("SELECT * FROM ticket_panels WHERE id=? AND guild_id=?",
+                         (panel_id, guild_id))
+    if not panel or panel.get("status") != "published":
+        return
+    if not (panel.get("channel_id") and panel.get("message_id")):
+        return
+    b = bot._bot_for_guild(guild_id)
+    if not b:
+        return
+    try:
+        ch = b.get_channel(int(panel["channel_id"]))
+        if not ch:
+            return
+        msg = await ch.fetch_message(int(panel["message_id"]))
+        view = _TicketView(
+            panel_id,
+            panel.get("button_label") or await _tt(guild_id, "open_btn"),
+            panel.get("emoji") or "🎫",
+            await _panel_optionen(panel_id),
+            await _tt(guild_id, "select_placeholder"))
+        await msg.edit(view=view)
+        b.add_view(view)
+    except Exception as e:
+        print(f"[Tickets] Panel-Nachricht {panel_id} nicht aufgefrischt: {e}")
+
+
+@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/options/create")
+async def tickets_option_create(request: Request, guild_id: int, panel_id: int):
+    """Einen Auswahleintrag anlegen."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    # Das Panel muss zu DIESEM Server gehoeren - sonst liesse sich ueber eine erratene
+    # Panel-Nummer ein Eintrag an einem fremden Panel anlegen.
+    panel = await db_one("SELECT id FROM ticket_panels WHERE id=? AND guild_id=?",
+                         (panel_id, guild_id))
+    if not panel:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Panel+nicht+gefunden",
+                                status_code=302)
+    # Discord zeigt hoechstens 25 Eintraege in einer Auswahlliste. Was darueber hinausgeht,
+    # waere unsichtbar - besser gleich sagen, als es still zu verschlucken.
+    vorhanden = await db_rows(
+        "SELECT id FROM ticket_panel_options WHERE panel_id=?", (panel_id,))
+    if len(vorhanden or []) >= 25:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=" + urllib.parse.quote_plus(
+                "Mehr als 25 Einträge zeigt Discord in einer Auswahlliste nicht an."),
+            status_code=302)
+    form = await request.form()
+    label = " ".join((form.get("label") or "").split())[:100]
+    if not label:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=Beschriftung+fehlt", status_code=302)
+    # Ans Ende, damit ein neuer Eintrag die bestehende Reihenfolge nicht durcheinanderbringt.
+    letzte = await db_one(
+        "SELECT MAX(sortierung) AS m FROM ticket_panel_options WHERE panel_id=?", (panel_id,))
+    await db_exec(
+        "INSERT INTO ticket_panel_options (panel_id, label, sortierung) VALUES (?,?,?)",
+        (panel_id, label, ((letzte["m"] if letzte and letzte["m"] is not None else 0) + 1)))
+    await _panel_nachricht_auffrischen(guild_id, panel_id)
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Eintrag+angelegt",
+                            status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/options/{option_id}/update")
+async def tickets_option_update(request: Request, guild_id: int, panel_id: int,
+                                option_id: int):
+    """Einen Auswahleintrag aendern."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    panel = await db_one("SELECT id FROM ticket_panels WHERE id=? AND guild_id=?",
+                         (panel_id, guild_id))
+    if not panel:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Panel+nicht+gefunden",
+                                status_code=302)
+    form = await request.form()
+    label = " ".join((form.get("label") or "").split())[:100]
+    if not label:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=Beschriftung+fehlt", status_code=302)
+    # Discord schneidet beides hart ab; hier begrenzen heisst, dass im Dashboard steht, was
+    # auch im Kanal ankommt.
+    description = " ".join((form.get("description") or "").split())[:100]
+    emoji = (form.get("emoji") or "").strip()[:8]
+    support_role_id = (form.get("support_role_id") or "").strip()
+    category_id = (form.get("category_id") or "").strip()
+    ticket_message = (form.get("ticket_message") or "").strip()[:3900]
+    # Dieselben Pruefungen wie beim Panel: eine Rolle oder Kategorie von einem anderen
+    # Server waere beim Ticketanlegen nicht aufloesbar und faellt dann still aus.
+    if support_role_id and support_role_id not in {str(ro.id) for ro in guild.roles}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Rolle",
+                                status_code=302)
+    if category_id and category_id not in {str(c.id) for c in guild.categories}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Kategorie",
+                                status_code=302)
+    await db_exec(
+        "UPDATE ticket_panel_options SET label=?, description=?, emoji=?, support_role_id=?, "
+        "category_id=?, ticket_message=? WHERE id=? AND panel_id=?",
+        (label, description, emoji, support_role_id, category_id, ticket_message,
+         option_id, panel_id))
+    await _panel_nachricht_auffrischen(guild_id, panel_id)
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Eintrag+gespeichert",
+                            status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/options/{option_id}/delete")
+async def tickets_option_delete(request: Request, guild_id: int, panel_id: int,
+                                option_id: int):
+    """Einen Auswahleintrag entfernen."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    panel = await db_one("SELECT id FROM ticket_panels WHERE id=? AND guild_id=?",
+                         (panel_id, guild_id))
+    if not panel:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Panel+nicht+gefunden",
+                                status_code=302)
+    await db_exec("DELETE FROM ticket_panel_options WHERE id=? AND panel_id=?",
+                  (option_id, panel_id))
+    # Bleibt genau einer uebrig, wird aus der Auswahlliste wieder ein Knopf - das erledigt
+    # die View von selbst, die Nachricht muss es nur erfahren.
+    await _panel_nachricht_auffrischen(guild_id, panel_id)
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Eintrag+entfernt",
+                            status_code=302)
 
 
 @web.post("/servers/{guild_id}/tickets/panels/{panel_id}/delete")
@@ -10880,7 +11034,9 @@ async def tickets_panel_publish(
     emoji = panel.get("emoji") or "🎫"
     embeds = _build_panel_embeds(panel["name"], emoji, panel.get("description"))
     try:
-        view = _TicketView(panel_id, label, emoji)
+        view = _TicketView(panel_id, label, emoji,
+                           await _panel_optionen(panel_id),
+                           await _tt(guild_id, "select_placeholder"))
         msg = await ch.send(embeds=embeds, view=view)
     except Exception as e:
         # Nothing here was guarded before - an invalid emoji string (view construction itself

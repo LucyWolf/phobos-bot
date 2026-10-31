@@ -1090,6 +1090,14 @@ document.addEventListener('click', function(e) {
                     {% for c in categories %}<option value="{{ c.id }}" {% if p.archive_category_id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
                   </select>
                 </div>
+                <div>
+                  <label style="display:flex;align-items:center;gap:0.5rem;font-weight:400;margin:0;">
+                    <input type="checkbox" name="transcript" value="1" style="width:auto;margin:0;"
+                           {% if p.transcript %}checked{% endif %}>
+                    <strong>{{ tr.tickets_transcript_label }}</strong>
+                  </label>
+                  <p class="hint" style="margin:0.3rem 0 0;">{{ tr.tickets_transcript_hint }}</p>
+                </div>
                 <div style="grid-column:1/-1;">
                   <label>{{ tr.tickets_description_label }}</label>
                   <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.tickets_description_hint }}</p>
@@ -1141,6 +1149,74 @@ document.addEventListener('click', function(e) {
               </div>
               <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
             </form>
+
+            <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);">
+              <div style="font-size:0.8rem;font-weight:700;margin-bottom:0.3rem;color:var(--muted);">{{ tr.tickets_options_heading }}</div>
+              <p class="hint" style="margin:0 0 0.6rem;">{{ tr.tickets_options_hint }}</p>
+
+              {% for o in p.optionen %}
+              {# Je Eintrag ein eigenes Formular: sie werden einzeln gespeichert und
+                 geloescht, verschachtelte Formulare gibt es in HTML nicht. #}
+              <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/options/{{ o.id }}/update"
+                    style="border:1px solid var(--border);border-radius:0.5rem;padding:0.6rem 0.7rem;margin-bottom:0.5rem;background:var(--bg);">
+                <div class="grid-2" style="gap:0.6rem;">
+                  <div>
+                    <label style="font-size:0.75rem;">{{ tr.tickets_option_label }}</label>
+                    <input type="text" name="label" value="{{ o.label }}" maxlength="100" required style="margin-bottom:0;">
+                  </div>
+                  <div>
+                    <label style="font-size:0.75rem;">{{ tr.tickets_option_emoji }}</label>
+                    <input type="text" name="emoji" value="{{ o.emoji }}" maxlength="8" style="margin-bottom:0;">
+                  </div>
+                  <div style="grid-column:1/-1;">
+                    <label style="font-size:0.75rem;">{{ tr.tickets_option_description }}</label>
+                    <input type="text" name="description" value="{{ o.description }}" maxlength="100" style="margin-bottom:0;">
+                    <p class="hint" style="margin:0.2rem 0 0;">{{ tr.tickets_option_description_hint }}</p>
+                  </div>
+                  <div>
+                    <label style="font-size:0.75rem;">{{ tr.tickets_option_role }}</label>
+                    <select name="support_role_id" style="margin-bottom:0;">
+                      <option value="">{{ tr.tickets_option_inherit }}</option>
+                      {% for r in roles %}<option value="{{ r.id }}" {% if o.support_role_id == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+                    </select>
+                  </div>
+                  <div>
+                    <label style="font-size:0.75rem;">{{ tr.tickets_option_category }}</label>
+                    <select name="category_id" style="margin-bottom:0;">
+                      <option value="">{{ tr.tickets_option_inherit }}</option>
+                      {% for c in categories %}<option value="{{ c.id }}" {% if o.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+                    </select>
+                  </div>
+                  <div style="grid-column:1/-1;">
+                    <label style="font-size:0.75rem;">{{ tr.tickets_option_message }}</label>
+                    <textarea name="ticket_message" rows="2" maxlength="3900"
+                              style="margin:0;width:100%;box-sizing:border-box;background:var(--surface);color:var(--text);
+                                     border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem 0.7rem;
+                                     font-size:0.8rem;line-height:1.5;resize:vertical;font-family:inherit;outline:none;">{{ o.ticket_message }}</textarea>
+                    <p class="hint" style="margin:0.2rem 0 0;">{{ tr.tickets_option_message_hint }}</p>
+                  </div>
+                </div>
+                <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
+                  <button type="submit" class="btn btn-primary" style="font-size:0.75rem;padding:0.3rem 0.7rem;">{{ tr.btn_save }}</button>
+                </div>
+              </form>
+              <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/options/{{ o.id }}/delete"
+                    style="margin:-0.4rem 0 0.7rem;text-align:right;"
+                    onsubmit="return confirm({{ tr.tickets_option_confirm_delete.replace('{name}', o.label) | js }})">
+                <button type="submit" class="btn btn-danger" style="font-size:0.7rem;padding:0.2rem 0.5rem;">{{ tr.btn_delete }}</button>
+              </form>
+              {% endfor %}
+
+              <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/options/create"
+                    style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                <input type="text" name="label" maxlength="100" required
+                       placeholder="{{ tr.tickets_option_new_placeholder }}" style="flex:1;min-width:160px;margin:0;">
+                <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;">{{ tr.tickets_option_add }}</button>
+              </form>
+              {% if p.optionen | length == 1 %}
+              <p class="hint" style="margin:0.5rem 0 0;">⚠ {{ tr.tickets_options_single }}</p>
+              {% endif %}
+            </div>
 
             {% if p.status != 'published' %}
             <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);">
