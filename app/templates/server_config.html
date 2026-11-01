@@ -1097,6 +1097,12 @@ document.addEventListener('click', function(e) {
                     <strong>{{ tr.tickets_transcript_label }}</strong>
                   </label>
                   <p class="hint" style="margin:0.3rem 0 0;">{{ tr.tickets_transcript_hint }}</p>
+                  <label style="font-size:0.75rem;margin-top:0.5rem;">{{ tr.tickets_transcript_channel_label }}</label>
+                  <select name="transcript_channel_id" style="margin-bottom:0;">
+                    <option value="">{{ tr.tickets_transcript_channel_none }}</option>
+                    {% for ch in channels %}<option value="{{ ch.id }}" {% if p.transcript_channel_id == ch.id %}selected{% endif %}>{{ ch.name }}</option>{% endfor %}
+                  </select>
+                  <p class="hint" style="margin:0.2rem 0 0;">{{ tr.tickets_transcript_channel_hint }}</p>
                 </div>
                 <div style="grid-column:1/-1;">
                   <label>{{ tr.tickets_description_label }}</label>

@@ -10748,6 +10748,8 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     archive_category_id = form.get("archive_category_id", "")
     # Gespraechsverlauf beim Schliessen mitschreiben. Standard aus - siehe die Migration.
     transcript = 1 if form.get("transcript") else 0
+    # Eigener Kanal fuer die Mitschriften; leer heisst weiterhin der normale Log-Kanal.
+    transcript_channel_id = (form.get("transcript_channel_id") or "").strip()
     # Each is a LIST of blocks now, one <textarea> per block in the form - "+" adds a genuinely
     # separate Discord embed, not just another line inside the same one ("es ist bewusst zwei
     # einbettungen ... wenn ich bei den text + mache das es auch eine neuen einbettung ist").
@@ -10767,6 +10769,13 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Kategorie", status_code=302)
     if archive_category_id and archive_category_id not in {str(c.id) for c in guild.categories}:
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Archiv-Kategorie", status_code=302)
+    # Ein Kanal von einem anderen Server waere beim Schliessen nicht aufloesbar - die
+    # Mitschrift fiele dann still aus, und niemand wuesste warum.
+    if transcript_channel_id and transcript_channel_id not in {
+            str(c.id) for c in guild.text_channels}:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=Ungültiger+Mitschrift-Kanal",
+            status_code=302)
     if len(name.strip()) > 100:
         # Same reasoning as tickets_panel_create - ends up in the embed title.
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Name+zu+lang+(max.+100+Zeichen)", status_code=302)
@@ -10813,9 +10822,11 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     new_ticket_message = _djson.dumps(ticket_message_blocks)
     await db_exec(
         "UPDATE ticket_panels SET name=?, button_label=?, close_button_label=?, description=?, ticket_message=?, emoji=?, "
-        "support_role_id=?, category_id=?, archive_category_id=?, transcript=? WHERE id=? AND guild_id=?",
+        "support_role_id=?, category_id=?, archive_category_id=?, transcript=?, "
+        "transcript_channel_id=? WHERE id=? AND guild_id=?",
         (new_name, new_label, new_close_label, new_description, new_ticket_message, new_emoji,
-         support_role_id, category_id, archive_category_id, transcript, panel_id, guild_id),
+         support_role_id, category_id, archive_category_id, transcript,
+         transcript_channel_id, panel_id, guild_id),
     )
     # A published panel's button/embed lives on an already-sent Discord message - saving name/
     # button_label/emoji/description here only touched the DB row until now, so the dashboard

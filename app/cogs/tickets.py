@@ -123,16 +123,22 @@ async def ticket_transcript(channel, guild: discord.Guild, panel: dict | None,
     if not panel or not panel.get("transcript"):
         return False
     ziel = None
-    if panel.get("log_channel_id"):
+    for schluessel in ("transcript_channel_id", "log_channel_id"):
+        wert = panel.get(schluessel)
+        if not wert:
+            continue
         try:
-            ziel = guild.get_channel(int(panel["log_channel_id"]))
+            kandidat = guild.get_channel(int(wert))
         except (ValueError, TypeError):
-            ziel = None
+            continue
+        if kandidat is not None:
+            ziel = kandidat
+            break
     if not isinstance(ziel, discord.TextChannel):
         # Ohne Log-Kanal gaebe es keinen Ort dafuer. Still bleiben statt zu raten: in den
         # Ticketkanal selbst zu schreiben waere sinnlos, der verschwindet gleich.
-        print(f"[Tickets] Transcript uebersprungen: kein Log-Kanal fuer Panel "
-              f"{panel.get('id')}")
+        print(f"[Tickets] Transcript uebersprungen: weder Mitschrift- noch Log-Kanal "
+              f"fuer Panel {panel.get('id')}")
         return False
     try:
         zeilen = []

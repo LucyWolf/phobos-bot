@@ -1311,6 +1311,11 @@ async def init_db():
             # mitgeschrieben wurde, soll nicht durch ein Update anfangen mitgeschrieben zu
             # werden. Wer es will, schaltet es je Panel ein.
             "ALTER TABLE ticket_panels ADD COLUMN transcript INTEGER NOT NULL DEFAULT 0",
+            # Eigener Kanal fuer die Mitschriften. Leer heisst: der normale Log-Kanal, so
+            # wie es bisher war. Getrennt, weil beides verschieden gelesen wird - im Log
+            # ueberfliegt man, was passiert ist, eine Mitschrift liest man nach, und
+            # zwischen laufenden Meldungen findet man sie spaeter nicht wieder.
+            "ALTER TABLE ticket_panels ADD COLUMN transcript_channel_id TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)
