@@ -73,6 +73,27 @@ async def tt(guild_id, schluessel: str, **werte) -> str:
     sprache = TICKET_TEXTE.get(await bot_lang(guild_id), TICKET_TEXTE["de"])
     text = sprache.get(schluessel) or TICKET_TEXTE["de"].get(schluessel, "")
     return text.format(**werte) if werte else text
+
+
+async def _antwort(interaction: discord.Interaction, text: str) -> None:
+    """Dem Benutzer antworten - egal, ob die Interaktion schon bestaetigt wurde.
+
+    Nach einem defer() ist interaction.response verbraucht; ein zweiter Aufruf darauf
+    wirft. Und Discord wirft eine unbeantwortete Interaktion nach drei Sekunden weg -
+    danach scheitert auch das Nachreichen.
+
+    Deshalb bleiben Fehler hier drin: eine verlorene Bestaetigung ist eine fehlende
+    Zeile auf dem Bildschirm, kein Grund, ein fertiges Ticket wieder abzureissen. Genau
+    das ist passiert - der Kanal stand, die Bestaetigung kam zu spaet, der Fehler lief
+    in den Aufraeumzweig und loeschte ihn sofort wieder.
+    """
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(text, ephemeral=True)
+        else:
+            await interaction.response.send_message(text, ephemeral=True)
+    except Exception as e:
+        print(f"[Tickets] Antwort nicht zugestellt: {e}")
 from cogs.log_utils import log_bot_event
 
 
@@ -244,7 +265,11 @@ class _CloseTicketButton(ui.Button):
         await interaction.response.send_message(
             await tt(interaction.guild_id, "closing"), ephemeral=True)
         panel = await db_one(
-            "SELECT archive_category_id FROM ticket_panels WHERE id=?", (ticket["panel_id"],)
+            # Vollstaendig, nicht nur die Archiv-Kategorie: ticket_transcript() liest
+            # transcript und transcript_channel_id aus derselben Zeile. Mit der alten,
+            # auf eine Spalte beschraenkten Abfrage war transcript immer leer - die
+            # Mitschrift lief damit nie, egal was am Panel eingestellt war.
+            "SELECT * FROM ticket_panels WHERE id=?", (ticket["panel_id"],)
         ) if ticket.get("panel_id") else None
         if not await close_ticket_channel(
             interaction.channel, interaction.guild, panel,
@@ -330,12 +355,23 @@ class PanelSelect(ui.Select):
         panel_id = int(self.custom_id.split(":")[1])
         option_id = int(self.values[0])
         guild = interaction.guild
+        # Zuerst Bescheid geben, dass gearbeitet wird. Ein Ticket anzulegen kostet drei
+        # Anfragen an Discord (Kanal anlegen, Begruessung senden, Serverlog) - mehr, als in
+        # die Drei-Sekunden-Frist passt, nach der Discord "reagiert nicht rechtzeitig"
+        # anzeigt und die Interaktion verwirft. Das defer() macht aus den drei Sekunden
+        # fuenfzehn Minuten.
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except Exception as e:
+            # Schon beantwortet oder schon verfallen - beides kein Grund, das Ticket
+            # ausfallen zu lassen. _antwort() kommt damit zurecht.
+            print(f"[Tickets] defer fehlgeschlagen: {e}")
+
         # Derselbe Schutz wie beim Knopf: zwei gleichzeitige Auswahlen wuerden sonst beide
         # "kein offenes Ticket" lesen und je einen Kanal anlegen.
         lock_key = (guild.id, interaction.user.id, panel_id)
         if lock_key in PanelButton._in_progress:
-            await interaction.response.send_message(
-                await tt(interaction.guild_id, "in_progress"), ephemeral=True)
+            await _antwort(interaction, await tt(interaction.guild_id, "in_progress"))
             return
         PanelButton._in_progress.add(lock_key)
         try:
@@ -360,11 +396,20 @@ class PanelButton(ui.Button):
     async def callback(self, interaction: discord.Interaction):
         panel_id = int(self.custom_id.split(":")[1])
         guild = interaction.guild
+        # Zuerst Bescheid geben, dass gearbeitet wird. Ein Ticket anzulegen kostet drei
+        # Anfragen an Discord (Kanal anlegen, Begruessung senden, Serverlog) - mehr, als in
+        # die Drei-Sekunden-Frist passt, nach der Discord "reagiert nicht rechtzeitig"
+        # anzeigt und die Interaktion verwirft. Das defer() macht aus den drei Sekunden
+        # fuenfzehn Minuten.
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except Exception as e:
+            # Schon beantwortet oder schon verfallen - beides kein Grund, das Ticket
+            # ausfallen zu lassen. _antwort() kommt damit zurecht.
+            print(f"[Tickets] defer fehlgeschlagen: {e}")
         lock_key = (guild.id, interaction.user.id, panel_id)
         if lock_key in PanelButton._in_progress:
-            await interaction.response.send_message(
-                await tt(interaction.guild_id, "in_progress"), ephemeral=True
-            )
+            await _antwort(interaction, await tt(interaction.guild_id, "in_progress"))
             return
         PanelButton._in_progress.add(lock_key)
         try:
@@ -385,14 +430,14 @@ class PanelButton(ui.Button):
                 (option_id, panel_id))
             panel = panel_mit_option(panel, opt)
         if not panel:
-            await interaction.response.send_message(await tt(interaction.guild_id, "panel_gone"), ephemeral=True)
+            await _antwort(interaction, await tt(interaction.guild_id, "panel_gone"))
             return
         if panel.get("status") != "published":
             # Belt-and-suspenders: unpublishing deletes the live message so this button
             # shouldn't be clickable anymore at all, but if that deletion ever failed (missing
             # permission, message already gone) or raced with a click, don't let a stale
             # button still create a ticket for a panel the admin explicitly deactivated.
-            await interaction.response.send_message(await tt(interaction.guild_id, "panel_off"), ephemeral=True)
+            await _antwort(interaction, await tt(interaction.guild_id, "panel_off"))
             return
 
         existing = await db_one(
@@ -402,9 +447,9 @@ class PanelButton(ui.Button):
         if existing:
             ch = guild.get_channel(existing["channel_id"])
             if ch:
-                await interaction.response.send_message(
-                    await tt(interaction.guild_id, "already_open", kanal=ch.mention), ephemeral=True
-                )
+                await _antwort(
+                    interaction,
+                    await tt(interaction.guild_id, "already_open", kanal=ch.mention))
                 return
             # Channel wurde extern gelöscht — altes Ticket bereinigen
             await db_exec("UPDATE tickets SET status='closed' WHERE channel_id=?", (existing["channel_id"],))
@@ -483,12 +528,6 @@ class PanelButton(ui.Button):
                 ping += f" {support_role.mention}"
             close_label = panel.get("close_button_label") or await tt(guild.id, "close_btn")
             await channel.send(content=ping, embeds=embeds, view=CloseTicketView(close_label))
-            await log_bot_event(
-                interaction.client, guild.id, "🎫", "Ticket erstellt", "ticket",
-                plain=f"{interaction.user.display_name} · Panel: {panel['name']} · #{channel.name}",
-            )
-            await interaction.response.send_message(
-                await tt(interaction.guild_id, "created", kanal=channel.mention), ephemeral=True)
         except Exception as e:
             # If channel creation itself fails (missing "Manage Channels" permission, guild
             # hit Discord's 500-channel cap, invalid category) the interaction would otherwise
@@ -506,10 +545,22 @@ class PanelButton(ui.Button):
                     await channel.delete(reason="Ticket-Erstellung fehlgeschlagen")
                 except Exception:
                     pass
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    await tt(interaction.guild_id, "failed"), ephemeral=True
-                )
+            await _antwort(interaction, await tt(interaction.guild_id, "failed"))
+            return
+
+        # Ab hier steht das Ticket: der Kanal ist da, die Rechte sitzen, die Begruessung
+        # steht drin. Was jetzt noch schiefgeht - der Eintrag im Serverlog, die
+        # Bestaetigung an den Benutzer - aendert daran nichts und darf den Kanal nicht
+        # mehr anfassen. Deshalb liegt beides ausserhalb des Aufraeumzweigs.
+        try:
+            await log_bot_event(
+                interaction.client, guild.id, "🎫", "Ticket erstellt", "ticket",
+                plain=f"{interaction.user.display_name} · Panel: {panel['name']} · #{channel.name}",
+            )
+        except Exception as e:
+            print(f"[Tickets] Serverlog-Eintrag fuer #{channel.name} fehlgeschlagen: {e}")
+        await _antwort(interaction,
+                       await tt(interaction.guild_id, "created", kanal=channel.mention))
 
 
 class OpenTicketView(ui.View):
@@ -563,7 +614,11 @@ class Tickets(commands.Cog):
             return
         await interaction.response.send_message(await tt(interaction.guild_id, "closing"))
         panel = await db_one(
-            "SELECT archive_category_id FROM ticket_panels WHERE id=?", (ticket["panel_id"],)
+            # Vollstaendig, nicht nur die Archiv-Kategorie: ticket_transcript() liest
+            # transcript und transcript_channel_id aus derselben Zeile. Mit der alten,
+            # auf eine Spalte beschraenkten Abfrage war transcript immer leer - die
+            # Mitschrift lief damit nie, egal was am Panel eingestellt war.
+            "SELECT * FROM ticket_panels WHERE id=?", (ticket["panel_id"],)
         ) if ticket.get("panel_id") else None
         if not await close_ticket_channel(
             interaction.channel, interaction.guild, panel,

@@ -11109,7 +11109,10 @@ async def ticket_close(request: Request, guild_id: int, ticket_id: int):
     if ch:
         guild_obj = b.get_guild(guild_id)
         panel = await db_one(
-            "SELECT archive_category_id FROM ticket_panels WHERE id=?", (ticket["panel_id"],)
+            # Vollstaendig: _close_ticket_channel() reicht die Zeile an die Mitschrift
+            # weiter, die transcript und transcript_channel_id daraus liest. Nur die
+            # Archiv-Kategorie zu holen hiess, dass nie eine Mitschrift entstand.
+            "SELECT * FROM ticket_panels WHERE id=?", (ticket["panel_id"],)
         ) if ticket.get("panel_id") else None
         # Same reasoning as the "bot not online" branch above: if the channel is still there and
         # we couldn't actually close it (e.g. missing permission right now), don't mark the
