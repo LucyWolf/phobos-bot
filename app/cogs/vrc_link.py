@@ -431,6 +431,41 @@ async def group_membership(group_id: str, vrc_user_id: str, guild_id=None) -> tu
     return "ok", bool(row)
 
 
+async def einladen_wenn_gewuenscht(guild_id: int, link) -> tuple:
+    """Einmal in die Gruppe einladen - sofort, wenn der Server das eingeschaltet hat.
+
+    Gedacht fuer den Moment, in dem jemand sich verknuepft: dann steht die Person davor
+    und wartet. Vorher konnte die Einladung erst im naechsten Reihendurchgang
+    herausgehen, und der sieht alle zehn Minuten sechs Konten an - bei vielen
+    Verknuepften dauert das Stunden. Wer testet, haelt das fuer kaputt.
+
+    Gibt (zustand, detail) zurueck wie send_group_invite, oder ("skip", Grund), wenn gar
+    nicht eingeladen werden sollte. Der Vermerk wird nur bei Erfolg gesetzt - ein
+    Fehlschlag darf nicht als erledigt gelten.
+    """
+    if not link or not link["vrc_user_id"]:
+        return "skip", "keine VRChat-Kennung"
+    if link["vrc_group_member"]:
+        return "skip", "ist schon in der Gruppe"
+    if (link["vrc_group_invited"] or "").strip():
+        return "skip", "wurde schon eingeladen"
+    if (await get_guild_config(guild_id, "vrc_auto_invite") or "") != "1":
+        return "skip", "automatische Einladung ist aus"
+    group_id = (await get_guild_config(guild_id, "vrc_group_id") or "").strip()
+    if not group_id:
+        return "skip", "keine Gruppe eingestellt"
+    zustand, detail = await send_group_invite(group_id, link["vrc_user_id"], guild_id)
+    print(f"[vrc_link] Gruppeneinladung an {link['vrchat_name']}: {zustand}"
+          + (f" ({detail})" if detail else ""))
+    if zustand in ("sent", "already"):
+        try:
+            await db_exec("UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
+                          (datetime.datetime.utcnow().isoformat(), link["id"]))
+        except Exception as e:
+            print(f"[vrc_link] Einladungsvermerk nicht gespeichert: {e}")
+    return zustand, detail
+
+
 async def send_group_invite(group_id: str, vrc_user_id: str, guild_id=None) -> tuple:
     """Invite one VRChat account into the group.
 
@@ -1630,13 +1665,24 @@ class VRCLink(commands.Cog):
                     # wiederholtes Schreiben ist das Muster, das Bot-Konten auffaellig macht.
                     if automatisch and not row["vrc_group_invited"]:
                         zustand, detail = await send_group_invite(group_id, row["vrc_user_id"], guild.id)
-                        await db_exec(
-                            "UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
-                            (datetime.datetime.utcnow().isoformat(), row["id"]),
-                        )
-                        row["vrc_group_invited"] = "x"
                         print(f"[vrc_link] Gruppeneinladung an {row['vrchat_name']}: {zustand}"
                               + (f" ({detail})" if detail else ""))
+                        # Nur vermerken, wenn wirklich eine Einladung unterwegs ist.
+                        #
+                        # Vorher wurde der Vermerk IMMER gesetzt, auch wenn VRChat die
+                        # Einladung abgelehnt hat - und "genau einmal" hiess dann: genau
+                        # ein Fehlschlag, danach nie wieder ein Versuch. Fehlte dem
+                        # Bot-Konto das Recht zum Einladen, war damit jeder, der in der
+                        # Zeit verknuepft hat, dauerhaft als "eingeladen" abgehakt, ohne
+                        # je eine bekommen zu haben. Auch nachdem das Recht gesetzt war,
+                        # passierte nichts mehr - gemeldet als "wir haben das gerade
+                        # getestet aber ich habe keine einladung bekommen".
+                        if zustand in ("sent", "already"):
+                            await db_exec(
+                                "UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
+                                (datetime.datetime.utcnow().isoformat(), row["id"]),
+                            )
+                            row["vrc_group_invited"] = "x"
                     continue
                 war_schon = bool(row["vrc_group_member"])
                 await db_exec(

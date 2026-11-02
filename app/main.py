@@ -7441,6 +7441,24 @@ async def _vrc_sync_group(guild_id: int, link) -> None:
         )
     except Exception as e:
         print(f"[vrc_link] could not store group membership for link {link['id']}: {e}")
+        return
+    if is_member:
+        return
+    # Nicht in der Gruppe - und genau jetzt steht die Person davor und wartet. Bis hierher
+    # ging die Einladung erst im naechsten Reihendurchgang heraus, und der sieht alle zehn
+    # Minuten sechs Konten an; bei vielen Verknuepften dauert das Stunden. Wer gerade
+    # verknuepft hat und nichts bekommt, haelt die Funktion fuer kaputt - so gemeldet.
+    #
+    # einladen_wenn_gewuenscht() entscheidet selbst, ob ueberhaupt eingeladen wird
+    # (Schalter, Gruppe hinterlegt, noch nicht eingeladen) und vermerkt es nur bei Erfolg.
+    try:
+        from cogs.vrc_link import einladen_wenn_gewuenscht
+        aktuell = await db_one("SELECT * FROM vrc_links WHERE id=?", (link["id"],))
+        await einladen_wenn_gewuenscht(guild_id, aktuell or link)
+    except Exception as e:
+        # Eine misslungene Einladung darf das Verknuepfen nicht scheitern lassen - die
+        # Verbindung steht, und der Reihendurchgang versucht es ohnehin wieder.
+        print(f"[vrc_link] Sofort-Einladung fuer link {link['id']} fehlgeschlagen: {e}")
 
 
 @web.post("/vrc/invite", response_class=HTMLResponse)
