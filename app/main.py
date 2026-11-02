@@ -11064,7 +11064,11 @@ async def tickets_option_create(request: Request, guild_id: int, panel_id: int):
                 "Mehr als 25 Einträge zeigt Discord in einer Auswahlliste nicht an."),
             status_code=302)
     form = await request.form()
-    label = " ".join((form.get("label") or "").split())[:100]
+    # "neu_label", weil das Anlegen inzwischen im selben Formular steckt wie die
+    # bestehenden Eintraege - "label" allein gehoert dort einem von ihnen. Der alte
+    # Name bleibt als Rueckfall, damit ein offener Browser-Tab mit der alten Seite
+    # weiterhin funktioniert.
+    label = " ".join((form.get("neu_label") or form.get("label") or "").split())[:100]
     if not label:
         return RedirectResponse(
             f"/servers/{guild_id}?tab=tickets&error=Beschriftung+fehlt", status_code=302)
@@ -11077,6 +11081,72 @@ async def tickets_option_create(request: Request, guild_id: int, panel_id: int):
     await _panel_nachricht_auffrischen(guild_id, panel_id)
     return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Eintrag+angelegt",
                             status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/options/save")
+async def tickets_options_save(request: Request, guild_id: int, panel_id: int):
+    """Alle Auswahleintraege eines Panels auf einmal speichern.
+
+    Vorher hatte jeder Eintrag seinen eigenen Knopf. Wer vier Kategorien einrichtete,
+    musste viermal speichern und landete jedes Mal wieder oben in der Gesamtuebersicht -
+    gemeldet aus der Community ("der wirft einen immer wieder in die gesamt übersicht
+    wenn man ein multi ticket post einrichten will").
+
+    Die Felder heissen label_<id>, emoji_<id> und so weiter. Welche Eintraege ueberhaupt
+    dabei sind, sagen die mitgeschickten option_id-Werte - nicht die Feldnamen, die
+    durchzugehen hiesse, dem Formular zu glauben, welche Zeilen es gibt.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    panel = await db_one("SELECT id FROM ticket_panels WHERE id=? AND guild_id=?",
+                         (panel_id, guild_id))
+    if not panel:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Panel+nicht+gefunden",
+                                status_code=302)
+    form = await request.form()
+
+    # Nur Eintraege, die wirklich zu diesem Panel gehoeren. Eine erratene Nummer im
+    # Formular darf keinen fremden Eintrag umschreiben.
+    echte = {str(r["id"]) for r in (await db_rows(
+        "SELECT id FROM ticket_panel_options WHERE panel_id=?", (panel_id,)) or [])}
+    gewuenscht = [x for x in form.getlist("option_id") if str(x) in echte]
+
+    rollen = {str(ro.id) for ro in guild.roles}
+    kategorien = {str(c.id) for c in guild.categories}
+    gespeichert = 0
+    for oid in gewuenscht:
+        label = " ".join((form.get(f"label_{oid}") or "").split())[:100]
+        if not label:
+            # Eine leere Beschriftung waere ein Eintrag, den man in der Auswahlliste
+            # nicht lesen kann. Die uebrigen trotzdem speichern, statt alles abzulehnen.
+            continue
+        description = " ".join((form.get(f"description_{oid}") or "").split())[:100]
+        emoji = (form.get(f"emoji_{oid}") or "").strip()[:8]
+        support_role_id = (form.get(f"support_role_id_{oid}") or "").strip()
+        category_id = (form.get(f"category_id_{oid}") or "").strip()
+        ticket_message = (form.get(f"ticket_message_{oid}") or "").strip()[:3900]
+        # Dieselben Pruefungen wie beim einzelnen Speichern: eine Rolle oder Kategorie
+        # von einem anderen Server waere beim Ticketanlegen nicht aufloesbar.
+        if support_role_id and support_role_id not in rollen:
+            return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Rolle",
+                                    status_code=302)
+        if category_id and category_id not in kategorien:
+            return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Kategorie",
+                                    status_code=302)
+        await db_exec(
+            "UPDATE ticket_panel_options SET label=?, description=?, emoji=?, "
+            "support_role_id=?, category_id=?, ticket_message=? WHERE id=? AND panel_id=?",
+            (label, description, emoji, support_role_id, category_id, ticket_message,
+             int(oid), panel_id))
+        gespeichert += 1
+    await _panel_nachricht_auffrischen(guild_id, panel_id)
+    return RedirectResponse(
+        f"/servers/{guild_id}?tab=tickets&success=" + urllib.parse.quote_plus(
+            f"{gespeichert} Eintrag(e) gespeichert"), status_code=302)
 
 
 @web.post("/servers/{guild_id}/tickets/panels/{panel_id}/options/{option_id}/update")

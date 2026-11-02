@@ -33,6 +33,10 @@ TICKET_TEXTE = {
         "already_closed": "Dieses Ticket ist bereits geschlossen.",
         "closing":        "Ticket wird geschlossen...",
         "closed_by":      "Ticket geschlossen von {wer}",
+        "closed_by_grund": "Ticket geschlossen von {wer} · Grund: {grund}",
+        "grund_titel":    "Ticket schließen",
+        "grund_label":    "Grund (optional)",
+        "grund_platz":    "z. B. erledigt, Doppelpost, keine Rückmeldung",
         "in_progress":    "Dein Ticket wird bereits erstellt, bitte warten.",
         "panel_gone":     "Panel nicht gefunden.",
         "panel_off":      "Dieses Panel ist aktuell nicht aktiv.",
@@ -51,6 +55,10 @@ TICKET_TEXTE = {
         "already_closed": "This ticket is already closed.",
         "closing":        "Closing the ticket...",
         "closed_by":      "Ticket closed by {wer}",
+        "closed_by_grund": "Ticket closed by {wer} · Reason: {grund}",
+        "grund_titel":    "Close ticket",
+        "grund_label":    "Reason (optional)",
+        "grund_platz":    "e.g. resolved, duplicate, no reply",
         "in_progress":    "Your ticket is already being created, one moment.",
         "panel_gone":     "Panel not found.",
         "panel_off":      "This panel is currently inactive.",
@@ -239,6 +247,68 @@ async def close_ticket_channel(channel, guild: discord.Guild, panel: dict | None
     return True
 
 
+class _GrundModal(ui.Modal):
+    """Fragt beim Schliessen nach dem Grund.
+
+    Gewuenscht aus der Community ("nen ticket mit einer bestimmten reason zu schließen").
+    Das Feld ist absichtlich NICHT verpflichtend: wer nur aufraeumt, soll nicht erst
+    etwas erfinden muessen - und ein Pflichtfeld, in das "." getippt wird, sagt weniger
+    als ein leeres.
+
+    Der Grund landet an drei Stellen: in der Meldung im Kanal, im Server-Log und im
+    Kopf der Mitschrift. Gerade dort ist er am meisten wert - wer Monate spaeter
+    nachliest, sieht sofort, wie die Sache ausgegangen ist.
+    """
+
+    def __init__(self, titel: str, feld_label: str, platzhalter: str):
+        super().__init__(title=titel[:45], timeout=300)
+        self.grund = ui.TextInput(
+            label=feld_label[:45],
+            placeholder=platzhalter[:100],
+            required=False,
+            max_length=200,
+            style=discord.TextStyle.short,
+        )
+        self.add_item(self.grund)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await _schliessen(interaction, (self.grund.value or "").strip())
+
+
+async def _schliessen(interaction: discord.Interaction, grund: str = "") -> None:
+    """Der gemeinsame Weg fuer Knopf und /ticket-close.
+
+    Stand vorher zweimal fast gleich da - einmal im Knopf, einmal im Slash-Befehl. Mit
+    dem Grund waeren es zwei Stellen gewesen, die ihn beide kennen muessen.
+    """
+    ticket = await db_one(
+        "SELECT * FROM tickets WHERE channel_id=? AND status='open'",
+        (interaction.channel_id,))
+    if not ticket:
+        await _antwort(interaction, await tt(interaction.guild_id, "already_closed"))
+        return
+    # Das Schliessen dauert: Mitschrift holen, Kanal verschieben oder loeschen. Erst
+    # bestaetigen, dann arbeiten - sonst laeuft die Drei-Sekunden-Frist ab.
+    await _antwort(interaction, await tt(interaction.guild_id, "closing"))
+    panel = await db_one(
+        "SELECT * FROM ticket_panels WHERE id=?", (ticket["panel_id"],)
+    ) if ticket.get("panel_id") else None
+    if grund:
+        text = await tt(interaction.guild_id, "closed_by_grund",
+                        wer=interaction.user, grund=grund)
+    else:
+        text = await tt(interaction.guild_id, "closed_by", wer=interaction.user)
+    if not await close_ticket_channel(interaction.channel, interaction.guild, panel, text):
+        return
+    await db_exec("UPDATE tickets SET status='closed' WHERE channel_id=?",
+                  (interaction.channel_id,))
+    await log_bot_event(
+        interaction.client, interaction.guild.id, "🔒", "Ticket geschlossen", "ticket",
+        plain=f"#{interaction.channel.name} · von {interaction.user.display_name}"
+              + (f" · {grund}" if grund else ""),
+    )
+
+
 class _CloseTicketButton(ui.Button):
     # custom_id is fixed regardless of `label` (unlike PanelButton's per-panel custom_id) -
     # there's only ever one active close button per ticket channel, and keeping it constant is
@@ -262,25 +332,15 @@ class _CloseTicketButton(ui.Button):
             await interaction.response.send_message(
                 await tt(interaction.guild_id, "already_closed"), ephemeral=True)
             return
-        await interaction.response.send_message(
-            await tt(interaction.guild_id, "closing"), ephemeral=True)
-        panel = await db_one(
-            # Vollstaendig, nicht nur die Archiv-Kategorie: ticket_transcript() liest
-            # transcript und transcript_channel_id aus derselben Zeile. Mit der alten,
-            # auf eine Spalte beschraenkten Abfrage war transcript immer leer - die
-            # Mitschrift lief damit nie, egal was am Panel eingestellt war.
-            "SELECT * FROM ticket_panels WHERE id=?", (ticket["panel_id"],)
-        ) if ticket.get("panel_id") else None
-        if not await close_ticket_channel(
-            interaction.channel, interaction.guild, panel,
-            await tt(interaction.guild_id, "closed_by", wer=interaction.user)
-        ):
-            return
-        await db_exec("UPDATE tickets SET status='closed' WHERE channel_id=?", (interaction.channel_id,))
-        await log_bot_event(
-            interaction.client, interaction.guild.id, "🔒", "Ticket geschlossen", "ticket",
-            plain=f"#{interaction.channel.name} · von {interaction.user.display_name}",
-        )
+        # Das Eingabefenster MUSS die erste Antwort auf die Interaktion sein - nach einem
+        # defer() oder einer Nachricht laesst Discord keines mehr zu. Deshalb steht oben
+        # nur die eine Abfrage, die entscheidet, ob es ueberhaupt etwas zu schliessen
+        # gibt; alles Weitere passiert, nachdem das Fenster abgeschickt wurde.
+        await interaction.response.send_modal(_GrundModal(
+            await tt(interaction.guild_id, "grund_titel"),
+            await tt(interaction.guild_id, "grund_label"),
+            await tt(interaction.guild_id, "grund_platz"),
+        ))
 
 
 class CloseTicketView(ui.View):
@@ -604,7 +664,10 @@ class Tickets(commands.Cog):
             ))
 
     @app_commands.command(name="ticket-close", description="Dieses Ticket schließen")
-    async def ticket_close(self, interaction: discord.Interaction):
+    @app_commands.describe(grund="Warum wird geschlossen? Steht später in der Mitschrift.")
+    async def ticket_close(self, interaction: discord.Interaction, grund: str = ""):
+        """Derselbe Weg wie der Knopf - nur dass der Grund hier gleich mitgetippt wird,
+        statt in einem Fenster abgefragt zu werden. Leer lassen ist erlaubt."""
         ticket = await db_one(
             "SELECT * FROM tickets WHERE channel_id=? AND status='open'",
             (interaction.channel_id,),
@@ -612,24 +675,7 @@ class Tickets(commands.Cog):
         if not ticket:
             await interaction.response.send_message(await tt(interaction.guild_id, "not_a_ticket"), ephemeral=True)
             return
-        await interaction.response.send_message(await tt(interaction.guild_id, "closing"))
-        panel = await db_one(
-            # Vollstaendig, nicht nur die Archiv-Kategorie: ticket_transcript() liest
-            # transcript und transcript_channel_id aus derselben Zeile. Mit der alten,
-            # auf eine Spalte beschraenkten Abfrage war transcript immer leer - die
-            # Mitschrift lief damit nie, egal was am Panel eingestellt war.
-            "SELECT * FROM ticket_panels WHERE id=?", (ticket["panel_id"],)
-        ) if ticket.get("panel_id") else None
-        if not await close_ticket_channel(
-            interaction.channel, interaction.guild, panel,
-            await tt(interaction.guild_id, "closed_by", wer=interaction.user)
-        ):
-            return
-        await db_exec("UPDATE tickets SET status='closed' WHERE channel_id=?", (interaction.channel_id,))
-        await log_bot_event(
-            interaction.client, interaction.guild.id, "🔒", "Ticket geschlossen", "ticket",
-            plain=f"#{interaction.channel.name} · von {interaction.user.display_name}",
-        )
+        await _schliessen(interaction, (grund or "").strip()[:200])
 
 
 async def setup(bot):

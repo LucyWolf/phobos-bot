@@ -1160,64 +1160,88 @@ document.addEventListener('click', function(e) {
               <div style="font-size:0.8rem;font-weight:700;margin-bottom:0.3rem;color:var(--muted);">{{ tr.tickets_options_heading }}</div>
               <p class="hint" style="margin:0 0 0.6rem;">{{ tr.tickets_options_hint }}</p>
 
+              {# EIN Formular fuer alle Eintraege, nicht eines je Eintrag.
+
+                 Vorher hatte jeder Eintrag sein eigenes: wer vier Kategorien einrichtete,
+                 musste viermal speichern und wurde jedes Mal in die Gesamtuebersicht
+                 zurueckgeworfen ("der wirft einen immer wieder in die gesamt übersicht
+                 wenn man ein multi ticket post einrichten will").
+
+                 Die Felder tragen deshalb die Nummer des Eintrags im Namen
+                 (label_17, emoji_17, ...) statt Listen zu sein: so ist jede Zeile auch
+                 dann eindeutig ihrem Eintrag zugeordnet, wenn der Browser die Reihenfolge
+                 anders schickt oder zwischendurch einer geloescht wurde.
+
+                 Loeschen und Anlegen haengen mit formaction am selben Formular -
+                 verschachtelte Formulare gibt es in HTML nicht, ein formaction am Knopf
+                 schon. #}
+              <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/options/save">
               {% for o in p.optionen %}
-              {# Je Eintrag ein eigenes Formular: sie werden einzeln gespeichert und
-                 geloescht, verschachtelte Formulare gibt es in HTML nicht. #}
-              <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/options/{{ o.id }}/update"
-                    style="border:1px solid var(--border);border-radius:0.5rem;padding:0.6rem 0.7rem;margin-bottom:0.5rem;background:var(--bg);">
+              <input type="hidden" name="option_id" value="{{ o.id }}">
+              <div style="border:1px solid var(--border);border-radius:0.5rem;padding:0.6rem 0.7rem;margin-bottom:0.5rem;background:var(--bg);">
                 <div class="grid-2" style="gap:0.6rem;">
                   <div>
                     <label style="font-size:0.75rem;">{{ tr.tickets_option_label }}</label>
-                    <input type="text" name="label" value="{{ o.label }}" maxlength="100" required style="margin-bottom:0;">
+                    <input type="text" name="label_{{ o.id }}" value="{{ o.label }}" maxlength="100" required style="margin-bottom:0;">
                   </div>
                   <div>
                     <label style="font-size:0.75rem;">{{ tr.tickets_option_emoji }}</label>
-                    <input type="text" name="emoji" value="{{ o.emoji }}" maxlength="8" style="margin-bottom:0;">
+                    <input type="text" name="emoji_{{ o.id }}" value="{{ o.emoji }}" maxlength="8" style="margin-bottom:0;">
                   </div>
                   <div style="grid-column:1/-1;">
                     <label style="font-size:0.75rem;">{{ tr.tickets_option_description }}</label>
-                    <input type="text" name="description" value="{{ o.description }}" maxlength="100" style="margin-bottom:0;">
+                    <input type="text" name="description_{{ o.id }}" value="{{ o.description }}" maxlength="100" style="margin-bottom:0;">
                     <p class="hint" style="margin:0.2rem 0 0;">{{ tr.tickets_option_description_hint }}</p>
                   </div>
                   <div>
                     <label style="font-size:0.75rem;">{{ tr.tickets_option_role }}</label>
-                    <select name="support_role_id" style="margin-bottom:0;">
+                    <select name="support_role_id_{{ o.id }}" style="margin-bottom:0;">
                       <option value="">{{ tr.tickets_option_inherit }}</option>
                       {% for r in roles %}<option value="{{ r.id }}" {% if o.support_role_id == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
                     </select>
                   </div>
                   <div>
                     <label style="font-size:0.75rem;">{{ tr.tickets_option_category }}</label>
-                    <select name="category_id" style="margin-bottom:0;">
+                    <select name="category_id_{{ o.id }}" style="margin-bottom:0;">
                       <option value="">{{ tr.tickets_option_inherit }}</option>
                       {% for c in categories %}<option value="{{ c.id }}" {% if o.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
                     </select>
                   </div>
                   <div style="grid-column:1/-1;">
                     <label style="font-size:0.75rem;">{{ tr.tickets_option_message }}</label>
-                    <textarea name="ticket_message" rows="2" maxlength="3900"
+                    <textarea name="ticket_message_{{ o.id }}" rows="2" maxlength="3900"
                               style="margin:0;width:100%;box-sizing:border-box;background:var(--surface);color:var(--text);
                                      border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem 0.7rem;
                                      font-size:0.8rem;line-height:1.5;resize:vertical;font-family:inherit;outline:none;">{{ o.ticket_message }}</textarea>
                     <p class="hint" style="margin:0.2rem 0 0;">{{ tr.tickets_option_message_hint }}</p>
                   </div>
                 </div>
-                <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
-                  <button type="submit" class="btn btn-primary" style="font-size:0.75rem;padding:0.3rem 0.7rem;">{{ tr.btn_save }}</button>
+                <div style="display:flex;margin-top:0.5rem;justify-content:flex-end;">
+                  {# formnovalidate, weil beim Loeschen die Pflichtfelder der ANDEREN
+                     Eintraege nicht im Weg stehen sollen. #}
+                  <button type="submit" class="btn btn-danger" style="font-size:0.7rem;padding:0.2rem 0.5rem;"
+                          formnovalidate
+                          formaction="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/options/{{ o.id }}/delete"
+                          onclick="return confirm({{ tr.tickets_option_confirm_delete.replace('{name}', o.label) | js }})">{{ tr.btn_delete }}</button>
                 </div>
-              </form>
-              <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/options/{{ o.id }}/delete"
-                    style="margin:-0.4rem 0 0.7rem;text-align:right;"
-                    onsubmit="return confirm({{ tr.tickets_option_confirm_delete.replace('{name}', o.label) | js }})">
-                <button type="submit" class="btn btn-danger" style="font-size:0.7rem;padding:0.2rem 0.5rem;">{{ tr.btn_delete }}</button>
-              </form>
+              </div>
               {% endfor %}
 
-              <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/options/create"
-                    style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
-                <input type="text" name="label" maxlength="100" required
+              {% if p.optionen %}
+              <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.8rem;">
+                <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">💾 {{ tr.tickets_options_save_all }}</button>
+                <span class="hint" style="margin:0;">{{ tr.tickets_options_save_all_hint }}</span>
+              </div>
+              {% endif %}
+
+              {# Neuer Eintrag: eigener Name, damit er nicht mit den bestehenden
+                 kollidiert, und ebenfalls per formaction an seine eigene Route. #}
+              <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                <input type="text" name="neu_label" maxlength="100"
                        placeholder="{{ tr.tickets_option_new_placeholder }}" style="flex:1;min-width:160px;margin:0;">
-                <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;">{{ tr.tickets_option_add }}</button>
+                <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;" formnovalidate
+                        formaction="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/options/create">{{ tr.tickets_option_add }}</button>
+              </div>
               </form>
               {% if p.optionen | length == 1 %}
               <p class="hint" style="margin:0.5rem 0 0;">⚠ {{ tr.tickets_options_single }}</p>
