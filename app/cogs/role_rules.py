@@ -123,6 +123,25 @@ class RoleRules(commands.Cog):
         print(f"[RoleRules] {stamped}")
         self._debug_log.append(stamped)
 
+    def _log_spur(self, leise: bool, msg: str) -> None:
+        """Eine Zeile, die nur den Zustand beschreibt - weggelassen im Reihendurchlauf.
+
+        Der Unterschied ist, wie oft dieselbe Zeile entsteht. Wird ein Mitglied wegen
+        einer Rollenaenderung geprueft, ist "diese Regel trifft zu" die Antwort auf eine
+        Frage, die gerade jemand gestellt hat. Im periodischen Durchlauf entsteht
+        dieselbe Zeile fuer JEDES Mitglied, und beim naechsten Durchlauf wieder, ohne
+        dass sich irgendetwas geaendert haette.
+
+        Gemessen am 02.11.2026 auf einer Installation mit 544 Mitgliedern und einem
+        Intervall von einer Minute: 1.000 bis 1.900 Zeilen pro Minute, rund ein Gigabyte
+        am Tag, 21 GB in drei Wochen - bis die Platte voll war. Was tatsaechlich
+        geschieht (eine Rolle wird vergeben, etwas schlaegt fehl) laeuft weiter ueber
+        _log() und bleibt vollstaendig sichtbar; der Durchlauf schreibt am Ende eine
+        Zeile mit den Zahlen.
+        """
+        if not leise:
+            self._log(msg)
+
     def _log_once(self, key: tuple, msg: str) -> None:
         """_log(), but at most once per AUTOCREATE_RETRY_SECONDS per key.
 
@@ -320,19 +339,28 @@ class RoleRules(commands.Cog):
             except Exception as e:
                 self._log(f"FEHLER: Regel #{row['id']} konnte nicht umgebogen werden: {e}")
 
-    async def _evaluate_member(self, guild: discord.Guild, member, hop_budget: int = MAX_HOP_BUDGET):
+    async def _evaluate_member(self, guild: discord.Guild, member,
+                               hop_budget: int = MAX_HOP_BUDGET,
+                               leise: bool = False) -> bool:
+        """Gibt zurueck, ob tatsaechlich etwas geaendert wurde.
+
+        leise=True kommt aus dem periodischen Durchlauf: dort beschreiben die Zeilen je
+        Mitglied nur den immer gleichen Zustand - siehe _log_spur(). Was wirklich
+        passiert, wird auch dann geschrieben.
+        """
         if hop_budget <= 0 or member is None:
             self._log(f"Auswertung abgebrochen: hop_budget={hop_budget}, member={member}")
-            return
+            return False
         rules = await self._get_rules(guild.id)
         # Der Zustand der Nachricht gehoert in dieselbe Zeile: bleibt eine PM aus, ist die
         # erste Frage immer, ob die Regel ueberhaupt eine schicken soll.
         _pm = [f"#{r['id']}:" + ("an" if _feld(r, "dm_enabled") and str(_feld(r, "dm_text", "")).strip()
                                  else "aus") for r in rules]
-        self._log(f"Guild {guild.id} ({guild.name}): {len(rules)} aktive Regel(n) geladen für "
-                  f"Mitglied {member.id} · Nachricht je Regel: {', '.join(_pm) or '—'}")
+        self._log_spur(leise,
+                       f"Guild {guild.id} ({guild.name}): {len(rules)} aktive Regel(n) geladen für "
+                       f"Mitglied {member.id} · Nachricht je Regel: {', '.join(_pm) or '—'}")
         if not rules:
-            return
+            return False
         current = {r.id for r in member.roles}
         to_add, to_remove = set(), set()
         cross_by_guild: dict = {}  # action_guild_id -> {"add": set(), "remove": set()}
@@ -370,7 +398,8 @@ class RoleRules(commands.Cog):
                 if not self._matches(rule, current):
                     continue
                 blocks = role_rule_actions(rule)
-                self._log(f"Regel #{rule['id']} ({rule['name'] or '—'}) trifft zu für Mitglied {member.id}: "
+                self._log_spur(leise,
+                          f"Regel #{rule['id']} ({rule['name'] or '—'}) trifft zu für Mitglied {member.id}: "
                           f"match_type={rule['match_type']} match_roles={rule['match_role_ids']} "
                           f"-> {len(blocks)} Aktion(en): "
                           f"{[(b['action'], b['guild_id'], b['role_ids']) for b in blocks]}")
@@ -437,10 +466,15 @@ class RoleRules(commands.Cog):
                 # action blocks, the legacy column shows only the FIRST one, so a rule whose
                 # SECOND block holds the bad data used to produce an error line in which
                 # everything printed looked perfectly fine.
-                self._log(f"FEHLER: Regel #{rule['id']} ({rule['name'] or '—'}) hat fehlerhafte Daten "
-                          f"(match_roles={rule['match_role_ids']!r}, "
-                          f"action_roles={rule['action_role_ids']!r}, actions={_feld(rule, 'actions')!r}) "
-                          f"und wird übersprungen: {e}")
+                # _log_once je Regel: kaputte Daten in einer Regel aendern sich nicht
+                # dadurch, dass das naechste Mitglied geprueft wird - im Reihendurchlauf
+                # entstuende dieselbe Zeile sonst je Mitglied einmal.
+                self._log_once(
+                    (guild.id, int(rule["id"])),
+                    f"FEHLER: Regel #{rule['id']} ({rule['name'] or '—'}) hat fehlerhafte Daten "
+                    f"(match_roles={rule['match_role_ids']!r}, "
+                    f"action_roles={rule['action_role_ids']!r}, actions={_feld(rule, 'actions')!r}) "
+                    f"und wird übersprungen: {e}")
                 continue
         # Read once per pass, and only when there is actually something to apply - the periodic
         # mode runs this method once per MEMBER, so an unconditional read would add a DB round
@@ -494,23 +528,32 @@ class RoleRules(commands.Cog):
                     # in the very same evaluation pass - not just this one failed edit.
                     self._log(f"FEHLER: Anwenden auf {member.id} in Guild {guild.id} fehlgeschlagen: {e}")
         if cross_by_guild:
-            self._log(f"{len(cross_by_guild)} Ziel-Server-Aktion(en) zu verarbeiten für Mitglied {member.id}: "
-                      f"{ {gid: (b['add'], b['remove']) for gid, b in cross_by_guild.items()} }")
+            self._log_spur(leise,
+                           f"{len(cross_by_guild)} Ziel-Server-Aktion(en) zu verarbeiten für Mitglied {member.id}: "
+                           f"{ {gid: (b['add'], b['remove']) for gid, b in cross_by_guild.items()} }")
         for action_guild_id, bucket in cross_by_guild.items():
             target_guild = self.bot.get_guild(int(action_guild_id))
             if not target_guild:
                 # Not reachable via this same bot token - the dashboard only ever offers
                 # same-token guilds as an action target, so this means the bot has since left
                 # that server. Nothing sensible to do but skip.
-                self._log(f"FEHLER: Zielserver {action_guild_id} über self.bot.get_guild() nicht erreichbar "
-                          f"(dieser Bot-Token kennt {len(self.bot.guilds)} Server: {[g.id for g in self.bot.guilds]})")
+                # _log_once statt _log: das ist kein Vorfall, sondern ein Zustand - der
+                # Bot ist auf diesem Server nicht (mehr). Er aendert sich nicht dadurch,
+                # dass das naechste Mitglied geprueft wird. Vorher stand die Zeile
+                # 1.566-mal in fuenf Megabyte Protokoll und hat die Meldungen verdeckt,
+                # die wirklich etwas Neues sagten.
+                self._log_once(
+                    (guild.id, int(action_guild_id)),
+                    f"FEHLER: Zielserver {action_guild_id} über self.bot.get_guild() nicht erreichbar "
+                    f"(dieser Bot-Token kennt {len(self.bot.guilds)} Server: {[g.id for g in self.bot.guilds]})")
                 continue
             target_member = target_guild.get_member(member.id)
             if target_member is None:
                 try:
                     target_member = await target_guild.fetch_member(member.id)
                 except discord.NotFound:
-                    self._log(f"Mitglied {member.id} ist nicht Teil von Guild {target_guild.id} ({target_guild.name})")
+                    self._log_spur(leise,
+                        f"Mitglied {member.id} ist nicht Teil von Guild {target_guild.id} ({target_guild.name})")
                     continue  # the user simply isn't a member of the target server
                 except (discord.HTTPException, OSError) as e:
                     # OSError alongside HTTPException for the same reason noted above at the
@@ -539,10 +582,13 @@ class RoleRules(commands.Cog):
                 if role not in t_new_roles:
                     t_new_roles.append(role)
             t_new_ids = {r.id for r in t_new_roles}
-            self._log(f"Ziel-Mitglied {target_member.id} auf Guild {target_guild.id}: "
-                      f"aktuelle Rollen={t_current}, gewünscht={t_new_ids}, ändert sich={t_new_ids != t_current}")
+            self._log_spur(leise,
+                           f"Ziel-Mitglied {target_member.id} auf Guild {target_guild.id}: "
+                           f"aktuelle Rollen={t_current}, gewünscht={t_new_ids}, "
+                           f"ändert sich={t_new_ids != t_current}")
             if t_new_ids != t_current:
-                self._log(f"Aufgelöste Ziel-Rollenobjekte: {[(r.id, r.name) for r in t_new_roles]}")
+                self._log_spur(leise,
+                               f"Aufgelöste Ziel-Rollenobjekte: {[(r.id, r.name) for r in t_new_roles]}")
                 try:
                     # Same staleness issue as above - use the returned Member (reflects the
                     # edit we just made) for the recursion below, not the pre-edit target_member.
@@ -570,7 +616,9 @@ class RoleRules(commands.Cog):
                     # a standalone test (already-satisfied target still logged a full "N aktive
                     # Regel(n) geladen" pass). In a long inert cross-guild chain that could even
                     # exhaust MAX_HOP_BUDGET before reaching a hop that actually needs to fire.
-                    await self._evaluate_member(target_guild, target_member, hop_budget - 1)
+                    if await self._evaluate_member(target_guild, target_member,
+                                                   hop_budget - 1, leise):
+                        changed = True
                 except (discord.HTTPException, OSError) as e:
                     # Its OWN try/except, not the edit's: the recursion runs the target guild's
                     # rules, which reach further guilds and their edits. Sharing the block above
@@ -585,7 +633,8 @@ class RoleRules(commands.Cog):
             # Member returned by our own edit() above (see the comment there for why a fresh
             # guild.get_member() lookup would still return the stale pre-edit object).
             fresh = updated_member or member
-            await self._evaluate_member(guild, fresh, hop_budget - 1)
+            await self._evaluate_member(guild, fresh, hop_budget - 1, leise)
+        return changed
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
@@ -874,13 +923,23 @@ class RoleRules(commands.Cog):
                 if now - last < interval * 60:
                     continue
                 self._last_run[guild.id] = now
-                self._log(f"Periodische Prüfung gestartet für Guild {guild.id} ({guild.name}): "
-                          f"{len(guild.members)} Mitglied(er), Intervall={interval}min")
+                # Eine Zeile am ENDE mit Zahlen, statt einer Startzeile und dann je
+                # Mitglied mehreren. Bei 287 Mitgliedern im Minutentakt war das der
+                # Unterschied zwischen einem Gigabyte am Tag und ein paar Kilobyte.
+                _begonnen = time.monotonic()
+                _geprueft = _geaendert = _fehler = 0
                 for member in guild.members:
+                    _geprueft += 1
                     try:
-                        await self._evaluate_member(guild, member)
+                        if await self._evaluate_member(guild, member, leise=True):
+                            _geaendert += 1
                     except Exception as e:
+                        _fehler += 1
                         self._log(f"FEHLER: Periodische Prüfung für {member.id} in Guild {guild.id} fehlgeschlagen: {e}")
+                self._log(f"Periodische Prüfung Guild {guild.id} ({guild.name}), "
+                          f"Intervall={interval}min: {_geprueft} geprüft, "
+                          f"{_geaendert} geändert, {_fehler} Fehler, "
+                          f"{time.monotonic() - _begonnen:.1f}s")
             except Exception as e:
                 self._log(f"FEHLER: Periodische Prüfung für Guild {guild.id} fehlgeschlagen: {e}")
 

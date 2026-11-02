@@ -931,7 +931,22 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
     # write the same kind of traceback file for these too, so a plain "Internal Server Error" in
     # the browser is diagnosable the same way a full process crash already is.
     try:
-        with open(DATA_DIR / "web_errors.log", "a", encoding="utf-8") as f:
+        _pfad = DATA_DIR / "web_errors.log"
+        # Deckel, bevor geschrieben wird. Diese Datei wuchs bisher unbegrenzt - und
+        # ausgerechnet dann am schnellsten, wenn es ohnehin eng wird: geht etwas
+        # grundsaetzlich schief (volle Platte, kaputte Datenbank), erzeugt jeder einzelne
+        # Seitenaufruf einen Fehler und jeder Fehler eine vollstaendige Rueckverfolgung.
+        # Sie schaukelt sich also genau in der Lage auf, in der sie helfen soll.
+        #
+        # Umbenennen statt loeschen: die letzte volle Runde bleibt als .1 erhalten, damit
+        # der erste Fehler - der interessanteste - nicht von den tausend Folgefehlern
+        # verdraengt wird.
+        try:
+            if _pfad.exists() and _pfad.stat().st_size > 5 * 1024 * 1024:
+                _pfad.replace(_pfad.with_suffix(".log.1"))
+        except Exception:
+            pass
+        with open(_pfad, "a", encoding="utf-8") as f:
             f.write(f"\n=== {datetime.datetime.now()}  {request.method} {request.url.path} ===\n")
             f.write(traceback.format_exc())
     except Exception:
