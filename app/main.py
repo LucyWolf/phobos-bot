@@ -846,6 +846,84 @@ class SessionValidityMiddleware(BaseHTTPMiddleware):
 web = FastAPI()
 
 
+# Wieviel Platz ein Update mindestens braucht. Ein git fetch legt die neuen Objekte erst
+# einmal zusaetzlich ab, bevor es aufraeumt - mit zu wenig Platz bricht es mittendrin ab
+# und laesst halb geschriebene Objekte liegen.
+MIN_PLATZ_UPDATE = 200 * 1024 * 1024
+
+
+def _platz_frei(pfad: str = "/repo") -> tuple:
+    """(frei, gesamt) in Bytes - oder (None, None), wenn es sich nicht ermitteln laesst.
+
+    Faellt auf das Datenverzeichnis zurueck: unter Android gibt es kein /repo.
+    """
+    for kandidat in (pfad, str(DATA_DIR), "/"):
+        try:
+            nutzung = shutil.disk_usage(kandidat)
+            return nutzung.free, nutzung.total
+        except Exception:
+            continue
+    return None, None
+
+
+def _groesse(zahl) -> str:
+    """Bytes als Zahl, die man vorlesen kann."""
+    if zahl is None:
+        return "?"
+    for einheit in ("B", "KB", "MB", "GB", "TB"):
+        if zahl < 1024 or einheit == "TB":
+            return f"{zahl:.0f} {einheit}" if einheit == "B" else f"{zahl:.1f} {einheit}"
+        zahl /= 1024.0
+
+
+def _ist_platzmangel(fehler) -> bool:
+    """Steckt hinter diesem Fehler eine volle Platte?
+
+    Drei Wege, auf denen das ankommt: der Betriebssystemfehler ENOSPC, SQLites eigener
+    Satz ("database or disk is full"), und der Text, den git auf stderr schreibt. Ohne
+    diese Erkennung steht am Ende ueberall nur "Internal Server Error" oder "exit 128" -
+    und niemand kommt darauf, dass schlicht die Platte voll ist.
+    """
+    import errno as _errno
+    if isinstance(fehler, OSError) and fehler.errno == _errno.ENOSPC:
+        return True
+    text = str(fehler).lower()
+    return ("no space left" in text
+            or "disk is full" in text
+            or "database or disk is full" in text
+            or "disk full" in text)
+
+
+# Was auf dem Bildschirm steht, wenn der Platz ausgegangen ist. Keine Vertroestung: der
+# Satz nennt die Ursache und das, was dagegen hilft - alles andere waere eine Anzeige,
+# die ein Problem beschreibt und nichts aendert.
+_PLATZ_VOLL_HTML = """<!DOCTYPE html>
+<html lang="de"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kein Speicherplatz</title>
+<style>
+  body {{ background:#0f1117; color:#e2e8f0; font-family:system-ui,sans-serif;
+         display:flex; align-items:center; justify-content:center;
+         min-height:100vh; margin:0; padding:1.5rem; }}
+  .k {{ max-width:34rem; background:#161925; border:1px solid #2a2f45;
+       border-radius:0.75rem; padding:1.5rem 1.75rem; }}
+  h1 {{ font-size:1.15rem; margin:0 0 0.75rem; }}
+  p {{ line-height:1.6; margin:0 0 0.75rem; color:#cbd5e1; font-size:0.95rem; }}
+  code {{ background:#0f1117; padding:0.15rem 0.4rem; border-radius:0.3rem;
+         font-size:0.85rem; }}
+  .z {{ color:#94a3b8; font-size:0.85rem; margin-top:1rem; }}
+</style></head><body><div class="k">
+<h1>💾 Der Speicherplatz reicht nicht</h1>
+<p>Die Festplatte des Servers ist voll. Der Bot konnte nicht speichern — deshalb
+diese Seite statt der eigentlichen.</p>
+<p>Frei: <strong>{frei}</strong> von {gesamt}</p>
+<p>Platz schaffen, dann geht es ohne weiteres Zutun weiter. Meist sind es die
+Container-Protokolle:</p>
+<p><code>docker system df</code> &nbsp; <code>journalctl --vacuum-size=200M</code></p>
+<p class="z">Solange kein Platz da ist, kann auch die Datenbank nichts schreiben.</p>
+</div></body></html>"""
+
+
 @web.exception_handler(Exception)
 async def _unhandled_exception_handler(request: Request, exc: Exception):
     # A per-request exception here doesn't crash the whole process, so PhobosService's
@@ -858,6 +936,16 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
             f.write(traceback.format_exc())
     except Exception:
         pass
+    # Eine volle Platte sieht an jeder Stelle anders aus - beim Speichern von
+    # Zugangsdaten, beim Schreiben einer Sitzung, beim Anlegen einer Datei - und kommt
+    # bisher ueberall als nacktes "Internal Server Error" an. Der haeufigste Grund fuer
+    # einen 500 auf einer selbst gehosteten Installation, und der am leichtesten zu
+    # behebende, sobald er dasteht.
+    if _ist_platzmangel(exc):
+        frei, gesamt = _platz_frei()
+        return HTMLResponse(
+            _PLATZ_VOLL_HTML.format(frei=_groesse(frei), gesamt=_groesse(gesamt)),
+            status_code=507)      # 507 Insufficient Storage
     return Response("Internal Server Error", status_code=500)
 
 
@@ -4331,6 +4419,11 @@ async def _do_git_update(ziel: str = ""):
     _update_status = {"logs": [], "done": False, "error": ""}
     _reap_stray_zombies()  # clean up anything left over from earlier update runs first
 
+    # Was die Befehle ausgegeben haben. Gesammelt, weil der Grund eines Fehlschlags in
+    # der Ausgabe steht und nicht im Rueckgabewert: git meldet "No space left on device"
+    # und beendet sich mit 128 - eine Zahl, aus der niemand etwas ablesen kann.
+    ausgabe: list = []
+
     async def _run(cmd: list, cwd: str | None = None) -> int:
         proc = await asyncio.create_subprocess_exec(
             *cmd, cwd=cwd,
@@ -4340,13 +4433,41 @@ async def _do_git_update(ziel: str = ""):
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace").rstrip()
             if line:
+                ausgabe.append(line)
                 _ulog(line, "info")
         rc = await proc.wait()
         _reap_stray_zombies()
         return rc
 
+    def _pruefe_platz(rc: int, was: str) -> None:
+        """Nach einem fehlgeschlagenen Befehl: lag es am Platz? Dann das auch sagen.
+
+        Vorher stand hier nur "(exit 128)". Die Ursache stand zwar in der Ausgabe
+        darueber, aber in git-Sprache und zwischen anderen Zeilen.
+        """
+        if rc == 0:
+            return
+        frei, gesamt = _platz_frei()
+        if any(_ist_platzmangel(z) for z in ausgabe[-15:]):
+            raise RuntimeError(
+                f"Der Speicherplatz reicht nicht — frei sind {_groesse(frei)} von "
+                f"{_groesse(gesamt)}. Erst Platz schaffen, dann das Update erneut "
+                f"starten.")
+        raise RuntimeError(f"{was} fehlgeschlagen (exit {rc})")
+
     try:
         _ulog("$ phobos-bot update — " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "cmd")
+
+        # Vor dem ersten Befehl nachsehen. Ein git fetch, dem mittendrin der Platz
+        # ausgeht, laesst halb geschriebene Objekte im Repo liegen - der naechste Versuch
+        # scheitert dann an etwas anderem als am eigentlichen Grund.
+        _frei, _gesamt = _platz_frei()
+        if _frei is not None and _frei < MIN_PLATZ_UPDATE:
+            raise RuntimeError(
+                f"Der Speicherplatz reicht nicht — frei sind {_groesse(_frei)} von "
+                f"{_groesse(_gesamt)}, gebraucht werden mindestens "
+                f"{_groesse(MIN_PLATZ_UPDATE)}. Erst Platz schaffen, dann das Update "
+                f"erneut starten.")
 
         # Ziel bestimmen: entweder der Zweig des eingestellten Kanals, oder ein Tag, auf
         # den jemand ausdruecklich zurueckspringen will.
@@ -4358,14 +4479,12 @@ async def _do_git_update(ziel: str = ""):
             marke, holen = f"origin/{zweig}", ["git", "-C", "/repo", "fetch", "origin", zweig]
             _ulog(f"$ git -C /repo fetch origin {zweig}", "cmd")
         rc = await _run(holen)
-        if rc != 0:
-            raise RuntimeError(f"git fetch fehlgeschlagen (exit {rc})")
+        _pruefe_platz(rc, "git fetch")
 
         # Hard-reset to the chosen target (handles any local drift)
         _ulog(f"$ git -C /repo reset --hard {marke}", "cmd")
         rc = await _run(["git", "-C", "/repo", "reset", "--hard", marke])
-        if rc != 0:
-            raise RuntimeError(f"git reset fehlgeschlagen (exit {rc})")
+        _pruefe_platz(rc, "git reset")
         _ulog("  ✓  Code aktualisiert", "ok")
 
         # Einmaliger Uebergang: der laufende Container hat den Docker-Socket noch
