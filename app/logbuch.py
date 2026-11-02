@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import datetime
 import os
+import re
 import shutil
 import sys
 import threading
@@ -206,13 +207,22 @@ def zeilen(anzahl: int = 300) -> list:
     return ergebnis
 
 
+# "0 Fehler", "keine Fehler", "0 errors" - eine Zaehlung, die sagt, dass nichts war.
+# Ohne diese Ausnahme faerbte ausgerechnet die Erfolgsmeldung des Reihendurchlaufs
+# ("71 geprueft, 0 geaendert, 0 Fehler, 0.2s") rot, weil das Wort darin vorkommt.
+_KEINE_FEHLER = re.compile(r"\b(0|keine?|no)\s+(fehler|errors?|warnungen|warnings?)\b",
+                           re.IGNORECASE)
+
+
 def stufe(text: str) -> str:
     """fehler / warnung / info - geraten am Wortlaut, mehr gibt eine print()-Zeile nicht her.
 
     Absichtlich grob: es geht darum, Fehler in einer langen Liste zu finden, nicht darum,
     jede Zeile richtig einzuordnen. Was durchrutscht, steht als "info" trotzdem da.
     """
-    klein = text.lower()
+    # Zuerst die Zaehlungen herausnehmen, dann erst nach den Woertern suchen - sonst
+    # entscheidet das blosse Vorkommen des Wortes, nicht seine Bedeutung.
+    klein = _KEINE_FEHLER.sub(" ", text).lower()
     for wort in ("fehler", "error", "exception", "traceback", "failed",
                  "fehlgeschlagen", "critical", "nicht erreichbar"):
         if wort in klein:
