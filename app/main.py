@@ -5876,50 +5876,6 @@ async def vrc_account_debug(request: Request):
     return JSONResponse({"bericht": "\n".join(z)})
 
 
-@web.post("/settings/vrchat/server")
-async def vrc_account_server(request: Request):
-    """Welche Discord-Server diesen Bot benutzen - von der Kontokarte aus gesetzt.
-
-    Dieselbe Zuordnung, die auch im VRC-Link-Reiter jedes Servers steht, nur von der
-    anderen Seite betrachtet: dort waehlt ein Server seinen Bot, hier waehlt ein Bot seine
-    Server. Geschrieben wird in beiden Faellen derselbe Schluessel, sonst haette man zwei
-    Wahrheiten ueber dieselbe Sache.
-
-    Ein Server kann immer nur EINEN Bot haben. Deshalb wird hier nicht nur gesetzt, sondern
-    auch weggenommen: wer vorher auf diesem Konto stand und jetzt nicht mehr angehakt ist,
-    verliert seine Zuweisung und faellt damit auf das Standardkonto zurueck.
-    """
-    if r := admin_redirect(request): return r
-    form = await request.form()
-    konto = (form.get("konto") or "").strip()[:64]
-    if not konto:
-        return RedirectResponse("/settings/vrchat?error=Kein+Konto+angegeben", status_code=302)
-    if not await db_one("SELECT guild_id FROM vrc_accounts WHERE guild_id=?", (konto,)):
-        return RedirectResponse("/settings/vrchat?error=Dieses+Konto+gibt+es+nicht",
-                                status_code=302)
-
-    # Nur Server, die dieser Anmeldung ueberhaupt offenstehen - sonst liesse sich ueber ein
-    # gefaelschtes Formular die Zuordnung fremder Server umstellen.
-    # Beim Standardkonto gibt es nichts zu setzen: wer keine eigene Wahl hat, landet dort
-    # von selbst. Sein Formular traegt gesperrte Kaestchen und keinen Knopf - abgeschickt
-    # wuerde es trotzdem alle Zuweisungen loeschen, weil gesperrte Felder nicht mitkommen.
-    if konto == await vrc_standard_konto():
-        return RedirectResponse("/settings/vrchat", status_code=303)
-
-    erlaubt = {str(g["id"]) for g in await _guild_list(request)}
-    gewaehlt = {str(x) for x in form.getlist("server")} & erlaubt
-
-    for gid in erlaubt:
-        vorher = (await get_guild_config(int(gid), "vrc_account") or "").strip()
-        if gid in gewaehlt:
-            if vorher != konto:
-                await set_guild_config(int(gid), "vrc_account", konto)
-        elif vorher == konto:
-            # Abgehakt: Zuweisung weg, der Server faellt auf das Standardkonto zurueck.
-            await set_guild_config(int(gid), "vrc_account", "")
-    return RedirectResponse("/settings/vrchat?success=Zuordnung+gespeichert", status_code=303)
-
-
 @web.post("/settings/vrchat/meldung")
 async def vrc_meldung_weg(request: Request):
     """Clear an account's stored error message.
