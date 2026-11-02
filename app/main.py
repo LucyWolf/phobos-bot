@@ -6295,6 +6295,108 @@ async def vrc_force_invite(request: Request, guild_id: int, link_id: int):
         status_code=303)
 
 
+# Wie lange ein Sammel-Einladen hoechstens arbeitet, bevor es mit Zwischenstand
+# zurueckkommt. Eine Webanfrage, die zwei Minuten haengt, sieht fuer jeden Browser wie ein
+# Ausfall aus - lieber in mehreren Klicks, jeder mit einer Zahl am Ende.
+EINLADUNG_ZEITBUDGET = 20.0
+# Pause zwischen zwei Einladungen. VRChat bremst, wer zu schnell schreibt, und ein
+# Sammellauf ist genau das Muster, auf das diese Bremse ausgelegt ist.
+EINLADUNG_ABSTAND = 0.8
+
+
+@web.post("/servers/{guild_id}/vrc/invite-all")
+async def vrc_invite_all(request: Request, guild_id: int):
+    """Alle einladen, die noch nicht in der Gruppe sind - auch die, die als eingeladen gelten.
+
+    Gebraucht, weil bis v1.19.3 jeder Fehlversuch als erledigt vermerkt wurde: fehlte dem
+    Bot-Konto das Recht zum Einladen, ist seitdem jeder abgehakt, ohne je eine bekommen
+    zu haben. Der Vermerk wird hier deshalb bewusst uebergangen - "alle sollen das nochmal
+    bekommen" ist der ganze Zweck.
+
+    Drei Vorkehrungen, damit daraus kein Schaden wird:
+    - Abstand zwischen den Anfragen, weil VRChat bremst, wer zu schnell schreibt.
+    - Ein Zeitbudget: was nicht mehr hineinpasst, bleibt fuer den naechsten Klick liegen.
+      Die Antwort sagt, wie viele noch offen sind.
+    - Abbruch nach drei gleichen Fehlern. Scheitert es an fehlenden Gruppenrechten,
+      scheitert es bei jedem - hundertmal dieselbe Ablehnung zu kassieren bringt niemanden
+      weiter und faellt bei VRChat auf.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    ziel = f"/servers/{guild_id}?tab=vrclink"
+    group_id = (await get_guild_config(guild_id, "vrc_group_id") or "").strip()
+    if not group_id:
+        return RedirectResponse(
+            f"{ziel}&error=" + urllib.parse.quote_plus(
+                "Für diesen Server ist keine VRChat-Gruppe eingestellt."), status_code=302)
+
+    offen = await db_rows(
+        "SELECT * FROM vrc_links WHERE guild_id=? AND status=? "
+        "AND COALESCE(vrc_user_id,'')<>'' AND COALESCE(vrc_group_member,0)=0 "
+        "ORDER BY COALESCE(vrc_group_invited,''), id",
+        (str(guild_id), VRC_STATE_APPROVED))
+    if not offen:
+        return RedirectResponse(
+            f"{ziel}&success=" + urllib.parse.quote_plus(
+                "Niemand wartet auf eine Einladung — alle Verknüpften sind in der Gruppe."),
+            status_code=303)
+
+    from cogs.vrc_link import send_group_invite, _einladung_versucht
+    begonnen = time.monotonic()
+    gesendet = schon = fehler = 0
+    letzter_grund = ""
+    gleiche_fehler = 0
+    erledigt = 0
+    for link in offen:
+        if time.monotonic() - begonnen > EINLADUNG_ZEITBUDGET:
+            break
+        if erledigt:
+            await asyncio.sleep(EINLADUNG_ABSTAND)
+        zustand, detail = await send_group_invite(group_id, link["vrc_user_id"], guild_id)
+        erledigt += 1
+        if zustand == "sent":
+            gesendet += 1
+        elif zustand == "already":
+            schon += 1
+        else:
+            fehler += 1
+            gleiche_fehler = gleiche_fehler + 1 if detail == letzter_grund else 1
+            letzter_grund = detail
+        if zustand in ("sent", "already"):
+            _einladung_versucht.pop((int(guild_id), int(link["id"])), None)
+            try:
+                await db_exec("UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
+                              (datetime.datetime.utcnow().isoformat(), link["id"]))
+            except Exception as e:
+                print(f"[vrc_link] Einladungsvermerk nicht gespeichert: {e}")
+        elif gleiche_fehler >= 3:
+            # Dreimal dasselbe heisst: es liegt nicht an dieser einen Person.
+            break
+    rest = len(offen) - erledigt
+    print(f"[vrc_link] Sammel-Einladung in {guild_id}: {gesendet} gesendet, "
+          f"{schon} bereits, {fehler} fehlgeschlagen, {rest} offen")
+
+    teile = [f"{gesendet} eingeladen"]
+    if schon:
+        teile.append(f"{schon} waren schon eingeladen")
+    if fehler:
+        teile.append(f"{fehler} fehlgeschlagen")
+    if rest > 0:
+        teile.append(f"{rest} noch offen — noch einmal klicken")
+    text = " · ".join(teile)
+    if fehler and gesendet == 0:
+        # Nichts ging durch: der Grund ist die eigentliche Nachricht, nicht die Zahl.
+        return RedirectResponse(
+            f"{ziel}&error=" + urllib.parse.quote_plus(
+                f"Keine Einladung ging durch. VRChat sagt: {letzter_grund or 'kein Grund genannt'}"),
+            status_code=303)
+    if fehler:
+        text += f" ({letzter_grund})" if letzter_grund else ""
+    return RedirectResponse(f"{ziel}&success=" + urllib.parse.quote_plus(text),
+                            status_code=303)
+
+
 @web.post("/servers/{guild_id}/vrc/refresh")
 async def vrc_refresh(request: Request, guild_id: int):
     """Re-apply role and nickname to every approved link - the "Bulk actions" of the service

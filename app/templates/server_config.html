@@ -4082,6 +4082,14 @@ async function vrcProbe() {
           onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='⏳';">
       <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;">{{ tr.vrc_refresh_btn }}</button>
     </form>
+    {# Sammel-Einladung. Nachfrage davor, weil sie an jeden geht, der noch nicht in der
+       Gruppe ist - auch an die, die laut Vermerk schon eingeladen wurden. Genau darum
+       geht es: der Vermerk wurde bis v1.19.3 auch bei Fehlschlaegen gesetzt. #}
+    <form method="post" action="/servers/{{ guild.id }}/vrc/invite-all" style="margin:0;"
+          onsubmit="if(!confirm({{ tr.vrc_invite_all_confirm | js }})) return false;
+                    this.querySelector('button').disabled=true;this.querySelector('button').textContent='⏳';">
+      <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;">✉ {{ tr.vrc_invite_all_btn }}</button>
+    </form>
   </div>
   <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.9rem;">{{ tr.vrc_refresh_hint }}</div>
 

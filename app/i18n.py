@@ -547,6 +547,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "vrc_btn_invite_hint":             "Schickt die Gruppeneinladung sofort — unabhängig vom Schalter und davon, ob schon einmal eine verschickt wurde. Die Antwort von VRChat steht danach oben.",
         "vrc_btn_revoke":         "Zurücknehmen",
         "vrc_confirm_delete":     "Verknüpfung mit {name} wirklich löschen?",
+        "vrc_invite_all_btn":              "Alle einladen",
+        "vrc_invite_all_confirm":          "Allen, die noch nicht in der VRChat-Gruppe sind, eine Einladung schicken? Auch denen, die laut Vermerk schon einmal eine bekommen haben.",
         "vrc_refresh_btn":        "🔄 Alle auffrischen",
         "vrc_refresh_hint":       "Setzt Rolle und Spitzname für alle freigegebenen Verknüpfungen neu — gedacht für den Fall, dass du die Vorlage geändert hast, nachdem sich Leute schon verknüpft hatten.",
         # VRC-Link: Panel und Einladung
@@ -2204,6 +2206,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "vrc_btn_invite_hint":             "Sends the group invite right away — regardless of the switch and of whether one was sent before. VRChat's answer appears at the top.",
         "vrc_btn_revoke":         "Revoke",
         "vrc_confirm_delete":     "Really delete the link to {name}?",
+        "vrc_invite_all_btn":              "Invite everyone",
+        "vrc_invite_all_confirm":          "Send an invite to everyone not yet in the VRChat group? Including those already marked as invited.",
         "vrc_refresh_btn":        "🔄 Refresh all",
         "vrc_refresh_hint":       "Re-applies role and nickname to every approved link — meant for when you changed the format after people had already linked.",
         # VRC-Link: panel and invite
