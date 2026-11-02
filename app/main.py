@@ -6232,6 +6232,69 @@ async def vrc_decide(request: Request, guild_id: int, link_id: int):
     return RedirectResponse(f"/servers/{guild_id}?tab=vrclink&success={msg}", status_code=303)
 
 
+@web.post("/servers/{guild_id}/vrc/invite/{link_id}")
+async def vrc_force_invite(request: Request, guild_id: int, link_id: int):
+    """Die Gruppeneinladung von Hand ausloesen - und sagen, was VRChat geantwortet hat.
+
+    Gebaut, weil "es passiert nichts" von aussen immer gleich aussieht, egal woran es
+    liegt: der Schalter ist aus, die Person gilt schon als eingeladen, sie ist noch nicht
+    an der Reihe (der Reihendurchgang sieht alle zehn Minuten sechs Konten an), oder dem
+    Bot-Konto fehlt in der VRChat-Gruppe schlicht das Recht dazu. Vier Ursachen, ein Bild.
+
+    Dieser Knopf geht an allem davon vorbei: er fragt nicht nach dem Schalter, nicht nach
+    dem Vermerk und nicht nach der Bremse, sondern schickt die Einladung und gibt die
+    Antwort von VRChat unveraendert weiter. Damit ist nach einem Klick klar, welcher der
+    vier Faelle vorliegt.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    ziel = f"/servers/{guild_id}?tab=vrclink"
+    link = await db_one("SELECT * FROM vrc_links WHERE id=? AND guild_id=?",
+                        (link_id, str(guild_id)))
+    if not link:
+        return RedirectResponse(f"{ziel}&error=Nicht+gefunden", status_code=302)
+    if not link["vrc_user_id"]:
+        return RedirectResponse(
+            f"{ziel}&error=" + urllib.parse.quote_plus(
+                "Für diese Verknüpfung ist kein VRChat-Konto hinterlegt."), status_code=302)
+    group_id = (await get_guild_config(guild_id, "vrc_group_id") or "").strip()
+    if not group_id:
+        return RedirectResponse(
+            f"{ziel}&error=" + urllib.parse.quote_plus(
+                "Für diesen Server ist keine VRChat-Gruppe eingestellt."), status_code=302)
+    if link["vrc_group_member"]:
+        return RedirectResponse(
+            f"{ziel}&success=" + urllib.parse.quote_plus(
+                f"{link['vrchat_name']} ist bereits in der Gruppe — keine Einladung nötig."),
+            status_code=303)
+
+    from cogs.vrc_link import send_group_invite, _einladung_versucht
+    zustand, detail = await send_group_invite(group_id, link["vrc_user_id"], guild_id)
+    print(f"[vrc_link] Einladung von Hand an {link['vrchat_name']}: {zustand}"
+          + (f" ({detail})" if detail else ""))
+    if zustand in ("sent", "already"):
+        # Die Bremse gilt dem automatischen Weg; von Hand ausgeloest ist sie erledigt.
+        _einladung_versucht.pop((int(guild_id), int(link_id)), None)
+        try:
+            await db_exec("UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
+                          (datetime.datetime.utcnow().isoformat(), link_id))
+        except Exception as e:
+            print(f"[vrc_link] Einladungsvermerk nicht gespeichert: {e}")
+        wort = ("Einladung an {name} gesendet." if zustand == "sent"
+                else "{name} war bereits eingeladen oder ist Mitglied.")
+        return RedirectResponse(
+            f"{ziel}&success=" + urllib.parse.quote_plus(
+                wort.replace("{name}", link["vrchat_name"])), status_code=303)
+    # Der Grund kommt unveraendert durch. "Es hat nicht geklappt" waere genau die Antwort,
+    # die diesen Knopf ueberfluessig machen wuerde - fehlende Gruppenrechte und eine
+    # Bremse von VRChat verlangen voellig verschiedene Reaktionen.
+    return RedirectResponse(
+        f"{ziel}&error=" + urllib.parse.quote_plus(
+            f"Einladung an {link['vrchat_name']} fehlgeschlagen: {detail or zustand}"),
+        status_code=303)
+
+
 @web.post("/servers/{guild_id}/vrc/refresh")
 async def vrc_refresh(request: Request, guild_id: int):
     """Re-apply role and nickname to every approved link - the "Bulk actions" of the service
