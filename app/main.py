@@ -3021,8 +3021,19 @@ async def _reset_mail_schicken(user) -> Optional[str]:
         "INSERT OR REPLACE INTO password_reset_tokens (token,user_id,expires_at) VALUES (?,?,?)",
         (_token_hash(token), user["id"], expires),
     )
-    base = await get_config("base_url") or ""
-    reset_url = f"{base.rstrip('/')}/reset-password?token={token}"
+    # link_base_url() statt get_config("base_url"): das ausdrueckliche Feld auf der
+    # E-Mail-Seite ist auf fast jeder Installation leer, und dann stand in der Mail
+    # "/reset-password?token=..." - ein Pfad ohne Adresse, den niemand anklicken kann.
+    # Dieselbe Funktion baut laengst die Links fuer Zettel, VRC-Link und Kooperationen
+    # und faellt dafuer auf die Adresse zurueck, unter der das Dashboard zuletzt offen
+    # war; nur diese Stelle hier war beim Umbau uebrig geblieben.
+    base = await link_base_url()
+    if not base:
+        # Ohne Adresse waere die Mail wertlos. Dann lieber hier abbrechen und es sagen,
+        # als jemanden auf Post warten zu lassen, mit der er nichts anfangen kann.
+        return ("Keine Adresse für den Link bekannt: bitte unter Einstellungen → E-Mail "
+                "die Basis-Adresse eintragen")
+    reset_url = f"{base}/reset-password?token={token}"
     try:
         await _send_reset_email(user["email"], reset_url)
     except Exception as e:

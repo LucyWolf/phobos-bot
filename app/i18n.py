@@ -3444,6 +3444,7 @@ MELDUNGEN_EN = {
     'Kein Gameserver verknüpft': 'No game server linked',
     'Kein Zugriff gewährt': 'No access granted',
     'Kein gültiges Phobos-Backup': 'Not a valid Phobos backup',
+    'Keine Adresse für den Link bekannt': 'No address known for the link',
     'Keine Berechtigung': 'No permission',
     'Keine Änderungen': 'Nothing changed',
     'Kombination existiert bereits': 'That combination already exists',
