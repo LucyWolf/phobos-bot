@@ -3322,11 +3322,37 @@ async def settings_app_name_save(request: Request, app_name: str = Form(...)):
     return RedirectResponse("/settings?success=App-Name+gespeichert", status_code=302)
 
 
+def _kontosperren(user: dict) -> list:
+    """Welche Sperren fuer dieses Konto GERADE gelten - leere Liste, wenn keine.
+
+    Es gibt zwei, und beide haengen am Konto: der zweite Faktor beim Anmelden (fuenf
+    Fehlversuche, 15 Minuten) und der zweite Faktor beim Zuruecksetzen des Passworts (drei
+    Fehlversuche, eine Stunde). Wer nur die eine kennt, sieht "nicht gesperrt" bei jemandem,
+    der trotzdem nicht hereinkommt - deshalb stehen hier beide.
+
+    Die abgelaufene Sperre faellt von selbst heraus: beide Hilfsfunktionen geben 0 zurueck,
+    sobald der Zeitpunkt vorbei ist. In der Datenbank steht der alte Wert dann zwar noch,
+    aber er gilt nicht mehr, und die Liste soll zeigen, was gilt.
+    """
+    sperren = []
+    if minuten := _reset_sperre_minuten(user):
+        sperren.append({"art": "reset", "minuten": minuten,
+                        "bis": user.get("reset_locked_until") or ""})
+    if minuten := _totp_lock_remaining_minutes(user):
+        sperren.append({"art": "login", "minuten": minuten,
+                        "bis": user.get("totp_locked_until") or ""})
+    return sperren
+
+
 @web.get("/users", response_class=HTMLResponse)
 async def users_page(request: Request, error: str = "", success: str = ""):
     if r := admin_redirect(request): return r
     all_users = await db_rows("SELECT id, username, role, email, created_at, active, "
-                              "alle_server FROM users ORDER BY created_at")
+                              "alle_server, reset_locked_until, reset_fail_count, "
+                              "totp_locked_until, totp_fail_count FROM users "
+                              "ORDER BY created_at")
+    for u in all_users:
+        u["sperren"] = _kontosperren(u)
     token_set = await _token_configured()
     admin_count = sum(1 for u in all_users if u["role"] == "admin")
     all_guilds = [{"id": str(g.id), "name": g.name} for g in bot.guilds]
@@ -3472,6 +3498,32 @@ async def users_set_password(request: Request, user_id: int, new_pw: str = Form(
     if weg:
         hinweis += f",+{weg}+Anmeldung(en)+beendet"
     return RedirectResponse(f"/users?success={hinweis}", status_code=302)
+
+
+@web.post("/users/{user_id}/unlock")
+async def users_unlock(request: Request, user_id: int):
+    """Beide Sperren eines Kontos sofort aufheben.
+
+    Der Weg ueber das Warten gibt es weiterhin; das hier ist der Weg fuer den Fall, dass
+    jemand sich vertippt hat und nicht eine Stunde lang ausgesperrt bleiben soll. Die
+    Fehlerzaehler gehen mit auf null - sonst steht derjenige nach einem einzigen weiteren
+    Vertipper sofort wieder vor derselben Sperre.
+    """
+    if r := admin_redirect(request): return r
+    user = await db_one("SELECT * FROM users WHERE id=?", (user_id,))
+    if not user:
+        return RedirectResponse("/users?error=Benutzer+nicht+gefunden", status_code=302)
+    if not _kontosperren(user):
+        return RedirectResponse("/users?error=Für+dieses+Konto+gilt+keine+Sperre",
+                                status_code=302)
+    await db_exec(
+        "UPDATE users SET reset_fail_count=0, reset_locked_until=NULL, "
+        "totp_fail_count=0, totp_locked_until=NULL WHERE id=?", (user_id,))
+    # Im Protokoll, weil hier jemand eine Schutzmassnahme von Hand abraeumt: wer das war
+    # und fuer wen, gehoert festgehalten.
+    print(f"[users] Sperre für '{user['username']}' (id {user_id}) aufgehoben von "
+          f"'{request.session.get('username')}'")
+    return RedirectResponse("/users?success=Sperre+aufgehoben", status_code=302)
 
 
 @web.post("/users/{user_id}/toggle-active")
