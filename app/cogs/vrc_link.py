@@ -431,6 +431,18 @@ async def group_membership(group_id: str, vrc_user_id: str, guild_id=None) -> tu
     return "ok", bool(row)
 
 
+# Wann zuletzt vergeblich eingeladen wurde, je Verknuepfung. Nur im Speicher: nach einem
+# Neustart darf es ruhig wieder versucht werden, und eine Spalte dafuer waere eine
+# Migration fuer etwas, das niemand ueberdauern muss.
+#
+# Noetig, seit ein Fehlschlag nicht mehr als erledigt vermerkt wird (sonst war nach einem
+# einzigen abgelehnten Versuch fuer immer Schluss). Ohne Bremse wuerde bei jemandem, den
+# VRChat nicht einladen laesst, jeder Rollenwechsel einen neuen Versuch ausloesen - und
+# wiederholtes Schreiben ist das Muster, das Bot-Konten auffaellig macht.
+EINLADUNG_PAUSE = 600
+_einladung_versucht: dict = {}
+
+
 async def einladen_wenn_gewuenscht(guild_id: int, link) -> tuple:
     """Einmal in die Gruppe einladen - sofort, wenn der Server das eingeschaltet hat.
 
@@ -454,10 +466,19 @@ async def einladen_wenn_gewuenscht(guild_id: int, link) -> tuple:
     group_id = (await get_guild_config(guild_id, "vrc_group_id") or "").strip()
     if not group_id:
         return "skip", "keine Gruppe eingestellt"
+    # Erst gar nicht fragen, wenn es gerade eben schon nicht ging.
+    schluessel = (int(guild_id), int(link["id"]))
+    zuletzt = _einladung_versucht.get(schluessel, 0.0)
+    if zuletzt and time.monotonic() - zuletzt < EINLADUNG_PAUSE:
+        return "skip", "vor kurzem schon versucht"
+    _einladung_versucht[schluessel] = time.monotonic()
     zustand, detail = await send_group_invite(group_id, link["vrc_user_id"], guild_id)
     print(f"[vrc_link] Gruppeneinladung an {link['vrchat_name']}: {zustand}"
           + (f" ({detail})" if detail else ""))
     if zustand in ("sent", "already"):
+        # Geklappt - die Bremse wird nicht mehr gebraucht, der Vermerk haelt jetzt fest,
+        # dass es passiert ist.
+        _einladung_versucht.pop(schluessel, None)
         try:
             await db_exec("UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
                           (datetime.datetime.utcnow().isoformat(), link["id"]))
@@ -1958,6 +1979,17 @@ class VRCLink(commands.Cog):
             )
             if not row:
                 return
+            # Wer noch nicht in der Gruppe ist, bekommt dort auch keine Rollen -
+            # sync_vrc_roles() steigt bei genau dieser Bedingung aus. Freigeschaltet zu
+            # werden und dann nichts zu bekommen ist aber genau der Moment, in dem die
+            # Einladung faellig ist: "wenn der user in dc frei gegeben wirt zb eine rolle
+            # bekommt dann soll der user auch ... die einladung bekommen".
+            #
+            # Kostet nichts, wenn nichts zu tun ist: einladen_wenn_gewuenscht() prueft
+            # Schalter, gemerkten Gruppenstand und Vermerk, bevor es VRChat ueberhaupt
+            # anspricht.
+            if not row["vrc_group_member"]:
+                await einladen_wenn_gewuenscht(after.guild.id, row)
             geaendert = await sync_vrc_roles(after.guild, after, row)
             if geaendert:
                 print(f"[vrc_link] Rollenwechsel bei {after.id} in {after.guild.id}: "

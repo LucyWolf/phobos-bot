@@ -6197,6 +6197,21 @@ async def vrc_decide(request: Request, guild_id: int, link_id: int):
             "UPDATE vrc_links SET status='approved', decided_at=?, decided_by=? WHERE id=?",
             (now, who, link_id))
         await _vrc_apply(guild_id, row["user_id"], row["vrchat_name"])
+        # Freigeben heisst: ab jetzt gehoert die Person dazu. Bis hierher bekam sie dabei
+        # nur ihre Discord-Rolle - die VRChat-Gruppe wurde nicht einmal angesehen, und
+        # die Einladung musste auf den naechsten Reihendurchgang warten, der alle zehn
+        # Minuten sechs Konten durchgeht. Gemeldet als "wenn der user in dc frei gegeben
+        # wirt zb eine rolle bekommt dann soll der user auch ... die einladung bekommen".
+        #
+        # _vrc_sync_group() schreibt den Gruppenstand und laedt danach ein, wenn der
+        # Server das eingeschaltet hat und die Person noch nicht drin ist. Fehler bleiben
+        # dort: die Freigabe selbst hat geklappt, und sie an einer VRChat-Stoerung
+        # scheitern zu lassen waere das schlechtere Verhalten.
+        try:
+            frisch = await db_one("SELECT * FROM vrc_links WHERE id=?", (link_id,))
+            await _vrc_sync_group(guild_id, frisch or row)
+        except Exception as e:
+            print(f"[vrc_link] Gruppenstand nach Freigabe von link {link_id}: {e}")
         msg = "Freigegeben"
     elif action == "revoke":
         # Back to pending rather than deleted: the member keeps their entry and the moderator
