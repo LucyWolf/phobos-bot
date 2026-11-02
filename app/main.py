@@ -189,6 +189,12 @@ IS_ANDROID = os.environ.get("PHOBOS_PLATFORM") == "android"
 SECRET_KEY_PATH = DATA_DIR / "secret.key"
 AVATARS_DIR = DATA_DIR / "avatars"
 
+# Von hier an landet jedes print() des Projekts zusaetzlich in data/logs/phobos.log -
+# weitergereicht, nicht abgefangen, Docker sieht alles unveraendert. Direkt hinter
+# DATA_DIR, damit auch die Zeilen beim Hochfahren schon mitgeschrieben werden.
+import logbuch as _logbuch
+_logbuch.einrichten(DATA_DIR)
+
 
 # How long a dashboard session cookie may live. Starlette's own default, stated here because
 # the session table's cleanup has to agree with it - a row kept shorter than the cookie would
@@ -3189,6 +3195,63 @@ async def dashboard(request: Request, error: str = ""):
 
 
 # ── Settings ──────────────────────────────────────────────────────────────────
+
+@web.get("/settings/logs", response_class=HTMLResponse)
+async def logs_page(request: Request, error: str = "", success: str = ""):
+    """Das Protokoll des Bots, sein Platzbedarf und der Rest auf der Platte.
+
+    Gebaut nach dem 02.11.2026: die Platte des Servers war voll, der Bot konnte nichts
+    mehr speichern, und auf der Oberflaeche stand nur "Internal Server Error". Gesucht
+    wurde daraufhin im Code - der Zustand, um den es ging, war von aussen nirgends zu
+    sehen. Hier steht er, zusammen mit dem Knopf, der etwas daran aendert.
+    """
+    if r := auth_redirect(request): return r
+    # Admin-only wie die uebrigen Einstellungen: im Protokoll stehen Namen, Kennungen
+    # und Fehlertexte aus allen Servern dieser Installation.
+    if r := admin_redirect(request): return r
+    return templates.TemplateResponse("logs.html", {
+        **session(request), "request": request,
+        "guilds": await _guild_list(request),
+        "active": "logs",
+        "stand": _logbuch.stand(),
+        "zeilen": _logbuch.zeilen(300),
+        "error": error, "success": success,
+    })
+
+
+@web.post("/settings/logs/clear")
+async def logs_clear(request: Request):
+    """Das Protokoll wegwerfen - und zwar wirklich, nicht nur die Anzeige."""
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    vorher = _logbuch.groesse()
+    if _logbuch.leeren():
+        # Die erste Zeile im frischen Protokoll sagt, warum es leer ist. Sonst steht
+        # spaeter jemand davor und haelt es fuer einen Ausfall.
+        print(f"[Protokoll] von {request.session.get('username') or '?'} geleert "
+              f"({_logbuch.menschlich(vorher)} freigegeben)")
+        return RedirectResponse(
+            "/settings/logs?success=" + urllib.parse.quote_plus(
+                f"Protokoll geleert — {_logbuch.menschlich(vorher)} freigegeben"),
+            status_code=303)
+    return RedirectResponse(
+        "/settings/logs?error=" + urllib.parse.quote_plus(
+            "Das Protokoll liess sich nicht leeren — fehlende Rechte auf dem "
+            "Datenverzeichnis?"),
+        status_code=303)
+
+
+@web.get("/settings/logs/download")
+async def logs_download(request: Request):
+    """Das Protokoll als Datei - zum Weitergeben, ohne es abzutippen."""
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    pfad = _logbuch.datei()
+    if not pfad or not pfad.exists():
+        return RedirectResponse("/settings/logs?error=Kein+Protokoll+vorhanden",
+                                status_code=303)
+    return FileResponse(str(pfad), filename="phobos.log", media_type="text/plain")
+
 
 @web.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, saved: bool = False, error: str = "", success: str = ""):

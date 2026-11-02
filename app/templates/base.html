@@ -336,7 +336,7 @@
       <span class="label">{{ tr.nav_dashboard }}</span>
     </a>
 
-    <div class="nav-group {% if active in ['settings','users','bot_update','bot_info','notif_settings','smtp','servers','tokens','report','vrchat'] or nav_settings_open %}open{% endif %}" id="nav-group-settings">
+    <div class="nav-group {% if active in ['settings','users','bot_update','bot_info','notif_settings','smtp','servers','tokens','report','vrchat','logs'] or nav_settings_open %}open{% endif %}" id="nav-group-settings">
       <div class="nav-group-header {% if active == 'settings' %}active{% endif %} {% if token_set is defined and not token_set %}nav-warn-header{% endif %}"
            onclick="toggleNavGroup('settings')" title="{{ tr.nav_settings }}">
         <span class="icon">⚙️</span>
@@ -372,6 +372,12 @@
         <a href="/settings/notifications" class="nav-item nav-sub {% if active == 'notif_settings' %}active{% endif %}">
           <span class="icon">🟣</span>
           <span class="label">{{ tr.nav_twitch_api }}</span>
+        </a>
+        {% endif %}
+        {% if role == 'admin' %}
+        <a href="/settings/logs" class="nav-item nav-sub {% if active == 'logs' %}active{% endif %}">
+          <span class="icon">📜</span>
+          <span class="label">{{ tr.nav_logs }}</span>
         </a>
         {% endif %}
         {% if role == 'admin' %}
