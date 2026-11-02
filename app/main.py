@@ -6269,18 +6269,12 @@ async def vrc_force_invite(request: Request, guild_id: int, link_id: int):
                 f"{link['vrchat_name']} ist bereits in der Gruppe — keine Einladung nötig."),
             status_code=303)
 
-    from cogs.vrc_link import send_group_invite, _einladung_versucht
+    from cogs.vrc_link import send_group_invite
     zustand, detail = await send_group_invite(group_id, link["vrc_user_id"], guild_id)
     print(f"[vrc_link] Einladung von Hand an {link['vrchat_name']}: {zustand}"
           + (f" ({detail})" if detail else ""))
     if zustand in ("sent", "already"):
-        # Die Bremse gilt dem automatischen Weg; von Hand ausgeloest ist sie erledigt.
-        _einladung_versucht.pop((int(guild_id), int(link_id)), None)
-        try:
-            await db_exec("UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
-                          (datetime.datetime.utcnow().isoformat(), link_id))
-        except Exception as e:
-            print(f"[vrc_link] Einladungsvermerk nicht gespeichert: {e}")
+        await _einladung_vermerken(guild_id, link_id)
         wort = ("Einladung an {name} gesendet." if zustand == "sent"
                 else "{name} war bereits eingeladen oder ist Mitglied.")
         return RedirectResponse(
@@ -6298,6 +6292,31 @@ async def vrc_force_invite(request: Request, guild_id: int, link_id: int):
 # Wie lange ein Sammel-Einladen hoechstens arbeitet, bevor es mit Zwischenstand
 # zurueckkommt. Eine Webanfrage, die zwei Minuten haengt, sieht fuer jeden Browser wie ein
 # Ausfall aus - lieber in mehreren Klicks, jeder mit einer Zahl am Ende.
+async def _einladung_vermerken(guild_id: int, link_id) -> None:
+    """Festhalten, dass eine Einladung wirklich herausging - und die Bremse loesen.
+
+    Stand dreimal fast gleich da (Einzelknopf, Sammelknopf, automatischer Weg). Zusammen
+    gezogen, weil die beiden Haelften zusammengehoeren: wer vermerkt ist, braucht keine
+    Bremse mehr, und wer nicht vermerkt ist, darf nicht gebremst bleiben.
+    """
+    from cogs.vrc_link import _einladung_versucht
+    try:
+        _einladung_versucht.pop((int(guild_id), int(link_id)), None)
+    except (TypeError, ValueError):
+        pass
+    try:
+        await db_exec("UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
+                      (datetime.datetime.utcnow().isoformat(), link_id))
+    except Exception as e:
+        print(f"[vrc_link] Einladungsvermerk fuer {link_id} nicht gespeichert: {e}")
+
+
+# Welche Server gerade einen Sammellauf haben. Ein zweiter Klick waehrenddessen wuerde
+# dieselben Leute ein zweites Mal anschreiben - und zwei Laeufe nebeneinander sind genau
+# das Anfragemuster, auf das VRChats Bremse ausgelegt ist. Der Knopf schaltet sich zwar
+# im Browser ab, aber das schuetzt nur den einen Browser.
+_sammel_laeuft: set = set()
+
 EINLADUNG_ZEITBUDGET = 20.0
 # Pause zwischen zwei Einladungen. VRChat bremst, wer zu schnell schreibt, und ein
 # Sammellauf ist genau das Muster, auf das diese Bremse ausgelegt ist.
@@ -6331,6 +6350,12 @@ async def vrc_invite_all(request: Request, guild_id: int):
             f"{ziel}&error=" + urllib.parse.quote_plus(
                 "Für diesen Server ist keine VRChat-Gruppe eingestellt."), status_code=302)
 
+    if guild_id in _sammel_laeuft:
+        return RedirectResponse(
+            f"{ziel}&error=" + urllib.parse.quote_plus(
+                "Es läuft gerade schon ein Sammel-Einladen für diesen Server."),
+            status_code=303)
+
     offen = await db_rows(
         "SELECT * FROM vrc_links WHERE guild_id=? AND status=? "
         "AND COALESCE(vrc_user_id,'')<>'' AND COALESCE(vrc_group_member,0)=0 "
@@ -6342,37 +6367,41 @@ async def vrc_invite_all(request: Request, guild_id: int):
                 "Niemand wartet auf eine Einladung — alle Verknüpften sind in der Gruppe."),
             status_code=303)
 
-    from cogs.vrc_link import send_group_invite, _einladung_versucht
+    from cogs.vrc_link import send_group_invite
     begonnen = time.monotonic()
     gesendet = schon = fehler = 0
     letzter_grund = ""
     gleiche_fehler = 0
     erledigt = 0
-    for link in offen:
-        if time.monotonic() - begonnen > EINLADUNG_ZEITBUDGET:
-            break
-        if erledigt:
-            await asyncio.sleep(EINLADUNG_ABSTAND)
-        zustand, detail = await send_group_invite(group_id, link["vrc_user_id"], guild_id)
-        erledigt += 1
-        if zustand == "sent":
-            gesendet += 1
-        elif zustand == "already":
-            schon += 1
-        else:
+    _sammel_laeuft.add(guild_id)
+    try:
+        for link in offen:
+            if time.monotonic() - begonnen > EINLADUNG_ZEITBUDGET:
+                break
+            if erledigt:
+                await asyncio.sleep(EINLADUNG_ABSTAND)
+            zustand, detail = await send_group_invite(group_id, link["vrc_user_id"], guild_id)
+            erledigt += 1
+            if zustand in ("sent", "already"):
+                if zustand == "sent":
+                    gesendet += 1
+                else:
+                    schon += 1
+                # Eine geglueckte Einladung macht die Serie kaputt: der Abbruch unten soll
+                # greifen, wenn es DURCHGEHEND scheitert, nicht wenn sich drei Fehlschlaege
+                # ueber den ganzen Lauf verteilen und dazwischen alles klappt.
+                gleiche_fehler = 0
+                letzter_grund = ""
+                await _einladung_vermerken(guild_id, link["id"])
+                continue
             fehler += 1
             gleiche_fehler = gleiche_fehler + 1 if detail == letzter_grund else 1
             letzter_grund = detail
-        if zustand in ("sent", "already"):
-            _einladung_versucht.pop((int(guild_id), int(link["id"])), None)
-            try:
-                await db_exec("UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
-                              (datetime.datetime.utcnow().isoformat(), link["id"]))
-            except Exception as e:
-                print(f"[vrc_link] Einladungsvermerk nicht gespeichert: {e}")
-        elif gleiche_fehler >= 3:
-            # Dreimal dasselbe heisst: es liegt nicht an dieser einen Person.
-            break
+            if gleiche_fehler >= 3:
+                # Dreimal hintereinander dasselbe heisst: es liegt nicht an dieser Person.
+                break
+    finally:
+        _sammel_laeuft.discard(guild_id)
     rest = len(offen) - erledigt
     print(f"[vrc_link] Sammel-Einladung in {guild_id}: {gesendet} gesendet, "
           f"{schon} bereits, {fehler} fehlgeschlagen, {rest} offen")
@@ -6385,8 +6414,10 @@ async def vrc_invite_all(request: Request, guild_id: int):
     if rest > 0:
         teile.append(f"{rest} noch offen — noch einmal klicken")
     text = " · ".join(teile)
-    if fehler and gesendet == 0:
+    if fehler and gesendet == 0 and schon == 0:
         # Nichts ging durch: der Grund ist die eigentliche Nachricht, nicht die Zahl.
+        # "already" zaehlt dabei als Erfolg - VRChat sagt damit, dass die Person bereits
+        # eingeladen ist, und das ist kein Fehlschlag, sondern das gewuenschte Ergebnis.
         return RedirectResponse(
             f"{ziel}&error=" + urllib.parse.quote_plus(
                 f"Keine Einladung ging durch. VRChat sagt: {letzter_grund or 'kein Grund genannt'}"),
@@ -7687,11 +7718,10 @@ async def vrc_public_invite(request: Request, lang: str = Form(""), t: str = For
         # rate-limiting - need different responses from whoever reads it.
         return await _vrc_page(request, row, lang,
                                error=tr["vrcp_invite_failed"] + " " + detail)
-    try:
-        await db_exec("UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
-                      (datetime.datetime.utcnow().isoformat(), link["id"]))
-    except Exception as e:
-        print(f"[vrc_link] could not note the group invite for link {link['id']}: {e}")
+    # Ueber denselben Helfer wie die beiden Knoepfe im Dashboard: der loest auch die
+    # Bremse. Ohne das blieb sie nach einer Einladung, die das Mitglied selbst angefordert
+    # hat, bis zu zehn Minuten stehen und hielt den automatischen Weg zurueck.
+    await _einladung_vermerken(int(link["guild_id"]), link["id"])
     if state == "already":
         # VRChat meldet "bereits eingeladen" und "ist schon Mitglied" beide als dasselbe
         # "already" - welches von beiden, sagt nur ein Blick in die Mitgliederliste. Ohne den

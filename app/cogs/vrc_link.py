@@ -1685,24 +1685,15 @@ class VRCLink(commands.Cog):
                     # ginge bei jedem Durchgang eine neue Einladung an VRChat, und
                     # wiederholtes Schreiben ist das Muster, das Bot-Konten auffaellig macht.
                     if automatisch and not row["vrc_group_invited"]:
-                        zustand, detail = await send_group_invite(group_id, row["vrc_user_id"], guild.id)
-                        print(f"[vrc_link] Gruppeneinladung an {row['vrchat_name']}: {zustand}"
-                              + (f" ({detail})" if detail else ""))
-                        # Nur vermerken, wenn wirklich eine Einladung unterwegs ist.
-                        #
-                        # Vorher wurde der Vermerk IMMER gesetzt, auch wenn VRChat die
-                        # Einladung abgelehnt hat - und "genau einmal" hiess dann: genau
-                        # ein Fehlschlag, danach nie wieder ein Versuch. Fehlte dem
-                        # Bot-Konto das Recht zum Einladen, war damit jeder, der in der
-                        # Zeit verknuepft hat, dauerhaft als "eingeladen" abgehakt, ohne
-                        # je eine bekommen zu haben. Auch nachdem das Recht gesetzt war,
-                        # passierte nichts mehr - gemeldet als "wir haben das gerade
-                        # getestet aber ich habe keine einladung bekommen".
+                        # Ueber denselben Weg wie das Verknuepfen und der Rollenwechsel:
+                        # er prueft Schalter, Gruppe, Vermerk und Bremse und vermerkt nur,
+                        # was wirklich herausging. Drei Stellen, die dasselbe tun, waren
+                        # drei Stellen, an denen es auseinanderlaufen kann.
+                        zustand, detail = await einladen_wenn_gewuenscht(guild.id, row)
                         if zustand in ("sent", "already"):
-                            await db_exec(
-                                "UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
-                                (datetime.datetime.utcnow().isoformat(), row["id"]),
-                            )
+                            # Nur im Speicher nachziehen - geschrieben hat es schon
+                            # einladen_wenn_gewuenscht(). Ohne das wuerde derselbe
+                            # Durchgang die Person gleich nochmal anfassen.
                             row["vrc_group_invited"] = "x"
                     continue
                 war_schon = bool(row["vrc_group_member"])
