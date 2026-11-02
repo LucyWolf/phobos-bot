@@ -668,6 +668,17 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+        # Vary: Cookie sagt einem Zwischenspeicher, dass diese Antwort an einem Cookie
+        # haengt - zwei Anfragen mit verschiedenen Cookies sind also NICHT dieselbe
+        # Antwort. Ohne diese Zeile darf ein Proxy eine gespeicherte Seite fuer alle
+        # halten, und genau so landet die Ansicht einer Person beim naechsten Besucher.
+        # Das ist nicht dasselbe wie no-store: manche Caches ignorieren no-store, lesen
+        # aber Vary - deshalb beides.
+        vorhanden = [t.strip() for t in (response.headers.get("Vary") or "").split(",")
+                     if t.strip()]
+        if not any(t.lower() == "cookie" for t in vorhanden):
+            vorhanden.append("Cookie")
+        response.headers["Vary"] = ", ".join(vorhanden)
         return response
 
 
@@ -4002,6 +4013,33 @@ async def api_version(request: Request, force: int = 0):
         "kanal": await update_kanal(),
         "fehler": _UPDATE_CACHE.get("fehler") or "",
     })
+
+
+@web.get("/api/wer-ist-da")
+async def api_wer_ist_da(request: Request, seite: str = ""):
+    """Wer ist in DIESEM Augenblick angemeldet - fuer den Abgleich im Browser.
+
+    Jede Seite traegt im Kopf, fuer wen sie erzeugt wurde. Kommt sie aus einem
+    Zwischenspeicher, gehoert sie jemand anderem als dem, der sie gerade ansieht - und
+    genau das faellt hier auf: die Seite nennt einen Namen, diese Antwort einen anderen.
+
+    Die Antwort selbst darf nie aus einem Cache kommen, sonst prueft sich der Fehler mit
+    sich selbst. NoCacheMiddleware setzt no-store und Vary auf jede Antwort, und der
+    Browser haengt zusaetzlich einen Einmalwert an die Adresse.
+
+    Es wird nur die Nummer zurueckgegeben, nicht der Name: die Antwort soll nichts
+    verraten, was auf der Seite nicht ohnehin steht.
+    """
+    uid = request.session.get("user_id")
+    ist = "" if uid is None else str(uid)
+    if seite and seite != ist:
+        # Ins Protokoll, denn das ist der Beweis: ohne ihn bleibt es eine Vermutung
+        # ueber den Proxy, und niemand kann sagen, ob es noch passiert.
+        print(f"[cache] Eine Seite für Benutzer {seite} wurde an "
+              f"{'Benutzer ' + ist if ist else 'einen Abgemeldeten'} ausgeliefert "
+              f"(Adresse {_login_client(request)}). Ein Zwischenspeicher vor dem "
+              f"Dashboard gibt fremde Seiten weiter.")
+    return JSONResponse({"u": ist})
 
 
 @web.get("/ping")

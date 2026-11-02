@@ -8,6 +8,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+{# Fuer wen diese Seite erzeugt wurde. Steht fest im HTML, wandert also mit, wenn ein
+   Zwischenspeicher die Seite an jemand anderen weitergibt - und genau daran erkennt das
+   Skript am Seitenende, dass es nicht die eigene Seite ist. #}
+<meta name="phobos-seite-fuer" content="{{ user_id if user_id is not none else '' }}">
 <title>{% block title %}{{ app_name }}{% endblock %}</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -487,6 +491,81 @@
   }
   runUpdateCheck(false);
   setInterval(() => runUpdateCheck(false), 5 * 60 * 1000);
+</script>
+
+<script>
+/* Gehoert diese Seite ueberhaupt dem, der sie ansieht?
+
+   Am 02.11.2026 sass auf einer Installation jemand ohne Anmeldung im Dashboard, mit dem
+   Profil einer anderen Person in der Ecke und voller Sicht. Ursache war kein Loch im Bot:
+   ein zwischenspeichernder Reverse-Proxy davor hatte eine fertige Seite abgelegt und an
+   den naechsten Besucher weitergegeben. Derselbe Vorfall gab es schon einmal - damals
+   entstand der Knopf "alle abmelden", der aber nur aufraeumt, nachdem es passiert ist.
+
+   Der Bot kann einem falsch eingestellten Proxy nichts vorschreiben. Er kann aber im
+   Browser nachsehen, ob die Seite zur laufenden Anmeldung gehoert - und wenn nicht,
+   verhindern, dass noch jemand eine fremde Ansicht zu Gesicht bekommt.
+
+   Absichtlich ohne Framework und ohne await, damit es auch dann laeuft, wenn weiter oben
+   etwas schiefgegangen ist. */
+(function () {
+  var marke = document.querySelector('meta[name="phobos-seite-fuer"]');
+  if (!marke) return;
+  var fuer = (marke.getAttribute('content') || '').trim();
+  // Seiten ohne Anmeldung gibt es hier nicht - fehlt die Nummer, gibt es nichts zu
+  // vergleichen, und ein Alarm waere nur Rauschen.
+  if (!fuer) return;
+
+  var CACHE_TXT = {
+    titel:   {{ tr.cache_fremd_titel | jsraw }},
+    text:    {{ tr.cache_fremd_text | jsraw }},
+    hinweis: {{ tr.cache_fremd_hinweis | jsraw }},
+    knopf:   {{ tr.cache_fremd_knopf | jsraw }}
+  };
+
+  function sperren(ist) {
+    // Zuerst wegnehmen, dann erklaeren: solange hier noch etwas steht, sieht jemand
+    // Daten, die ihn nichts angehen.
+    document.body.innerHTML =
+      '<div style="max-width:560px;margin:12vh auto;padding:2rem;font-family:system-ui,sans-serif;' +
+      'background:#1a1d27;color:#e2e8f0;border:1px solid #ef4444;border-radius:1rem;line-height:1.6;">' +
+      '<h1 style="font-size:1.1rem;margin:0 0 0.75rem;">\u26a0\ufe0f ' + CACHE_TXT.titel + '</h1>' +
+      '<p style="margin:0 0 1rem;font-size:0.9rem;">' + CACHE_TXT.text + '</p>' +
+      '<p style="margin:0 0 1.25rem;font-size:0.78rem;color:#94a3b8;">' + CACHE_TXT.hinweis + '</p>' +
+      '<a href="/login" style="display:inline-block;background:#7c3aed;color:#fff;padding:0.6rem 1.1rem;' +
+      'border-radius:0.5rem;text-decoration:none;font-size:0.85rem;font-weight:600;">' + CACHE_TXT.knopf + '</a>' +
+      '</div>';
+    document.title = CACHE_TXT.titel;
+  }
+
+  // Der Einmalwert zwingt auch einen hartnaeckigen Zwischenspeicher zu einer echten
+  // Anfrage - ohne ihn koennte die Pruefung selbst aus dem Cache beantwortet werden.
+  fetch('/api/wer-ist-da?seite=' + encodeURIComponent(fuer) + '&_=' +
+        Date.now() + '-' + Math.random().toString(36).slice(2),
+        { cache: 'no-store', credentials: 'same-origin' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (!d) return;
+      var ist = (d.u === null || d.u === undefined) ? '' : String(d.u);
+      if (ist === fuer) return;
+
+      /* Einmal frisch holen, falls es nur eine alte Kopie war. Der zweite Versuch wird
+         vermerkt: bleibt es dabei, liegt es am Proxy und nicht am Browser - dann wird
+         nicht weiter neu geladen, sonst liefe die Seite in eine Endlosschleife. */
+      var schon = 'phobos_cache_neuversuch';
+      try {
+        if (!sessionStorage.getItem(schon)) {
+          sessionStorage.setItem(schon, '1');
+          var trenner = location.href.indexOf('?') < 0 ? '?' : '&';
+          location.replace(location.href + trenner + '_frisch=' + Date.now());
+          return;
+        }
+        sessionStorage.removeItem(schon);
+      } catch (e) { /* privates Fenster: dann eben ohne zweiten Versuch */ }
+      sperren(ist);
+    })
+    .catch(function () { /* kein Netz: lieber nichts tun als grundlos aussperren */ });
+})();
 </script>
 </body>
 </html>
