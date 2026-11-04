@@ -457,6 +457,18 @@ async def einladen_wenn_gewuenscht(guild_id: int, link) -> tuple:
     """
     if not link or not link["vrc_user_id"]:
         return "skip", "keine VRChat-Kennung"
+    # Erst freigeben, dann einladen - nie umgekehrt. Gemeldet als "man wird schon davor
+    # eingeladen, das darf nicht sein": die oeffentliche Seite ruft beim Aktualisieren
+    # _vrc_sync_group() auf, und das laedt ein, sobald jemand nicht in der Gruppe ist -
+    # ohne zu fragen, ob die Verknuepfung ueberhaupt schon durch ist. Wer seinen Namen
+    # eintippt und auf die Pruefung wartet, war damit schon in der Gruppe eingeladen.
+    #
+    # Die Pruefung steht HIER und nicht an der Aufrufstelle, weil hier alle Wege
+    # zusammenlaufen (Verknuepfen, Rollenwechsel, Reihendurchgang, Knopf im Dashboard).
+    # Der Reihendurchgang und on_member_update holen ohnehin nur Freigegebene - diese
+    # Zeile deckt die ab, die das nicht tun, und jeden Weg, der noch dazukommt.
+    if (link.get("status") or "") != VRC_STATE_APPROVED:
+        return "skip", "noch nicht freigegeben"
     if link["vrc_group_member"]:
         return "skip", "ist schon in der Gruppe"
     if (link["vrc_group_invited"] or "").strip():
