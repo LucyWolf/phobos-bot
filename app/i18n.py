@@ -1446,6 +1446,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "srv_offline_1":             'Bot offline — zuerst Token in den',
         "srv_offline_link":          'Einstellungen',
         "srv_offline_2":             'eintragen',
+        "srv_not_connected":         'Bot nicht verbunden —',
+        "bot_err_token":             'Discord lehnt den eingetragenen Token ab.',
+        "bot_err_intents":           'Die privilegierten Intents sind im Discord Developer '
+                                     'Portal nicht aktiviert — dort unter Bot → Privileged '
+                                     'Gateway Intents alle drei anhaken (Presence, Server '
+                                     'Members, Message Content).',
+        "bot_err_other":             'Discord meldet:',
+        "bot_err_unbekannt":         'Grund noch nicht bekannt — siehe Protokoll.',
         "srv_connected":             'Verbundene Server',
         "srv_members":               'Mitglieder',
         "srv_manage":                'Verwalten',
@@ -3116,6 +3124,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "srv_offline_1":             'Bot offline — enter a token in the',
         "srv_offline_link":          'settings',
         "srv_offline_2":             'first',
+        "srv_not_connected":         'Bot not connected —',
+        "bot_err_token":             'Discord rejects the token that is entered.',
+        "bot_err_intents":           'The privileged intents are not enabled in the Discord '
+                                     'Developer Portal — tick all three there under Bot → '
+                                     'Privileged Gateway Intents (Presence, Server Members, '
+                                     'Message Content).',
+        "bot_err_other":             'Discord reports:',
+        "bot_err_unbekannt":         'Reason not known yet — see the log.',
         "srv_connected":             'Connected servers',
         "srv_members":               'members',
         "srv_manage":                'Manage',

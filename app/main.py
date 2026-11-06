@@ -447,6 +447,13 @@ class BotManager:
 
 bot = BotManager()
 
+# Warum ein Bot gerade NICHT verbunden ist, je Token-ID: (Textschluessel, Detail).
+# Ohne das stand im Dashboard bei jeder Stoerung dieselbe Zeile - "Bot offline, zuerst Token
+# eintragen" -, auch wenn laengst einer eingetragen war und Discord ihn nur ablehnte. Die
+# Meldung schickte damit in die falsche Richtung; der wirkliche Grund stand allein im
+# Protokoll. Leer heisst: verbunden, oder noch nie versucht.
+BOT_FEHLER: dict = {}
+
 
 async def _run_single_bot(token_id: int, token: str):
     """Runs one bot instance. Auto-reconnects after unexpected disconnects (e.g. a
@@ -495,6 +502,7 @@ async def _run_single_bot(token_id: int, token: str):
             await instance.tree.sync()
             for guild in list(instance.guilds):
                 await _sync_guild(guild)
+            BOT_FEHLER.pop(token_id, None)
             print(f"Phobos v{VERSION} online als {instance.user} [ID {token_id}]")
 
         @instance.event
@@ -521,9 +529,19 @@ async def _run_single_bot(token_id: int, token: str):
                 await instance.start(token)
         except discord.errors.LoginFailure:
             print(f"[Token-ID {token_id}] ❌ Ungültiger Token – Bot wird übersprungen.")
+            BOT_FEHLER[token_id] = ("bot_err_token", "")
             login_failed = True
+        except discord.errors.PrivilegedIntentsRequired:
+            # Eigener Zweig, weil das als einziger Fall eine Einstellung AUSSERHALB dieser
+            # Installation ist: der Token stimmt, die Anwendung im Developer Portal hat die
+            # drei Haken nicht. Im allgemeinen Zweig darunter stand dafuer nur Discords
+            # englischer Fliesstext im Protokoll, und im Dashboard gar nichts.
+            print(f"[Token-ID {token_id}] ❌ Privilegierte Intents sind im Developer Portal "
+                  f"nicht aktiviert.")
+            BOT_FEHLER[token_id] = ("bot_err_intents", "")
         except Exception as e:
             print(f"[Token-ID {token_id}] ❌ Bot-Fehler: {e}")
+            BOT_FEHLER[token_id] = ("bot_err_other", str(e)[:300])
         finally:
             bot._bots.pop(token_id, None)
 
@@ -1295,6 +1313,19 @@ def admin_redirect(request: Request) -> Optional[RedirectResponse]:
     if request.session.get("role") != "admin":
         return RedirectResponse("/", status_code=302)
     return None
+
+
+def _bot_fehler_anzeige() -> dict:
+    """Ein Grund, aus dem gerade kein Bot verbunden ist - fuer die Leiste im Dashboard.
+
+    Mehrere Tokens koennen gleichzeitig scheitern; die Leiste hat Platz fuer eine Zeile,
+    also wird einer gezeigt. Leer heisst "kein Grund bekannt" - dann bleibt es bei der
+    allgemeinen Zeile, statt einen zu erfinden.
+    """
+    for tid, eintrag in BOT_FEHLER.items():
+        schluessel, detail = eintrag
+        return {"key": schluessel, "detail": detail, "token_id": tid}
+    return {}
 
 
 async def _token_configured() -> bool:
@@ -9755,6 +9786,7 @@ async def servers_list(request: Request, success: str = ""):
     return templates.TemplateResponse("servers_list.html", {
         **session(request), "request": request,
         "guilds": guilds, "token_set": token_set,
+        "bot_fehler": _bot_fehler_anzeige(),
         "invite_url": invite_url, "bot_online": bot.is_ready(),
         "active": "servers", "success": success,
     })
