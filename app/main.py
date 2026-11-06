@@ -682,6 +682,58 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class SitzungsCookieMiddleware(BaseHTTPMiddleware):
+    """Haengt das Sitzungs-Cookie nur an die Antworten, bei denen sich wirklich etwas aendert.
+
+    Starlette haengt es an JEDE Antwort, solange die Sitzung nicht leer ist - an jede Seite,
+    jedes Bild, jede Hintergrundabfrage. Damit traegt jede einzelne Antwort einen vollwertigen
+    Anmeldeausweis bei sich. Wer eine davon aufbewahrt und einem anderen Besucher vorsetzt,
+    gibt die Anmeldung mit weiter, und der sitzt dann ohne Passwort im fremden Konto. Genau
+    das ist hier zweimal passiert: "der einladungs link war aufeinmal mit dem profil von mir
+    drin und er hatte kein pw", und ein zweites Mal direkt nach einer Registrierung ueber
+    einen Einladungslink. Die Kopfzeilen oben (no-store, private, Vary) sagen jedem
+    Zwischenspeicher, dass er das nicht tun darf - aber sagen heisst nicht verhindern.
+
+    Deshalb hier die andere Richtung: was nicht mitgeschickt wird, kann auch nicht
+    weitergegeben werden. Verglichen wird der Nutzteil des Cookies (vor dem ersten Punkt
+    steht die Sitzung selbst, danach Zeitstempel und Signatur). Ist er derselbe wie der, der
+    hereinkam, hat sich an der Sitzung nichts geaendert und die Zeile fliegt raus. Uebrig
+    bleiben die Antworten, bei denen es wirklich um das Cookie geht: die Anmeldung, das
+    Abmelden, ein Sprachwechsel. Eine normale Seite traegt gar keinen Ausweis mehr.
+
+    Nebenwirkung, bewusst in Kauf genommen: das Cookie wird nicht mehr bei jedem Aufruf
+    verlaengert, eine Sitzung endet also 14 Tage nach der Anmeldung statt 14 Tage nach dem
+    letzten Klick. Das kostet im schlimmsten Fall eine Anmeldung - die Alternative waere,
+    regelmaessig doch wieder einen Ausweis in eine beliebige Antwort zu legen.
+    """
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        try:
+            herein = (request.cookies.get("phobos_session") or "").split(".")[0]
+            if not herein:
+                return response
+            raus = response.headers.getlist("set-cookie")
+            if not raus:
+                return response
+            behalten, entfernt = [], False
+            for satz in raus:
+                if satz.startswith("phobos_session="):
+                    wert = satz.split("=", 1)[1].split(";", 1)[0]
+                    if wert.split(".")[0] == herein:
+                        entfernt = True
+                        continue
+                behalten.append(satz)
+            if entfernt:
+                del response.headers["set-cookie"]
+                for satz in behalten:
+                    response.headers.append("set-cookie", satz)
+        except Exception as e:
+            # An dieser Pruefung darf keine Antwort scheitern: im Zweifel geht das Cookie
+            # mit, so wie vorher auch.
+            print(f"[sitzung] Cookie-Pruefung fehlgeschlagen: {e}")
+        return response
+
+
 async def _current_session_epoch() -> str:
     """A global, admin-bumpable counter (config table) that every session carries a snapshot
     of at login time - SessionValidityMiddleware compares the two on each request, so bumping
@@ -781,6 +833,117 @@ async def _session_alive(sid: str) -> bool:
     return True
 
 
+def _geraet_hash(request: Request) -> str:
+    """Erkennungsmerkmal des Browsers, dem ein Sitzungs-Handle ausgestellt wurde.
+
+    Nur die Browserkennung, nichts weiter. Accept-Language waere mehr Unterscheidungskraft,
+    schicken manche Browser aber bei Hintergrundabfragen anders als bei einer Seite - und ein
+    Merkmal, das sich im Normalbetrieb aendert, wirft Leute aus ihrer eigenen Sitzung. Das
+    waere der teurere Fehler.
+    """
+    import hashlib
+    return hashlib.sha256(
+        ("ua:" + (request.headers.get("user-agent") or "")).encode()).hexdigest()
+
+
+def _ort_zeit_jung(wert: str, sekunden: int = 900) -> bool:
+    """Ob dieser Zeitstempel so frisch ist, dass beide Seiten gleichzeitig unterwegs sind."""
+    try:
+        alter = datetime.datetime.utcnow() - datetime.datetime.fromisoformat(wert)
+        return 0 <= alter.total_seconds() <= sekunden
+    except Exception:
+        return False
+
+
+async def _sitzung_kappen(digest: str, uid, grund: str) -> None:
+    """Legt ein Sitzungs-Handle still - fuer beide Seiten - und sagt dem Konto, warum.
+
+    Die Zeile wird geloescht, nicht nur die eine Anfrage abgewiesen. Ist ein Ausweis einmal
+    bei zwei Browsern angekommen, ist nicht zu entscheiden, welcher der richtige ist; dann
+    muessen beide neu anmelden. Die Besitzerin merkt das sofort - und das ist beabsichtigt:
+    eine Sitzung, die zwei Leute benutzen, soll nicht leise weiterlaufen.
+    """
+    try:
+        await db_exec("DELETE FROM user_sessions WHERE sid=?", (digest,))
+    except Exception as e:
+        print(f"[sitzung] Stilllegen fehlgeschlagen: {e}")
+    print(f"[sitzung] Handle von Benutzer {uid} stillgelegt - {grund}")
+    try:
+        user = await db_one("SELECT * FROM users WHERE id=?", (uid,))
+        if user:
+            await _warn_mail(user, f"geteilt:{uid}",
+                             f"{_app_name}: Deine Anmeldung wurde beendet", [
+                f"Hallo {user.get('display_name') or user['username']},",
+                "",
+                "deine Anmeldung ist gerade von zwei verschiedenen Stellen benutzt worden "
+                f"({grund}). Das kann nicht beides du sein, also wurde sie beendet — du "
+                "musst dich einmal neu anmelden.",
+                "",
+                "Passiert das wiederholt, liegt es fast immer an einem Zwischenspeicher "
+                "(Proxy, CDN) vor dem Dashboard, der fertige Seiten weitergibt. Der muss "
+                "für diese Adresse abgeschaltet werden.",
+            ])
+    except Exception as e:
+        print(f"[sitzung] Meldung ueber ein stillgelegtes Handle fehlgeschlagen: {e}")
+
+
+async def _sitzung_geraet_ok(request: Request, sid: str, uid) -> bool:
+    """Darf dieses Sitzungs-Handle von DIESEM Browser an DIESEM Anschluss benutzt werden?
+
+    Zweite Lage hinter SitzungsCookieMiddleware. Dort geht das Cookie nicht mehr mit jeder
+    Antwort mit - ganz weg ist es aber nicht: die Antwort auf die Anmeldung selbst traegt es,
+    und die kann genauso in einem Zwischenspeicher landen. Ein Ausweis, der trotzdem bei
+    einem Fremden ankommt, soll dort nichts wert sein.
+
+    Zwei Merkmale, verschieden streng:
+
+    - **Browser** (hart): ein anderer Browser als der, dem das Handle ausgestellt wurde, ist
+      ein anderes Geraet. Eigene Sitzungen wechseln ihre Browserkennung nicht; nur ein
+      Browser-Update tut das, und das kostet eine Neuanmeldung.
+    - **Anschluss** (nur im Wechsel): ein Wechsel allein beweist nichts - Privatanschluesse
+      bekommen nachts eine neue Adresse, Handys wechseln zwischen WLAN und Funk. Verglichen
+      wird deshalb das Netz (/24 bzw. /64) und gekappt wird erst, wenn zwei Netze einander
+      innerhalb einer Viertelstunde abloesen: hin und zurueck heisst zwei Leute gleichzeitig,
+      eine Zwangstrennung geht nie zurueck.
+
+    Alte Sitzungen tragen noch kein Merkmal. Die bekommen eines, statt dass sie wegfliegen -
+    nach einem Update soll niemand vor dem Login stehen.
+    """
+    digest = _token_hash(sid)
+    zeile = await db_one(
+        "SELECT geraet, ort, ort_vor, ort_zeit FROM user_sessions WHERE sid=?", (digest,))
+    if not zeile:
+        # Entweder gibt es die Zeile nicht (darueber hat _session_alive schon entschieden)
+        # oder die Spalten fehlen noch. Beides ist kein Grund, jemanden auszusperren.
+        return True
+    geraet = _geraet_hash(request)
+    ort = _ort_hash(_login_client(request))
+    jetzt = datetime.datetime.utcnow().isoformat()
+    bekannt = zeile.get("geraet") or ""
+    if not bekannt:
+        try:
+            await db_exec("UPDATE user_sessions SET geraet=?, ort=?, ort_zeit=? WHERE sid=?",
+                          (geraet, ort, jetzt, digest))
+        except Exception as e:
+            print(f"[sitzung] Merkmal einer Altsitzung nicht nachgetragen: {e}")
+        return True
+    if bekannt != geraet:
+        await _sitzung_kappen(digest, uid, "ein anderer Browser")
+        return False
+    ort_alt = zeile.get("ort") or ""
+    if ort_alt and ort != ort_alt:
+        if (zeile.get("ort_vor") or "") == ort and _ort_zeit_jung(zeile.get("ort_zeit") or ""):
+            await _sitzung_kappen(digest, uid, "zwei Anschluesse im Wechsel")
+            return False
+        try:
+            await db_exec(
+                "UPDATE user_sessions SET ort_vor=?, ort=?, ort_zeit=? WHERE sid=?",
+                (ort_alt, ort, jetzt, digest))
+        except Exception as e:
+            print(f"[sitzung] Anschlusswechsel nicht vermerkt: {e}")
+    return True
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Die Kopfzeilen, die jede Antwort tragen sollte.
 
@@ -842,6 +1005,8 @@ class SessionValidityMiddleware(BaseHTTPMiddleware):
                 if sid:
                     if not await _session_alive(sid):
                         request.session.clear()
+                    elif not await _sitzung_geraet_ok(request, sid, uid):
+                        request.session.clear()
                 else:
                     try:
                         sid = secrets.token_urlsafe(24)
@@ -849,6 +1014,13 @@ class SessionValidityMiddleware(BaseHTTPMiddleware):
                         await db_exec(
                             "INSERT INTO user_sessions (sid, user_id, created_at, last_seen) "
                             "VALUES (?,?,?,?)", (_token_hash(sid), uid, now, now))
+                        # Das Merkmal gleich hier, nicht erst beim naechsten Aufruf: sonst
+                        # traegt es der ein, der als Naechster vorbeikommt - und das muss
+                        # nicht der sein, dem die Sitzung gehoert.
+                        await db_exec(
+                            "UPDATE user_sessions SET geraet=?, ort=?, ort_zeit=? WHERE sid=?",
+                            (_geraet_hash(request), _ort_hash(_login_client(request)), now,
+                             _token_hash(sid)))
                         request.session["sid"] = sid
                     except Exception as e:
                         print(f"[session] Nachrüsten einer Altsitzung fehlgeschlagen: {e}")
@@ -986,6 +1158,9 @@ web.add_middleware(TZMiddleware)
 web.add_middleware(SessionValidityMiddleware)
 web.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="phobos_session",
                    max_age=SESSION_MAX_AGE, https_only=COOKIE_SECURE, same_site="lax")
+# Muss AUSSERHALB von SessionMiddleware liegen, also hier danach stehen: nur von aussen ist
+# das Set-Cookie zu sehen, das die Sitzung gerade angehaengt hat.
+web.add_middleware(SitzungsCookieMiddleware)
 web.add_middleware(SecurityHeadersMiddleware)
 web.add_middleware(NoCacheMiddleware)
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -1239,6 +1414,15 @@ async def _complete_login(request: Request, user: dict) -> None:
     request.session["sid"] = sid
     await db_exec("INSERT INTO user_sessions (sid, user_id, created_at, last_seen) "
                   "VALUES (?,?,?,?)", (_token_hash(sid), user["id"], now, now))
+    # Browser und Anschluss gleich mit festhalten, siehe _sitzung_geraet_ok. Getrennt und in
+    # einem eigenen try: an einer fehlenden Spalte - eine Installation, deren Migration noch
+    # nicht durch ist - darf keine Anmeldung scheitern.
+    try:
+        await db_exec("UPDATE user_sessions SET geraet=?, ort=?, ort_zeit=? WHERE sid=?",
+                      (_geraet_hash(request), _ort_hash(_login_client(request)), now,
+                       _token_hash(sid)))
+    except Exception as e:
+        print(f"[sitzung] Merkmal der neuen Sitzung nicht gespeichert: {e}")
 
     # Hier laeuft JEDE erfolgreiche Anmeldung durch, auch die mit zweitem Faktor - deshalb
     # sitzt die Meldung ueber eine unbekannte Adresse an dieser Stelle und nicht in

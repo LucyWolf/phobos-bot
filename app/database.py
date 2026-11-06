@@ -1326,6 +1326,14 @@ async def init_db():
             # wer die Rollen bisher von Hand verwaltet hat, saehe sie nach dem Neustart
             # reihenweise verschwinden. Wer den Rueckbau will, schaltet ihn je Regel ein.
             "ALTER TABLE role_rules ADD COLUMN revoke_on_loss INTEGER NOT NULL DEFAULT 0",
+            # Ein Sitzungs-Handle gehoert zu genau einem Browser an genau einem Anschluss.
+            # Kommt dasselbe Handle von woanders, ist es unterwegs weitergegeben worden -
+            # siehe _sitzung_geraet_ok in main.py. Leer heisst "noch nicht bekannt" und wird
+            # beim naechsten Seitenaufruf nachgetragen, damit ein Update niemanden auswirft.
+            "ALTER TABLE user_sessions ADD COLUMN geraet TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE user_sessions ADD COLUMN ort TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE user_sessions ADD COLUMN ort_vor TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE user_sessions ADD COLUMN ort_zeit TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)
