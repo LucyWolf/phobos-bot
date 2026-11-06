@@ -1548,10 +1548,20 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "tok_assigned_users":        "Zugewiesene Benutzer",
         "tok_save_button":           "Token speichern",
         "tok_help_summary":          "Wo finde ich meinen Bot-Token?",
-        "tok_help_1":                "1. Öffne <strong>discord.com/developers/applications</strong>",
+        "tok_help_1":                "1. Öffne discord.com/developers/applications",
         "tok_help_2":                "2. Wähle deine Anwendung (oder erstelle eine neue)",
-        "tok_help_3":                "3. Navigiere zu <strong>Bot → Token → Reset Token</strong>",
+        "tok_help_3":                "3. Navigiere zu Bot → Token → Reset Token",
         "tok_help_4":                "4. Kopiere den Token und füge ihn oben ein",
+        "tok_help_5":                "5. Im selben Bot-Reiter weiter unten unter Privileged "
+                                     "Gateway Intents alle drei einschalten: Presence, Server "
+                                     "Members und Message Content — und unten auf Save "
+                                     "Changes drücken",
+        "tok_help_note":             "Fehlen diese drei Haken, weist Discord die Verbindung "
+                                     "nach der Anmeldung ab (Code 4014 – Disallowed intents). "
+                                     "Der Token ist dann in Ordnung, der Bot bleibt trotzdem "
+                                     "offline und die Serverliste leer. Setzen kann die Haken "
+                                     "nur, wem die Discord-Anwendung gehört — bei einem "
+                                     "übergebenen Bot also der neue Besitzer.",
         "tok_legacy_heading":        "Legacy Bot-Token",
         "coop_connection_heading": "Verbindung zum Partner",
         "coop_share_hint":        "Rollen auf DIESEM Server, die dem Partner als „geprüft“ gelten. Fragt er nach jemandem, der eine davon trägt, lautet die Antwort ja. Ohne ausgewählte Rolle wird nie etwas bestätigt.",
@@ -3226,10 +3236,20 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "tok_assigned_users":        "Assigned users",
         "tok_save_button":           "Save token",
         "tok_help_summary":          "Where do I find my bot token?",
-        "tok_help_1":                "1. Open <strong>discord.com/developers/applications</strong>",
+        "tok_help_1":                "1. Open discord.com/developers/applications",
         "tok_help_2":                "2. Pick your application (or create a new one)",
-        "tok_help_3":                "3. Go to <strong>Bot → Token → Reset Token</strong>",
+        "tok_help_3":                "3. Go to Bot → Token → Reset Token",
         "tok_help_4":                "4. Copy the token and paste it above",
+        "tok_help_5":                "5. Further down in the same Bot tab, enable all three "
+                                     "Privileged Gateway Intents: Presence, Server Members "
+                                     "and Message Content — then press Save Changes at the "
+                                     "bottom",
+        "tok_help_note":             "Without those three, Discord refuses the connection "
+                                     "right after login (code 4014 – disallowed intents). "
+                                     "The token itself is fine, but the bot stays offline and "
+                                     "the server list stays empty. Only whoever owns the "
+                                     "Discord application can tick them — for a bot that "
+                                     "changed hands, that is its new owner.",
         "tok_legacy_heading":        "Legacy bot token",
         "coop_connection_heading": "Connection to the partner",
         "coop_share_hint":        "Roles on THIS server that count as “vetted” for the partner. Asked about somebody holding one of them, the answer is yes. With no role selected, nothing is ever confirmed.",
