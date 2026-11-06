@@ -2202,8 +2202,8 @@ _BACKUP_TBL_INSERT = {
         "INSERT INTO rating_items (guild_id,label,url,recommended,created_at,image_url,image_data,image_filename) "
         "VALUES (:guild_id,:label,:url,:recommended,:created_at,:image_url,:image_data,:image_filename)",
     "role_rules":
-        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,actions,priority,enabled,dm_text,dm_enabled) "
-        "VALUES (:guild_id,:name,:match_type,:match_role_ids,:action,:action_guild_id,:action_role_ids,:action_role_meta,:actions,:priority,:enabled,:dm_text,:dm_enabled)",
+        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,actions,priority,enabled,dm_text,dm_enabled,revoke_on_loss) "
+        "VALUES (:guild_id,:name,:match_type,:match_role_ids,:action,:action_guild_id,:action_role_ids,:action_role_meta,:actions,:priority,:enabled,:dm_text,:dm_enabled,:revoke_on_loss)",
 }
 
 
@@ -2625,7 +2625,7 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...),
                     # dashboard (which refreshes it); losing the rule outright costs everything.
                     if tbl == "role_rules":
                         # Same trap for both columns a pre-existing backup cannot know about.
-                        row = {"action_role_meta": "", "actions": "", "dm_text": "", "dm_enabled": 0, **row}
+                        row = {"action_role_meta": "", "actions": "", "dm_text": "", "dm_enabled": 0, "revoke_on_loss": 0, **row}
                     # Ditto for the VRC-Link columns: a backup taken before the ownership check
                     # existed has neither key, and the named-parameter INSERT would drop the
                     # whole link rather than just the missing field.
@@ -2827,7 +2827,7 @@ async def server_backup_restore(request: Request, guild_id: int,
                         merged["ticket_message"] = row.get("description", "")
                     if tbl == "role_rules":
                         # Same fallback as the full-backup path for older backups.
-                        merged = {"action_role_meta": "", "actions": "", "dm_text": "", "dm_enabled": 0, **merged}
+                        merged = {"action_role_meta": "", "actions": "", "dm_text": "", "dm_enabled": 0, "revoke_on_loss": 0, **merged}
                         # Self-references have to be rehomed BEFORE guild_id is lost - see
                         # _rehome_role_rule(); `row` still carries the exported guild id.
                         #
@@ -12966,6 +12966,10 @@ async def _role_rule_form_data(request: Request, guild: discord.Guild, form) -> 
         # koennen, als er hier aussieht.
         "dm_text": (form.get("dm_text") or "").strip()[:1800],
         "dm_enabled": 1 if form.get("dm_enabled") else 0,
+        # Nimmt die Regel ihre Rolle wieder weg, wenn die Voraussetzung wegfaellt?
+        # Standardmaessig aus: wer die Zielrollen bisher auch von Hand vergeben hat,
+        # saehe sie sonst nach dem naechsten Durchgang verschwinden.
+        "revoke_on_loss": 1 if form.get("revoke_on_loss") else 0,
     }, None
 
 
@@ -12982,12 +12986,12 @@ async def role_rule_add(request: Request, guild_id: int):
     if error:
         return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error={error}", status_code=302)
     await db_exec(
-        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,actions,priority,enabled,dm_text,dm_enabled) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,actions,priority,enabled,dm_text,dm_enabled,revoke_on_loss) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (str(guild_id), data["name"], data["match_type"], data["match_role_ids"], data["action"],
          data["action_guild_id"], data["action_role_ids"], data["action_role_meta"],
          data["actions"], data["priority"], data["enabled"], data["dm_text"],
-         data["dm_enabled"]),
+         data["dm_enabled"], data["revoke_on_loss"]),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Regel+hinzugefügt", status_code=303)
 
@@ -13006,12 +13010,13 @@ async def role_rule_edit(request: Request, guild_id: int, rule_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error={error}", status_code=302)
     await db_exec(
         "UPDATE role_rules SET name=?, match_type=?, match_role_ids=?, action=?, action_guild_id=?, "
-        "action_role_ids=?, action_role_meta=?, actions=?, priority=?, enabled=?, dm_text=?, dm_enabled=? "
+        "action_role_ids=?, action_role_meta=?, actions=?, priority=?, enabled=?, dm_text=?, "
+        "dm_enabled=?, revoke_on_loss=? "
         "WHERE id=? AND guild_id=?",
         (data["name"], data["match_type"], data["match_role_ids"], data["action"],
          data["action_guild_id"], data["action_role_ids"], data["action_role_meta"],
          data["actions"], data["priority"], data["enabled"], data["dm_text"],
-         data["dm_enabled"], rule_id, str(guild_id)),
+         data["dm_enabled"], data["revoke_on_loss"], rule_id, str(guild_id)),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Regel+gespeichert", status_code=303)
 

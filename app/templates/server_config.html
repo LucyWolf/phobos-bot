@@ -5297,6 +5297,16 @@ function updateAmpCmdPreview(id, action, value) {
           </label>
         </div>
       </div>
+      {# Rueckbau: ohne diesen Haken ist eine Regel eine Einbahnstrasse - sie gibt die
+         Rolle, nimmt sie aber nie wieder weg. Gemeldet als "leute die server 1 verlassen
+         hatten ... werden trotzdem auf server 2 verified". Standardmaessig aus, damit
+         sich an bestehenden Servern durch ein Update nichts von selbst aendert. #}
+      <label style="display:flex;align-items:flex-start;gap:0.4rem;margin:0 0 0.35rem;font-weight:400;">
+        <input type="checkbox" name="revoke_on_loss" value="1" style="width:auto;margin:0.2rem 0 0;">
+        <span>{{ tr.rolerules_revoke_label }}
+          <span style="display:block;font-size:0.72rem;color:var(--muted);">{{ tr.rolerules_revoke_hint }}</span>
+        </span>
+      </label>
       {# Die Nachricht gehoert zur einzelnen Regel: bei mehreren Regeln will man je Anlass
          etwas anderes schreiben koennen. Leer heisst, dass der Text des Servers weiter
          unten gilt - eine bestehende Einrichtung aendert sich dadurch nicht. #}
@@ -5408,6 +5418,13 @@ function updateAmpCmdPreview(id, action, value) {
                   </label>
                 </div>
               </div>
+              <label style="display:flex;align-items:flex-start;gap:0.4rem;margin:0 0 0.35rem;font-weight:400;">
+                <input type="checkbox" name="revoke_on_loss" value="1" style="width:auto;margin:0.2rem 0 0;"
+                       {% if rr.revoke_on_loss %}checked{% endif %}>
+                <span>{{ tr.rolerules_revoke_label }}
+                  <span style="display:block;font-size:0.72rem;color:var(--muted);">{{ tr.rolerules_revoke_hint }}</span>
+                </span>
+              </label>
               <label style="display:flex;align-items:center;gap:0.4rem;margin:0 0 0.35rem;font-weight:400;">
                 <input type="checkbox" name="dm_enabled" value="1" style="width:auto;margin:0;"
                        {% if rr.dm_enabled %}checked{% endif %}>

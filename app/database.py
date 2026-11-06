@@ -1316,6 +1316,16 @@ async def init_db():
             # ueberfliegt man, was passiert ist, eine Mitschrift liest man nach, und
             # zwischen laufenden Meldungen findet man sie spaeter nicht wieder.
             "ALTER TABLE ticket_panels ADD COLUMN transcript_channel_id TEXT NOT NULL DEFAULT ''",
+            # Rueckbau: nimmt die Regel ihre Rolle wieder weg, wenn die Voraussetzung
+            # wegfaellt? Gemeldet als "leute die server 1 verlassen hatten ... werden
+            # trotzdem auf server 2 verified" - eine Regel war bis hierher eine
+            # Einbahnstrasse: trifft zu -> Rolle, trifft nicht mehr zu -> gar nichts.
+            #
+            # Standard 0, also aus. Nicht aus Vorsicht vor dem Code, sondern weil sich
+            # sonst das Verhalten bestehender Installationen durch ein Update aendert:
+            # wer die Rollen bisher von Hand verwaltet hat, saehe sie nach dem Neustart
+            # reihenweise verschwinden. Wer den Rueckbau will, schaltet ihn je Regel ein.
+            "ALTER TABLE role_rules ADD COLUMN revoke_on_loss INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await db.execute(col)

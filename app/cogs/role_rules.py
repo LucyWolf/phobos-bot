@@ -35,6 +35,11 @@ from database import db_exec, db_rows, get_guild_config, role_rule_actions
 # Purely a safety net against a pathological rule configuration that would otherwise loop
 # forever (e.g. two guilds whose rules keep re-triggering each other) - a real, intentional
 # rule chain is expected to converge in a handful of hops at most.
+# Wie oft der Rueckbau nachsieht, und wie viele Mitglieder je Durchgang. Eigener Takt wie
+# beim Gruppenstand: er haengt nicht am Regel-Intervall, weil er auch fuer Server gebraucht
+# wird, die im Live-Modus laufen (Intervall 0).
+RUECKBAU_TAKT = 15 * 60
+RUECKBAU_JE_LAUF = 25
 MAX_HOP_BUDGET = 8
 
 # Wie lange ein Kooperations-Durchgang je Partnerschaft hoechstens dauern darf. Danach wird
@@ -92,6 +97,12 @@ class RoleRules(commands.Cog):
         # naechste Durchgang vorne an - das kostet ein paar Anfragen, mehr nicht.
         self._coop_zeiger: dict[str, int] = {}
         self._coop_last: dict[int, float] = {}
+        # Dasselbe fuer den Rueckbau: wann er je Server zuletzt lief und wo er aufgehoert
+        # hat. Auch hier nur im Arbeitsspeicher - nach einem Neustart faengt er vorne an,
+        # und das ist genau richtig: wer waehrend des Neustarts gegangen ist, steht dann
+        # wieder mit in der Reihe.
+        self._rueckbau_last: dict[int, float] = {}
+        self._rueckbau_pos: dict[int, int] = {}
         self._debug_log: collections.deque = collections.deque(maxlen=DEBUG_LOG_MAXLEN)
         # (guild_id, role_id) -> time.monotonic() of the last FAILED auto-create, see
         # AUTOCREATE_RETRY_SECONDS.
@@ -883,6 +894,127 @@ class RoleRules(commands.Cog):
         ergebnis = await self.kooperations_durchgang(member.guild, limit=1, nur_member=member)
         return ["vergeben"] * ergebnis.get("vergeben", 0)
 
+    async def _noch_mitglied(self, guild, user_id):
+        """Das Mitglied, False (sicher nicht mehr da) oder None (nicht feststellbar).
+
+        Die Unterscheidung zwischen False und None ist der ganze Sinn dieser Funktion.
+        get_member() liest nur den Zwischenspeicher, und der ist nach einem Neustart
+        kurzzeitig leer oder halb gefuellt - wer darauf allein baut, haelt beim ersten
+        Durchlauf den halben Server fuer ausgetreten und nimmt reihenweise Rollen weg.
+        Deshalb wird im Zweifel bei Discord nachgefragt, und wenn auch das nicht geht,
+        passiert gar nichts.
+        """
+        m = guild.get_member(int(user_id))
+        if m is not None:
+            return m
+        try:
+            return await guild.fetch_member(int(user_id))
+        except discord.NotFound:
+            return False
+        except (discord.HTTPException, OSError) as e:
+            self._log(f"Rückbau: Mitglied {user_id} auf Guild {guild.id} nicht prüfbar "
+                      f"({e}) - es wird nichts entzogen")
+            return None
+
+    async def _rueckbau(self, quell_guild, user_id, leise: bool = False) -> int:
+        """Nimmt zurueck, was eine Regel vergeben hat, deren Voraussetzung weggefallen ist.
+
+        Gemeldet als: "leute die den server 1 verlassen hatten und dann auf server 2 joinen
+        werden trotz dem verlassen von server 1 auf server 2 verified ... der bot prueft das
+        nicht direkt nach ob dieser nutzer auch wirklich noch auf dem anderen discord ist".
+
+        Das traf zu: eine Regel war eine Einbahnstrasse. _evaluate_member() steigt bei
+        `if not self._matches(...): continue` einfach aus, und ausgewertet wurde ohnehin nur,
+        wer auf dem Quellserver noch Mitglied IST - wer ihn verlaesst, kommt nie wieder dran.
+
+        Gilt nur fuer Regeln mit eingeschaltetem Rueckbau. Gibt zurueck, wie viele
+        Zielserver tatsaechlich geaendert wurden.
+        """
+        alle = await self._get_rules(quell_guild.id)
+        regeln = [r for r in alle if _feld(r, "revoke_on_loss")]
+        if not regeln:
+            return 0
+
+        stand = await self._noch_mitglied(quell_guild, user_id)
+        if stand is None:
+            return 0
+        current = {r.id for r in stand.roles} if stand else set()
+
+        # Was wegfaellt - und was eine ANDERE, weiterhin zutreffende Regel trotzdem noch
+        # vergibt. Ohne den zweiten Teil nimmt der Rueckbau einer Regel weg, was eine
+        # zweite im selben Atemzug zu Recht gibt.
+        weg_je_guild: dict = {}
+        behalten_je_guild: dict = {}
+        for regel in alle:
+            try:
+                trifft = self._matches(regel, current)
+                rueckbau = bool(_feld(regel, "revoke_on_loss"))
+                # Eine zutreffende Regel gehoert IMMER auf die Schutzliste, auch ohne
+                # eigenen Haken: sonst nimmt der Rueckbau der einen Regel weg, was eine
+                # zweite im selben Moment zu Recht vergibt. Nur wer weder zutrifft noch
+                # zurueckbaut, geht uns hier nichts an.
+                if not trifft and not rueckbau:
+                    continue
+                for block in role_rule_actions(regel):
+                    if block["action"] != "add":
+                        continue
+                    ids = {int(x) for x in block["role_ids"]}
+                    if not ids:
+                        continue
+                    ziel = behalten_je_guild if trifft else weg_je_guild
+                    ziel.setdefault(block["guild_id"], set()).update(ids)
+            except (ValueError, TypeError) as e:
+                self._log_once((quell_guild.id, int(regel["id"])),
+                               f"FEHLER: Regel #{regel['id']} hat fehlerhafte Daten und wird "
+                               f"beim Rückbau übersprungen: {e}")
+                continue
+
+        geaendert = 0
+        for action_guild_id, ids in weg_je_guild.items():
+            ids = ids - behalten_je_guild.get(action_guild_id, set())
+            if not ids:
+                continue
+            ziel_guild = self.bot.get_guild(int(action_guild_id))
+            if not ziel_guild:
+                continue
+            ziel_member = await self._noch_mitglied(ziel_guild, user_id)
+            if not ziel_member:
+                continue
+            treffer = [r for r in ziel_member.roles if r.id in ids]
+            if not treffer:
+                continue
+            neu = [r for r in ziel_member.roles if r.id not in ids]
+            try:
+                await ziel_member.edit(roles=neu, reason="CrossVerification: Voraussetzung entfallen")
+                geaendert += 1
+                self._log(f"Rückbau auf Guild {ziel_guild.id} ({ziel_guild.name}) für "
+                          f"{user_id}: {', '.join(r.name for r in treffer)} entzogen "
+                          f"(Voraussetzung auf {quell_guild.id} entfallen"
+                          + ("" if stand else ", Server verlassen") + ")")
+            except discord.Forbidden:
+                self._log_once((ziel_guild.id, "rueckbau-recht"),
+                               f"FEHLER: Rückbau auf Guild {ziel_guild.id} nicht möglich - "
+                               f"dem Bot fehlt das Recht oder die Rolle steht über seiner")
+            except (discord.HTTPException, OSError) as e:
+                self._log(f"FEHLER: Rückbau für {user_id} auf Guild {ziel_guild.id}: {e}")
+        return geaendert
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member):
+        """Wer den Quellserver verlaesst, verliert die daraus abgeleiteten Rollen.
+
+        Der eine Fall, den der Reihendurchgang NICHT nachholen kann, solange er ueber
+        guild.members laeuft: wer weg ist, steht dort nicht mehr drin. Deshalb hier, im
+        Moment des Austritts, wo die Mitgliedschaft noch eindeutig feststeht.
+        """
+        try:
+            if getattr(member, "bot", False):
+                return
+            await self._rueckbau(member.guild, member.id)
+        except Exception as e:
+            self._log(f"Rückbau nach Austritt von {member.id} aus Guild "
+                      f"{member.guild.id} fehlgeschlagen: {e}")
+
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         if before.roles == after.roles:
@@ -962,6 +1094,85 @@ class RoleRules(commands.Cog):
                                   f"{ergebnis['offen']} bleiben fuer den naechsten Durchgang")
                 except Exception as e:
                     self._log(f"FEHLER: Kooperations-Abgleich in Guild {guild.id}: {e}")
+
+            # Der Rueckbau laeuft wie der Kooperations-Abgleich auf einer EIGENEN Uhr und
+            # ausdruecklich auch dann, wenn das Regel-Intervall auf 0 steht: in dem Fall
+            # arbeitet die Guild ueber on_member_update, und der hoert nur zu, solange
+            # jemand Mitglied ist. Wer den Server verlaesst, waehrend der Bot offline ist,
+            # loest weder dort noch in on_member_remove etwas aus - dieser Durchgang ist
+            # das Netz darunter.
+            if now - self._rueckbau_last.get(guild.id, 0) >= RUECKBAU_TAKT:
+                self._rueckbau_last[guild.id] = now
+                try:
+                    anzahl = await self._rueckbau_durchgang(guild)
+                    if anzahl:
+                        self._log(f"Rückbau-Durchgang in Guild {guild.id}: "
+                                  f"{anzahl} Mitglied(er) haben Rollen verloren, "
+                                  f"deren Voraussetzung entfallen ist")
+                except Exception as e:
+                    self._log(f"FEHLER: Rückbau-Durchgang in Guild {guild.id}: {e}")
+
+    async def _rueckbau_durchgang(self, quell_guild, limit: int = RUECKBAU_JE_LAUF) -> int:
+        """Holt nach, was beim Austritt niemand mitbekommen hat.
+
+        Der Listener greift nur, wenn der Bot im Moment des Austritts laeuft. Wer geht,
+        waehrend er neu startet, bleibt sonst fuer immer verifiziert - und genau das war
+        der gemeldete Fall.
+
+        Gesucht wird von der ANDEREN Seite her: nicht "wer ist weg" (das weiss niemand),
+        sondern "wer traegt auf einem Zielserver eine Rolle, die aus einer Regel dieses
+        Servers stammt". Diese Menge ist klein und steht im Zwischenspeicher.
+
+        `limit` deckelt den Durchgang: wer nicht drankommt, kommt beim naechsten dran.
+        Gemerkt wird, wo aufgehoert wurde, damit nicht jedes Mal dieselben vorne stehen.
+        """
+        regeln = [r for r in await self._get_rules(quell_guild.id)
+                  if _feld(r, "revoke_on_loss")]
+        if not regeln:
+            return 0
+        # Je Zielserver die Rollen, die aus diesen Regeln stammen.
+        rollen_je_ziel: dict = {}
+        for regel in regeln:
+            try:
+                for block in role_rule_actions(regel):
+                    if block["action"] != "add":
+                        continue
+                    ids = {int(x) for x in block["role_ids"]}
+                    if ids:
+                        rollen_je_ziel.setdefault(block["guild_id"], set()).update(ids)
+            except (ValueError, TypeError):
+                continue
+        if not rollen_je_ziel:
+            return 0
+
+        # Wer traegt davon etwas? Nur diese Leute sind ueberhaupt Kandidaten.
+        kandidaten = set()
+        for action_guild_id, ids in rollen_je_ziel.items():
+            ziel_guild = self.bot.get_guild(int(action_guild_id))
+            if not ziel_guild:
+                continue
+            for m in ziel_guild.members:
+                if m.bot:
+                    continue
+                if ids & {r.id for r in m.roles}:
+                    kandidaten.add(m.id)
+        if not kandidaten:
+            return 0
+
+        # Immer dort weiter, wo der letzte Durchgang aufgehoert hat.
+        geordnet = sorted(kandidaten)
+        start = self._rueckbau_pos.get(quell_guild.id, 0) % len(geordnet)
+        dran = (geordnet + geordnet)[start:start + limit]
+        self._rueckbau_pos[quell_guild.id] = (start + len(dran)) % len(geordnet)
+
+        geaendert = 0
+        for user_id in dran:
+            try:
+                if await self._rueckbau(quell_guild, user_id, leise=True):
+                    geaendert += 1
+            except Exception as e:
+                self._log(f"FEHLER: Rückbau für {user_id} aus Guild {quell_guild.id}: {e}")
+        return geaendert
 
     @_periodic.before_loop
     async def _before_periodic(self):
