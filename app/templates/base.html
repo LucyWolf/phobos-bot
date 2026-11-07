@@ -359,6 +359,14 @@
         </a>
         {% endif %}
         {% if role == 'admin' %}
+        {# Bleibt auch nach der Einrichtung stehen: die Seite ist die einzige Stelle, an der
+           alle Voraussetzungen zusammen mit ihrem echten Zustand zu sehen sind. #}
+        <a href="/setup" class="nav-item nav-sub {% if active == 'setup' %}active{% endif %}">
+          <span class="icon">🚀</span>
+          <span class="label">{{ tr.setup_title }}</span>
+        </a>
+        {% endif %}
+        {% if role == 'admin' %}
         <a href="/users" class="nav-item nav-sub {% if active == 'users' %}active{% endif %}">
           <span class="icon">👥</span>
           <span class="label">{{ tr.nav_users }}</span>
@@ -565,6 +573,28 @@
       sperren(ist);
     })
     .catch(function () { /* kein Netz: lieber nichts tun als grundlos aussperren */ });
+})();
+
+/* Einrichtung: solange ein Pflichtschritt offen ist, steht es oben. Ueber eine Abfrage und
+   nicht ueber den Vorlagenkontext, weil sonst JEDE Route die Zahl mitgeben muesste - und die
+   eine, die es vergisst, waere die, auf der man haengen bleibt. Nur Admins bekommen eine Zahl
+   zurueck; fuer alle anderen antwortet die Schnittstelle mit 0. */
+(function () {
+  if (location.pathname === '/setup' || location.pathname === '/login') return;
+  var TXT = {{ tr.setup_bar | jsraw }};
+  fetch('/api/setup-offen', { cache: 'no-store', credentials: 'same-origin' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (!d || !d.offen) return;
+      var bar = document.createElement('a');
+      bar.href = '/setup';
+      bar.textContent = '⚠️ ' + TXT.replace('{n}', d.offen);
+      bar.style.cssText = 'display:block;padding:0.55rem 1rem;background:rgba(239,68,68,0.15);' +
+        'border-bottom:1px solid rgba(239,68,68,0.35);color:#ef4444;font-size:0.84rem;' +
+        'font-weight:600;text-decoration:none;text-align:center;';
+      document.body.insertBefore(bar, document.body.firstChild);
+    })
+    .catch(function () { /* nicht erreichbar: dann eben keine Leiste */ });
 })();
 </script>
 </body>

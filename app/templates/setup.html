@@ -1,44 +1,93 @@
-<!-- ORPHANED - no route in main.py renders "setup.html" (confirmed via grep, only
-     "profile_2fa_setup.html" matches a similar name). The current first-run/admin-creation
-     flow is register.html via an admin invite link instead. Left in place rather than
-     deleted since removing it wasn't asked for - safe to delete if that's ever confirmed. -->
-<!DOCTYPE html>
-<html lang="de">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ app_name }} – Ersteinrichtung</title>
+{# Einrichtung: die Prueflistenseite zu _setup_schritte() in main.py. Jeder Schritt zeigt
+   seinen echten Zustand, nicht nur eine Anleitung - was sich nicht messen laesst (Design,
+   Backup, SMTP, Sprache) bekommt einen Haken, den man selbst setzt. Bewusst kein Ablauf, der
+   durchschleust: Schritt 3 haengt oft an einer anderen Person. #}
+{% extends "base.html" %}
+{% block title %}{{ app_name }} – {{ tr.setup_title }}{% endblock %}
+{% block page_title %}🚀 {{ tr.setup_title }}{% endblock %}
+
+{% block content %}
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root { --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a; --text: #e2e8f0; --muted: #64748b; --accent: #7c3aed; --danger: #ef4444; }
-  body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 1rem; padding: 2rem; width: 100%; max-width: 400px; }
-  .logo { text-align: center; font-size: 2.5rem; margin-bottom: 0.5rem; }
-  h1 { text-align: center; font-size: 1.25rem; margin-bottom: 0.4rem; }
-  .subtitle { text-align: center; font-size: 0.8rem; color: var(--muted); margin-bottom: 1.75rem; }
-  label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.35rem; }
-  input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.65rem 0.875rem; color: var(--text); font-size: 0.875rem; outline: none; margin-bottom: 1rem; }
-  input:focus { border-color: var(--accent); }
-  button { width: 100%; background: var(--accent); color: #fff; border: none; border-radius: 0.5rem; padding: 0.7rem; font-size: 0.9rem; font-weight: 600; cursor: pointer; margin-top: 0.25rem; }
-  button:hover { opacity: 0.85; }
-  .error { background: rgba(239,68,68,0.1); border: 1px solid var(--danger); color: var(--danger); border-radius: 0.5rem; padding: 0.65rem 1rem; font-size: 0.85rem; margin-bottom: 1rem; }
+  .su-intro { color:var(--muted); font-size:0.86rem; max-width:720px; line-height:1.6;
+              margin-bottom:1.25rem; }
+  .su-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem;
+             padding:1.1rem 1.25rem; margin-bottom:0.85rem; max-width:720px; display:flex;
+             gap:1rem; align-items:flex-start; }
+  .su-card.fertig { border-color:rgba(34,197,94,.35); }
+  .su-card.gesperrt { opacity:0.55; }
+  .su-nr { flex-shrink:0; width:1.9rem; height:1.9rem; border-radius:50%; display:flex;
+           align-items:center; justify-content:center; font-size:0.85rem; font-weight:700;
+           background:rgba(100,116,139,.18); color:#94a3b8; }
+  .su-nr.fertig { background:rgba(34,197,94,.18); color:#22c55e; }
+  .su-nr.pflicht { background:rgba(239,68,68,.15); color:#ef4444; }
+  .su-body { flex:1; min-width:0; }
+  .su-titel { font-weight:700; font-size:0.95rem; margin-bottom:0.3rem; }
+  .su-text { color:var(--muted); font-size:0.82rem; line-height:1.6; }
+  .su-grund { color:var(--danger); font-size:0.82rem; line-height:1.6; margin-top:0.45rem; }
+  .su-aktionen { display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.7rem; }
+  .su-form { max-width:420px; margin-top:0.8rem; }
+  .su-form label { display:block; font-size:0.78rem; color:var(--muted); margin-bottom:0.2rem; }
+  .su-form input { width:100%; margin-bottom:0.6rem; }
+  .badge { display:inline-block; padding:0.15rem 0.55rem; border-radius:999px;
+           font-size:0.72rem; font-weight:700; }
+  .badge-green { background:rgba(34,197,94,.18); color:#22c55e; }
+  .badge-gray  { background:rgba(100,116,139,.18); color:#94a3b8; }
 </style>
-</head>
-<body>
-<div class="card">
-  <div class="logo">🛡️</div>
-  <h1>Ersteinrichtung</h1>
-  <p class="subtitle">Erstelle den ersten Admin-Account</p>
-  {% if error %}<div class="error">{{ meldung(error, lang) }}</div>{% endif %}
-  <form method="post" action="/setup">
-    <label>Benutzername</label>
-    <input type="text" name="username" required autofocus>
-    <label>Passwort</label>
-    <input type="password" name="password" required>
-    <label>Passwort wiederholen</label>
-    <input type="password" name="password2" required>
-    <button type="submit">Admin erstellen</button>
-  </form>
+
+{% if success %}<div class="alert alert-success" style="max-width:720px;">✅ {{ meldung(success, lang) }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger" style="max-width:720px;">❌ {{ meldung(error, lang) }}</div>{% endif %}
+
+<div class="su-intro">
+  {{ tr.setup_intro }}
+  <div style="margin-top:0.6rem;font-weight:700;color:{% if offen %}var(--danger){% else %}var(--success){% endif %};">
+    {% if offen %}{{ tr.setup_offen_n.replace('{n}', offen|string) }}{% else %}{{ tr.setup_alles_fertig }}{% endif %}
+  </div>
 </div>
-</body>
-</html>
+
+{% for s in schritte %}
+<div class="su-card {% if s.fertig %}fertig{% elif s.gesperrt %}gesperrt{% endif %}">
+  <div class="su-nr {% if s.fertig %}fertig{% elif s.pflicht %}pflicht{% endif %}">
+    {% if s.fertig %}✓{% else %}{{ loop.index }}{% endif %}
+  </div>
+  <div class="su-body">
+    <div class="su-titel">
+      {{ s.titel }}
+      {% if s.fertig %}<span class="badge badge-green">{{ tr.setup_erledigt }}</span>
+      {% elif not s.pflicht %}<span class="badge badge-gray">{{ tr.setup_optional }}</span>{% endif %}
+    </div>
+    <div class="su-text">{{ s.text }}</div>
+    {% if s.grund %}<div class="su-grund">{{ s.grund }}</div>{% endif %}
+    {% if s.gesperrt %}<div class="su-text" style="margin-top:0.45rem;">{{ tr.setup_gesperrt }}</div>{% endif %}
+
+    {% if s.formular == 'profil' and not s.fertig %}
+    <form method="post" action="/setup/profil" class="su-form">
+      <label>{{ tr.setup_p_name }}</label>
+      <input type="text" name="username" required minlength="3" autocomplete="username">
+      <label>{{ tr.setup_p_mail }}</label>
+      <input type="email" name="email_addr" autocomplete="email">
+      <label>{{ tr.setup_p_pw }}</label>
+      <input type="password" name="password" required minlength="6" autocomplete="new-password">
+      <label>{{ tr.setup_p_pw2 }}</label>
+      <input type="password" name="pw_confirm" required minlength="6" autocomplete="new-password">
+      <button type="submit" class="btn btn-primary">{{ tr.setup_p_knopf }}</button>
+    </form>
+    {% elif not s.formular %}
+    <div class="su-aktionen">
+      {% if s.ziel and not s.gesperrt %}
+      <a href="{{ s.ziel }}" class="btn {% if s.fertig %}btn-secondary{% else %}btn-primary{% endif %}"
+         style="padding:0.35rem 0.8rem;font-size:0.82rem;">{{ s.knopf }}</a>
+      {% endif %}
+      {% if s.haken %}
+      <form method="post" action="/setup/haken/{{ s.key }}" style="display:inline;">
+        {% if s.fertig %}<input type="hidden" name="zurueck" value="1">{% endif %}
+        <button type="submit" class="btn btn-secondary" style="padding:0.35rem 0.8rem;font-size:0.82rem;">
+          {% if s.fertig %}{{ tr.setup_haken_weg }}{% else %}{{ tr.setup_haken_setzen }}{% endif %}
+        </button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

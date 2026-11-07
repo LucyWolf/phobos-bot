@@ -1426,6 +1426,25 @@ async def login_page(request: Request, error: str = "", success: str = ""):
     })
 
 
+async def _ziel_nach_anmeldung(user: dict) -> str:
+    """Wohin nach einer erfolgreichen Anmeldung.
+
+    Normalerweise auf die Startseite. Auf einer Installation, an der noch gar nichts steht,
+    stattdessen direkt in die Einrichtung - dort landet sonst niemand, weil man nicht weiss,
+    dass es die Seite gibt. Bewusst nur bei "noch gar nichts": sobald ein Token eingetragen
+    und das eigene Konto angelegt ist, reisst es niemanden mehr aus seiner Arbeit. Die Leiste
+    oben bleibt ja ohnehin stehen, solange etwas offen ist.
+    """
+    if (user or {}).get("role") != "admin":
+        return "/"
+    try:
+        if await _standard_admin_aktiv() or not await _token_configured():
+            return "/setup"
+    except Exception as e:
+        print(f"[setup] Ziel nach der Anmeldung nicht bestimmbar: {e}")
+    return "/"
+
+
 async def _complete_login(request: Request, user: dict) -> None:
     request.session["user_id"] = user["id"]
     request.session["username"] = user["username"]
@@ -1746,7 +1765,7 @@ async def login_submit(request: Request, username: str = Form(...), password: st
         request.session["pending_2fa_user_id"] = user["id"]
         return RedirectResponse("/login/2fa", status_code=302)
     await _complete_login(request, user)
-    return RedirectResponse("/", status_code=302)
+    return RedirectResponse(await _ziel_nach_anmeldung(user), status_code=302)
 
 
 @web.get("/login/2fa", response_class=HTMLResponse)
@@ -1810,7 +1829,7 @@ async def login_2fa_submit(request: Request, code: str = Form(...)):
         await db_exec("UPDATE users SET totp_fail_count=0, totp_locked_until=NULL WHERE id=?", (uid,))
     request.session.pop("pending_2fa_user_id", None)
     await _complete_login(request, user)
-    return RedirectResponse("/", status_code=302)
+    return RedirectResponse(await _ziel_nach_anmeldung(user), status_code=302)
 
 
 @web.get("/logout")
@@ -3610,6 +3629,195 @@ async def users_create(request: Request, username: str = Form(...), password: st
     except Exception:
         return RedirectResponse(f"{dest}?error=Benutzername+bereits+vergeben", status_code=302)
     return RedirectResponse(f"{dest}?success=Benutzer+erstellt", status_code=302)
+
+
+# ── Einrichtung ───────────────────────────────────────────────────────────────
+# Gebaut, nachdem eine uebergebene Installation reihum an jeder Huerde haengen blieb: Token
+# war drin, der Bot blieb offline, und nichts sagte warum. Das Formular fuer das Backup sitzt
+# auf der Serverseite - die es ohne Verbindung gar nicht gibt. Dazu zwei Dinge, an die bei
+# einer frischen Installation niemand von selbst denkt: 'admin/admin' bleibt gueltig, und ohne
+# Basis-Adresse verschickt der Bot Links ohne Domain.
+#
+# Bewusst eine Pruefliste und kein Ablauf, der durchschleust: Schritt 3 haengt oft an einer
+# anderen Person (nur wem die Discord-Anwendung gehoert, kann die Intents freigeben). Man muss
+# die Seite verlassen, spaeter wiederkommen und sehen koennen, was inzwischen gruen wurde.
+# Jeder Schritt prueft den echten Zustand; was sich nicht messen laesst (Bot-Design, Backup),
+# bekommt einen Haken, den man selbst setzt.
+_STD_ADMIN_CACHE: dict = {"at": 0.0, "wert": None}
+
+
+async def _standard_admin_aktiv() -> bool:
+    """Gilt beim Konto 'admin' noch das mitgelieferte Passwort 'admin'?
+
+    Eine frische Installation legt es an, damit ueberhaupt jemand hineinkommt - und bis jetzt
+    erinnerte nichts daran, es wieder loszuwerden. Die Pruefung kostet einen bcrypt-Durchlauf,
+    deshalb eine Minute gemerkt: an ihr haengt die Leiste, die auf jeder Seite nachfragt.
+    """
+    jetzt = time.monotonic()
+    if _STD_ADMIN_CACHE["wert"] is not None and jetzt - _STD_ADMIN_CACHE["at"] < 60:
+        return bool(_STD_ADMIN_CACHE["wert"])
+    try:
+        row = await db_one("SELECT password_hash FROM users WHERE username='admin'")
+        wert = bool(row and verify_pw("admin", row["password_hash"]))
+    except Exception as e:
+        print(f"[setup] Standard-Admin nicht pruefbar: {e}")
+        wert = False
+    _STD_ADMIN_CACHE.update({"at": jetzt, "wert": wert})
+    return wert
+
+
+async def _setup_haken(key: str) -> bool:
+    """Ein Schritt, den nur der Mensch davor als erledigt erklaeren kann."""
+    return (await get_config(f"setup_ok_{key}") or "") == "1"
+
+
+async def _setup_schritte(request: Request) -> list:
+    """Die Einrichtung als Liste - jeder Schritt mit seinem echten Zustand.
+
+    Reihenfolge ist Absicht und nicht beliebig: ohne eigenes Konto meldet man sich noch als
+    'admin' an, ohne Token verbindet nichts, ohne Verbindung gibt es weder Design noch
+    Einladung, und ohne Server kein Backup.
+    """
+    tr = get_tr(request.session.get("lang", "de"))
+    token_da = await _token_configured()
+    verbunden = bot.is_ready()
+    fehler = _bot_fehler_anzeige()
+    guilds = bot.guilds if verbunden else []
+    basis = await link_base_url()
+
+    grund_verbindung = ""
+    if not verbunden:
+        if not token_da:
+            grund_verbindung = tr["setup_v_kein_token"]
+        elif fehler.get("key"):
+            grund_verbindung = tr.get(fehler["key"], "")
+            if fehler.get("detail"):
+                grund_verbindung += " " + fehler["detail"]
+        else:
+            grund_verbindung = tr["setup_v_wartet"]
+
+    erste_gilde = str(guilds[0].id) if guilds else ""
+    schritte = [
+        {"key": "profil", "titel": tr["setup_s_profil"], "text": tr["setup_t_profil"],
+         "fertig": not await _standard_admin_aktiv(), "pflicht": True,
+         "formular": "profil"},
+        {"key": "token", "titel": tr["setup_s_token"], "text": tr["setup_t_token"],
+         "fertig": token_da, "pflicht": True,
+         "ziel": "/settings/tokens", "knopf": tr["setup_k_token"]},
+        {"key": "verbindung", "titel": tr["setup_s_verbindung"],
+         "text": tr["setup_t_verbindung"], "fertig": verbunden, "pflicht": True,
+         "grund": grund_verbindung, "ziel": "/settings/tokens", "knopf": tr["setup_k_hilfe"]},
+        {"key": "design", "titel": tr["setup_s_design"], "text": tr["setup_t_design"],
+         "fertig": await _setup_haken("design"), "pflicht": False, "braucht": verbunden,
+         "ziel": "/bot/design", "knopf": tr["setup_k_design"], "haken": True},
+        {"key": "server", "titel": tr["setup_s_server"], "text": tr["setup_t_server"],
+         "fertig": bool(guilds), "pflicht": True, "braucht": verbunden,
+         "ziel": "/servers", "knopf": tr["setup_k_server"]},
+        {"key": "backup", "titel": tr["setup_s_backup"], "text": tr["setup_t_backup"],
+         "fertig": await _setup_haken("backup"), "pflicht": False, "braucht": bool(guilds),
+         "ziel": f"/servers/{erste_gilde}?tab=config" if erste_gilde else "/servers",
+         "knopf": tr["setup_k_backup"], "haken": True, "frage": True},
+        {"key": "adresse", "titel": tr["setup_s_adresse"], "text": tr["setup_t_adresse"],
+         "fertig": bool(basis), "pflicht": True,
+         "ziel": "/settings", "knopf": tr["setup_k_adresse"]},
+        {"key": "smtp", "titel": tr["setup_s_smtp"], "text": tr["setup_t_smtp"],
+         "fertig": await smtp_bereit() or await _setup_haken("smtp"), "pflicht": False,
+         "ziel": "/settings/smtp", "knopf": tr["setup_k_smtp"], "haken": True},
+        {"key": "sprache", "titel": tr["setup_s_sprache"], "text": tr["setup_t_sprache"],
+         "fertig": await _setup_haken("sprache"), "pflicht": False,
+         "ziel": "/profile", "knopf": tr["setup_k_sprache"], "haken": True},
+    ]
+    # "braucht" heisst: der Schritt davor fehlt noch. Dann steht der Schritt zwar da - man
+    # soll sehen, was kommt -, aber ohne Knopf, der ins Leere fuehrt.
+    for s in schritte:
+        s["gesperrt"] = not s["fertig"] and not s.get("braucht", True)
+    return schritte
+
+
+async def _setup_offen(request: Request) -> int:
+    """Wieviele Pflichtschritte noch offen sind. Fuer die Leiste im Kopf."""
+    try:
+        return sum(1 for s in await _setup_schritte(request) if s["pflicht"] and not s["fertig"])
+    except Exception as e:
+        print(f"[setup] Zustand nicht ermittelbar: {e}")
+        return 0
+
+
+@web.get("/setup", response_class=HTMLResponse)
+async def setup_page(request: Request, error: str = "", success: str = ""):
+    if r := admin_redirect(request): return r
+    schritte = await _setup_schritte(request)
+    return templates.TemplateResponse("setup.html", {
+        **session(request), "request": request, "active": "setup",
+        "schritte": schritte, "error": error, "success": success,
+        "offen": sum(1 for s in schritte if s["pflicht"] and not s["fertig"]),
+    })
+
+
+@web.get("/api/setup-offen")
+async def api_setup_offen(request: Request):
+    """Fuer die Leiste im Kopf. Nur fuer Admins - ein Moderator kann keinen dieser Schritte
+    ausfuehren, und die Zahl waere fuer ihn nur ein Schild ohne Tuer."""
+    if request.session.get("role") != "admin":
+        return JSONResponse({"offen": 0})
+    return JSONResponse({"offen": await _setup_offen(request)})
+
+
+@web.post("/setup/profil")
+async def setup_profil(request: Request, username: str = Form(...), password: str = Form(...),
+                       pw_confirm: str = Form(...), email_addr: str = Form("")):
+    """Legt das eigene Admin-Konto an und schaltet das mitgelieferte 'admin' ab.
+
+    Abgeschaltet, nicht geloescht: an einem Benutzerkonto haengen Freigaben, Token-Zuordnungen
+    und Protokolleintraege. Eine geloeschte Zeile liesse davon Reste zurueck, die auf eine
+    Nummer zeigen, die es nicht mehr gibt - abgeschaltet kommt niemand mehr hinein, und nichts
+    bricht. Danach wird die Sitzung beendet: man soll mit dem neuen Konto wiederkommen, sonst
+    sitzt man weiter in dem, das gerade abgeschaltet wurde.
+    """
+    if r := admin_redirect(request): return r
+    name = username.strip()
+    if len(name) < 3:
+        return RedirectResponse("/setup?error=Benutzername+mindestens+3+Zeichen",
+                                status_code=302)
+    if name.lower() == "admin":
+        return RedirectResponse("/setup?error=Bitte+einen+anderen+Namen+als+admin",
+                                status_code=302)
+    if len(password) < 6:
+        return RedirectResponse("/setup?error=Passwort+mindestens+6+Zeichen", status_code=302)
+    if password != pw_confirm:
+        return RedirectResponse("/setup?error=Passwörter+stimmen+nicht+überein",
+                                status_code=302)
+    try:
+        await db_exec(
+            "INSERT INTO users (username,password_hash,role,email) VALUES (?,?,?,?)",
+            (name, hash_pw(password), "admin", email_addr.strip()),
+        )
+    except Exception:
+        return RedirectResponse("/setup?error=Benutzername+bereits+vergeben", status_code=302)
+
+    if await _standard_admin_aktiv():
+        try:
+            await db_exec("UPDATE users SET active=0 WHERE username='admin'")
+            alt = await db_one("SELECT id FROM users WHERE username='admin'")
+            if alt:
+                await _sitzungen_beenden(alt["id"])
+            print(f"[setup] Eigenes Konto '{name}' angelegt, 'admin' abgeschaltet")
+        except Exception as e:
+            print(f"[setup] 'admin' liess sich nicht abschalten: {e}")
+    _STD_ADMIN_CACHE.update({"at": 0.0, "wert": None})
+    request.session.clear()
+    return RedirectResponse("/login?success=Konto+angelegt+–+bitte+damit+anmelden",
+                            status_code=302)
+
+
+@web.post("/setup/haken/{key}")
+async def setup_haken_setzen(request: Request, key: str, zurueck: str = Form("")):
+    """Haken an einem Schritt, der sich nicht messen laesst - oder der uebersprungen wird."""
+    if r := admin_redirect(request): return r
+    if key not in ("design", "backup", "smtp", "sprache"):
+        return RedirectResponse("/setup", status_code=302)
+    await set_config(f"setup_ok_{key}", "0" if zurueck else "1")
+    return RedirectResponse("/setup", status_code=302)
 
 
 @web.post("/users/role/{user_id}")
