@@ -1429,16 +1429,15 @@ async def login_page(request: Request, error: str = "", success: str = ""):
 async def _ziel_nach_anmeldung(user: dict) -> str:
     """Wohin nach einer erfolgreichen Anmeldung.
 
-    Normalerweise auf die Startseite. Auf einer Installation, an der noch gar nichts steht,
-    stattdessen direkt in die Einrichtung - dort landet sonst niemand, weil man nicht weiss,
-    dass es die Seite gibt. Bewusst nur bei "noch gar nichts": sobald ein Token eingetragen
-    und das eigene Konto angelegt ist, reisst es niemanden mehr aus seiner Arbeit. Die Leiste
-    oben bleibt ja ohnehin stehen, solange etwas offen ist.
+    Normalerweise auf die Startseite. Solange die Erst-Einrichtung laeuft (siehe
+    _setup_phase) stattdessen direkt dorthin - sonst landet dort niemand, weil man nicht
+    weiss, dass es die Seite gibt. Nach der Einrichtung nie wieder: niemand soll beim
+    Anmelden aus seiner Arbeit gerissen werden.
     """
     if (user or {}).get("role") != "admin":
         return "/"
     try:
-        if await _standard_admin_aktiv() or not await _token_configured():
+        if await _setup_phase():
             return "/setup"
     except Exception as e:
         print(f"[setup] Ziel nach der Anmeldung nicht bestimmbar: {e}")
@@ -3666,6 +3665,28 @@ async def _standard_admin_aktiv() -> bool:
     return wert
 
 
+async def _setup_phase() -> bool:
+    """Laeuft die Erst-Einrichtung noch?
+
+    Die Einrichtung soll genau einmal auftauchen: beim ersten Start, solange das
+    mitgelieferte Konto 'admin' noch gilt. Eine Installation, die laengst laeuft, darf nie
+    wieder eine Einrichtungsleiste bekommen - verschwindet dort einmal ein Token, ist das ein
+    Vorfall und keine Einrichtung, und eine Leiste, die zum Einrichten auffordert, schickt
+    genau in die falsche Richtung.
+
+    Deshalb wird beim allerersten Nachsehen einmal entschieden und in die Konfiguration
+    geschrieben; danach wird nur noch von dort gelesen. Auf einer bestehenden Installation
+    faellt die Entscheidung also auf "nein" - dort gilt 'admin'/'admin' schon lange nicht
+    mehr. Erst wenn jeder Schritt erledigt ist, wird die Phase geschlossen (in _setup_offen).
+    """
+    wert = await get_config("setup_phase")
+    if wert not in ("0", "1"):
+        wert = "1" if await _standard_admin_aktiv() else "0"
+        await set_config("setup_phase", wert)
+        print(f"[setup] Erst-Einrichtung: {'laeuft' if wert == '1' else 'nicht noetig'}")
+    return wert == "1"
+
+
 async def _setup_haken(key: str) -> bool:
     """Ein Schritt, den nur der Mensch davor als erledigt erklaeren kann."""
     return (await get_config(f"setup_ok_{key}") or "") == "1"
@@ -3697,10 +3718,19 @@ async def _setup_schritte(request: Request) -> list:
             grund_verbindung = tr["setup_v_wartet"]
 
     erste_gilde = str(guilds[0].id) if guilds else ""
+    # Schritt 1 hat zwei Gesichter. Der Normalfall: man sitzt selbst im mitgelieferten
+    # 'admin' - dann wird dieselbe Zeile auf den eigenen Namen umgeschrieben. Der seltene
+    # Fall: es gibt schon ein eigenes Konto, 'admin' steht aber noch daneben - dann ist
+    # nichts umzubenennen, die alte Zeile muss weg.
+    std_admin = await _standard_admin_aktiv()
+    admin_zeile = await db_one("SELECT id FROM users WHERE username='admin'") if std_admin else None
+    selbst = bool(admin_zeile) and admin_zeile["id"] == request.session.get("user_id")
     schritte = [
-        {"key": "profil", "titel": tr["setup_s_profil"], "text": tr["setup_t_profil"],
-         "fertig": not await _standard_admin_aktiv(), "pflicht": True,
-         "formular": "profil"},
+        {"key": "profil", "titel": tr["setup_s_profil"],
+         "text": tr["setup_t_profil_fremd"] if (std_admin and not selbst)
+                 else tr["setup_t_profil"],
+         "fertig": not std_admin, "pflicht": True,
+         "formular": "profil" if selbst else None, "entfernen": std_admin and not selbst},
         {"key": "token", "titel": tr["setup_s_token"], "text": tr["setup_t_token"],
          "fertig": token_da, "pflicht": True,
          "ziel": "/settings/tokens", "knopf": tr["setup_k_token"]},
@@ -3735,9 +3765,22 @@ async def _setup_schritte(request: Request) -> list:
 
 
 async def _setup_offen(request: Request) -> int:
-    """Wieviele Pflichtschritte noch offen sind. Fuer die Leiste im Kopf."""
+    """Wieviele Pflichtschritte noch offen sind. Fuer die Leiste im Kopf.
+
+    Ausserhalb der Erst-Einrichtung immer 0 - und sobald wirklich jeder Schritt erledigt ist
+    (auch die selbst gesetzten Haken), wird die Phase geschlossen. Die Pflichtschritte allein
+    genuegen dafuer nicht: sonst verschwaende der Eintrag in der Leiste, bevor man bei Design,
+    Backup, E-Mail und Sprache ueberhaupt vorbeigekommen ist.
+    """
     try:
-        return sum(1 for s in await _setup_schritte(request) if s["pflicht"] and not s["fertig"])
+        if not await _setup_phase():
+            return 0
+        schritte = await _setup_schritte(request)
+        if all(s["fertig"] for s in schritte):
+            await set_config("setup_phase", "0")
+            print("[setup] Erst-Einrichtung abgeschlossen")
+            return 0
+        return sum(1 for s in schritte if s["pflicht"] and not s["fertig"])
     except Exception as e:
         print(f"[setup] Zustand nicht ermittelbar: {e}")
         return 0
@@ -3759,20 +3802,28 @@ async def api_setup_offen(request: Request):
     """Fuer die Leiste im Kopf. Nur fuer Admins - ein Moderator kann keinen dieser Schritte
     ausfuehren, und die Zahl waere fuer ihn nur ein Schild ohne Tuer."""
     if request.session.get("role") != "admin":
-        return JSONResponse({"offen": 0})
-    return JSONResponse({"offen": await _setup_offen(request)})
+        return JSONResponse({"offen": 0, "phase": False})
+    offen = await _setup_offen(request)
+    # phase sagt der Seitenleiste, ob der Eintrag "Einrichtung" ueberhaupt gezeigt wird.
+    # Auch das laeuft ueber diese Abfrage und nicht ueber den Vorlagenkontext - sonst muesste
+    # es jede Route mitgeben, und die eine, die es vergisst, laesst den Eintrag verschwinden.
+    return JSONResponse({"offen": offen, "phase": await _setup_phase()})
 
 
 @web.post("/setup/profil")
 async def setup_profil(request: Request, username: str = Form(...), password: str = Form(...),
                        pw_confirm: str = Form(...), email_addr: str = Form("")):
-    """Legt das eigene Admin-Konto an und schaltet das mitgelieferte 'admin' ab.
+    """Macht aus dem mitgelieferten 'admin' das eigene Konto - dieselbe Zeile, neuer Name.
 
-    Abgeschaltet, nicht geloescht: an einem Benutzerkonto haengen Freigaben, Token-Zuordnungen
-    und Protokolleintraege. Eine geloeschte Zeile liesse davon Reste zurueck, die auf eine
-    Nummer zeigen, die es nicht mehr gibt - abgeschaltet kommt niemand mehr hinein, und nichts
-    bricht. Danach wird die Sitzung beendet: man soll mit dem neuen Konto wiederkommen, sonst
-    sitzt man weiter in dem, das gerade abgeschaltet wurde.
+    Zuerst stand hier: zweites Konto anlegen, 'admin' abschalten, neu anmelden. Umbenennen ist
+    besser. An der Zeile haengen Freigaben, Token-Zuordnungen und die laufende Sitzung; bleibt
+    die Nummer dieselbe, bleibt all das gueltig, es liegt keine zweite Zeile herum, die
+    niemand mehr braucht, und man muss sich nicht abmelden, um bei Schritt 2 weiterzumachen.
+    Der Rang ist schon 'admin' - das Konto bleibt also das Admin-Konto, nur eben unter dem
+    eigenen Namen.
+
+    Fremde Sitzungen auf diesem Konto enden trotzdem, die eigene nicht: wer 'admin'/'admin'
+    kannte, sass vielleicht schon drin, und ein neues Passwort allein wirft ihn nicht raus.
     """
     if r := admin_redirect(request): return r
     name = username.strip()
@@ -3787,27 +3838,66 @@ async def setup_profil(request: Request, username: str = Form(...), password: st
     if password != pw_confirm:
         return RedirectResponse("/setup?error=Passwörter+stimmen+nicht+überein",
                                 status_code=302)
+
+    zeile = await db_one("SELECT id FROM users WHERE username='admin'")
+    if not zeile:
+        return RedirectResponse("/setup?error=Das+Konto+admin+gibt+es+nicht+mehr",
+                                status_code=302)
+    if zeile["id"] != request.session.get("user_id"):
+        # Man sitzt in einem anderen Konto: dann ist hier nichts umzubenennen, sondern das
+        # alte 'admin' zu entfernen - dafuer gibt es /setup/admin-entfernen.
+        return RedirectResponse("/setup?error=Dafür+musst+du+als+admin+angemeldet+sein",
+                                status_code=302)
+    belegt = await db_one("SELECT id FROM users WHERE lower(username)=? AND id!=?",
+                          (name.lower(), zeile["id"]))
+    if belegt:
+        return RedirectResponse("/setup?error=Benutzername+bereits+vergeben", status_code=302)
     try:
-        await db_exec(
-            "INSERT INTO users (username,password_hash,role,email) VALUES (?,?,?,?)",
-            (name, hash_pw(password), "admin", email_addr.strip()),
-        )
-    except Exception:
+        if email_addr.strip():
+            await db_exec("UPDATE users SET username=?, password_hash=?, email=? WHERE id=?",
+                          (name, hash_pw(password), email_addr.strip(), zeile["id"]))
+        else:
+            await db_exec("UPDATE users SET username=?, password_hash=? WHERE id=?",
+                          (name, hash_pw(password), zeile["id"]))
+    except Exception as e:
+        print(f"[setup] Konto liess sich nicht umbenennen: {e}")
         return RedirectResponse("/setup?error=Benutzername+bereits+vergeben", status_code=302)
 
-    if await _standard_admin_aktiv():
-        try:
-            await db_exec("UPDATE users SET active=0 WHERE username='admin'")
-            alt = await db_one("SELECT id FROM users WHERE username='admin'")
-            if alt:
-                await _sitzungen_beenden(alt["id"])
-            print(f"[setup] Eigenes Konto '{name}' angelegt, 'admin' abgeschaltet")
-        except Exception as e:
-            print(f"[setup] 'admin' liess sich nicht abschalten: {e}")
+    await _sitzungen_beenden(zeile["id"], ausser_sid=request.session.get("sid", ""))
+    request.session["username"] = name
     _STD_ADMIN_CACHE.update({"at": 0.0, "wert": None})
-    request.session.clear()
-    return RedirectResponse("/login?success=Konto+angelegt+–+bitte+damit+anmelden",
-                            status_code=302)
+    print(f"[setup] Konto 'admin' heisst jetzt '{name}'")
+    return RedirectResponse("/setup?success=Konto+übernommen", status_code=302)
+
+
+@web.post("/setup/admin-entfernen")
+async def setup_admin_entfernen(request: Request):
+    """Entfernt das mitgelieferte 'admin', wenn man schon ein eigenes Konto hat.
+
+    Der seltene Weg: jemand hat sich sein Konto von Hand angelegt und 'admin' steht noch
+    daneben - mit dem Passwort, das jeder kennt. Umbenennen geht dann nicht mehr, also weg
+    damit. Was an Rechten an der Zeile hing, geht mit ihr (dieselbe Begruendung wie bei
+    /users/delete): liegengebliebene Zuordnungen bekaemen beim Einspielen einer Sicherung
+    wieder einen Besitzer.
+    """
+    if r := admin_redirect(request): return r
+    zeile = await db_one("SELECT id FROM users WHERE username='admin'")
+    if not zeile:
+        return RedirectResponse("/setup", status_code=302)
+    if zeile["id"] == request.session.get("user_id"):
+        return RedirectResponse("/setup?error=Das+ist+dein+eigenes+Konto", status_code=302)
+    try:
+        await _sitzungen_beenden(zeile["id"])
+        await db_exec("DELETE FROM user_guild_permissions WHERE user_id=?", (zeile["id"],))
+        await db_exec("DELETE FROM bot_token_users WHERE user_id=?", (zeile["id"],))
+        await db_exec("DELETE FROM users WHERE id=?", (zeile["id"],))
+        print("[setup] mitgeliefertes Konto 'admin' entfernt")
+    except Exception as e:
+        print(f"[setup] 'admin' liess sich nicht entfernen: {e}")
+        return RedirectResponse("/setup?error=Konto+konnte+nicht+entfernt+werden",
+                                status_code=302)
+    _STD_ADMIN_CACHE.update({"at": 0.0, "wert": None})
+    return RedirectResponse("/setup?success=Konto+admin+entfernt", status_code=302)
 
 
 @web.post("/setup/haken/{key}")

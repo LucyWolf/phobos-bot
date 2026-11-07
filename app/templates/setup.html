@@ -77,6 +77,14 @@
       <a href="{{ s.ziel }}" class="btn {% if s.fertig %}btn-secondary{% else %}btn-primary{% endif %}"
          style="padding:0.35rem 0.8rem;font-size:0.82rem;">{{ s.knopf }}</a>
       {% endif %}
+      {% if s.entfernen %}
+      {# Man hat schon ein eigenes Konto, 'admin' steht noch daneben - umbenennen geht dann
+         nicht mehr, die alte Zeile muss weg. #}
+      <form method="post" action="/setup/admin-entfernen" style="display:inline;">
+        <button type="submit" class="btn btn-danger" style="padding:0.35rem 0.8rem;font-size:0.82rem;">
+          {{ tr.setup_p_entfernen }}</button>
+      </form>
+      {% endif %}
       {% if s.haken %}
       <form method="post" action="/setup/haken/{{ s.key }}" style="display:inline;">
         {% if s.fertig %}<input type="hidden" name="zurueck" value="1">{% endif %}

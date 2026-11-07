@@ -359,9 +359,11 @@
         </a>
         {% endif %}
         {% if role == 'admin' %}
-        {# Bleibt auch nach der Einrichtung stehen: die Seite ist die einzige Stelle, an der
-           alle Voraussetzungen zusammen mit ihrem echten Zustand zu sehen sind. #}
-        <a href="/setup" class="nav-item nav-sub {% if active == 'setup' %}active{% endif %}">
+        {# Nur waehrend der Erst-Einrichtung. Versteckt und erst vom Skript unten aufgedeckt,
+           sobald /api/setup-offen "phase" meldet - sonst muesste jede Route den Zustand
+           mitgeben. Auf der Seite selbst steht er natuerlich sofort. #}
+        <a href="/setup" id="nav-setup" class="nav-item nav-sub {% if active == 'setup' %}active{% endif %}"
+           {% if active != 'setup' %}hidden{% endif %}>
           <span class="icon">🚀</span>
           <span class="label">{{ tr.setup_title }}</span>
         </a>
@@ -585,7 +587,10 @@
   fetch('/api/setup-offen', { cache: 'no-store', credentials: 'same-origin' })
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (d) {
-      if (!d || !d.offen) return;
+      if (!d) return;
+      var nav = document.getElementById('nav-setup');
+      if (nav && d.phase) nav.hidden = false;
+      if (!d.offen) return;
       var bar = document.createElement('a');
       bar.href = '/setup';
       bar.textContent = '⚠️ ' + TXT.replace('{n}', d.offen);
