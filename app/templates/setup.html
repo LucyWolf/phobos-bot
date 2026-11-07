@@ -1,13 +1,11 @@
-{# Einrichtung. Zwei Schichten auf denselben Daten aus _setup_schritte():
+{# Einrichtung: der Assistent. Ein Fenster in der Mitte, eine Frage nach der anderen,
+   "Weiter" ist bei Schritt 1 zugleich das Speichern. Alle Seiten stehen schon im HTML und
+   kommen aus _setup_schritte() - geblaettert wird nur im Browser, damit es keine zweite
+   Wahrheit ueber den Zustand gibt.
 
-   - der Assistent: ein Fenster in der Mitte, eine Frage nach der anderen, "Weiter" ist bei
-     Schritt 1 zugleich das Speichern.
-   - darunter dieselben Schritte als Liste. Sie ist nicht nur Zierde: ohne JavaScript gibt es
-     kein Fenster, und dann muss die Seite trotzdem vollstaendig bedienbar sein. Ausserdem
-     will man spaeter oft nur nachsehen, nicht durchgefuehrt werden.
-
-   Was sich woanders erledigt (Token, Design, Einladung, Backup, Adresse, E-Mail), oeffnet aus
-   dem Fenster heraus einen neuen Tab - sonst waere der Assistent beim ersten Klick weg. #}
+   Was sich woanders erledigt (Token, Design, Einladung, Backup, Adresse, E-Mail), oeffnet
+   aus dem Fenster heraus einen neuen Tab - sonst waere der Assistent beim ersten Klick weg.
+   Hinter dem Fenster steht nichts mehr ausser dem Stand und dem Knopf, der es zurueckholt. #}
 {% extends "base.html" %}
 {% block title %}{{ app_name }} – {{ tr.setup_title }}{% endblock %}
 {% block page_title %}🚀 {{ tr.setup_title }}{% endblock %}
@@ -16,19 +14,6 @@
 <style>
   .su-intro { color:var(--muted); font-size:0.86rem; max-width:720px; line-height:1.6;
               margin-bottom:1.25rem; }
-  .su-card { background:var(--surface); border:1px solid var(--border); border-radius:0.75rem;
-             padding:1.1rem 1.25rem; margin-bottom:0.85rem; max-width:720px; display:flex;
-             gap:1rem; align-items:flex-start; }
-  .su-card.fertig { border-color:rgba(34,197,94,.35); }
-  .su-card.gesperrt { opacity:0.55; }
-  .su-nr { flex-shrink:0; width:1.9rem; height:1.9rem; border-radius:50%; display:flex;
-           align-items:center; justify-content:center; font-size:0.85rem; font-weight:700;
-           background:rgba(100,116,139,.18); color:#94a3b8; }
-  .su-nr.fertig { background:rgba(34,197,94,.18); color:#22c55e; }
-  .su-nr.pflicht { background:rgba(239,68,68,.15); color:#ef4444; }
-  .su-body { flex:1; min-width:0; }
-  .su-titel { font-weight:700; font-size:0.95rem; margin-bottom:0.3rem; }
-  .su-text { color:var(--muted); font-size:0.82rem; line-height:1.6; }
   .su-grund { color:var(--danger); font-size:0.82rem; line-height:1.6; margin-top:0.45rem; }
   .su-aktionen { display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.7rem; }
   .su-form { max-width:420px; margin-top:0.8rem; }
@@ -172,67 +157,16 @@
   </div>
 </div>
 
-<h2 style="font-size:0.95rem;font-weight:700;margin:0 0 0.7rem;">{{ tr.setup_liste_titel }}</h2>
-
-{% for s in schritte %}
-<div class="su-card {% if s.fertig %}fertig{% elif s.gesperrt %}gesperrt{% endif %}">
-  <div class="su-nr {% if s.fertig %}fertig{% elif s.pflicht %}pflicht{% endif %}">
-    {% if s.fertig %}✓{% else %}{{ loop.index }}{% endif %}
-  </div>
-  <div class="su-body">
-    <div class="su-titel">
-      {{ s.titel }}
-      {% if s.fertig %}<span class="badge badge-green">{{ tr.setup_erledigt }}</span>
-      {% elif not s.pflicht %}<span class="badge badge-gray">{{ tr.setup_optional }}</span>{% endif %}
-    </div>
-    <div class="su-text">{{ s.text }}</div>
-    {% if s.grund %}<div class="su-grund">{{ s.grund }}</div>{% endif %}
-    {% if s.gesperrt %}<div class="su-text" style="margin-top:0.45rem;">{{ tr.setup_gesperrt }}</div>{% endif %}
-
-    {% if s.formular == 'profil' and not s.fertig %}
-    <form method="post" action="/setup/profil" class="su-form">
-      <label>{{ tr.setup_p_name }}</label>
-      <input type="text" name="username" required minlength="3">
-      <label>{{ tr.setup_p_mail }}</label>
-      <input type="email" name="email_addr">
-      <label>{{ tr.setup_p_pw }}</label>
-      <input type="password" name="password" required minlength="6">
-      <label>{{ tr.setup_p_pw2 }}</label>
-      <input type="password" name="pw_confirm" required minlength="6">
-      <button type="submit" class="btn btn-primary">{{ tr.setup_p_knopf }}</button>
-    </form>
-    {% elif not s.formular %}
-    <div class="su-aktionen">
-      {% if s.ziel and not s.gesperrt %}
-      <a href="{{ s.ziel }}" class="btn {% if s.fertig %}btn-secondary{% else %}btn-primary{% endif %}"
-         style="padding:0.35rem 0.8rem;font-size:0.82rem;">{{ s.knopf }}</a>
-      {% endif %}
-      {% if s.entfernen %}
-      {# Man hat schon ein eigenes Konto, 'admin' steht noch daneben - umbenennen geht dann
-         nicht mehr, die alte Zeile muss weg. #}
-      <form method="post" action="/setup/admin-entfernen" style="display:inline;">
-        <button type="submit" class="btn btn-danger" style="padding:0.35rem 0.8rem;font-size:0.82rem;">
-          {{ tr.setup_p_entfernen }}</button>
-      </form>
-      {% endif %}
-      {% if s.haken %}
-      <form method="post" action="/setup/haken/{{ s.key }}" style="display:inline;">
-        {% if s.fertig %}<input type="hidden" name="zurueck" value="1">{% endif %}
-        <button type="submit" class="btn btn-secondary" style="padding:0.35rem 0.8rem;font-size:0.82rem;">
-          {% if s.fertig %}{{ tr.setup_haken_weg }}{% else %}{{ tr.setup_haken_setzen }}{% endif %}
-        </button>
-      </form>
-      {% endif %}
-    </div>
-    {% endif %}
-  </div>
-</div>
-{% endfor %}
+{# Hinter dem Fenster steht bewusst nichts mehr: der Assistent ist die Einrichtung.
+   Ohne JavaScript gibt es kein Fenster - dann sagt der Hinweis unten wenigstens, woran es
+   liegt, statt eine leere Seite zu zeigen. #}
+<noscript>
+  <div class="alert alert-danger" style="max-width:720px;">{{ tr.setup_kein_js }}</div>
+</noscript>
 
 <script>
-/* Der Assistent. Alle Seiten stehen schon im HTML, hier wird nur geblaettert - so gibt es
-   keine zweite Wahrheit ueber den Zustand, und ohne JavaScript bleibt die Liste darunter
-   vollstaendig bedienbar. */
+/* Der Assistent: blaettern, speichern, schliessen. Mehr passiert hier nicht - jede Seite
+   steht fertig im HTML. */
 (function () {
   var hinter = document.getElementById('sw-hinter');
   if (!hinter) return;
