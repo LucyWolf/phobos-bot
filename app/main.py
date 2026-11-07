@@ -3790,10 +3790,20 @@ async def _setup_offen(request: Request) -> int:
 async def setup_page(request: Request, error: str = "", success: str = ""):
     if r := admin_redirect(request): return r
     schritte = await _setup_schritte(request)
+    offen = sum(1 for s in schritte if s["pflicht"] and not s["fertig"])
+    # Wo der Assistent aufschlaegt. Seite 0 ist das Willkommen, 1..n die Schritte, n+1 das
+    # Ende. Hat noch niemand irgendetwas erledigt, faengt er vorne an; kommt man nach einem
+    # gespeicherten Schritt zurueck, steht er beim naechsten offenen - sonst muesste man sich
+    # jedes Mal wieder durchklicken.
+    # Das Willkommen kommt, solange Schritt 1 offen ist - das ist das verlaessliche Zeichen
+    # fuer "zum ersten Mal hier". An "noch gar nichts erledigt" darf es nicht haengen: die
+    # Basis-Adresse erkennt sich oft von selbst, und dann waere das Willkommen nie zu sehen.
+    erste_offen = next((i for i, s in enumerate(schritte, 1) if not s["fertig"]), len(schritte) + 1)
+    start = 0 if not schritte[0]["fertig"] else erste_offen
     return templates.TemplateResponse("setup.html", {
         **session(request), "request": request, "active": "setup",
-        "schritte": schritte, "error": error, "success": success,
-        "offen": sum(1 for s in schritte if s["pflicht"] and not s["fertig"]),
+        "schritte": schritte, "error": error, "success": success, "offen": offen,
+        "start": start, "auto": await _setup_phase() and offen > 0,
     })
 
 

@@ -1,7 +1,13 @@
-{# Einrichtung: die Prueflistenseite zu _setup_schritte() in main.py. Jeder Schritt zeigt
-   seinen echten Zustand, nicht nur eine Anleitung - was sich nicht messen laesst (Design,
-   Backup, SMTP, Sprache) bekommt einen Haken, den man selbst setzt. Bewusst kein Ablauf, der
-   durchschleust: Schritt 3 haengt oft an einer anderen Person. #}
+{# Einrichtung. Zwei Schichten auf denselben Daten aus _setup_schritte():
+
+   - der Assistent: ein Fenster in der Mitte, eine Frage nach der anderen, "Weiter" ist bei
+     Schritt 1 zugleich das Speichern.
+   - darunter dieselben Schritte als Liste. Sie ist nicht nur Zierde: ohne JavaScript gibt es
+     kein Fenster, und dann muss die Seite trotzdem vollstaendig bedienbar sein. Ausserdem
+     will man spaeter oft nur nachsehen, nicht durchgefuehrt werden.
+
+   Was sich woanders erledigt (Token, Design, Einladung, Backup, Adresse, E-Mail), oeffnet aus
+   dem Fenster heraus einen neuen Tab - sonst waere der Assistent beim ersten Klick weg. #}
 {% extends "base.html" %}
 {% block title %}{{ app_name }} – {{ tr.setup_title }}{% endblock %}
 {% block page_title %}🚀 {{ tr.setup_title }}{% endblock %}
@@ -32,17 +38,141 @@
            font-size:0.72rem; font-weight:700; }
   .badge-green { background:rgba(34,197,94,.18); color:#22c55e; }
   .badge-gray  { background:rgba(100,116,139,.18); color:#94a3b8; }
+
+  /* ── Der Assistent ─────────────────────────────────────────────────────── */
+  .sw-hinter { position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,0.62);
+               display:flex; align-items:center; justify-content:center; padding:1rem; }
+  .sw-fenster { background:var(--surface); border:1px solid var(--border);
+                border-radius:0.9rem; width:100%; max-width:560px; max-height:88vh;
+                display:flex; flex-direction:column; box-shadow:0 18px 50px rgba(0,0,0,.5); }
+  .sw-kopf { display:flex; align-items:center; justify-content:space-between; gap:0.75rem;
+             padding:0.85rem 1.1rem; border-bottom:1px solid var(--border); }
+  .sw-zaehler { font-size:0.75rem; color:var(--muted); font-weight:700;
+                letter-spacing:0.02em; }
+  .sw-punkte { display:flex; gap:0.3rem; flex-wrap:wrap; }
+  .sw-punkt { width:0.5rem; height:0.5rem; border-radius:50%;
+              background:rgba(100,116,139,.35); }
+  .sw-punkt.fertig { background:#22c55e; }
+  .sw-punkt.hier { background:var(--primary, #8b5cf6); transform:scale(1.35); }
+  .sw-zu { background:none; border:none; color:var(--muted); font-size:1.1rem;
+           cursor:pointer; line-height:1; padding:0.2rem 0.3rem; }
+  .sw-zu:hover { color:var(--text); }
+  .sw-inhalt { padding:1.3rem 1.3rem 1.1rem; overflow-y:auto; }
+  .sw-h { font-size:1.12rem; font-weight:700; margin:0 0 0.55rem; }
+  .sw-t { color:var(--muted); font-size:0.87rem; line-height:1.65; }
+  .sw-fuss { display:flex; align-items:center; gap:0.6rem; padding:0.85rem 1.1rem;
+             border-top:1px solid var(--border); }
+  .sw-fuss .rechts { margin-left:auto; display:flex; gap:0.5rem; flex-wrap:wrap; }
+  .sw-hinweis { font-size:0.76rem; color:var(--muted); margin-top:0.4rem; }
+  @media (max-width:520px) {
+    .sw-fuss { flex-wrap:wrap; }
+    .sw-fuss .rechts { margin-left:0; width:100%; }
+    .sw-fuss .rechts .btn { flex:1; }
+  }
 </style>
 
 {% if success %}<div class="alert alert-success" style="max-width:720px;">✅ {{ meldung(success, lang) }}</div>{% endif %}
 {% if error %}<div class="alert alert-danger" style="max-width:720px;">❌ {{ meldung(error, lang) }}</div>{% endif %}
+
+{# ── Der Assistent. Versteckt in der Vorlage; aufgedeckt wird er vom Skript unten -
+     ohne JavaScript bleibt er zu und die Liste darunter macht die ganze Arbeit. ── #}
+<div class="sw-hinter" id="sw-hinter" hidden>
+  <div class="sw-fenster" role="dialog" aria-modal="true" aria-labelledby="sw-titel-aktiv">
+    <div class="sw-kopf">
+      <span class="sw-zaehler" id="sw-zaehler"></span>
+      <span class="sw-punkte" id="sw-punkte">
+        {% for s in schritte %}
+        <span class="sw-punkt {% if s.fertig %}fertig{% endif %}" data-punkt="{{ loop.index }}"></span>
+        {% endfor %}
+      </span>
+      <button type="button" class="sw-zu" id="sw-zu" aria-label="{{ tr.setup_nav_fertig }}">✕</button>
+    </div>
+
+    <div class="sw-inhalt">
+      {# Seite 0: das Willkommen #}
+      <section class="sw-seite" data-seite="0">
+        <h2 class="sw-h" id="sw-titel-aktiv">👋 {{ tr.setup_w_titel }}</h2>
+        <p class="sw-t">{{ tr.setup_w_text }}</p>
+      </section>
+
+      {% for s in schritte %}
+      <section class="sw-seite" data-seite="{{ loop.index }}"
+               {% if s.haken and not s.fertig %}data-haken="{{ s.key }}"{% endif %}
+               {% if s.formular == 'profil' and not s.fertig %}data-form="sw-form-profil"{% endif %}
+               hidden>
+        <h2 class="sw-h">
+          {% if s.fertig %}✅{% else %}{{ loop.index }}.{% endif %} {{ s.titel }}
+          {% if s.fertig %}<span class="badge badge-green">{{ tr.setup_erledigt }}</span>
+          {% elif not s.pflicht %}<span class="badge badge-gray">{{ tr.setup_optional }}</span>{% endif %}
+        </h2>
+        <p class="sw-t">{{ s.text }}</p>
+        {% if s.grund %}<p class="su-grund">{{ s.grund }}</p>{% endif %}
+
+        {% if s.formular == 'profil' and not s.fertig %}
+        <form method="post" action="/setup/profil" class="su-form" id="sw-form-profil">
+          <label>{{ tr.setup_p_name }}</label>
+          <input type="text" name="username" required minlength="3" autocomplete="username">
+          <label>{{ tr.setup_p_mail }}</label>
+          <input type="email" name="email_addr" autocomplete="email">
+          <label>{{ tr.setup_p_pw }}</label>
+          <input type="password" name="password" required minlength="6" autocomplete="new-password">
+          <label>{{ tr.setup_p_pw2 }}</label>
+          <input type="password" name="pw_confirm" required minlength="6" autocomplete="new-password">
+        </form>
+        {% elif s.entfernen %}
+        <div class="su-aktionen">
+          <form method="post" action="/setup/admin-entfernen">
+            <button type="submit" class="btn btn-danger">{{ tr.setup_p_entfernen }}</button>
+          </form>
+        </div>
+        {% elif s.ziel and not s.gesperrt and not s.fertig %}
+        <div class="su-aktionen">
+          <a href="{{ s.ziel }}" target="_blank" rel="noopener" class="btn btn-primary">
+            {{ s.knopf }} ↗</a>
+          <a href="/setup" class="btn btn-secondary">{{ tr.setup_nav_erneut }}</a>
+        </div>
+        <div class="sw-hinweis">{{ tr.setup_neuer_tab }}</div>
+        {% elif s.gesperrt %}
+        <p class="sw-hinweis">{{ tr.setup_gesperrt }}</p>
+        {% endif %}
+      </section>
+      {% endfor %}
+
+      {# Letzte Seite: was offen blieb #}
+      <section class="sw-seite" data-seite="{{ schritte|length + 1 }}" hidden>
+        <h2 class="sw-h">{% if offen %}🙋{% else %}🎉{% endif %} {{ tr.setup_e_titel }}</h2>
+        <p class="sw-t">
+          {% if offen %}{{ tr.setup_e_offen.replace('{n}', offen|string) }}
+          {% else %}{{ tr.setup_e_fertig }}{% endif %}
+        </p>
+      </section>
+    </div>
+
+    <div class="sw-fuss">
+      <button type="button" class="btn btn-secondary" id="sw-zurueck">{{ tr.setup_nav_zurueck }}</button>
+      <span class="rechts">
+        <button type="button" class="btn btn-secondary" id="sw-skip" hidden>{{ tr.setup_nav_ueberspringen }}</button>
+        <button type="button" class="btn btn-primary" id="sw-weiter">{{ tr.setup_nav_weiter }}</button>
+      </span>
+    </div>
+  </div>
+</div>
+
+{# Ueberspringen schickt den Haken ab. Eigenes Formular ausserhalb des Fensters, damit es
+   nicht in dem mit den Kontodaten landet - verschachtelte Formulare gibt es in HTML nicht. #}
+<form method="post" id="sw-skip-form" action="/setup/haken/design" hidden></form>
 
 <div class="su-intro">
   {{ tr.setup_intro }}
   <div style="margin-top:0.6rem;font-weight:700;color:{% if offen %}var(--danger){% else %}var(--success){% endif %};">
     {% if offen %}{{ tr.setup_offen_n.replace('{n}', offen|string) }}{% else %}{{ tr.setup_alles_fertig }}{% endif %}
   </div>
+  <div style="margin-top:0.8rem;">
+    <button type="button" class="btn btn-primary" id="sw-auf" hidden>🚀 {{ tr.setup_oeffnen }}</button>
+  </div>
 </div>
+
+<h2 style="font-size:0.95rem;font-weight:700;margin:0 0 0.7rem;">{{ tr.setup_liste_titel }}</h2>
 
 {% for s in schritte %}
 <div class="su-card {% if s.fertig %}fertig{% elif s.gesperrt %}gesperrt{% endif %}">
@@ -62,13 +192,13 @@
     {% if s.formular == 'profil' and not s.fertig %}
     <form method="post" action="/setup/profil" class="su-form">
       <label>{{ tr.setup_p_name }}</label>
-      <input type="text" name="username" required minlength="3" autocomplete="username">
+      <input type="text" name="username" required minlength="3">
       <label>{{ tr.setup_p_mail }}</label>
-      <input type="email" name="email_addr" autocomplete="email">
+      <input type="email" name="email_addr">
       <label>{{ tr.setup_p_pw }}</label>
-      <input type="password" name="password" required minlength="6" autocomplete="new-password">
+      <input type="password" name="password" required minlength="6">
       <label>{{ tr.setup_p_pw2 }}</label>
-      <input type="password" name="pw_confirm" required minlength="6" autocomplete="new-password">
+      <input type="password" name="pw_confirm" required minlength="6">
       <button type="submit" class="btn btn-primary">{{ tr.setup_p_knopf }}</button>
     </form>
     {% elif not s.formular %}
@@ -98,4 +228,77 @@
   </div>
 </div>
 {% endfor %}
+
+<script>
+/* Der Assistent. Alle Seiten stehen schon im HTML, hier wird nur geblaettert - so gibt es
+   keine zweite Wahrheit ueber den Zustand, und ohne JavaScript bleibt die Liste darunter
+   vollstaendig bedienbar. */
+(function () {
+  var hinter = document.getElementById('sw-hinter');
+  if (!hinter) return;
+  var seiten = [].slice.call(hinter.querySelectorAll('.sw-seite'));
+  var zaehler = document.getElementById('sw-zaehler');
+  var punkte = [].slice.call(hinter.querySelectorAll('.sw-punkt'));
+  var bZurueck = document.getElementById('sw-zurueck');
+  var bWeiter = document.getElementById('sw-weiter');
+  var bSkip = document.getElementById('sw-skip');
+  var skipForm = document.getElementById('sw-skip-form');
+  var TXT = {
+    schritt: {{ tr.setup_nav_schritt | jsraw }},
+    weiter: {{ tr.setup_nav_weiter | jsraw }},
+    speichern: {{ tr.setup_nav_speichern | jsraw }},
+    los: {{ tr.setup_w_los | jsraw }},
+    fertig: {{ tr.setup_nav_fertig | jsraw }}
+  };
+  var ANZ = {{ schritte|length }};
+  var hier = {{ start }};
+
+  function zeige(i) {
+    hier = Math.max(0, Math.min(seiten.length - 1, i));
+    seiten.forEach(function (s, n) { s.hidden = n !== hier; });
+    punkte.forEach(function (p, n) { p.classList.toggle('hier', n + 1 === hier); });
+    zaehler.textContent = (hier >= 1 && hier <= ANZ)
+      ? TXT.schritt.replace('{n}', hier).replace('{m}', ANZ) : '';
+    bZurueck.hidden = hier === 0;
+    var akt = seiten[hier];
+    bSkip.hidden = !akt.dataset.haken;
+    bWeiter.textContent = hier === 0 ? TXT.los
+      : (akt.dataset.form ? TXT.speichern
+      : (hier === seiten.length - 1 ? TXT.fertig : TXT.weiter));
+    var erstes = akt.querySelector('input, a.btn, button');
+    if (erstes && hier > 0) { try { erstes.focus(); } catch (e) {} }
+  }
+
+  function auf() { hinter.hidden = false; zeige(hier); }
+  function zu() { hinter.hidden = true; }
+
+  bWeiter.addEventListener('click', function () {
+    var akt = seiten[hier];
+    if (akt.dataset.form) {
+      /* "Weiter" ist hier zugleich das Speichern. Die Seite laedt danach neu und der
+         Assistent steht beim naechsten offenen Schritt. */
+      var f = document.getElementById(akt.dataset.form);
+      if (f) { if (f.reportValidity && !f.reportValidity()) return; f.submit(); return; }
+    }
+    if (hier === seiten.length - 1) { zu(); return; }
+    zeige(hier + 1);
+  });
+  bZurueck.addEventListener('click', function () { zeige(hier - 1); });
+  bSkip.addEventListener('click', function () {
+    var key = seiten[hier].dataset.haken;
+    if (!key) return;
+    skipForm.action = '/setup/haken/' + key;
+    skipForm.submit();
+  });
+  document.getElementById('sw-zu').addEventListener('click', zu);
+  hinter.addEventListener('click', function (e) { if (e.target === hinter) zu(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !hinter.hidden) zu();
+  });
+
+  var knopf = document.getElementById('sw-auf');
+  if (knopf) { knopf.hidden = false; knopf.addEventListener('click', auf); }
+  {% if auto %}auf();{% endif %}
+})();
+</script>
 {% endblock %}
