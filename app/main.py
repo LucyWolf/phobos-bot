@@ -1882,13 +1882,18 @@ def _safe_back(request: Request, default: str = "/") -> str:
 
 
 @web.post("/settings/language")
-async def set_language(request: Request, lang: str = Form("de")):
+async def set_language(request: Request, lang: str = Form("de"), next: str = Form("")):
     if lang not in ("de", "en"):
         lang = "de"
     request.session["lang"] = lang
     uid = request.session.get("user_id")
     if uid:
         await db_exec("UPDATE users SET language=? WHERE id=?", (lang, uid))
+    # Der Weg zurueck kommt sonst aus dem Referer - und den schickt nicht jeder Browser mit.
+    # Im Einrichtungsassistenten waere das Ergebnis: Sprache gewaehlt, Assistent weg,
+    # Dashboard da. Deshalb darf genau dieses eine Ziel ausdruecklich mitgegeben werden.
+    if next == "/setup":
+        return RedirectResponse("/setup", status_code=302)
     return RedirectResponse(_safe_back(request), status_code=302)
 
 
@@ -3665,6 +3670,29 @@ async def _standard_admin_aktiv() -> bool:
     return wert
 
 
+async def _token_angenommen(token: str) -> bool:
+    """Nimmt Discord diesen Token an? Eine einzige Abfrage, bevor er gespeichert wird.
+
+    Im Assistenten muss der Fehler dort stehen, wo man ihn beheben kann - im Eingabefeld.
+    Ohne diese Frage waere der Weg: speichern, weiterblaettern, und drei Schritte spaeter
+    steht "versucht zu verbinden", waehrend in Wahrheit ein Zeichen fehlt.
+
+    Nur eine klare Ablehnung (401) zaehlt. Ist Discord gar nicht erreichbar, wird der Token
+    angenommen - sonst koennte man bei einer Stoerung ueberhaupt keinen mehr eintragen, und
+    der Verbindungsschritt sagt ohnehin, was danach passiert.
+    """
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=8)) as s:
+            async with s.get("https://discord.com/api/v10/users/@me",
+                             headers={"Authorization": f"Bot {token}"}) as r:
+                if r.status == 401:
+                    return False
+                return True
+    except Exception as e:
+        print(f"[setup] Token nicht pruefbar ({e}) - wird trotzdem gespeichert")
+        return True
+
+
 async def _setup_phase() -> bool:
     """Laeuft die Erst-Einrichtung noch?
 
@@ -3731,9 +3759,11 @@ async def _setup_schritte(request: Request) -> list:
                  else tr["setup_t_profil"],
          "fertig": not std_admin, "pflicht": True,
          "formular": "profil" if selbst else None, "entfernen": std_admin and not selbst},
+        # Der Token wird im Fenster selbst eingetragen, nicht auf der Token-Seite: ein
+        # Einrichtungsschritt, der einen woanders hinschickt, ist keiner.
         {"key": "token", "titel": tr["setup_s_token"], "text": tr["setup_t_token"],
          "fertig": token_da, "pflicht": True,
-         "ziel": "/settings/tokens", "knopf": tr["setup_k_token"]},
+         "formular": None if token_da else "token"},
         {"key": "verbindung", "titel": tr["setup_s_verbindung"],
          "text": tr["setup_t_verbindung"], "fertig": verbunden, "pflicht": True,
          "grund": grund_verbindung, "ziel": "/settings/tokens", "knopf": tr["setup_k_hilfe"]},
@@ -3787,10 +3817,16 @@ async def _setup_offen(request: Request) -> int:
 
 
 @web.get("/setup", response_class=HTMLResponse)
-async def setup_page(request: Request, error: str = "", success: str = ""):
+async def setup_page(request: Request, error: str = "", success: str = "",
+                     schritt: int = 0):
     if r := admin_redirect(request): return r
     schritte = await _setup_schritte(request)
-    offen = sum(1 for s in schritte if s["pflicht"] and not s["fertig"])
+    # 'offen' entscheidet auch darueber, ob das Fenster ein Kreuz bekommt. Ausserhalb der
+    # Erst-Einrichtung muss es eines haben: wem spaeter einmal der Token abhanden kommt, der
+    # ruft hier vielleicht nach, und ein Fenster ohne Ausweg waere dann eine Falle - die
+    # laufende Installation ist ja laengst eingerichtet.
+    phase = await _setup_phase()
+    offen = sum(1 for s in schritte if s["pflicht"] and not s["fertig"]) if phase else 0
     # Wo der Assistent aufschlaegt. Seite 0 ist das Willkommen, 1..n die Schritte, n+1 das
     # Ende. Hat noch niemand irgendetwas erledigt, faengt er vorne an; kommt man nach einem
     # gespeicherten Schritt zurueck, steht er beim naechsten offenen - sonst muesste man sich
@@ -3800,10 +3836,15 @@ async def setup_page(request: Request, error: str = "", success: str = ""):
     # Basis-Adresse erkennt sich oft von selbst, und dann waere das Willkommen nie zu sehen.
     erste_offen = next((i for i, s in enumerate(schritte, 1) if not s["fertig"]), len(schritte) + 1)
     start = 0 if not schritte[0]["fertig"] else erste_offen
+    # Kommt eine Meldung von einem bestimmten Schritt zurueck (abgelehnter Token), gehoert
+    # sie an genau diesen - sonst stuende der Fehler ueber einer anderen Frage.
+    # n+1 ist die Abschlussseite - ein uebersprungener letzter Schritt landet dort.
+    if 1 <= schritt <= len(schritte) + 1:
+        start = schritt
     return templates.TemplateResponse("setup.html", {
         **session(request), "request": request, "active": "setup",
         "schritte": schritte, "error": error, "success": success, "offen": offen,
-        "start": start, "auto": await _setup_phase() and offen > 0,
+        "start": start,
     })
 
 
@@ -3838,30 +3879,30 @@ async def setup_profil(request: Request, username: str = Form(...), password: st
     if r := admin_redirect(request): return r
     name = username.strip()
     if len(name) < 3:
-        return RedirectResponse("/setup?error=Benutzername+mindestens+3+Zeichen",
+        return RedirectResponse("/setup?schritt=1&error=Benutzername+mindestens+3+Zeichen",
                                 status_code=302)
     if name.lower() == "admin":
-        return RedirectResponse("/setup?error=Bitte+einen+anderen+Namen+als+admin",
+        return RedirectResponse("/setup?schritt=1&error=Bitte+einen+anderen+Namen+als+admin",
                                 status_code=302)
     if len(password) < 6:
-        return RedirectResponse("/setup?error=Passwort+mindestens+6+Zeichen", status_code=302)
+        return RedirectResponse("/setup?schritt=1&error=Passwort+mindestens+6+Zeichen", status_code=302)
     if password != pw_confirm:
-        return RedirectResponse("/setup?error=Passwörter+stimmen+nicht+überein",
+        return RedirectResponse("/setup?schritt=1&error=Passwörter+stimmen+nicht+überein",
                                 status_code=302)
 
     zeile = await db_one("SELECT id FROM users WHERE username='admin'")
     if not zeile:
-        return RedirectResponse("/setup?error=Das+Konto+admin+gibt+es+nicht+mehr",
+        return RedirectResponse("/setup?schritt=1&error=Das+Konto+admin+gibt+es+nicht+mehr",
                                 status_code=302)
     if zeile["id"] != request.session.get("user_id"):
         # Man sitzt in einem anderen Konto: dann ist hier nichts umzubenennen, sondern das
         # alte 'admin' zu entfernen - dafuer gibt es /setup/admin-entfernen.
-        return RedirectResponse("/setup?error=Dafür+musst+du+als+admin+angemeldet+sein",
+        return RedirectResponse("/setup?schritt=1&error=Dafür+musst+du+als+admin+angemeldet+sein",
                                 status_code=302)
     belegt = await db_one("SELECT id FROM users WHERE lower(username)=? AND id!=?",
                           (name.lower(), zeile["id"]))
     if belegt:
-        return RedirectResponse("/setup?error=Benutzername+bereits+vergeben", status_code=302)
+        return RedirectResponse("/setup?schritt=1&error=Benutzername+bereits+vergeben", status_code=302)
     try:
         if email_addr.strip():
             await db_exec("UPDATE users SET username=?, password_hash=?, email=? WHERE id=?",
@@ -3871,7 +3912,7 @@ async def setup_profil(request: Request, username: str = Form(...), password: st
                           (name, hash_pw(password), zeile["id"]))
     except Exception as e:
         print(f"[setup] Konto liess sich nicht umbenennen: {e}")
-        return RedirectResponse("/setup?error=Benutzername+bereits+vergeben", status_code=302)
+        return RedirectResponse("/setup?schritt=1&error=Benutzername+bereits+vergeben", status_code=302)
 
     await _sitzungen_beenden(zeile["id"], ausser_sid=request.session.get("sid", ""))
     request.session["username"] = name
@@ -3895,7 +3936,7 @@ async def setup_admin_entfernen(request: Request):
     if not zeile:
         return RedirectResponse("/setup", status_code=302)
     if zeile["id"] == request.session.get("user_id"):
-        return RedirectResponse("/setup?error=Das+ist+dein+eigenes+Konto", status_code=302)
+        return RedirectResponse("/setup?schritt=1&error=Das+ist+dein+eigenes+Konto", status_code=302)
     try:
         await _sitzungen_beenden(zeile["id"])
         await db_exec("DELETE FROM user_guild_permissions WHERE user_id=?", (zeile["id"],))
@@ -3904,20 +3945,30 @@ async def setup_admin_entfernen(request: Request):
         print("[setup] mitgeliefertes Konto 'admin' entfernt")
     except Exception as e:
         print(f"[setup] 'admin' liess sich nicht entfernen: {e}")
-        return RedirectResponse("/setup?error=Konto+konnte+nicht+entfernt+werden",
+        return RedirectResponse("/setup?schritt=1&error=Konto+konnte+nicht+entfernt+werden",
                                 status_code=302)
     _STD_ADMIN_CACHE.update({"at": 0.0, "wert": None})
-    return RedirectResponse("/setup?success=Konto+admin+entfernt", status_code=302)
+    return RedirectResponse("/setup?schritt=1&success=Konto+admin+entfernt", status_code=302)
 
 
 @web.post("/setup/haken/{key}")
-async def setup_haken_setzen(request: Request, key: str, zurueck: str = Form("")):
-    """Haken an einem Schritt, der sich nicht messen laesst - oder der uebersprungen wird."""
+async def setup_haken_setzen(request: Request, key: str, zurueck: str = Form(""),
+                             seite: str = Form("")):
+    """Haken an einem Schritt, der sich nicht messen laesst - oder der uebersprungen wird.
+
+    'seite' ist die Nummer des Schrittes, von dem der Knopf kam. Ohne sie faengt der
+    Assistent danach beim ersten offenen Schritt an - und wer bei Schritt 8 "Ueberspringen"
+    drueckt, landete dann bei Schritt 3. Uebersprungen heisst: weiter, nicht zurueck.
+    """
     if r := admin_redirect(request): return r
     if key not in ("design", "backup", "smtp", "sprache"):
         return RedirectResponse("/setup", status_code=302)
     await set_config(f"setup_ok_{key}", "0" if zurueck else "1")
-    return RedirectResponse("/setup", status_code=302)
+    nr = int(seite) if seite.isdigit() else 0
+    if not nr:
+        return RedirectResponse("/setup", status_code=302)
+    # Haken weg: beim Schritt bleiben. Haken gesetzt: der naechste ist dran.
+    return RedirectResponse(f"/setup?schritt={nr if zurueck else nr + 1}", status_code=302)
 
 
 @web.post("/users/role/{user_id}")
@@ -9989,8 +10040,17 @@ async def tokens_add(request: Request):
     form = await request.form()
     label = (form.get("label") or "Bot").strip()
     token = (form.get("token") or "").strip()
+    aus_setup = (form.get("next") or "") == "/setup"
     if not token:
-        return RedirectResponse("/settings/tokens?error=Token+darf+nicht+leer+sein", status_code=302)
+        ziel = "/setup?schritt=2" if aus_setup else "/settings/tokens"
+        trenn = "&" if "?" in ziel else "?"
+        return RedirectResponse(f"{ziel}{trenn}error=Token+darf+nicht+leer+sein",
+                                status_code=302)
+    if aus_setup and not await _token_angenommen(token):
+        # Im Assistenten gehoert der Fehler ans Eingabefeld, nicht drei Schritte weiter.
+        return RedirectResponse(
+            "/setup?schritt=2&error=Discord+hat+den+Token+abgelehnt+–+bitte+prüfen",
+            status_code=302)
     uid = request.session.get("user_id")
     is_admin = request.session.get("role") == "admin"
     token_id = await db_insert(
@@ -10012,6 +10072,12 @@ async def tokens_add(request: Request):
             (token_id, uid),
         )
     asyncio.create_task(_start_bot_by_id(token_id))
+    # Aus dem Einrichtungsassistenten heraus geht es dorthin zurueck - sonst steht man
+    # nach dem Speichern auf der Token-Seite und der Assistent ist weg. Nur dieses eine
+    # Ziel ist erlaubt, damit das Feld keine offene Umleitung wird.
+    if (form.get("next") or "") == "/setup":
+        return RedirectResponse("/setup?success=Token+hinzugefügt+und+Bot+wird+gestartet.",
+                                status_code=302)
     return RedirectResponse(
         "/settings/tokens?success=Token+hinzugefügt+und+Bot+wird+gestartet.",
         status_code=302,

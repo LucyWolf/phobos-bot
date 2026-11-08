@@ -15,6 +15,11 @@
 <title>{% block title %}{{ app_name }}{% endblock %}</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  /* hidden muss gewinnen. Browser setzen dafuer nur display:none als Vorgabe, und jede
+     eigene display-Regel (.btn, .nav-item) schlaegt die - dann steht ein versteckter
+     Knopf trotzdem da. Genau so war "Ueberspringen" im Assistenten auf jeder Seite zu
+     sehen und der Navigationseintrag "Einrichtung" auch ausserhalb der Einrichtung. */
+  [hidden] { display: none !important; }
   :root {
     --bg: #0f1117;
     --surface: #1a1d27;
@@ -597,7 +602,12 @@
       bar.style.cssText = 'display:block;padding:0.55rem 1rem;background:rgba(239,68,68,0.15);' +
         'border-bottom:1px solid rgba(239,68,68,0.35);color:#ef4444;font-size:0.84rem;' +
         'font-weight:600;text-decoration:none;text-align:center;';
-      document.body.insertBefore(bar, document.body.firstChild);
+      /* In den Hauptbereich, NICHT in den body: der ist ein Flex-Container mit Seitenleiste
+         und Inhalt nebeneinander. Ein weiteres Kind dort wird zur dritten Spalte - die
+         Leiste stand dann als roter Block links und schob die ganze Seite zur Seite. */
+      var ziel = document.getElementById('main');
+      if (!ziel) return;
+      ziel.insertBefore(bar, ziel.firstChild);
     })
     .catch(function () { /* nicht erreichbar: dann eben keine Leiste */ });
 })();
