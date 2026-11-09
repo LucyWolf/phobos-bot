@@ -3622,6 +3622,21 @@ document.addEventListener('click', function(e) {
         </label>
         <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_auto_invite_hint }}</div>
       </div>
+
+      {# Austritt aus Discord = raus aus der Gruppe. Standardmaessig aus, und mit Absicht
+         deutlicher ausgezeichnet als die anderen Haken: das ist die einzige Einstellung
+         hier, die jemandem etwas wegnimmt, was er behalten wollte. #}
+      <div style="margin-top:0.9rem;border:1px solid rgba(239,68,68,0.3);border-radius:0.5rem;
+                  padding:0.7rem 0.9rem;background:rgba(239,68,68,0.06);">
+        <label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;">
+          <input type="checkbox" name="vrc_group_kick_on_leave" value="1"
+                 style="width:auto;display:inline;margin:0;"
+                 {% if cfg.get('vrc_group_kick_on_leave') == '1' %}checked{% endif %}>
+          {{ tr.vrc_group_kick_label }}
+        </label>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:0.35rem;">{{ tr.vrc_group_kick_hint }}</div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:0.35rem;">{{ tr.vrc_group_kick_pruefung }}</div>
+      </div>
     </div>
   </div>
   <button type="submit" class="btn btn-primary" style="margin-top:0.9rem;">{{ tr.btn_save }}</button>
