@@ -1116,6 +1116,18 @@ def _fuelle(vorlage: str, *, welt: str = "", anzahl="", gruppe: str = "",
             .replace("{name}", name)).strip()
 
 
+async def server_text(guild_id, schluessel: str, sprache: str) -> str:
+    """Was dieser Server fuer einen Baustein geschrieben hat - oder der Standard in seiner Sprache.
+
+    Leer oder nur Leerzeichen heisst ueberall dasselbe: Standard nehmen. Das stand sechsmal
+    fast gleich im Modul, zweimal davon als eigene kleine Hilfsfunktion innerhalb einer
+    Funktion - und bei jeder Abweichung waere genau ein Text anders behandelt worden als
+    seine Nachbarn.
+    """
+    return ((await get_guild_config(guild_id, schluessel) or "").strip()
+            or bot_text(schluessel, sprache))
+
+
 async def _instance_texte(guild) -> dict:
     """Die frei schreibbaren Bausteine dieses Servers, leere auf den Standard gesetzt.
 
@@ -1124,9 +1136,7 @@ async def _instance_texte(guild) -> dict:
     """
     sprache = await bot_lang(guild.id)
     async def hol(schluessel):
-        """Ein Baustein aus den Einstellungen; leer oder nur Leerzeichen heisst: Standard nehmen."""
-        return ((await get_guild_config(guild.id, schluessel) or "").strip()
-                or bot_text(schluessel, sprache))
+        return await server_text(guild.id, schluessel, sprache)
     return {
         "titel": await hol("vrc_instance_title"),
         "text": await hol("vrc_instance_message"),
@@ -1636,8 +1646,8 @@ async def _announce_instances(bot, guild) -> int:
         # kommt: gross, eindeutig, und auf dem Handy genauso gut zu treffen.
         view = None
         if link:
-            knopf = ((await get_guild_config(guild.id, "vrc_instance_button") or "").strip()
-                     or bot_text("vrc_instance_button", texte.get("sprache", "de")))
+            knopf = await server_text(guild.id, "vrc_instance_button",
+                                      texte.get("sprache", "de"))
             view = discord.ui.View(timeout=None)
             view.add_item(discord.ui.Button(label=knopf[:MAX_BUTTON_LABEL], emoji="🌍",
                                             style=discord.ButtonStyle.link, url=link))
@@ -1749,8 +1759,7 @@ async def send_personal_link(interaction: discord.Interaction) -> None:
     sprache = await bot_lang(interaction.guild_id)
 
     async def baustein(schluessel):
-        return ((await get_guild_config(interaction.guild_id, schluessel) or "").strip()
-                or bot_text(schluessel, sprache))
+        return await server_text(interaction.guild_id, schluessel, sprache)
 
     if row and row["status"] == VRC_STATE_APPROVED:
         text = (await baustein("vrc_dm_linked_text")).replace("{name}", row["vrchat_name"] or "?")
@@ -1776,19 +1785,16 @@ async def panel_text(guild_id, sprache: str) -> str:
     """
     if (await get_guild_config(guild_id, "vrc_panel_text_on") or "1") != "1":
         return ""
-    return ((await get_guild_config(guild_id, "vrc_panel_text") or "").strip()
-            or bot_text("vrc_panel_text", sprache))
+    return await server_text(guild_id, "vrc_panel_text", sprache)
 
 
 async def post_panel(bot, guild: discord.Guild, channel: discord.TextChannel) -> discord.Message:
     """Post the server's link panel. Raises on failure so the dashboard can show the reason -
     a panel that silently never appears is the worst of the possible outcomes here."""
     sprache = await bot_lang(guild.id)
-    title = ((await get_guild_config(guild.id, "vrc_panel_title") or "").strip()
-             or bot_text("vrc_panel_title", sprache))
+    title = await server_text(guild.id, "vrc_panel_title", sprache)
     text = await panel_text(guild.id, sprache)
-    label = ((await get_guild_config(guild.id, "vrc_panel_button") or "").strip()
-             or bot_text("vrc_panel_button", sprache))
+    label = await server_text(guild.id, "vrc_panel_button", sprache)
     embed = discord.Embed(
         title=title[:256],
         # Abgeschaltet heisst wirklich ohne: eine leere Zeile unter der Ueberschrift waere
@@ -2135,15 +2141,17 @@ class VRCLink(commands.Cog):
                 return
             if (await get_guild_config(member.guild.id, "vrc_dm_on_join") or "0") != "1":
                 return
-            url = await personal_link(member.guild.id, member.id)
-            if not url:
-                return
             sprache = await bot_lang(member.guild.id)
             text = ((await get_guild_config(member.guild.id, "vrc_dm_text") or "").strip()
                     or await panel_text(member.guild.id, sprache))
             if not text:
                 # Eigener DM-Text leer UND der Panel-Text abgeschaltet: dann gibt es nichts
                 # zu schicken. Eine Nachricht aus nichts als einem Knopf ist keine.
+                return
+            # Erst jetzt den Link bauen: create_link_token() legt eine Zeile an, und ein
+            # Schluessel, der nie bei jemandem ankommt, hat dort nichts verloren.
+            url = await personal_link(member.guild.id, member.id)
+            if not url:
                 return
             view = discord.ui.View(timeout=None)
             view.add_item(discord.ui.Button(label=bot_text("vrc_panel_button", sprache), emoji="🔗",
