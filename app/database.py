@@ -310,6 +310,23 @@ async def init_db():
             )
         """)
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS ticket_panel_options (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                panel_id INTEGER NOT NULL,
+                label TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL DEFAULT '',
+                emoji TEXT NOT NULL DEFAULT '',
+                support_role_id TEXT NOT NULL DEFAULT '',
+                category_id TEXT NOT NULL DEFAULT '',
+                ticket_message TEXT NOT NULL DEFAULT '',
+                sortierung INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        # Jedes Panel fragt seine Eintraege einzeln ab - ohne Index waere das ein voller
+        # Durchlauf der Tabelle, jedes Mal wenn jemand ein Ticket-Panel oeffnet.
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tpo_panel ON ticket_panel_options(panel_id)")
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS ticket_panels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id INTEGER NOT NULL,
@@ -1289,6 +1306,34 @@ async def init_db():
             # neuen Server tut. Abschalten laesst sich damit nicht VRChats Verhalten - nur
             # die Erwartung des Bots und die Meldung, die sonst stehen bleibt.
             "ALTER TABLE vrc_accounts ADD COLUMN needs_email INTEGER NOT NULL DEFAULT 1",
+            # Gespraechsverlauf beim Schliessen als Datei in den Log-Kanal. Standard 0:
+            # ein Ticket kann Bewerbungen oder Beschwerden enthalten, und was bisher nicht
+            # mitgeschrieben wurde, soll nicht durch ein Update anfangen mitgeschrieben zu
+            # werden. Wer es will, schaltet es je Panel ein.
+            "ALTER TABLE ticket_panels ADD COLUMN transcript INTEGER NOT NULL DEFAULT 0",
+            # Eigener Kanal fuer die Mitschriften. Leer heisst: der normale Log-Kanal, so
+            # wie es bisher war. Getrennt, weil beides verschieden gelesen wird - im Log
+            # ueberfliegt man, was passiert ist, eine Mitschrift liest man nach, und
+            # zwischen laufenden Meldungen findet man sie spaeter nicht wieder.
+            "ALTER TABLE ticket_panels ADD COLUMN transcript_channel_id TEXT NOT NULL DEFAULT ''",
+            # Rueckbau: nimmt die Regel ihre Rolle wieder weg, wenn die Voraussetzung
+            # wegfaellt? Gemeldet als "leute die server 1 verlassen hatten ... werden
+            # trotzdem auf server 2 verified" - eine Regel war bis hierher eine
+            # Einbahnstrasse: trifft zu -> Rolle, trifft nicht mehr zu -> gar nichts.
+            #
+            # Standard 0, also aus. Nicht aus Vorsicht vor dem Code, sondern weil sich
+            # sonst das Verhalten bestehender Installationen durch ein Update aendert:
+            # wer die Rollen bisher von Hand verwaltet hat, saehe sie nach dem Neustart
+            # reihenweise verschwinden. Wer den Rueckbau will, schaltet ihn je Regel ein.
+            "ALTER TABLE role_rules ADD COLUMN revoke_on_loss INTEGER NOT NULL DEFAULT 0",
+            # Ein Sitzungs-Handle gehoert zu genau einem Browser an genau einem Anschluss.
+            # Kommt dasselbe Handle von woanders, ist es unterwegs weitergegeben worden -
+            # siehe _sitzung_geraet_ok in main.py. Leer heisst "noch nicht bekannt" und wird
+            # beim naechsten Seitenaufruf nachgetragen, damit ein Update niemanden auswirft.
+            "ALTER TABLE user_sessions ADD COLUMN geraet TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE user_sessions ADD COLUMN ort TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE user_sessions ADD COLUMN ort_vor TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE user_sessions ADD COLUMN ort_zeit TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

@@ -120,7 +120,10 @@ except ImportError:
     # No prebuilt Android wheel and no C toolchain available under Chaquopy - the rest of the
     # bot doesn't need it, only get_system_stats() below (the Bot-Info dashboard page) does.
     psutil = None
-from cogs.tickets import OpenTicketView as _TicketView, close_ticket_channel as _close_ticket_channel
+from cogs.tickets import (OpenTicketView as _TicketView,
+                          close_ticket_channel as _close_ticket_channel,
+                          panel_optionen as _panel_optionen,
+                          tt as _tt)
 from cogs.leveling import xp_for_level as _xp_for_level, cumulative_xp_for_level as _cumulative_xp_for_level
 from cogs.welcome import (_make_card as _welcome_make_card, fill as _welcome_fill,
                           KARTE_BREITE as _KARTE_BREITE, KARTE_HOEHE as _KARTE_HOEHE)
@@ -185,6 +188,12 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 IS_ANDROID = os.environ.get("PHOBOS_PLATFORM") == "android"
 SECRET_KEY_PATH = DATA_DIR / "secret.key"
 AVATARS_DIR = DATA_DIR / "avatars"
+
+# Von hier an landet jedes print() des Projekts zusaetzlich in data/logs/phobos.log -
+# weitergereicht, nicht abgefangen, Docker sieht alles unveraendert. Direkt hinter
+# DATA_DIR, damit auch die Zeilen beim Hochfahren schon mitgeschrieben werden.
+import logbuch as _logbuch
+_logbuch.einrichten(DATA_DIR)
 
 
 # How long a dashboard session cookie may live. Starlette's own default, stated here because
@@ -438,6 +447,13 @@ class BotManager:
 
 bot = BotManager()
 
+# Warum ein Bot gerade NICHT verbunden ist, je Token-ID: (Textschluessel, Detail).
+# Ohne das stand im Dashboard bei jeder Stoerung dieselbe Zeile - "Bot offline, zuerst Token
+# eintragen" -, auch wenn laengst einer eingetragen war und Discord ihn nur ablehnte. Die
+# Meldung schickte damit in die falsche Richtung; der wirkliche Grund stand allein im
+# Protokoll. Leer heisst: verbunden, oder noch nie versucht.
+BOT_FEHLER: dict = {}
+
 
 async def _run_single_bot(token_id: int, token: str):
     """Runs one bot instance. Auto-reconnects after unexpected disconnects (e.g. a
@@ -486,6 +502,7 @@ async def _run_single_bot(token_id: int, token: str):
             await instance.tree.sync()
             for guild in list(instance.guilds):
                 await _sync_guild(guild)
+            BOT_FEHLER.pop(token_id, None)
             print(f"Phobos v{VERSION} online als {instance.user} [ID {token_id}]")
 
         @instance.event
@@ -512,9 +529,19 @@ async def _run_single_bot(token_id: int, token: str):
                 await instance.start(token)
         except discord.errors.LoginFailure:
             print(f"[Token-ID {token_id}] ❌ Ungültiger Token – Bot wird übersprungen.")
+            BOT_FEHLER[token_id] = ("bot_err_token", "")
             login_failed = True
+        except discord.errors.PrivilegedIntentsRequired:
+            # Eigener Zweig, weil das als einziger Fall eine Einstellung AUSSERHALB dieser
+            # Installation ist: der Token stimmt, die Anwendung im Developer Portal hat die
+            # drei Haken nicht. Im allgemeinen Zweig darunter stand dafuer nur Discords
+            # englischer Fliesstext im Protokoll, und im Dashboard gar nichts.
+            print(f"[Token-ID {token_id}] ❌ Privilegierte Intents sind im Developer Portal "
+                  f"nicht aktiviert.")
+            BOT_FEHLER[token_id] = ("bot_err_intents", "")
         except Exception as e:
             print(f"[Token-ID {token_id}] ❌ Bot-Fehler: {e}")
+            BOT_FEHLER[token_id] = ("bot_err_other", str(e)[:300])
         finally:
             bot._bots.pop(token_id, None)
 
@@ -659,6 +686,69 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+        # Vary: Cookie sagt einem Zwischenspeicher, dass diese Antwort an einem Cookie
+        # haengt - zwei Anfragen mit verschiedenen Cookies sind also NICHT dieselbe
+        # Antwort. Ohne diese Zeile darf ein Proxy eine gespeicherte Seite fuer alle
+        # halten, und genau so landet die Ansicht einer Person beim naechsten Besucher.
+        # Das ist nicht dasselbe wie no-store: manche Caches ignorieren no-store, lesen
+        # aber Vary - deshalb beides.
+        vorhanden = [t.strip() for t in (response.headers.get("Vary") or "").split(",")
+                     if t.strip()]
+        if not any(t.lower() == "cookie" for t in vorhanden):
+            vorhanden.append("Cookie")
+        response.headers["Vary"] = ", ".join(vorhanden)
+        return response
+
+
+class SitzungsCookieMiddleware(BaseHTTPMiddleware):
+    """Haengt das Sitzungs-Cookie nur an die Antworten, bei denen sich wirklich etwas aendert.
+
+    Starlette haengt es an JEDE Antwort, solange die Sitzung nicht leer ist - an jede Seite,
+    jedes Bild, jede Hintergrundabfrage. Damit traegt jede einzelne Antwort einen vollwertigen
+    Anmeldeausweis bei sich. Wer eine davon aufbewahrt und einem anderen Besucher vorsetzt,
+    gibt die Anmeldung mit weiter, und der sitzt dann ohne Passwort im fremden Konto. Genau
+    das ist hier zweimal passiert: "der einladungs link war aufeinmal mit dem profil von mir
+    drin und er hatte kein pw", und ein zweites Mal direkt nach einer Registrierung ueber
+    einen Einladungslink. Die Kopfzeilen oben (no-store, private, Vary) sagen jedem
+    Zwischenspeicher, dass er das nicht tun darf - aber sagen heisst nicht verhindern.
+
+    Deshalb hier die andere Richtung: was nicht mitgeschickt wird, kann auch nicht
+    weitergegeben werden. Verglichen wird der Nutzteil des Cookies (vor dem ersten Punkt
+    steht die Sitzung selbst, danach Zeitstempel und Signatur). Ist er derselbe wie der, der
+    hereinkam, hat sich an der Sitzung nichts geaendert und die Zeile fliegt raus. Uebrig
+    bleiben die Antworten, bei denen es wirklich um das Cookie geht: die Anmeldung, das
+    Abmelden, ein Sprachwechsel. Eine normale Seite traegt gar keinen Ausweis mehr.
+
+    Nebenwirkung, bewusst in Kauf genommen: das Cookie wird nicht mehr bei jedem Aufruf
+    verlaengert, eine Sitzung endet also 14 Tage nach der Anmeldung statt 14 Tage nach dem
+    letzten Klick. Das kostet im schlimmsten Fall eine Anmeldung - die Alternative waere,
+    regelmaessig doch wieder einen Ausweis in eine beliebige Antwort zu legen.
+    """
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        try:
+            herein = (request.cookies.get("phobos_session") or "").split(".")[0]
+            if not herein:
+                return response
+            raus = response.headers.getlist("set-cookie")
+            if not raus:
+                return response
+            behalten, entfernt = [], False
+            for satz in raus:
+                if satz.startswith("phobos_session="):
+                    wert = satz.split("=", 1)[1].split(";", 1)[0]
+                    if wert.split(".")[0] == herein:
+                        entfernt = True
+                        continue
+                behalten.append(satz)
+            if entfernt:
+                del response.headers["set-cookie"]
+                for satz in behalten:
+                    response.headers.append("set-cookie", satz)
+        except Exception as e:
+            # An dieser Pruefung darf keine Antwort scheitern: im Zweifel geht das Cookie
+            # mit, so wie vorher auch.
+            print(f"[sitzung] Cookie-Pruefung fehlgeschlagen: {e}")
         return response
 
 
@@ -761,6 +851,117 @@ async def _session_alive(sid: str) -> bool:
     return True
 
 
+def _geraet_hash(request: Request) -> str:
+    """Erkennungsmerkmal des Browsers, dem ein Sitzungs-Handle ausgestellt wurde.
+
+    Nur die Browserkennung, nichts weiter. Accept-Language waere mehr Unterscheidungskraft,
+    schicken manche Browser aber bei Hintergrundabfragen anders als bei einer Seite - und ein
+    Merkmal, das sich im Normalbetrieb aendert, wirft Leute aus ihrer eigenen Sitzung. Das
+    waere der teurere Fehler.
+    """
+    import hashlib
+    return hashlib.sha256(
+        ("ua:" + (request.headers.get("user-agent") or "")).encode()).hexdigest()
+
+
+def _ort_zeit_jung(wert: str, sekunden: int = 900) -> bool:
+    """Ob dieser Zeitstempel so frisch ist, dass beide Seiten gleichzeitig unterwegs sind."""
+    try:
+        alter = datetime.datetime.utcnow() - datetime.datetime.fromisoformat(wert)
+        return 0 <= alter.total_seconds() <= sekunden
+    except Exception:
+        return False
+
+
+async def _sitzung_kappen(digest: str, uid, grund: str) -> None:
+    """Legt ein Sitzungs-Handle still - fuer beide Seiten - und sagt dem Konto, warum.
+
+    Die Zeile wird geloescht, nicht nur die eine Anfrage abgewiesen. Ist ein Ausweis einmal
+    bei zwei Browsern angekommen, ist nicht zu entscheiden, welcher der richtige ist; dann
+    muessen beide neu anmelden. Die Besitzerin merkt das sofort - und das ist beabsichtigt:
+    eine Sitzung, die zwei Leute benutzen, soll nicht leise weiterlaufen.
+    """
+    try:
+        await db_exec("DELETE FROM user_sessions WHERE sid=?", (digest,))
+    except Exception as e:
+        print(f"[sitzung] Stilllegen fehlgeschlagen: {e}")
+    print(f"[sitzung] Handle von Benutzer {uid} stillgelegt - {grund}")
+    try:
+        user = await db_one("SELECT * FROM users WHERE id=?", (uid,))
+        if user:
+            await _warn_mail(user, f"geteilt:{uid}",
+                             f"{_app_name}: Deine Anmeldung wurde beendet", [
+                f"Hallo {user.get('display_name') or user['username']},",
+                "",
+                "deine Anmeldung ist gerade von zwei verschiedenen Stellen benutzt worden "
+                f"({grund}). Das kann nicht beides du sein, also wurde sie beendet — du "
+                "musst dich einmal neu anmelden.",
+                "",
+                "Passiert das wiederholt, liegt es fast immer an einem Zwischenspeicher "
+                "(Proxy, CDN) vor dem Dashboard, der fertige Seiten weitergibt. Der muss "
+                "für diese Adresse abgeschaltet werden.",
+            ])
+    except Exception as e:
+        print(f"[sitzung] Meldung ueber ein stillgelegtes Handle fehlgeschlagen: {e}")
+
+
+async def _sitzung_geraet_ok(request: Request, sid: str, uid) -> bool:
+    """Darf dieses Sitzungs-Handle von DIESEM Browser an DIESEM Anschluss benutzt werden?
+
+    Zweite Lage hinter SitzungsCookieMiddleware. Dort geht das Cookie nicht mehr mit jeder
+    Antwort mit - ganz weg ist es aber nicht: die Antwort auf die Anmeldung selbst traegt es,
+    und die kann genauso in einem Zwischenspeicher landen. Ein Ausweis, der trotzdem bei
+    einem Fremden ankommt, soll dort nichts wert sein.
+
+    Zwei Merkmale, verschieden streng:
+
+    - **Browser** (hart): ein anderer Browser als der, dem das Handle ausgestellt wurde, ist
+      ein anderes Geraet. Eigene Sitzungen wechseln ihre Browserkennung nicht; nur ein
+      Browser-Update tut das, und das kostet eine Neuanmeldung.
+    - **Anschluss** (nur im Wechsel): ein Wechsel allein beweist nichts - Privatanschluesse
+      bekommen nachts eine neue Adresse, Handys wechseln zwischen WLAN und Funk. Verglichen
+      wird deshalb das Netz (/24 bzw. /64) und gekappt wird erst, wenn zwei Netze einander
+      innerhalb einer Viertelstunde abloesen: hin und zurueck heisst zwei Leute gleichzeitig,
+      eine Zwangstrennung geht nie zurueck.
+
+    Alte Sitzungen tragen noch kein Merkmal. Die bekommen eines, statt dass sie wegfliegen -
+    nach einem Update soll niemand vor dem Login stehen.
+    """
+    digest = _token_hash(sid)
+    zeile = await db_one(
+        "SELECT geraet, ort, ort_vor, ort_zeit FROM user_sessions WHERE sid=?", (digest,))
+    if not zeile:
+        # Entweder gibt es die Zeile nicht (darueber hat _session_alive schon entschieden)
+        # oder die Spalten fehlen noch. Beides ist kein Grund, jemanden auszusperren.
+        return True
+    geraet = _geraet_hash(request)
+    ort = _ort_hash(_login_client(request))
+    jetzt = datetime.datetime.utcnow().isoformat()
+    bekannt = zeile.get("geraet") or ""
+    if not bekannt:
+        try:
+            await db_exec("UPDATE user_sessions SET geraet=?, ort=?, ort_zeit=? WHERE sid=?",
+                          (geraet, ort, jetzt, digest))
+        except Exception as e:
+            print(f"[sitzung] Merkmal einer Altsitzung nicht nachgetragen: {e}")
+        return True
+    if bekannt != geraet:
+        await _sitzung_kappen(digest, uid, "ein anderer Browser")
+        return False
+    ort_alt = zeile.get("ort") or ""
+    if ort_alt and ort != ort_alt:
+        if (zeile.get("ort_vor") or "") == ort and _ort_zeit_jung(zeile.get("ort_zeit") or ""):
+            await _sitzung_kappen(digest, uid, "zwei Anschluesse im Wechsel")
+            return False
+        try:
+            await db_exec(
+                "UPDATE user_sessions SET ort_vor=?, ort=?, ort_zeit=? WHERE sid=?",
+                (ort_alt, ort, jetzt, digest))
+        except Exception as e:
+            print(f"[sitzung] Anschlusswechsel nicht vermerkt: {e}")
+    return True
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Die Kopfzeilen, die jede Antwort tragen sollte.
 
@@ -822,6 +1023,8 @@ class SessionValidityMiddleware(BaseHTTPMiddleware):
                 if sid:
                     if not await _session_alive(sid):
                         request.session.clear()
+                    elif not await _sitzung_geraet_ok(request, sid, uid):
+                        request.session.clear()
                 else:
                     try:
                         sid = secrets.token_urlsafe(24)
@@ -829,6 +1032,13 @@ class SessionValidityMiddleware(BaseHTTPMiddleware):
                         await db_exec(
                             "INSERT INTO user_sessions (sid, user_id, created_at, last_seen) "
                             "VALUES (?,?,?,?)", (_token_hash(sid), uid, now, now))
+                        # Das Merkmal gleich hier, nicht erst beim naechsten Aufruf: sonst
+                        # traegt es der ein, der als Naechster vorbeikommt - und das muss
+                        # nicht der sein, dem die Sitzung gehoert.
+                        await db_exec(
+                            "UPDATE user_sessions SET geraet=?, ort=?, ort_zeit=? WHERE sid=?",
+                            (_geraet_hash(request), _ort_hash(_login_client(request)), now,
+                             _token_hash(sid)))
                         request.session["sid"] = sid
                     except Exception as e:
                         print(f"[session] Nachrüsten einer Altsitzung fehlgeschlagen: {e}")
@@ -843,6 +1053,84 @@ class SessionValidityMiddleware(BaseHTTPMiddleware):
 web = FastAPI()
 
 
+# Wieviel Platz ein Update mindestens braucht. Ein git fetch legt die neuen Objekte erst
+# einmal zusaetzlich ab, bevor es aufraeumt - mit zu wenig Platz bricht es mittendrin ab
+# und laesst halb geschriebene Objekte liegen.
+MIN_PLATZ_UPDATE = 200 * 1024 * 1024
+
+
+def _platz_frei(pfad: str = "/repo") -> tuple:
+    """(frei, gesamt) in Bytes - oder (None, None), wenn es sich nicht ermitteln laesst.
+
+    Faellt auf das Datenverzeichnis zurueck: unter Android gibt es kein /repo.
+    """
+    for kandidat in (pfad, str(DATA_DIR), "/"):
+        try:
+            nutzung = shutil.disk_usage(kandidat)
+            return nutzung.free, nutzung.total
+        except Exception:
+            continue
+    return None, None
+
+
+def _groesse(zahl) -> str:
+    """Bytes als Zahl, die man vorlesen kann."""
+    if zahl is None:
+        return "?"
+    for einheit in ("B", "KB", "MB", "GB", "TB"):
+        if zahl < 1024 or einheit == "TB":
+            return f"{zahl:.0f} {einheit}" if einheit == "B" else f"{zahl:.1f} {einheit}"
+        zahl /= 1024.0
+
+
+def _ist_platzmangel(fehler) -> bool:
+    """Steckt hinter diesem Fehler eine volle Platte?
+
+    Drei Wege, auf denen das ankommt: der Betriebssystemfehler ENOSPC, SQLites eigener
+    Satz ("database or disk is full"), und der Text, den git auf stderr schreibt. Ohne
+    diese Erkennung steht am Ende ueberall nur "Internal Server Error" oder "exit 128" -
+    und niemand kommt darauf, dass schlicht die Platte voll ist.
+    """
+    import errno as _errno
+    if isinstance(fehler, OSError) and fehler.errno == _errno.ENOSPC:
+        return True
+    text = str(fehler).lower()
+    return ("no space left" in text
+            or "disk is full" in text
+            or "database or disk is full" in text
+            or "disk full" in text)
+
+
+# Was auf dem Bildschirm steht, wenn der Platz ausgegangen ist. Keine Vertroestung: der
+# Satz nennt die Ursache und das, was dagegen hilft - alles andere waere eine Anzeige,
+# die ein Problem beschreibt und nichts aendert.
+_PLATZ_VOLL_HTML = """<!DOCTYPE html>
+<html lang="de"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kein Speicherplatz</title>
+<style>
+  body {{ background:#0f1117; color:#e2e8f0; font-family:system-ui,sans-serif;
+         display:flex; align-items:center; justify-content:center;
+         min-height:100vh; margin:0; padding:1.5rem; }}
+  .k {{ max-width:34rem; background:#161925; border:1px solid #2a2f45;
+       border-radius:0.75rem; padding:1.5rem 1.75rem; }}
+  h1 {{ font-size:1.15rem; margin:0 0 0.75rem; }}
+  p {{ line-height:1.6; margin:0 0 0.75rem; color:#cbd5e1; font-size:0.95rem; }}
+  code {{ background:#0f1117; padding:0.15rem 0.4rem; border-radius:0.3rem;
+         font-size:0.85rem; }}
+  .z {{ color:#94a3b8; font-size:0.85rem; margin-top:1rem; }}
+</style></head><body><div class="k">
+<h1>💾 Der Speicherplatz reicht nicht</h1>
+<p>Die Festplatte des Servers ist voll. Der Bot konnte nicht speichern — deshalb
+diese Seite statt der eigentlichen.</p>
+<p>Frei: <strong>{frei}</strong> von {gesamt}</p>
+<p>Platz schaffen, dann geht es ohne weiteres Zutun weiter. Meist sind es die
+Container-Protokolle:</p>
+<p><code>docker system df</code> &nbsp; <code>journalctl --vacuum-size=200M</code></p>
+<p class="z">Solange kein Platz da ist, kann auch die Datenbank nichts schreiben.</p>
+</div></body></html>"""
+
+
 @web.exception_handler(Exception)
 async def _unhandled_exception_handler(request: Request, exc: Exception):
     # A per-request exception here doesn't crash the whole process, so PhobosService's
@@ -850,11 +1138,36 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
     # write the same kind of traceback file for these too, so a plain "Internal Server Error" in
     # the browser is diagnosable the same way a full process crash already is.
     try:
-        with open(DATA_DIR / "web_errors.log", "a", encoding="utf-8") as f:
+        _pfad = DATA_DIR / "web_errors.log"
+        # Deckel, bevor geschrieben wird. Diese Datei wuchs bisher unbegrenzt - und
+        # ausgerechnet dann am schnellsten, wenn es ohnehin eng wird: geht etwas
+        # grundsaetzlich schief (volle Platte, kaputte Datenbank), erzeugt jeder einzelne
+        # Seitenaufruf einen Fehler und jeder Fehler eine vollstaendige Rueckverfolgung.
+        # Sie schaukelt sich also genau in der Lage auf, in der sie helfen soll.
+        #
+        # Umbenennen statt loeschen: die letzte volle Runde bleibt als .1 erhalten, damit
+        # der erste Fehler - der interessanteste - nicht von den tausend Folgefehlern
+        # verdraengt wird.
+        try:
+            if _pfad.exists() and _pfad.stat().st_size > 5 * 1024 * 1024:
+                _pfad.replace(_pfad.with_suffix(".log.1"))
+        except Exception:
+            pass
+        with open(_pfad, "a", encoding="utf-8") as f:
             f.write(f"\n=== {datetime.datetime.now()}  {request.method} {request.url.path} ===\n")
             f.write(traceback.format_exc())
     except Exception:
         pass
+    # Eine volle Platte sieht an jeder Stelle anders aus - beim Speichern von
+    # Zugangsdaten, beim Schreiben einer Sitzung, beim Anlegen einer Datei - und kommt
+    # bisher ueberall als nacktes "Internal Server Error" an. Der haeufigste Grund fuer
+    # einen 500 auf einer selbst gehosteten Installation, und der am leichtesten zu
+    # behebende, sobald er dasteht.
+    if _ist_platzmangel(exc):
+        frei, gesamt = _platz_frei()
+        return HTMLResponse(
+            _PLATZ_VOLL_HTML.format(frei=_groesse(frei), gesamt=_groesse(gesamt)),
+            status_code=507)      # 507 Insufficient Storage
     return Response("Internal Server Error", status_code=500)
 
 
@@ -863,6 +1176,9 @@ web.add_middleware(TZMiddleware)
 web.add_middleware(SessionValidityMiddleware)
 web.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="phobos_session",
                    max_age=SESSION_MAX_AGE, https_only=COOKIE_SECURE, same_site="lax")
+# Muss AUSSERHALB von SessionMiddleware liegen, also hier danach stehen: nur von aussen ist
+# das Set-Cookie zu sehen, das die Sitzung gerade angehaengt hat.
+web.add_middleware(SitzungsCookieMiddleware)
 web.add_middleware(SecurityHeadersMiddleware)
 web.add_middleware(NoCacheMiddleware)
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -999,6 +1315,19 @@ def admin_redirect(request: Request) -> Optional[RedirectResponse]:
     return None
 
 
+def _bot_fehler_anzeige() -> dict:
+    """Ein Grund, aus dem gerade kein Bot verbunden ist - fuer die Leiste im Dashboard.
+
+    Mehrere Tokens koennen gleichzeitig scheitern; die Leiste hat Platz fuer eine Zeile,
+    also wird einer gezeigt. Leer heisst "kein Grund bekannt" - dann bleibt es bei der
+    allgemeinen Zeile, statt einen zu erfinden.
+    """
+    for tid, eintrag in BOT_FEHLER.items():
+        schluessel, detail = eintrag
+        return {"key": schluessel, "detail": detail, "token_id": tid}
+    return {}
+
+
 async def _token_configured() -> bool:
     if await db_rows("SELECT id FROM bot_tokens WHERE enabled=1 LIMIT 1"):
         return True
@@ -1097,6 +1426,24 @@ async def login_page(request: Request, error: str = "", success: str = ""):
     })
 
 
+async def _ziel_nach_anmeldung(user: dict) -> str:
+    """Wohin nach einer erfolgreichen Anmeldung.
+
+    Normalerweise auf die Startseite. Solange die Erst-Einrichtung laeuft (siehe
+    _setup_phase) stattdessen direkt dorthin - sonst landet dort niemand, weil man nicht
+    weiss, dass es die Seite gibt. Nach der Einrichtung nie wieder: niemand soll beim
+    Anmelden aus seiner Arbeit gerissen werden.
+    """
+    if (user or {}).get("role") != "admin":
+        return "/"
+    try:
+        if await _setup_phase():
+            return "/setup"
+    except Exception as e:
+        print(f"[setup] Ziel nach der Anmeldung nicht bestimmbar: {e}")
+    return "/"
+
+
 async def _complete_login(request: Request, user: dict) -> None:
     request.session["user_id"] = user["id"]
     request.session["username"] = user["username"]
@@ -1116,6 +1463,15 @@ async def _complete_login(request: Request, user: dict) -> None:
     request.session["sid"] = sid
     await db_exec("INSERT INTO user_sessions (sid, user_id, created_at, last_seen) "
                   "VALUES (?,?,?,?)", (_token_hash(sid), user["id"], now, now))
+    # Browser und Anschluss gleich mit festhalten, siehe _sitzung_geraet_ok. Getrennt und in
+    # einem eigenen try: an einer fehlenden Spalte - eine Installation, deren Migration noch
+    # nicht durch ist - darf keine Anmeldung scheitern.
+    try:
+        await db_exec("UPDATE user_sessions SET geraet=?, ort=?, ort_zeit=? WHERE sid=?",
+                      (_geraet_hash(request), _ort_hash(_login_client(request)), now,
+                       _token_hash(sid)))
+    except Exception as e:
+        print(f"[sitzung] Merkmal der neuen Sitzung nicht gespeichert: {e}")
 
     # Hier laeuft JEDE erfolgreiche Anmeldung durch, auch die mit zweitem Faktor - deshalb
     # sitzt die Meldung ueber eine unbekannte Adresse an dieser Stelle und nicht in
@@ -1408,7 +1764,7 @@ async def login_submit(request: Request, username: str = Form(...), password: st
         request.session["pending_2fa_user_id"] = user["id"]
         return RedirectResponse("/login/2fa", status_code=302)
     await _complete_login(request, user)
-    return RedirectResponse("/", status_code=302)
+    return RedirectResponse(await _ziel_nach_anmeldung(user), status_code=302)
 
 
 @web.get("/login/2fa", response_class=HTMLResponse)
@@ -1472,7 +1828,7 @@ async def login_2fa_submit(request: Request, code: str = Form(...)):
         await db_exec("UPDATE users SET totp_fail_count=0, totp_locked_until=NULL WHERE id=?", (uid,))
     request.session.pop("pending_2fa_user_id", None)
     await _complete_login(request, user)
-    return RedirectResponse("/", status_code=302)
+    return RedirectResponse(await _ziel_nach_anmeldung(user), status_code=302)
 
 
 @web.get("/logout")
@@ -1526,13 +1882,18 @@ def _safe_back(request: Request, default: str = "/") -> str:
 
 
 @web.post("/settings/language")
-async def set_language(request: Request, lang: str = Form("de")):
+async def set_language(request: Request, lang: str = Form("de"), next: str = Form("")):
     if lang not in ("de", "en"):
         lang = "de"
     request.session["lang"] = lang
     uid = request.session.get("user_id")
     if uid:
         await db_exec("UPDATE users SET language=? WHERE id=?", (lang, uid))
+    # Der Weg zurueck kommt sonst aus dem Referer - und den schickt nicht jeder Browser mit.
+    # Im Einrichtungsassistenten waere das Ergebnis: Sprache gewaehlt, Assistent weg,
+    # Dashboard da. Deshalb darf genau dieses eine Ziel ausdruecklich mitgegeben werden.
+    if next == "/setup":
+        return RedirectResponse("/setup", status_code=302)
     return RedirectResponse(_safe_back(request), status_code=302)
 
 
@@ -2079,8 +2440,8 @@ _BACKUP_TBL_INSERT = {
         "INSERT INTO rating_items (guild_id,label,url,recommended,created_at,image_url,image_data,image_filename) "
         "VALUES (:guild_id,:label,:url,:recommended,:created_at,:image_url,:image_data,:image_filename)",
     "role_rules":
-        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,actions,priority,enabled,dm_text,dm_enabled) "
-        "VALUES (:guild_id,:name,:match_type,:match_role_ids,:action,:action_guild_id,:action_role_ids,:action_role_meta,:actions,:priority,:enabled,:dm_text,:dm_enabled)",
+        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,actions,priority,enabled,dm_text,dm_enabled,revoke_on_loss) "
+        "VALUES (:guild_id,:name,:match_type,:match_role_ids,:action,:action_guild_id,:action_role_ids,:action_role_meta,:actions,:priority,:enabled,:dm_text,:dm_enabled,:revoke_on_loss)",
 }
 
 
@@ -2502,7 +2863,7 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...),
                     # dashboard (which refreshes it); losing the rule outright costs everything.
                     if tbl == "role_rules":
                         # Same trap for both columns a pre-existing backup cannot know about.
-                        row = {"action_role_meta": "", "actions": "", "dm_text": "", "dm_enabled": 0, **row}
+                        row = {"action_role_meta": "", "actions": "", "dm_text": "", "dm_enabled": 0, "revoke_on_loss": 0, **row}
                     # Ditto for the VRC-Link columns: a backup taken before the ownership check
                     # existed has neither key, and the named-parameter INSERT would drop the
                     # whole link rather than just the missing field.
@@ -2704,7 +3065,7 @@ async def server_backup_restore(request: Request, guild_id: int,
                         merged["ticket_message"] = row.get("description", "")
                     if tbl == "role_rules":
                         # Same fallback as the full-backup path for older backups.
-                        merged = {"action_role_meta": "", "actions": "", "dm_text": "", "dm_enabled": 0, **merged}
+                        merged = {"action_role_meta": "", "actions": "", "dm_text": "", "dm_enabled": 0, "revoke_on_loss": 0, **merged}
                         # Self-references have to be rehomed BEFORE guild_id is lost - see
                         # _rehome_role_rule(); `row` still carries the exported guild id.
                         #
@@ -2909,8 +3270,19 @@ async def _reset_mail_schicken(user) -> Optional[str]:
         "INSERT OR REPLACE INTO password_reset_tokens (token,user_id,expires_at) VALUES (?,?,?)",
         (_token_hash(token), user["id"], expires),
     )
-    base = await get_config("base_url") or ""
-    reset_url = f"{base.rstrip('/')}/reset-password?token={token}"
+    # link_base_url() statt get_config("base_url"): das ausdrueckliche Feld auf der
+    # E-Mail-Seite ist auf fast jeder Installation leer, und dann stand in der Mail
+    # "/reset-password?token=..." - ein Pfad ohne Adresse, den niemand anklicken kann.
+    # Dieselbe Funktion baut laengst die Links fuer Zettel, VRC-Link und Kooperationen
+    # und faellt dafuer auf die Adresse zurueck, unter der das Dashboard zuletzt offen
+    # war; nur diese Stelle hier war beim Umbau uebrig geblieben.
+    base = await link_base_url()
+    if not base:
+        # Ohne Adresse waere die Mail wertlos. Dann lieber hier abbrechen und es sagen,
+        # als jemanden auf Post warten zu lassen, mit der er nichts anfangen kann.
+        return ("Keine Adresse für den Link bekannt: bitte unter Einstellungen → E-Mail "
+                "die Basis-Adresse eintragen")
+    reset_url = f"{base}/reset-password?token={token}"
     try:
         await _send_reset_email(user["email"], reset_url)
     except Exception as e:
@@ -3084,6 +3456,63 @@ async def dashboard(request: Request, error: str = ""):
 
 # ── Settings ──────────────────────────────────────────────────────────────────
 
+@web.get("/settings/logs", response_class=HTMLResponse)
+async def logs_page(request: Request, error: str = "", success: str = ""):
+    """Das Protokoll des Bots, sein Platzbedarf und der Rest auf der Platte.
+
+    Gebaut nach dem 02.11.2026: die Platte des Servers war voll, der Bot konnte nichts
+    mehr speichern, und auf der Oberflaeche stand nur "Internal Server Error". Gesucht
+    wurde daraufhin im Code - der Zustand, um den es ging, war von aussen nirgends zu
+    sehen. Hier steht er, zusammen mit dem Knopf, der etwas daran aendert.
+    """
+    if r := auth_redirect(request): return r
+    # Admin-only wie die uebrigen Einstellungen: im Protokoll stehen Namen, Kennungen
+    # und Fehlertexte aus allen Servern dieser Installation.
+    if r := admin_redirect(request): return r
+    return templates.TemplateResponse("logs.html", {
+        **session(request), "request": request,
+        "guilds": await _guild_list(request),
+        "active": "logs",
+        "stand": _logbuch.stand(),
+        "zeilen": _logbuch.zeilen(300),
+        "error": error, "success": success,
+    })
+
+
+@web.post("/settings/logs/clear")
+async def logs_clear(request: Request):
+    """Das Protokoll wegwerfen - und zwar wirklich, nicht nur die Anzeige."""
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    vorher = _logbuch.groesse()
+    if _logbuch.leeren():
+        # Die erste Zeile im frischen Protokoll sagt, warum es leer ist. Sonst steht
+        # spaeter jemand davor und haelt es fuer einen Ausfall.
+        print(f"[Protokoll] von {request.session.get('username') or '?'} geleert "
+              f"({_logbuch.menschlich(vorher)} freigegeben)")
+        return RedirectResponse(
+            "/settings/logs?success=" + urllib.parse.quote_plus(
+                f"Protokoll geleert — {_logbuch.menschlich(vorher)} freigegeben"),
+            status_code=303)
+    return RedirectResponse(
+        "/settings/logs?error=" + urllib.parse.quote_plus(
+            "Das Protokoll liess sich nicht leeren — fehlende Rechte auf dem "
+            "Datenverzeichnis?"),
+        status_code=303)
+
+
+@web.get("/settings/logs/download")
+async def logs_download(request: Request):
+    """Das Protokoll als Datei - zum Weitergeben, ohne es abzutippen."""
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    pfad = _logbuch.datei()
+    if not pfad or not pfad.exists():
+        return RedirectResponse("/settings/logs?error=Kein+Protokoll+vorhanden",
+                                status_code=303)
+    return FileResponse(str(pfad), filename="phobos.log", media_type="text/plain")
+
+
 @web.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, saved: bool = False, error: str = "", success: str = ""):
     if r := auth_redirect(request): return r
@@ -3142,11 +3571,37 @@ async def settings_app_name_save(request: Request, app_name: str = Form(...)):
     return RedirectResponse("/settings?success=App-Name+gespeichert", status_code=302)
 
 
+def _kontosperren(user: dict) -> list:
+    """Welche Sperren fuer dieses Konto GERADE gelten - leere Liste, wenn keine.
+
+    Es gibt zwei, und beide haengen am Konto: der zweite Faktor beim Anmelden (fuenf
+    Fehlversuche, 15 Minuten) und der zweite Faktor beim Zuruecksetzen des Passworts (drei
+    Fehlversuche, eine Stunde). Wer nur die eine kennt, sieht "nicht gesperrt" bei jemandem,
+    der trotzdem nicht hereinkommt - deshalb stehen hier beide.
+
+    Die abgelaufene Sperre faellt von selbst heraus: beide Hilfsfunktionen geben 0 zurueck,
+    sobald der Zeitpunkt vorbei ist. In der Datenbank steht der alte Wert dann zwar noch,
+    aber er gilt nicht mehr, und die Liste soll zeigen, was gilt.
+    """
+    sperren = []
+    if minuten := _reset_sperre_minuten(user):
+        sperren.append({"art": "reset", "minuten": minuten,
+                        "bis": user.get("reset_locked_until") or ""})
+    if minuten := _totp_lock_remaining_minutes(user):
+        sperren.append({"art": "login", "minuten": minuten,
+                        "bis": user.get("totp_locked_until") or ""})
+    return sperren
+
+
 @web.get("/users", response_class=HTMLResponse)
 async def users_page(request: Request, error: str = "", success: str = ""):
     if r := admin_redirect(request): return r
     all_users = await db_rows("SELECT id, username, role, email, created_at, active, "
-                              "alle_server FROM users ORDER BY created_at")
+                              "alle_server, reset_locked_until, reset_fail_count, "
+                              "totp_locked_until, totp_fail_count FROM users "
+                              "ORDER BY created_at")
+    for u in all_users:
+        u["sperren"] = _kontosperren(u)
     token_set = await _token_configured()
     admin_count = sum(1 for u in all_users if u["role"] == "admin")
     all_guilds = [{"id": str(g.id), "name": g.name} for g in bot.guilds]
@@ -3178,6 +3633,342 @@ async def users_create(request: Request, username: str = Form(...), password: st
     except Exception:
         return RedirectResponse(f"{dest}?error=Benutzername+bereits+vergeben", status_code=302)
     return RedirectResponse(f"{dest}?success=Benutzer+erstellt", status_code=302)
+
+
+# ── Einrichtung ───────────────────────────────────────────────────────────────
+# Gebaut, nachdem eine uebergebene Installation reihum an jeder Huerde haengen blieb: Token
+# war drin, der Bot blieb offline, und nichts sagte warum. Das Formular fuer das Backup sitzt
+# auf der Serverseite - die es ohne Verbindung gar nicht gibt. Dazu zwei Dinge, an die bei
+# einer frischen Installation niemand von selbst denkt: 'admin/admin' bleibt gueltig, und ohne
+# Basis-Adresse verschickt der Bot Links ohne Domain.
+#
+# Bewusst eine Pruefliste und kein Ablauf, der durchschleust: Schritt 3 haengt oft an einer
+# anderen Person (nur wem die Discord-Anwendung gehoert, kann die Intents freigeben). Man muss
+# die Seite verlassen, spaeter wiederkommen und sehen koennen, was inzwischen gruen wurde.
+# Jeder Schritt prueft den echten Zustand; was sich nicht messen laesst (Bot-Design, Backup),
+# bekommt einen Haken, den man selbst setzt.
+_STD_ADMIN_CACHE: dict = {"at": 0.0, "wert": None}
+
+
+async def _standard_admin_aktiv() -> bool:
+    """Gilt beim Konto 'admin' noch das mitgelieferte Passwort 'admin'?
+
+    Eine frische Installation legt es an, damit ueberhaupt jemand hineinkommt - und bis jetzt
+    erinnerte nichts daran, es wieder loszuwerden. Die Pruefung kostet einen bcrypt-Durchlauf,
+    deshalb eine Minute gemerkt: an ihr haengt die Leiste, die auf jeder Seite nachfragt.
+    """
+    jetzt = time.monotonic()
+    if _STD_ADMIN_CACHE["wert"] is not None and jetzt - _STD_ADMIN_CACHE["at"] < 60:
+        return bool(_STD_ADMIN_CACHE["wert"])
+    try:
+        row = await db_one("SELECT password_hash FROM users WHERE username='admin'")
+        wert = bool(row and verify_pw("admin", row["password_hash"]))
+    except Exception as e:
+        print(f"[setup] Standard-Admin nicht pruefbar: {e}")
+        wert = False
+    _STD_ADMIN_CACHE.update({"at": jetzt, "wert": wert})
+    return wert
+
+
+async def _token_angenommen(token: str) -> bool:
+    """Nimmt Discord diesen Token an? Eine einzige Abfrage, bevor er gespeichert wird.
+
+    Im Assistenten muss der Fehler dort stehen, wo man ihn beheben kann - im Eingabefeld.
+    Ohne diese Frage waere der Weg: speichern, weiterblaettern, und drei Schritte spaeter
+    steht "versucht zu verbinden", waehrend in Wahrheit ein Zeichen fehlt.
+
+    Nur eine klare Ablehnung (401) zaehlt. Ist Discord gar nicht erreichbar, wird der Token
+    angenommen - sonst koennte man bei einer Stoerung ueberhaupt keinen mehr eintragen, und
+    der Verbindungsschritt sagt ohnehin, was danach passiert.
+    """
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=8)) as s:
+            async with s.get("https://discord.com/api/v10/users/@me",
+                             headers={"Authorization": f"Bot {token}"}) as r:
+                if r.status == 401:
+                    return False
+                return True
+    except Exception as e:
+        print(f"[setup] Token nicht pruefbar ({e}) - wird trotzdem gespeichert")
+        return True
+
+
+async def _setup_phase() -> bool:
+    """Laeuft die Erst-Einrichtung noch?
+
+    Die Einrichtung soll genau einmal auftauchen: beim ersten Start, solange das
+    mitgelieferte Konto 'admin' noch gilt. Eine Installation, die laengst laeuft, darf nie
+    wieder eine Einrichtungsleiste bekommen - verschwindet dort einmal ein Token, ist das ein
+    Vorfall und keine Einrichtung, und eine Leiste, die zum Einrichten auffordert, schickt
+    genau in die falsche Richtung.
+
+    Deshalb wird beim allerersten Nachsehen einmal entschieden und in die Konfiguration
+    geschrieben; danach wird nur noch von dort gelesen. Auf einer bestehenden Installation
+    faellt die Entscheidung also auf "nein" - dort gilt 'admin'/'admin' schon lange nicht
+    mehr. Erst wenn jeder Schritt erledigt ist, wird die Phase geschlossen (in _setup_offen).
+    """
+    wert = await get_config("setup_phase")
+    if wert not in ("0", "1"):
+        wert = "1" if await _standard_admin_aktiv() else "0"
+        await set_config("setup_phase", wert)
+        print(f"[setup] Erst-Einrichtung: {'laeuft' if wert == '1' else 'nicht noetig'}")
+    return wert == "1"
+
+
+async def _setup_haken(key: str) -> bool:
+    """Ein Schritt, den nur der Mensch davor als erledigt erklaeren kann."""
+    return (await get_config(f"setup_ok_{key}") or "") == "1"
+
+
+async def _setup_schritte(request: Request) -> list:
+    """Die Einrichtung als Liste - jeder Schritt mit seinem echten Zustand.
+
+    Reihenfolge ist Absicht und nicht beliebig: ohne eigenes Konto meldet man sich noch als
+    'admin' an, ohne Token verbindet nichts, ohne Verbindung gibt es weder Design noch
+    Einladung, und ohne Server kein Backup.
+    """
+    tr = get_tr(request.session.get("lang", "de"))
+    token_da = await _token_configured()
+    verbunden = bot.is_ready()
+    fehler = _bot_fehler_anzeige()
+    guilds = bot.guilds if verbunden else []
+    basis = await link_base_url()
+
+    grund_verbindung = ""
+    if not verbunden:
+        if not token_da:
+            grund_verbindung = tr["setup_v_kein_token"]
+        elif fehler.get("key"):
+            grund_verbindung = tr.get(fehler["key"], "")
+            if fehler.get("detail"):
+                grund_verbindung += " " + fehler["detail"]
+        else:
+            grund_verbindung = tr["setup_v_wartet"]
+
+    erste_gilde = str(guilds[0].id) if guilds else ""
+    # Schritt 1 hat zwei Gesichter. Der Normalfall: man sitzt selbst im mitgelieferten
+    # 'admin' - dann wird dieselbe Zeile auf den eigenen Namen umgeschrieben. Der seltene
+    # Fall: es gibt schon ein eigenes Konto, 'admin' steht aber noch daneben - dann ist
+    # nichts umzubenennen, die alte Zeile muss weg.
+    std_admin = await _standard_admin_aktiv()
+    admin_zeile = await db_one("SELECT id FROM users WHERE username='admin'") if std_admin else None
+    selbst = bool(admin_zeile) and admin_zeile["id"] == request.session.get("user_id")
+    schritte = [
+        {"key": "profil", "titel": tr["setup_s_profil"],
+         "text": tr["setup_t_profil_fremd"] if (std_admin and not selbst)
+                 else tr["setup_t_profil"],
+         "fertig": not std_admin, "pflicht": True,
+         "formular": "profil" if selbst else None, "entfernen": std_admin and not selbst},
+        # Der Token wird im Fenster selbst eingetragen, nicht auf der Token-Seite: ein
+        # Einrichtungsschritt, der einen woanders hinschickt, ist keiner.
+        {"key": "token", "titel": tr["setup_s_token"], "text": tr["setup_t_token"],
+         "fertig": token_da, "pflicht": True,
+         "formular": None if token_da else "token"},
+        {"key": "verbindung", "titel": tr["setup_s_verbindung"],
+         "text": tr["setup_t_verbindung"], "fertig": verbunden, "pflicht": True,
+         "grund": grund_verbindung, "ziel": "/settings/tokens", "knopf": tr["setup_k_hilfe"]},
+        {"key": "design", "titel": tr["setup_s_design"], "text": tr["setup_t_design"],
+         "fertig": await _setup_haken("design"), "pflicht": False, "braucht": verbunden,
+         "ziel": "/bot/design", "knopf": tr["setup_k_design"], "haken": True},
+        {"key": "server", "titel": tr["setup_s_server"], "text": tr["setup_t_server"],
+         "fertig": bool(guilds), "pflicht": True, "braucht": verbunden,
+         "ziel": "/servers", "knopf": tr["setup_k_server"]},
+        {"key": "backup", "titel": tr["setup_s_backup"], "text": tr["setup_t_backup"],
+         "fertig": await _setup_haken("backup"), "pflicht": False, "braucht": bool(guilds),
+         "ziel": f"/servers/{erste_gilde}?tab=config" if erste_gilde else "/servers",
+         "knopf": tr["setup_k_backup"], "haken": True, "frage": True},
+        {"key": "adresse", "titel": tr["setup_s_adresse"], "text": tr["setup_t_adresse"],
+         "fertig": bool(basis), "pflicht": True,
+         "ziel": "/settings", "knopf": tr["setup_k_adresse"]},
+        {"key": "smtp", "titel": tr["setup_s_smtp"], "text": tr["setup_t_smtp"],
+         "fertig": await smtp_bereit() or await _setup_haken("smtp"), "pflicht": False,
+         "ziel": "/settings/smtp", "knopf": tr["setup_k_smtp"], "haken": True},
+        {"key": "sprache", "titel": tr["setup_s_sprache"], "text": tr["setup_t_sprache"],
+         "fertig": await _setup_haken("sprache"), "pflicht": False,
+         "ziel": "/profile", "knopf": tr["setup_k_sprache"], "haken": True},
+    ]
+    # "braucht" heisst: der Schritt davor fehlt noch. Dann steht der Schritt zwar da - man
+    # soll sehen, was kommt -, aber ohne Knopf, der ins Leere fuehrt.
+    for s in schritte:
+        s["gesperrt"] = not s["fertig"] and not s.get("braucht", True)
+    return schritte
+
+
+async def _setup_offen(request: Request) -> int:
+    """Wieviele Pflichtschritte noch offen sind. Fuer die Leiste im Kopf.
+
+    Ausserhalb der Erst-Einrichtung immer 0 - und sobald wirklich jeder Schritt erledigt ist
+    (auch die selbst gesetzten Haken), wird die Phase geschlossen. Die Pflichtschritte allein
+    genuegen dafuer nicht: sonst verschwaende der Eintrag in der Leiste, bevor man bei Design,
+    Backup, E-Mail und Sprache ueberhaupt vorbeigekommen ist.
+    """
+    try:
+        if not await _setup_phase():
+            return 0
+        schritte = await _setup_schritte(request)
+        if all(s["fertig"] for s in schritte):
+            await set_config("setup_phase", "0")
+            print("[setup] Erst-Einrichtung abgeschlossen")
+            return 0
+        return sum(1 for s in schritte if s["pflicht"] and not s["fertig"])
+    except Exception as e:
+        print(f"[setup] Zustand nicht ermittelbar: {e}")
+        return 0
+
+
+@web.get("/setup", response_class=HTMLResponse)
+async def setup_page(request: Request, error: str = "", success: str = "",
+                     schritt: int = 0):
+    if r := admin_redirect(request): return r
+    schritte = await _setup_schritte(request)
+    # 'offen' entscheidet auch darueber, ob das Fenster ein Kreuz bekommt. Ausserhalb der
+    # Erst-Einrichtung muss es eines haben: wem spaeter einmal der Token abhanden kommt, der
+    # ruft hier vielleicht nach, und ein Fenster ohne Ausweg waere dann eine Falle - die
+    # laufende Installation ist ja laengst eingerichtet.
+    phase = await _setup_phase()
+    offen = sum(1 for s in schritte if s["pflicht"] and not s["fertig"]) if phase else 0
+    # Wo der Assistent aufschlaegt. Seite 0 ist das Willkommen, 1..n die Schritte, n+1 das
+    # Ende. Hat noch niemand irgendetwas erledigt, faengt er vorne an; kommt man nach einem
+    # gespeicherten Schritt zurueck, steht er beim naechsten offenen - sonst muesste man sich
+    # jedes Mal wieder durchklicken.
+    # Das Willkommen kommt, solange Schritt 1 offen ist - das ist das verlaessliche Zeichen
+    # fuer "zum ersten Mal hier". An "noch gar nichts erledigt" darf es nicht haengen: die
+    # Basis-Adresse erkennt sich oft von selbst, und dann waere das Willkommen nie zu sehen.
+    erste_offen = next((i for i, s in enumerate(schritte, 1) if not s["fertig"]), len(schritte) + 1)
+    start = 0 if not schritte[0]["fertig"] else erste_offen
+    # Kommt eine Meldung von einem bestimmten Schritt zurueck (abgelehnter Token), gehoert
+    # sie an genau diesen - sonst stuende der Fehler ueber einer anderen Frage.
+    # n+1 ist die Abschlussseite - ein uebersprungener letzter Schritt landet dort.
+    if 1 <= schritt <= len(schritte) + 1:
+        start = schritt
+    return templates.TemplateResponse("setup.html", {
+        **session(request), "request": request, "active": "setup",
+        "schritte": schritte, "error": error, "success": success, "offen": offen,
+        "start": start,
+    })
+
+
+@web.get("/api/setup-offen")
+async def api_setup_offen(request: Request):
+    """Fuer die Leiste im Kopf. Nur fuer Admins - ein Moderator kann keinen dieser Schritte
+    ausfuehren, und die Zahl waere fuer ihn nur ein Schild ohne Tuer."""
+    if request.session.get("role") != "admin":
+        return JSONResponse({"offen": 0, "phase": False})
+    offen = await _setup_offen(request)
+    # phase sagt der Seitenleiste, ob der Eintrag "Einrichtung" ueberhaupt gezeigt wird.
+    # Auch das laeuft ueber diese Abfrage und nicht ueber den Vorlagenkontext - sonst muesste
+    # es jede Route mitgeben, und die eine, die es vergisst, laesst den Eintrag verschwinden.
+    return JSONResponse({"offen": offen, "phase": await _setup_phase()})
+
+
+@web.post("/setup/profil")
+async def setup_profil(request: Request, username: str = Form(...), password: str = Form(...),
+                       pw_confirm: str = Form(...), email_addr: str = Form("")):
+    """Macht aus dem mitgelieferten 'admin' das eigene Konto - dieselbe Zeile, neuer Name.
+
+    Zuerst stand hier: zweites Konto anlegen, 'admin' abschalten, neu anmelden. Umbenennen ist
+    besser. An der Zeile haengen Freigaben, Token-Zuordnungen und die laufende Sitzung; bleibt
+    die Nummer dieselbe, bleibt all das gueltig, es liegt keine zweite Zeile herum, die
+    niemand mehr braucht, und man muss sich nicht abmelden, um bei Schritt 2 weiterzumachen.
+    Der Rang ist schon 'admin' - das Konto bleibt also das Admin-Konto, nur eben unter dem
+    eigenen Namen.
+
+    Fremde Sitzungen auf diesem Konto enden trotzdem, die eigene nicht: wer 'admin'/'admin'
+    kannte, sass vielleicht schon drin, und ein neues Passwort allein wirft ihn nicht raus.
+    """
+    if r := admin_redirect(request): return r
+    name = username.strip()
+    if len(name) < 3:
+        return RedirectResponse("/setup?schritt=1&error=Benutzername+mindestens+3+Zeichen",
+                                status_code=302)
+    if name.lower() == "admin":
+        return RedirectResponse("/setup?schritt=1&error=Bitte+einen+anderen+Namen+als+admin",
+                                status_code=302)
+    if len(password) < 6:
+        return RedirectResponse("/setup?schritt=1&error=Passwort+mindestens+6+Zeichen", status_code=302)
+    if password != pw_confirm:
+        return RedirectResponse("/setup?schritt=1&error=Passwörter+stimmen+nicht+überein",
+                                status_code=302)
+
+    zeile = await db_one("SELECT id FROM users WHERE username='admin'")
+    if not zeile:
+        return RedirectResponse("/setup?schritt=1&error=Das+Konto+admin+gibt+es+nicht+mehr",
+                                status_code=302)
+    if zeile["id"] != request.session.get("user_id"):
+        # Man sitzt in einem anderen Konto: dann ist hier nichts umzubenennen, sondern das
+        # alte 'admin' zu entfernen - dafuer gibt es /setup/admin-entfernen.
+        return RedirectResponse("/setup?schritt=1&error=Dafür+musst+du+als+admin+angemeldet+sein",
+                                status_code=302)
+    belegt = await db_one("SELECT id FROM users WHERE lower(username)=? AND id!=?",
+                          (name.lower(), zeile["id"]))
+    if belegt:
+        return RedirectResponse("/setup?schritt=1&error=Benutzername+bereits+vergeben", status_code=302)
+    try:
+        if email_addr.strip():
+            await db_exec("UPDATE users SET username=?, password_hash=?, email=? WHERE id=?",
+                          (name, hash_pw(password), email_addr.strip(), zeile["id"]))
+        else:
+            await db_exec("UPDATE users SET username=?, password_hash=? WHERE id=?",
+                          (name, hash_pw(password), zeile["id"]))
+    except Exception as e:
+        print(f"[setup] Konto liess sich nicht umbenennen: {e}")
+        return RedirectResponse("/setup?schritt=1&error=Benutzername+bereits+vergeben", status_code=302)
+
+    await _sitzungen_beenden(zeile["id"], ausser_sid=request.session.get("sid", ""))
+    request.session["username"] = name
+    _STD_ADMIN_CACHE.update({"at": 0.0, "wert": None})
+    print(f"[setup] Konto 'admin' heisst jetzt '{name}'")
+    return RedirectResponse("/setup?success=Konto+übernommen", status_code=302)
+
+
+@web.post("/setup/admin-entfernen")
+async def setup_admin_entfernen(request: Request):
+    """Entfernt das mitgelieferte 'admin', wenn man schon ein eigenes Konto hat.
+
+    Der seltene Weg: jemand hat sich sein Konto von Hand angelegt und 'admin' steht noch
+    daneben - mit dem Passwort, das jeder kennt. Umbenennen geht dann nicht mehr, also weg
+    damit. Was an Rechten an der Zeile hing, geht mit ihr (dieselbe Begruendung wie bei
+    /users/delete): liegengebliebene Zuordnungen bekaemen beim Einspielen einer Sicherung
+    wieder einen Besitzer.
+    """
+    if r := admin_redirect(request): return r
+    zeile = await db_one("SELECT id FROM users WHERE username='admin'")
+    if not zeile:
+        return RedirectResponse("/setup", status_code=302)
+    if zeile["id"] == request.session.get("user_id"):
+        return RedirectResponse("/setup?schritt=1&error=Das+ist+dein+eigenes+Konto", status_code=302)
+    try:
+        await _sitzungen_beenden(zeile["id"])
+        await db_exec("DELETE FROM user_guild_permissions WHERE user_id=?", (zeile["id"],))
+        await db_exec("DELETE FROM bot_token_users WHERE user_id=?", (zeile["id"],))
+        await db_exec("DELETE FROM users WHERE id=?", (zeile["id"],))
+        print("[setup] mitgeliefertes Konto 'admin' entfernt")
+    except Exception as e:
+        print(f"[setup] 'admin' liess sich nicht entfernen: {e}")
+        return RedirectResponse("/setup?schritt=1&error=Konto+konnte+nicht+entfernt+werden",
+                                status_code=302)
+    _STD_ADMIN_CACHE.update({"at": 0.0, "wert": None})
+    return RedirectResponse("/setup?schritt=1&success=Konto+admin+entfernt", status_code=302)
+
+
+@web.post("/setup/haken/{key}")
+async def setup_haken_setzen(request: Request, key: str, zurueck: str = Form(""),
+                             seite: str = Form("")):
+    """Haken an einem Schritt, der sich nicht messen laesst - oder der uebersprungen wird.
+
+    'seite' ist die Nummer des Schrittes, von dem der Knopf kam. Ohne sie faengt der
+    Assistent danach beim ersten offenen Schritt an - und wer bei Schritt 8 "Ueberspringen"
+    drueckt, landete dann bei Schritt 3. Uebersprungen heisst: weiter, nicht zurueck.
+    """
+    if r := admin_redirect(request): return r
+    if key not in ("design", "backup", "smtp", "sprache"):
+        return RedirectResponse("/setup", status_code=302)
+    await set_config(f"setup_ok_{key}", "0" if zurueck else "1")
+    nr = int(seite) if seite.isdigit() else 0
+    if not nr:
+        return RedirectResponse("/setup", status_code=302)
+    # Haken weg: beim Schritt bleiben. Haken gesetzt: der naechste ist dran.
+    return RedirectResponse(f"/setup?schritt={nr if zurueck else nr + 1}", status_code=302)
 
 
 @web.post("/users/role/{user_id}")
@@ -3292,6 +4083,32 @@ async def users_set_password(request: Request, user_id: int, new_pw: str = Form(
     if weg:
         hinweis += f",+{weg}+Anmeldung(en)+beendet"
     return RedirectResponse(f"/users?success={hinweis}", status_code=302)
+
+
+@web.post("/users/{user_id}/unlock")
+async def users_unlock(request: Request, user_id: int):
+    """Beide Sperren eines Kontos sofort aufheben.
+
+    Der Weg ueber das Warten gibt es weiterhin; das hier ist der Weg fuer den Fall, dass
+    jemand sich vertippt hat und nicht eine Stunde lang ausgesperrt bleiben soll. Die
+    Fehlerzaehler gehen mit auf null - sonst steht derjenige nach einem einzigen weiteren
+    Vertipper sofort wieder vor derselben Sperre.
+    """
+    if r := admin_redirect(request): return r
+    user = await db_one("SELECT * FROM users WHERE id=?", (user_id,))
+    if not user:
+        return RedirectResponse("/users?error=Benutzer+nicht+gefunden", status_code=302)
+    if not _kontosperren(user):
+        return RedirectResponse("/users?error=Für+dieses+Konto+gilt+keine+Sperre",
+                                status_code=302)
+    await db_exec(
+        "UPDATE users SET reset_fail_count=0, reset_locked_until=NULL, "
+        "totp_fail_count=0, totp_locked_until=NULL WHERE id=?", (user_id,))
+    # Im Protokoll, weil hier jemand eine Schutzmassnahme von Hand abraeumt: wer das war
+    # und fuer wen, gehoert festgehalten.
+    print(f"[users] Sperre für '{user['username']}' (id {user_id}) aufgehoben von "
+          f"'{request.session.get('username')}'")
+    return RedirectResponse("/users?success=Sperre+aufgehoben", status_code=302)
 
 
 @web.post("/users/{user_id}/toggle-active")
@@ -3770,6 +4587,33 @@ async def api_version(request: Request, force: int = 0):
         "kanal": await update_kanal(),
         "fehler": _UPDATE_CACHE.get("fehler") or "",
     })
+
+
+@web.get("/api/wer-ist-da")
+async def api_wer_ist_da(request: Request, seite: str = ""):
+    """Wer ist in DIESEM Augenblick angemeldet - fuer den Abgleich im Browser.
+
+    Jede Seite traegt im Kopf, fuer wen sie erzeugt wurde. Kommt sie aus einem
+    Zwischenspeicher, gehoert sie jemand anderem als dem, der sie gerade ansieht - und
+    genau das faellt hier auf: die Seite nennt einen Namen, diese Antwort einen anderen.
+
+    Die Antwort selbst darf nie aus einem Cache kommen, sonst prueft sich der Fehler mit
+    sich selbst. NoCacheMiddleware setzt no-store und Vary auf jede Antwort, und der
+    Browser haengt zusaetzlich einen Einmalwert an die Adresse.
+
+    Es wird nur die Nummer zurueckgegeben, nicht der Name: die Antwort soll nichts
+    verraten, was auf der Seite nicht ohnehin steht.
+    """
+    uid = request.session.get("user_id")
+    ist = "" if uid is None else str(uid)
+    if seite and seite != ist:
+        # Ins Protokoll, denn das ist der Beweis: ohne ihn bleibt es eine Vermutung
+        # ueber den Proxy, und niemand kann sagen, ob es noch passiert.
+        print(f"[cache] Eine Seite für Benutzer {seite} wurde an "
+              f"{'Benutzer ' + ist if ist else 'einen Abgemeldeten'} ausgeliefert "
+              f"(Adresse {_login_client(request)}). Ein Zwischenspeicher vor dem "
+              f"Dashboard gibt fremde Seiten weiter.")
+    return JSONResponse({"u": ist})
 
 
 @web.get("/ping")
@@ -4328,6 +5172,11 @@ async def _do_git_update(ziel: str = ""):
     _update_status = {"logs": [], "done": False, "error": ""}
     _reap_stray_zombies()  # clean up anything left over from earlier update runs first
 
+    # Was die Befehle ausgegeben haben. Gesammelt, weil der Grund eines Fehlschlags in
+    # der Ausgabe steht und nicht im Rueckgabewert: git meldet "No space left on device"
+    # und beendet sich mit 128 - eine Zahl, aus der niemand etwas ablesen kann.
+    ausgabe: list = []
+
     async def _run(cmd: list, cwd: str | None = None) -> int:
         proc = await asyncio.create_subprocess_exec(
             *cmd, cwd=cwd,
@@ -4337,13 +5186,41 @@ async def _do_git_update(ziel: str = ""):
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace").rstrip()
             if line:
+                ausgabe.append(line)
                 _ulog(line, "info")
         rc = await proc.wait()
         _reap_stray_zombies()
         return rc
 
+    def _pruefe_platz(rc: int, was: str) -> None:
+        """Nach einem fehlgeschlagenen Befehl: lag es am Platz? Dann das auch sagen.
+
+        Vorher stand hier nur "(exit 128)". Die Ursache stand zwar in der Ausgabe
+        darueber, aber in git-Sprache und zwischen anderen Zeilen.
+        """
+        if rc == 0:
+            return
+        frei, gesamt = _platz_frei()
+        if any(_ist_platzmangel(z) for z in ausgabe[-15:]):
+            raise RuntimeError(
+                f"Der Speicherplatz reicht nicht — frei sind {_groesse(frei)} von "
+                f"{_groesse(gesamt)}. Erst Platz schaffen, dann das Update erneut "
+                f"starten.")
+        raise RuntimeError(f"{was} fehlgeschlagen (exit {rc})")
+
     try:
         _ulog("$ phobos-bot update — " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "cmd")
+
+        # Vor dem ersten Befehl nachsehen. Ein git fetch, dem mittendrin der Platz
+        # ausgeht, laesst halb geschriebene Objekte im Repo liegen - der naechste Versuch
+        # scheitert dann an etwas anderem als am eigentlichen Grund.
+        _frei, _gesamt = _platz_frei()
+        if _frei is not None and _frei < MIN_PLATZ_UPDATE:
+            raise RuntimeError(
+                f"Der Speicherplatz reicht nicht — frei sind {_groesse(_frei)} von "
+                f"{_groesse(_gesamt)}, gebraucht werden mindestens "
+                f"{_groesse(MIN_PLATZ_UPDATE)}. Erst Platz schaffen, dann das Update "
+                f"erneut starten.")
 
         # Ziel bestimmen: entweder der Zweig des eingestellten Kanals, oder ein Tag, auf
         # den jemand ausdruecklich zurueckspringen will.
@@ -4355,14 +5232,12 @@ async def _do_git_update(ziel: str = ""):
             marke, holen = f"origin/{zweig}", ["git", "-C", "/repo", "fetch", "origin", zweig]
             _ulog(f"$ git -C /repo fetch origin {zweig}", "cmd")
         rc = await _run(holen)
-        if rc != 0:
-            raise RuntimeError(f"git fetch fehlgeschlagen (exit {rc})")
+        _pruefe_platz(rc, "git fetch")
 
         # Hard-reset to the chosen target (handles any local drift)
         _ulog(f"$ git -C /repo reset --hard {marke}", "cmd")
         rc = await _run(["git", "-C", "/repo", "reset", "--hard", marke])
-        if rc != 0:
-            raise RuntimeError(f"git reset fehlgeschlagen (exit {rc})")
+        _pruefe_platz(rc, "git reset")
         _ulog("  ✓  Code aktualisiert", "ok")
 
         # Einmaliger Uebergang: der laufende Container hat den Docker-Socket noch
@@ -5873,50 +6748,6 @@ async def vrc_account_debug(request: Request):
     return JSONResponse({"bericht": "\n".join(z)})
 
 
-@web.post("/settings/vrchat/server")
-async def vrc_account_server(request: Request):
-    """Welche Discord-Server diesen Bot benutzen - von der Kontokarte aus gesetzt.
-
-    Dieselbe Zuordnung, die auch im VRC-Link-Reiter jedes Servers steht, nur von der
-    anderen Seite betrachtet: dort waehlt ein Server seinen Bot, hier waehlt ein Bot seine
-    Server. Geschrieben wird in beiden Faellen derselbe Schluessel, sonst haette man zwei
-    Wahrheiten ueber dieselbe Sache.
-
-    Ein Server kann immer nur EINEN Bot haben. Deshalb wird hier nicht nur gesetzt, sondern
-    auch weggenommen: wer vorher auf diesem Konto stand und jetzt nicht mehr angehakt ist,
-    verliert seine Zuweisung und faellt damit auf das Standardkonto zurueck.
-    """
-    if r := admin_redirect(request): return r
-    form = await request.form()
-    konto = (form.get("konto") or "").strip()[:64]
-    if not konto:
-        return RedirectResponse("/settings/vrchat?error=Kein+Konto+angegeben", status_code=302)
-    if not await db_one("SELECT guild_id FROM vrc_accounts WHERE guild_id=?", (konto,)):
-        return RedirectResponse("/settings/vrchat?error=Dieses+Konto+gibt+es+nicht",
-                                status_code=302)
-
-    # Nur Server, die dieser Anmeldung ueberhaupt offenstehen - sonst liesse sich ueber ein
-    # gefaelschtes Formular die Zuordnung fremder Server umstellen.
-    # Beim Standardkonto gibt es nichts zu setzen: wer keine eigene Wahl hat, landet dort
-    # von selbst. Sein Formular traegt gesperrte Kaestchen und keinen Knopf - abgeschickt
-    # wuerde es trotzdem alle Zuweisungen loeschen, weil gesperrte Felder nicht mitkommen.
-    if konto == await vrc_standard_konto():
-        return RedirectResponse("/settings/vrchat", status_code=303)
-
-    erlaubt = {str(g["id"]) for g in await _guild_list(request)}
-    gewaehlt = {str(x) for x in form.getlist("server")} & erlaubt
-
-    for gid in erlaubt:
-        vorher = (await get_guild_config(int(gid), "vrc_account") or "").strip()
-        if gid in gewaehlt:
-            if vorher != konto:
-                await set_guild_config(int(gid), "vrc_account", konto)
-        elif vorher == konto:
-            # Abgehakt: Zuweisung weg, der Server faellt auf das Standardkonto zurueck.
-            await set_guild_config(int(gid), "vrc_account", "")
-    return RedirectResponse("/settings/vrchat?success=Zuordnung+gespeichert", status_code=303)
-
-
 @web.post("/settings/vrchat/meldung")
 async def vrc_meldung_weg(request: Request):
     """Clear an account's stored error message.
@@ -6041,6 +6872,21 @@ async def vrc_decide(request: Request, guild_id: int, link_id: int):
             "UPDATE vrc_links SET status='approved', decided_at=?, decided_by=? WHERE id=?",
             (now, who, link_id))
         await _vrc_apply(guild_id, row["user_id"], row["vrchat_name"])
+        # Freigeben heisst: ab jetzt gehoert die Person dazu. Bis hierher bekam sie dabei
+        # nur ihre Discord-Rolle - die VRChat-Gruppe wurde nicht einmal angesehen, und
+        # die Einladung musste auf den naechsten Reihendurchgang warten, der alle zehn
+        # Minuten sechs Konten durchgeht. Gemeldet als "wenn der user in dc frei gegeben
+        # wirt zb eine rolle bekommt dann soll der user auch ... die einladung bekommen".
+        #
+        # _vrc_sync_group() schreibt den Gruppenstand und laedt danach ein, wenn der
+        # Server das eingeschaltet hat und die Person noch nicht drin ist. Fehler bleiben
+        # dort: die Freigabe selbst hat geklappt, und sie an einer VRChat-Stoerung
+        # scheitern zu lassen waere das schlechtere Verhalten.
+        try:
+            frisch = await db_one("SELECT * FROM vrc_links WHERE id=?", (link_id,))
+            await _vrc_sync_group(guild_id, frisch or row)
+        except Exception as e:
+            print(f"[vrc_link] Gruppenstand nach Freigabe von link {link_id}: {e}")
         msg = "Freigegeben"
     elif action == "revoke":
         # Back to pending rather than deleted: the member keeps their entry and the moderator
@@ -6059,6 +6905,202 @@ async def vrc_decide(request: Request, guild_id: int, link_id: int):
     else:
         return RedirectResponse(f"/servers/{guild_id}?tab=vrclink&error=Unbekannte+Aktion", status_code=302)
     return RedirectResponse(f"/servers/{guild_id}?tab=vrclink&success={msg}", status_code=303)
+
+
+@web.post("/servers/{guild_id}/vrc/invite/{link_id}")
+async def vrc_force_invite(request: Request, guild_id: int, link_id: int):
+    """Die Gruppeneinladung von Hand ausloesen - und sagen, was VRChat geantwortet hat.
+
+    Gebaut, weil "es passiert nichts" von aussen immer gleich aussieht, egal woran es
+    liegt: der Schalter ist aus, die Person gilt schon als eingeladen, sie ist noch nicht
+    an der Reihe (der Reihendurchgang sieht alle zehn Minuten sechs Konten an), oder dem
+    Bot-Konto fehlt in der VRChat-Gruppe schlicht das Recht dazu. Vier Ursachen, ein Bild.
+
+    Dieser Knopf geht an allem davon vorbei: er fragt nicht nach dem Schalter, nicht nach
+    dem Vermerk und nicht nach der Bremse, sondern schickt die Einladung und gibt die
+    Antwort von VRChat unveraendert weiter. Damit ist nach einem Klick klar, welcher der
+    vier Faelle vorliegt.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    ziel = f"/servers/{guild_id}?tab=vrclink"
+    link = await db_one("SELECT * FROM vrc_links WHERE id=? AND guild_id=?",
+                        (link_id, str(guild_id)))
+    if not link:
+        return RedirectResponse(f"{ziel}&error=Nicht+gefunden", status_code=302)
+    if not link["vrc_user_id"]:
+        return RedirectResponse(
+            f"{ziel}&error=" + urllib.parse.quote_plus(
+                "Für diese Verknüpfung ist kein VRChat-Konto hinterlegt."), status_code=302)
+    group_id = (await get_guild_config(guild_id, "vrc_group_id") or "").strip()
+    if not group_id:
+        return RedirectResponse(
+            f"{ziel}&error=" + urllib.parse.quote_plus(
+                "Für diesen Server ist keine VRChat-Gruppe eingestellt."), status_code=302)
+    if link["vrc_group_member"]:
+        return RedirectResponse(
+            f"{ziel}&success=" + urllib.parse.quote_plus(
+                f"{link['vrchat_name']} ist bereits in der Gruppe — keine Einladung nötig."),
+            status_code=303)
+
+    from cogs.vrc_link import send_group_invite
+    zustand, detail = await send_group_invite(group_id, link["vrc_user_id"], guild_id)
+    print(f"[vrc_link] Einladung von Hand an {link['vrchat_name']}: {zustand}"
+          + (f" ({detail})" if detail else ""))
+    if zustand in ("sent", "already"):
+        await _einladung_vermerken(guild_id, link_id)
+        wort = ("Einladung an {name} gesendet." if zustand == "sent"
+                else "{name} war bereits eingeladen oder ist Mitglied.")
+        return RedirectResponse(
+            f"{ziel}&success=" + urllib.parse.quote_plus(
+                wort.replace("{name}", link["vrchat_name"])), status_code=303)
+    # Der Grund kommt unveraendert durch. "Es hat nicht geklappt" waere genau die Antwort,
+    # die diesen Knopf ueberfluessig machen wuerde - fehlende Gruppenrechte und eine
+    # Bremse von VRChat verlangen voellig verschiedene Reaktionen.
+    return RedirectResponse(
+        f"{ziel}&error=" + urllib.parse.quote_plus(
+            f"Einladung an {link['vrchat_name']} fehlgeschlagen: {detail or zustand}"),
+        status_code=303)
+
+
+# Wie lange ein Sammel-Einladen hoechstens arbeitet, bevor es mit Zwischenstand
+# zurueckkommt. Eine Webanfrage, die zwei Minuten haengt, sieht fuer jeden Browser wie ein
+# Ausfall aus - lieber in mehreren Klicks, jeder mit einer Zahl am Ende.
+async def _einladung_vermerken(guild_id: int, link_id) -> None:
+    """Festhalten, dass eine Einladung wirklich herausging - und die Bremse loesen.
+
+    Stand dreimal fast gleich da (Einzelknopf, Sammelknopf, automatischer Weg). Zusammen
+    gezogen, weil die beiden Haelften zusammengehoeren: wer vermerkt ist, braucht keine
+    Bremse mehr, und wer nicht vermerkt ist, darf nicht gebremst bleiben.
+    """
+    from cogs.vrc_link import _einladung_versucht
+    try:
+        _einladung_versucht.pop((int(guild_id), int(link_id)), None)
+    except (TypeError, ValueError):
+        pass
+    try:
+        await db_exec("UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
+                      (datetime.datetime.utcnow().isoformat(), link_id))
+    except Exception as e:
+        print(f"[vrc_link] Einladungsvermerk fuer {link_id} nicht gespeichert: {e}")
+
+
+# Welche Server gerade einen Sammellauf haben. Ein zweiter Klick waehrenddessen wuerde
+# dieselben Leute ein zweites Mal anschreiben - und zwei Laeufe nebeneinander sind genau
+# das Anfragemuster, auf das VRChats Bremse ausgelegt ist. Der Knopf schaltet sich zwar
+# im Browser ab, aber das schuetzt nur den einen Browser.
+_sammel_laeuft: set = set()
+
+EINLADUNG_ZEITBUDGET = 20.0
+# Pause zwischen zwei Einladungen. VRChat bremst, wer zu schnell schreibt, und ein
+# Sammellauf ist genau das Muster, auf das diese Bremse ausgelegt ist.
+EINLADUNG_ABSTAND = 0.8
+
+
+@web.post("/servers/{guild_id}/vrc/invite-all")
+async def vrc_invite_all(request: Request, guild_id: int):
+    """Alle einladen, die noch nicht in der Gruppe sind - auch die, die als eingeladen gelten.
+
+    Gebraucht, weil bis v1.19.3 jeder Fehlversuch als erledigt vermerkt wurde: fehlte dem
+    Bot-Konto das Recht zum Einladen, ist seitdem jeder abgehakt, ohne je eine bekommen
+    zu haben. Der Vermerk wird hier deshalb bewusst uebergangen - "alle sollen das nochmal
+    bekommen" ist der ganze Zweck.
+
+    Drei Vorkehrungen, damit daraus kein Schaden wird:
+    - Abstand zwischen den Anfragen, weil VRChat bremst, wer zu schnell schreibt.
+    - Ein Zeitbudget: was nicht mehr hineinpasst, bleibt fuer den naechsten Klick liegen.
+      Die Antwort sagt, wie viele noch offen sind.
+    - Abbruch nach drei gleichen Fehlern. Scheitert es an fehlenden Gruppenrechten,
+      scheitert es bei jedem - hundertmal dieselbe Ablehnung zu kassieren bringt niemanden
+      weiter und faellt bei VRChat auf.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    ziel = f"/servers/{guild_id}?tab=vrclink"
+    group_id = (await get_guild_config(guild_id, "vrc_group_id") or "").strip()
+    if not group_id:
+        return RedirectResponse(
+            f"{ziel}&error=" + urllib.parse.quote_plus(
+                "Für diesen Server ist keine VRChat-Gruppe eingestellt."), status_code=302)
+
+    if guild_id in _sammel_laeuft:
+        return RedirectResponse(
+            f"{ziel}&error=" + urllib.parse.quote_plus(
+                "Es läuft gerade schon ein Sammel-Einladen für diesen Server."),
+            status_code=303)
+
+    offen = await db_rows(
+        "SELECT * FROM vrc_links WHERE guild_id=? AND status=? "
+        "AND COALESCE(vrc_user_id,'')<>'' AND COALESCE(vrc_group_member,0)=0 "
+        "ORDER BY COALESCE(vrc_group_invited,''), id",
+        (str(guild_id), VRC_STATE_APPROVED))
+    if not offen:
+        return RedirectResponse(
+            f"{ziel}&success=" + urllib.parse.quote_plus(
+                "Niemand wartet auf eine Einladung — alle Verknüpften sind in der Gruppe."),
+            status_code=303)
+
+    from cogs.vrc_link import send_group_invite
+    begonnen = time.monotonic()
+    gesendet = schon = fehler = 0
+    letzter_grund = ""
+    gleiche_fehler = 0
+    erledigt = 0
+    _sammel_laeuft.add(guild_id)
+    try:
+        for link in offen:
+            if time.monotonic() - begonnen > EINLADUNG_ZEITBUDGET:
+                break
+            if erledigt:
+                await asyncio.sleep(EINLADUNG_ABSTAND)
+            zustand, detail = await send_group_invite(group_id, link["vrc_user_id"], guild_id)
+            erledigt += 1
+            if zustand in ("sent", "already"):
+                if zustand == "sent":
+                    gesendet += 1
+                else:
+                    schon += 1
+                # Eine geglueckte Einladung macht die Serie kaputt: der Abbruch unten soll
+                # greifen, wenn es DURCHGEHEND scheitert, nicht wenn sich drei Fehlschlaege
+                # ueber den ganzen Lauf verteilen und dazwischen alles klappt.
+                gleiche_fehler = 0
+                letzter_grund = ""
+                await _einladung_vermerken(guild_id, link["id"])
+                continue
+            fehler += 1
+            gleiche_fehler = gleiche_fehler + 1 if detail == letzter_grund else 1
+            letzter_grund = detail
+            if gleiche_fehler >= 3:
+                # Dreimal hintereinander dasselbe heisst: es liegt nicht an dieser Person.
+                break
+    finally:
+        _sammel_laeuft.discard(guild_id)
+    rest = len(offen) - erledigt
+    print(f"[vrc_link] Sammel-Einladung in {guild_id}: {gesendet} gesendet, "
+          f"{schon} bereits, {fehler} fehlgeschlagen, {rest} offen")
+
+    teile = [f"{gesendet} eingeladen"]
+    if schon:
+        teile.append(f"{schon} waren schon eingeladen")
+    if fehler:
+        teile.append(f"{fehler} fehlgeschlagen")
+    if rest > 0:
+        teile.append(f"{rest} noch offen — noch einmal klicken")
+    text = " · ".join(teile)
+    if fehler and gesendet == 0 and schon == 0:
+        # Nichts ging durch: der Grund ist die eigentliche Nachricht, nicht die Zahl.
+        # "already" zaehlt dabei als Erfolg - VRChat sagt damit, dass die Person bereits
+        # eingeladen ist, und das ist kein Fehlschlag, sondern das gewuenschte Ergebnis.
+        return RedirectResponse(
+            f"{ziel}&error=" + urllib.parse.quote_plus(
+                f"Keine Einladung ging durch. VRChat sagt: {letzter_grund or 'kein Grund genannt'}"),
+            status_code=303)
+    if fehler:
+        text += f" ({letzter_grund})" if letzter_grund else ""
+    return RedirectResponse(f"{ziel}&success=" + urllib.parse.quote_plus(text),
+                            status_code=303)
 
 
 @web.post("/servers/{guild_id}/vrc/refresh")
@@ -7285,6 +8327,24 @@ async def _vrc_sync_group(guild_id: int, link) -> None:
         )
     except Exception as e:
         print(f"[vrc_link] could not store group membership for link {link['id']}: {e}")
+        return
+    if is_member:
+        return
+    # Nicht in der Gruppe - und genau jetzt steht die Person davor und wartet. Bis hierher
+    # ging die Einladung erst im naechsten Reihendurchgang heraus, und der sieht alle zehn
+    # Minuten sechs Konten an; bei vielen Verknuepften dauert das Stunden. Wer gerade
+    # verknuepft hat und nichts bekommt, haelt die Funktion fuer kaputt - so gemeldet.
+    #
+    # einladen_wenn_gewuenscht() entscheidet selbst, ob ueberhaupt eingeladen wird
+    # (Schalter, Gruppe hinterlegt, noch nicht eingeladen) und vermerkt es nur bei Erfolg.
+    try:
+        from cogs.vrc_link import einladen_wenn_gewuenscht
+        aktuell = await db_one("SELECT * FROM vrc_links WHERE id=?", (link["id"],))
+        await einladen_wenn_gewuenscht(guild_id, aktuell or link)
+    except Exception as e:
+        # Eine misslungene Einladung darf das Verknuepfen nicht scheitern lassen - die
+        # Verbindung steht, und der Reihendurchgang versucht es ohnehin wieder.
+        print(f"[vrc_link] Sofort-Einladung fuer link {link['id']} fehlgeschlagen: {e}")
 
 
 @web.post("/vrc/invite", response_class=HTMLResponse)
@@ -7333,11 +8393,10 @@ async def vrc_public_invite(request: Request, lang: str = Form(""), t: str = For
         # rate-limiting - need different responses from whoever reads it.
         return await _vrc_page(request, row, lang,
                                error=tr["vrcp_invite_failed"] + " " + detail)
-    try:
-        await db_exec("UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
-                      (datetime.datetime.utcnow().isoformat(), link["id"]))
-    except Exception as e:
-        print(f"[vrc_link] could not note the group invite for link {link['id']}: {e}")
+    # Ueber denselben Helfer wie die beiden Knoepfe im Dashboard: der loest auch die
+    # Bremse. Ohne das blieb sie nach einer Einladung, die das Mitglied selbst angefordert
+    # hat, bis zu zehn Minuten stehen und hielt den automatischen Weg zurueck.
+    await _einladung_vermerken(int(link["guild_id"]), link["id"])
     if state == "already":
         # VRChat meldet "bereits eingeladen" und "ist schon Mitglied" beide als dasselbe
         # "already" - welches von beiden, sagt nur ein Blick in die Mitgliederliste. Ohne den
@@ -8981,8 +10040,17 @@ async def tokens_add(request: Request):
     form = await request.form()
     label = (form.get("label") or "Bot").strip()
     token = (form.get("token") or "").strip()
+    aus_setup = (form.get("next") or "") == "/setup"
     if not token:
-        return RedirectResponse("/settings/tokens?error=Token+darf+nicht+leer+sein", status_code=302)
+        ziel = "/setup?schritt=2" if aus_setup else "/settings/tokens"
+        trenn = "&" if "?" in ziel else "?"
+        return RedirectResponse(f"{ziel}{trenn}error=Token+darf+nicht+leer+sein",
+                                status_code=302)
+    if aus_setup and not await _token_angenommen(token):
+        # Im Assistenten gehoert der Fehler ans Eingabefeld, nicht drei Schritte weiter.
+        return RedirectResponse(
+            "/setup?schritt=2&error=Discord+hat+den+Token+abgelehnt+–+bitte+prüfen",
+            status_code=302)
     uid = request.session.get("user_id")
     is_admin = request.session.get("role") == "admin"
     token_id = await db_insert(
@@ -9004,6 +10072,12 @@ async def tokens_add(request: Request):
             (token_id, uid),
         )
     asyncio.create_task(_start_bot_by_id(token_id))
+    # Aus dem Einrichtungsassistenten heraus geht es dorthin zurueck - sonst steht man
+    # nach dem Speichern auf der Token-Seite und der Assistent ist weg. Nur dieses eine
+    # Ziel ist erlaubt, damit das Feld keine offene Umleitung wird.
+    if (form.get("next") or "") == "/setup":
+        return RedirectResponse("/setup?success=Token+hinzugefügt+und+Bot+wird+gestartet.",
+                                status_code=302)
     return RedirectResponse(
         "/settings/tokens?success=Token+hinzugefügt+und+Bot+wird+gestartet.",
         status_code=302,
@@ -9086,6 +10160,7 @@ async def servers_list(request: Request, success: str = ""):
     return templates.TemplateResponse("servers_list.html", {
         **session(request), "request": request,
         "guilds": guilds, "token_set": token_set,
+        "bot_fehler": _bot_fehler_anzeige(),
         "invite_url": invite_url, "bot_online": bot.is_ready(),
         "active": "servers", "success": success,
     })
@@ -9608,6 +10683,11 @@ async def server_config(
                 p["channel_name"] = None
         p["description_blocks"] = _parse_ticket_blocks(p.get("description")) or [""]
         p["ticket_message_blocks"] = _parse_ticket_blocks(p.get("ticket_message")) or [""]
+        # Die Auswahleintraege dieses Panels. Ab zwei wird aus dem Knopf eine Liste - die
+        # Seite zeigt das an, damit niemand raetselt, warum die Nachricht anders aussieht.
+        p["optionen"] = await db_rows(
+            "SELECT * FROM ticket_panel_options WHERE panel_id=? ORDER BY sortierung, id",
+            (p["id"],)) or []
 
     embed_posts = await db_rows(
         "SELECT * FROM embed_posts WHERE guild_id=? ORDER BY created_at DESC", (guild_id,)
@@ -10163,6 +11243,7 @@ _TAB_CHECKBOX_KEYS = {
     # proof it already had - see the read in vrc_public_name().
     "vrclink": ["vrc_enabled", "vrc_nickname_enabled", "vrc_auto_approve", "vrc_dm_on_join",
                 "vrc_require_ownership", "vrc_group_invite", "vrc_auto_invite",
+                "vrc_group_kick_on_leave", "vrc_panel_text_on",
                 "vrc_instance_cleanup", "vrc_instance_live_count", "vrc_instance_detail"],
     # auto_kick_enabled deliberately NOT here - it needs the previous saved value to detect an
     # off→on transition (see the dedicated handling in server_config_save below), the generic
@@ -10738,6 +11819,10 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     support_role_id = form.get("support_role_id", "")
     category_id = form.get("category_id", "")
     archive_category_id = form.get("archive_category_id", "")
+    # Gespraechsverlauf beim Schliessen mitschreiben. Standard aus - siehe die Migration.
+    transcript = 1 if form.get("transcript") else 0
+    # Eigener Kanal fuer die Mitschriften; leer heisst weiterhin der normale Log-Kanal.
+    transcript_channel_id = (form.get("transcript_channel_id") or "").strip()
     # Each is a LIST of blocks now, one <textarea> per block in the form - "+" adds a genuinely
     # separate Discord embed, not just another line inside the same one ("es ist bewusst zwei
     # einbettungen ... wenn ich bei den text + mache das es auch eine neuen einbettung ist").
@@ -10757,6 +11842,13 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Kategorie", status_code=302)
     if archive_category_id and archive_category_id not in {str(c.id) for c in guild.categories}:
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Archiv-Kategorie", status_code=302)
+    # Ein Kanal von einem anderen Server waere beim Schliessen nicht aufloesbar - die
+    # Mitschrift fiele dann still aus, und niemand wuesste warum.
+    if transcript_channel_id and transcript_channel_id not in {
+            str(c.id) for c in guild.text_channels}:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=Ungültiger+Mitschrift-Kanal",
+            status_code=302)
     if len(name.strip()) > 100:
         # Same reasoning as tickets_panel_create - ends up in the embed title.
         return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Name+zu+lang+(max.+100+Zeichen)", status_code=302)
@@ -10803,9 +11895,11 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     new_ticket_message = _djson.dumps(ticket_message_blocks)
     await db_exec(
         "UPDATE ticket_panels SET name=?, button_label=?, close_button_label=?, description=?, ticket_message=?, emoji=?, "
-        "support_role_id=?, category_id=?, archive_category_id=? WHERE id=? AND guild_id=?",
+        "support_role_id=?, category_id=?, archive_category_id=?, transcript=?, "
+        "transcript_channel_id=? WHERE id=? AND guild_id=?",
         (new_name, new_label, new_close_label, new_description, new_ticket_message, new_emoji,
-         support_role_id, category_id, archive_category_id, panel_id, guild_id),
+         support_role_id, category_id, archive_category_id, transcript,
+         transcript_channel_id, panel_id, guild_id),
     )
     # A published panel's button/embed lives on an already-sent Discord message - saving name/
     # button_label/emoji/description here only touched the DB row until now, so the dashboard
@@ -10819,12 +11913,226 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
                 if ch:
                     msg = await ch.fetch_message(int(panel_before["message_id"]))
                     embeds = _build_panel_embeds(new_name, new_emoji, new_description)
-                    view = _TicketView(panel_id, new_label, new_emoji)
+                    view = _TicketView(panel_id, new_label, new_emoji,
+                                       await _panel_optionen(panel_id),
+                                       await _tt(guild_id, "select_placeholder"))
                     await msg.edit(embeds=embeds, view=view)
                     b.add_view(view)
             except Exception:
                 pass
     return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Panel+gespeichert", status_code=302)
+
+
+async def _panel_nachricht_auffrischen(guild_id: int, panel_id: int) -> None:
+    """Die bereits abgeschickte Panel-Nachricht an den aktuellen Stand anpassen.
+
+    Ein veroeffentlichtes Panel haengt an einer Discord-Nachricht, die irgendwann einmal
+    gesendet wurde. Wer einen Eintrag hinzufuegt oder loescht, aendert damit zunaechst nur
+    die Datenbank - im Kanal stuende weiter die alte Auswahl, und ein geloeschter Eintrag
+    liesse sich dort weiter anklicken. Deshalb nach jeder Aenderung an den Eintraegen.
+
+    Jeder Fehler bleibt hier: die Nachricht kann geloescht, der Kanal weg oder die
+    Berechtigung entzogen sein. Nichts davon ist ein Grund, das Speichern scheitern zu
+    lassen - die Eintraege sind gesichert, nur die Anzeige hinkt dann hinterher.
+    """
+    panel = await db_one("SELECT * FROM ticket_panels WHERE id=? AND guild_id=?",
+                         (panel_id, guild_id))
+    if not panel or panel.get("status") != "published":
+        return
+    if not (panel.get("channel_id") and panel.get("message_id")):
+        return
+    b = bot._bot_for_guild(guild_id)
+    if not b:
+        return
+    try:
+        ch = b.get_channel(int(panel["channel_id"]))
+        if not ch:
+            return
+        msg = await ch.fetch_message(int(panel["message_id"]))
+        view = _TicketView(
+            panel_id,
+            panel.get("button_label") or await _tt(guild_id, "open_btn"),
+            panel.get("emoji") or "🎫",
+            await _panel_optionen(panel_id),
+            await _tt(guild_id, "select_placeholder"))
+        await msg.edit(view=view)
+        b.add_view(view)
+    except Exception as e:
+        print(f"[Tickets] Panel-Nachricht {panel_id} nicht aufgefrischt: {e}")
+
+
+@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/options/create")
+async def tickets_option_create(request: Request, guild_id: int, panel_id: int):
+    """Einen Auswahleintrag anlegen."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    # Das Panel muss zu DIESEM Server gehoeren - sonst liesse sich ueber eine erratene
+    # Panel-Nummer ein Eintrag an einem fremden Panel anlegen.
+    panel = await db_one("SELECT id FROM ticket_panels WHERE id=? AND guild_id=?",
+                         (panel_id, guild_id))
+    if not panel:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Panel+nicht+gefunden",
+                                status_code=302)
+    # Discord zeigt hoechstens 25 Eintraege in einer Auswahlliste. Was darueber hinausgeht,
+    # waere unsichtbar - besser gleich sagen, als es still zu verschlucken.
+    vorhanden = await db_rows(
+        "SELECT id FROM ticket_panel_options WHERE panel_id=?", (panel_id,))
+    if len(vorhanden or []) >= 25:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=" + urllib.parse.quote_plus(
+                "Mehr als 25 Einträge zeigt Discord in einer Auswahlliste nicht an."),
+            status_code=302)
+    form = await request.form()
+    # "neu_label", weil das Anlegen inzwischen im selben Formular steckt wie die
+    # bestehenden Eintraege - "label" allein gehoert dort einem von ihnen. Der alte
+    # Name bleibt als Rueckfall, damit ein offener Browser-Tab mit der alten Seite
+    # weiterhin funktioniert.
+    label = " ".join((form.get("neu_label") or form.get("label") or "").split())[:100]
+    if not label:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=Beschriftung+fehlt", status_code=302)
+    # Ans Ende, damit ein neuer Eintrag die bestehende Reihenfolge nicht durcheinanderbringt.
+    letzte = await db_one(
+        "SELECT MAX(sortierung) AS m FROM ticket_panel_options WHERE panel_id=?", (panel_id,))
+    await db_exec(
+        "INSERT INTO ticket_panel_options (panel_id, label, sortierung) VALUES (?,?,?)",
+        (panel_id, label, ((letzte["m"] if letzte and letzte["m"] is not None else 0) + 1)))
+    await _panel_nachricht_auffrischen(guild_id, panel_id)
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Eintrag+angelegt",
+                            status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/options/save")
+async def tickets_options_save(request: Request, guild_id: int, panel_id: int):
+    """Alle Auswahleintraege eines Panels auf einmal speichern.
+
+    Vorher hatte jeder Eintrag seinen eigenen Knopf. Wer vier Kategorien einrichtete,
+    musste viermal speichern und landete jedes Mal wieder oben in der Gesamtuebersicht -
+    gemeldet aus der Community ("der wirft einen immer wieder in die gesamt übersicht
+    wenn man ein multi ticket post einrichten will").
+
+    Die Felder heissen label_<id>, emoji_<id> und so weiter. Welche Eintraege ueberhaupt
+    dabei sind, sagen die mitgeschickten option_id-Werte - nicht die Feldnamen, die
+    durchzugehen hiesse, dem Formular zu glauben, welche Zeilen es gibt.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    panel = await db_one("SELECT id FROM ticket_panels WHERE id=? AND guild_id=?",
+                         (panel_id, guild_id))
+    if not panel:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Panel+nicht+gefunden",
+                                status_code=302)
+    form = await request.form()
+
+    # Nur Eintraege, die wirklich zu diesem Panel gehoeren. Eine erratene Nummer im
+    # Formular darf keinen fremden Eintrag umschreiben.
+    echte = {str(r["id"]) for r in (await db_rows(
+        "SELECT id FROM ticket_panel_options WHERE panel_id=?", (panel_id,)) or [])}
+    gewuenscht = [x for x in form.getlist("option_id") if str(x) in echte]
+
+    rollen = {str(ro.id) for ro in guild.roles}
+    kategorien = {str(c.id) for c in guild.categories}
+    gespeichert = 0
+    for oid in gewuenscht:
+        label = " ".join((form.get(f"label_{oid}") or "").split())[:100]
+        if not label:
+            # Eine leere Beschriftung waere ein Eintrag, den man in der Auswahlliste
+            # nicht lesen kann. Die uebrigen trotzdem speichern, statt alles abzulehnen.
+            continue
+        description = " ".join((form.get(f"description_{oid}") or "").split())[:100]
+        emoji = (form.get(f"emoji_{oid}") or "").strip()[:8]
+        support_role_id = (form.get(f"support_role_id_{oid}") or "").strip()
+        category_id = (form.get(f"category_id_{oid}") or "").strip()
+        ticket_message = (form.get(f"ticket_message_{oid}") or "").strip()[:3900]
+        # Dieselben Pruefungen wie beim einzelnen Speichern: eine Rolle oder Kategorie
+        # von einem anderen Server waere beim Ticketanlegen nicht aufloesbar.
+        if support_role_id and support_role_id not in rollen:
+            return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Rolle",
+                                    status_code=302)
+        if category_id and category_id not in kategorien:
+            return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Kategorie",
+                                    status_code=302)
+        await db_exec(
+            "UPDATE ticket_panel_options SET label=?, description=?, emoji=?, "
+            "support_role_id=?, category_id=?, ticket_message=? WHERE id=? AND panel_id=?",
+            (label, description, emoji, support_role_id, category_id, ticket_message,
+             int(oid), panel_id))
+        gespeichert += 1
+    await _panel_nachricht_auffrischen(guild_id, panel_id)
+    return RedirectResponse(
+        f"/servers/{guild_id}?tab=tickets&success=" + urllib.parse.quote_plus(
+            f"{gespeichert} Eintrag(e) gespeichert"), status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/options/{option_id}/update")
+async def tickets_option_update(request: Request, guild_id: int, panel_id: int,
+                                option_id: int):
+    """Einen Auswahleintrag aendern."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return RedirectResponse("/servers", status_code=302)
+    panel = await db_one("SELECT id FROM ticket_panels WHERE id=? AND guild_id=?",
+                         (panel_id, guild_id))
+    if not panel:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Panel+nicht+gefunden",
+                                status_code=302)
+    form = await request.form()
+    label = " ".join((form.get("label") or "").split())[:100]
+    if not label:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=Beschriftung+fehlt", status_code=302)
+    # Discord schneidet beides hart ab; hier begrenzen heisst, dass im Dashboard steht, was
+    # auch im Kanal ankommt.
+    description = " ".join((form.get("description") or "").split())[:100]
+    emoji = (form.get("emoji") or "").strip()[:8]
+    support_role_id = (form.get("support_role_id") or "").strip()
+    category_id = (form.get("category_id") or "").strip()
+    ticket_message = (form.get("ticket_message") or "").strip()[:3900]
+    # Dieselben Pruefungen wie beim Panel: eine Rolle oder Kategorie von einem anderen
+    # Server waere beim Ticketanlegen nicht aufloesbar und faellt dann still aus.
+    if support_role_id and support_role_id not in {str(ro.id) for ro in guild.roles}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Rolle",
+                                status_code=302)
+    if category_id and category_id not in {str(c.id) for c in guild.categories}:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Ungültige+Kategorie",
+                                status_code=302)
+    await db_exec(
+        "UPDATE ticket_panel_options SET label=?, description=?, emoji=?, support_role_id=?, "
+        "category_id=?, ticket_message=? WHERE id=? AND panel_id=?",
+        (label, description, emoji, support_role_id, category_id, ticket_message,
+         option_id, panel_id))
+    await _panel_nachricht_auffrischen(guild_id, panel_id)
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Eintrag+gespeichert",
+                            status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/options/{option_id}/delete")
+async def tickets_option_delete(request: Request, guild_id: int, panel_id: int,
+                                option_id: int):
+    """Einen Auswahleintrag entfernen."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    panel = await db_one("SELECT id FROM ticket_panels WHERE id=? AND guild_id=?",
+                         (panel_id, guild_id))
+    if not panel:
+        return RedirectResponse(f"/servers/{guild_id}?tab=tickets&error=Panel+nicht+gefunden",
+                                status_code=302)
+    await db_exec("DELETE FROM ticket_panel_options WHERE id=? AND panel_id=?",
+                  (option_id, panel_id))
+    # Bleibt genau einer uebrig, wird aus der Auswahlliste wieder ein Knopf - das erledigt
+    # die View von selbst, die Nachricht muss es nur erfahren.
+    await _panel_nachricht_auffrischen(guild_id, panel_id)
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Eintrag+entfernt",
+                            status_code=302)
 
 
 @web.post("/servers/{guild_id}/tickets/panels/{panel_id}/delete")
@@ -10880,7 +12188,9 @@ async def tickets_panel_publish(
     emoji = panel.get("emoji") or "🎫"
     embeds = _build_panel_embeds(panel["name"], emoji, panel.get("description"))
     try:
-        view = _TicketView(panel_id, label, emoji)
+        view = _TicketView(panel_id, label, emoji,
+                           await _panel_optionen(panel_id),
+                           await _tt(guild_id, "select_placeholder"))
         msg = await ch.send(embeds=embeds, view=view)
     except Exception as e:
         # Nothing here was guarded before - an invalid emoji string (view construction itself
@@ -10942,7 +12252,10 @@ async def ticket_close(request: Request, guild_id: int, ticket_id: int):
     if ch:
         guild_obj = b.get_guild(guild_id)
         panel = await db_one(
-            "SELECT archive_category_id FROM ticket_panels WHERE id=?", (ticket["panel_id"],)
+            # Vollstaendig: _close_ticket_channel() reicht die Zeile an die Mitschrift
+            # weiter, die transcript und transcript_channel_id daraus liest. Nur die
+            # Archiv-Kategorie zu holen hiess, dass nie eine Mitschrift entstand.
+            "SELECT * FROM ticket_panels WHERE id=?", (ticket["panel_id"],)
         ) if ticket.get("panel_id") else None
         # Same reasoning as the "bot not online" branch above: if the channel is still there and
         # we couldn't actually close it (e.g. missing permission right now), don't mark the
@@ -12244,6 +13557,10 @@ async def _role_rule_form_data(request: Request, guild: discord.Guild, form) -> 
         # koennen, als er hier aussieht.
         "dm_text": (form.get("dm_text") or "").strip()[:1800],
         "dm_enabled": 1 if form.get("dm_enabled") else 0,
+        # Nimmt die Regel ihre Rolle wieder weg, wenn die Voraussetzung wegfaellt?
+        # Standardmaessig aus: wer die Zielrollen bisher auch von Hand vergeben hat,
+        # saehe sie sonst nach dem naechsten Durchgang verschwinden.
+        "revoke_on_loss": 1 if form.get("revoke_on_loss") else 0,
     }, None
 
 
@@ -12260,12 +13577,12 @@ async def role_rule_add(request: Request, guild_id: int):
     if error:
         return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error={error}", status_code=302)
     await db_exec(
-        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,actions,priority,enabled,dm_text,dm_enabled) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO role_rules (guild_id,name,match_type,match_role_ids,action,action_guild_id,action_role_ids,action_role_meta,actions,priority,enabled,dm_text,dm_enabled,revoke_on_loss) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (str(guild_id), data["name"], data["match_type"], data["match_role_ids"], data["action"],
          data["action_guild_id"], data["action_role_ids"], data["action_role_meta"],
          data["actions"], data["priority"], data["enabled"], data["dm_text"],
-         data["dm_enabled"]),
+         data["dm_enabled"], data["revoke_on_loss"]),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Regel+hinzugefügt", status_code=303)
 
@@ -12284,12 +13601,13 @@ async def role_rule_edit(request: Request, guild_id: int, rule_id: int):
         return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&error={error}", status_code=302)
     await db_exec(
         "UPDATE role_rules SET name=?, match_type=?, match_role_ids=?, action=?, action_guild_id=?, "
-        "action_role_ids=?, action_role_meta=?, actions=?, priority=?, enabled=?, dm_text=?, dm_enabled=? "
+        "action_role_ids=?, action_role_meta=?, actions=?, priority=?, enabled=?, dm_text=?, "
+        "dm_enabled=?, revoke_on_loss=? "
         "WHERE id=? AND guild_id=?",
         (data["name"], data["match_type"], data["match_role_ids"], data["action"],
          data["action_guild_id"], data["action_role_ids"], data["action_role_meta"],
          data["actions"], data["priority"], data["enabled"], data["dm_text"],
-         data["dm_enabled"], rule_id, str(guild_id)),
+         data["dm_enabled"], data["revoke_on_loss"], rule_id, str(guild_id)),
     )
     return RedirectResponse(f"/servers/{guild_id}?tab=rolerules&success=Regel+gespeichert", status_code=303)
 

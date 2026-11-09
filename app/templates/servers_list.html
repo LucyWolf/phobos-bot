@@ -36,7 +36,16 @@
 {% else %}
 <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:1.5rem; font-size:0.85rem; color:var(--danger);">
   <span style="width:8px;height:8px;border-radius:50%;background:var(--danger);display:inline-block;"></span>
-  {{ tr.srv_offline_1 }} <a href="/settings" style="color:var(--danger)">{{ tr.srv_offline_link }}</a> {{ tr.srv_offline_2 }}
+  {% if bot_fehler and bot_fehler.key %}
+    {# Ein Token ist da, er verbindet nur nicht - dann gehoert der Grund hierher und nicht
+       die Aufforderung, einen Token einzutragen. #}
+    {{ tr.srv_not_connected }} {{ tr[bot_fehler.key] }}
+    {% if bot_fehler.detail %}<code style="font-size:0.78rem;">{{ bot_fehler.detail }}</code>{% endif %}
+  {% elif token_set %}
+    {{ tr.srv_not_connected }} {{ tr.bot_err_unbekannt }}
+  {% else %}
+    {{ tr.srv_offline_1 }} <a href="/settings" style="color:var(--danger)">{{ tr.srv_offline_link }}</a> {{ tr.srv_offline_2 }}
+  {% endif %}
 </div>
 {% endif %}
 

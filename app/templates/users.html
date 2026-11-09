@@ -88,9 +88,22 @@
       <tbody>
         {% for u in users %}
         <tr>
-          <td style="font-weight:500">
+          {# Gesperrte Konten ganz rot, nicht nur mit einem Schild daneben: in einer langen
+             Liste faellt eine rote Zeile auf, ein kleines Abzeichen nicht. #}
+          <td style="font-weight:500{% if u.sperren %};color:#fca5a5{% endif %}">
             {{ u.username }}
             {% if not u.active %}<span class="badge badge-gray" style="margin-left:0.35rem;font-size:0.68rem;">deaktiviert</span>{% endif %}
+            {# Je laufender Sperre ein Schild. Welche es ist, steht dabei: "gesperrt" allein
+               liesse offen, ob derjenige nicht hereinkommt oder nur sein Passwort nicht
+               zuruecksetzen kann - das sind zwei verschiedene Lagen. Die Restzeit steht
+               sichtbar davor, damit sich niemand durch Rechnen hangeln muss. #}
+            {% for s in u.sperren %}
+            <span class="badge" title="{{ tr.usr_locked }} · {{ s.bis | dt }}"
+                  style="margin-left:0.35rem;font-size:0.68rem;background:rgba(239,68,68,0.12);
+                         color:#fca5a5;border:1px solid rgba(239,68,68,0.5);">🔒
+              {{ tr.usr_lock_reset if s.art == 'reset' else tr.usr_lock_login }} ·
+              {{ tr.usr_locked_mins.format(n=s.minuten) }}</span>
+            {% endfor %}
           </td>
           <td><span class="badge badge-{{ u.role }}">{% if u.role == 'admin' %}{{ tr.rang_master_admin }}{% elif u.alle_server %}{{ tr.rang_master_mod }}{% else %}{{ tr.rang_server }}{% endif %}</span></td>
           <td style="font-size:0.8rem;">
@@ -102,6 +115,17 @@
           </td>
           <td style="color:var(--muted); font-size:0.8rem">{{ u.created_at | dt }}</td>
           <td style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+            {# Vor der Fallunterscheidung, weil es fuer das eigene Konto genauso gilt: wer
+               sich beim Zuruecksetzen dreimal vertippt hat, sitzt sonst eine Stunde fest,
+               obwohl er angemeldet danebensteht. Der Knopf erscheint nur, wenn es etwas
+               aufzuheben gibt. #}
+            {% if u.sperren %}
+            <form method="post" action="/users/{{ u.id }}/unlock" style="display:inline"
+                  onsubmit="return confirm({{ (tr.usr_unlock ~ ': ' ~ u.username ~ '?') | js }})">
+              <button type="submit" class="btn btn-secondary"
+                      style="font-size:0.78rem; padding:0.25rem 0.6rem;" title="{{ tr.usr_unlock }}">🔓</button>
+            </form>
+            {% endif %}
             {% if u.username == username %}
             <span style="font-size:0.78rem; color:var(--muted);">Du</span>
             {% if admin_count > 1 %}

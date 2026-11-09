@@ -13,4 +13,20 @@ services:
     environment:
       - TZ=Europe/Berlin
       - PYTHONUNBUFFERED=1
+    # Ohne diesen Block schreibt Docker die Ausgabe des Bots in eine Datei, die nie
+    # kleiner wird. Am 02.11.2026 war eine davon auf 21 GB angewachsen und die Platte
+    # des Servers voll - der Bot lief dabei die ganze Zeit normal weiter, es fiel erst
+    # auf, als nichts mehr gespeichert werden konnte.
+    #
+    # 20 MB mal 5 Dateien sind hoechstens 100 MB je Container. Das deckt bei normalem
+    # Aufkommen gut eine Woche ab; wer es nach ZEIT begrenzen will, nimmt zusaetzlich
+    # tools/logrotate-phobos.conf - Docker selbst kennt nur Groesse und Anzahl.
+    #
+    # Greift erst, wenn der Container NEU ERSTELLT wird ("docker compose up -d").
+    # Ein Neustart aendert nichts: Docker uebernimmt diese Einstellung beim Anlegen.
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 

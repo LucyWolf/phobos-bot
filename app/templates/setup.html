@@ -1,44 +1,316 @@
-<!-- ORPHANED - no route in main.py renders "setup.html" (confirmed via grep, only
-     "profile_2fa_setup.html" matches a similar name). The current first-run/admin-creation
-     flow is register.html via an admin invite link instead. Left in place rather than
-     deleted since removing it wasn't asked for - safe to delete if that's ever confirmed. -->
-<!DOCTYPE html>
-<html lang="de">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ app_name }} – Ersteinrichtung</title>
+{# Einrichtung: der Assistent. Ein Fenster in der Mitte, eine Frage nach der anderen,
+   "Weiter" ist bei Schritt 1 zugleich das Speichern. Alle Seiten stehen schon im HTML und
+   kommen aus _setup_schritte() - geblaettert wird nur im Browser, damit es keine zweite
+   Wahrheit ueber den Zustand gibt.
+
+   Was sich woanders erledigt (Token, Design, Einladung, Backup, Adresse, E-Mail), oeffnet
+   aus dem Fenster heraus einen neuen Tab - sonst waere der Assistent beim ersten Klick weg.
+   Hinter dem Fenster steht nichts mehr ausser dem Stand und dem Knopf, der es zurueckholt. #}
+{% extends "base.html" %}
+{% block title %}{{ app_name }} – {{ tr.setup_title }}{% endblock %}
+{% block page_title %}🚀 {{ tr.setup_title }}{% endblock %}
+
+{% block content %}
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root { --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a; --text: #e2e8f0; --muted: #64748b; --accent: #7c3aed; --danger: #ef4444; }
-  body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 1rem; padding: 2rem; width: 100%; max-width: 400px; }
-  .logo { text-align: center; font-size: 2.5rem; margin-bottom: 0.5rem; }
-  h1 { text-align: center; font-size: 1.25rem; margin-bottom: 0.4rem; }
-  .subtitle { text-align: center; font-size: 0.8rem; color: var(--muted); margin-bottom: 1.75rem; }
-  label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.35rem; }
-  input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.65rem 0.875rem; color: var(--text); font-size: 0.875rem; outline: none; margin-bottom: 1rem; }
-  input:focus { border-color: var(--accent); }
-  button { width: 100%; background: var(--accent); color: #fff; border: none; border-radius: 0.5rem; padding: 0.7rem; font-size: 0.9rem; font-weight: 600; cursor: pointer; margin-top: 0.25rem; }
-  button:hover { opacity: 0.85; }
-  .error { background: rgba(239,68,68,0.1); border: 1px solid var(--danger); color: var(--danger); border-radius: 0.5rem; padding: 0.65rem 1rem; font-size: 0.85rem; margin-bottom: 1rem; }
+  .su-grund { color:var(--danger); font-size:0.82rem; line-height:1.6; margin-top:0.45rem; }
+  .su-aktionen { display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.7rem; }
+  .su-form { max-width:420px; margin-top:0.8rem; }
+  .su-form label { display:block; font-size:0.78rem; color:var(--muted); margin-bottom:0.2rem; }
+  .su-form input { width:100%; margin-bottom:0.6rem; }
+  .badge { display:inline-block; padding:0.15rem 0.55rem; border-radius:999px;
+           font-size:0.72rem; font-weight:700; }
+  .badge-green { background:rgba(34,197,94,.18); color:#22c55e; }
+  .badge-gray  { background:rgba(100,116,139,.18); color:#94a3b8; }
+
+  /* ── Der Assistent ─────────────────────────────────────────────────────── */
+  .sw-hinter { position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,0.62);
+               display:flex; align-items:center; justify-content:center; padding:1rem; }
+  .sw-fenster { background:var(--surface); border:1px solid var(--border);
+                border-radius:0.9rem; width:100%; max-width:560px; max-height:88vh;
+                display:flex; flex-direction:column; box-shadow:0 18px 50px rgba(0,0,0,.5); }
+  .sw-kopf { display:flex; align-items:center; justify-content:space-between; gap:0.75rem;
+             padding:0.85rem 1.1rem; border-bottom:1px solid var(--border); }
+  .sw-zaehler { font-size:0.75rem; color:var(--muted); font-weight:700;
+                letter-spacing:0.02em; }
+  .sw-punkte { display:flex; gap:0.3rem; flex-wrap:wrap; }
+  .sw-punkt { width:0.5rem; height:0.5rem; border-radius:50%;
+              background:rgba(100,116,139,.35); }
+  .sw-punkt.fertig { background:#22c55e; }
+  .sw-punkt.hier { background:var(--primary, #8b5cf6); transform:scale(1.35); }
+  .sw-zu { background:none; border:none; color:var(--muted); font-size:1.1rem;
+           cursor:pointer; line-height:1; padding:0.2rem 0.3rem; }
+  .sw-zu:hover { color:var(--text); }
+  .sw-inhalt { padding:1.3rem 1.3rem 1.1rem; overflow-y:auto; }
+  .sw-h { font-size:1.12rem; font-weight:700; margin:0 0 0.55rem; }
+  .sw-t { color:var(--muted); font-size:0.87rem; line-height:1.65; }
+  .sw-fuss { display:flex; align-items:center; gap:0.6rem; padding:0.85rem 1.1rem;
+             border-top:1px solid var(--border); }
+  .sw-fuss .rechts { margin-left:auto; display:flex; gap:0.5rem; flex-wrap:wrap; }
+  .sw-hinweis { font-size:0.76rem; color:var(--muted); margin-top:0.4rem; }
+  .sw-sprache { display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;
+                margin:0 0 1rem; }
+  /* Wo finde ich den Token - abgesetzt, damit man es nicht fuer Fliesstext haelt. */
+  .sw-wo { border:1px solid var(--border); border-radius:8px; padding:0.8rem 0.9rem;
+           margin-top:0.9rem; background:var(--bg, rgba(0,0,0,0.12)); }
+  .sw-wo-h { font-size:0.82rem; font-weight:700; margin:0 0 0.5rem; }
+  .sw-wo ol { margin:0; padding-left:1.25rem; font-size:0.8rem; line-height:1.6;
+              color:var(--muted); }
+  .sw-wo li { margin-bottom:0.25rem; }
+  .sw-wo .sw-warn { font-size:0.78rem; margin:0.6rem 0 0; color:var(--text); }
+  .sw-wo .btn { margin-top:0.7rem; }
+  .sw-label { font-size:0.76rem; color:var(--muted); font-weight:700; }
+  @media (max-width:520px) {
+    .sw-fuss { flex-wrap:wrap; }
+    .sw-fuss .rechts { margin-left:0; width:100%; }
+    .sw-fuss .rechts .btn { flex:1; }
+  }
 </style>
-</head>
-<body>
-<div class="card">
-  <div class="logo">🛡️</div>
-  <h1>Ersteinrichtung</h1>
-  <p class="subtitle">Erstelle den ersten Admin-Account</p>
-  {% if error %}<div class="error">{{ meldung(error, lang) }}</div>{% endif %}
-  <form method="post" action="/setup">
-    <label>Benutzername</label>
-    <input type="text" name="username" required autofocus>
-    <label>Passwort</label>
-    <input type="password" name="password" required>
-    <label>Passwort wiederholen</label>
-    <input type="password" name="password2" required>
-    <button type="submit">Admin erstellen</button>
-  </form>
+
+{# ── Der Assistent. Versteckt in der Vorlage; aufgedeckt wird er vom Skript unten -
+     ohne JavaScript bleibt er zu und die Liste darunter macht die ganze Arbeit. ── #}
+<div class="sw-hinter" id="sw-hinter" hidden>
+  <div class="sw-fenster" role="dialog" aria-modal="true" aria-labelledby="sw-h-0">
+    <div class="sw-kopf">
+      <span class="sw-zaehler" id="sw-zaehler"></span>
+      <span class="sw-punkte" id="sw-punkte">
+        {% for s in schritte %}
+        <span class="sw-punkt {% if s.fertig %}fertig{% endif %}" data-punkt="{{ loop.index }}"></span>
+        {% endfor %}
+      </span>
+      {% if not offen %}
+      {# Das Kreuz gibt es erst, wenn kein Pflichtschritt mehr offen ist. Vorher fuehrt es
+         nur auf eine Oberflaeche, auf der nichts von dem geht, was sie anbietet. #}
+      <button type="button" class="sw-zu" id="sw-zu" aria-label="{{ tr.setup_nav_fertig }}">✕</button>
+      {% endif %}
+    </div>
+
+    <div class="sw-inhalt">
+      {# Die Meldung einer gerade abgeschickten Eingabe steht hier oben - im Fenster, direkt
+         ueber dem Schritt, aus dem sie kommt. Hinter dem Fenster saehe sie niemand. #}
+      {% if error %}<div class="alert alert-danger" style="margin-bottom:1rem;">❌ {{ meldung(error, lang) }}</div>{% endif %}
+      {% if success %}<div class="alert alert-success" style="margin-bottom:1rem;">✅ {{ meldung(success, lang) }}</div>{% endif %}
+
+      {# Seite 0: das Willkommen #}
+      <section class="sw-seite" data-seite="0">
+        <h2 class="sw-h" id="sw-h-0">👋 {{ tr.setup_w_titel }}</h2>
+        {# Die Sprache steht ganz vorne: alles Weitere liest man in ihr. Sie geht ueber die
+           vorhandene Route; das Ziel steht ausdruecklich dabei, denn der Referer allein
+           reicht nicht - schickt ein Browser keinen, landete man auf dem Dashboard. #}
+        <div class="sw-sprache">
+          <span class="sw-label">{{ tr.setup_w_sprache }}</span>
+          <form method="post" action="/settings/language">
+            <input type="hidden" name="lang" value="de">
+            <input type="hidden" name="next" value="/setup">
+            <button type="submit" class="btn {% if lang == 'de' %}btn-primary{% else %}btn-secondary{% endif %}">
+              🇩🇪 Deutsch</button>
+          </form>
+          <form method="post" action="/settings/language">
+            <input type="hidden" name="lang" value="en">
+            <input type="hidden" name="next" value="/setup">
+            <button type="submit" class="btn {% if lang == 'en' %}btn-primary{% else %}btn-secondary{% endif %}">
+              🇬🇧 English</button>
+          </form>
+        </div>
+        <p class="sw-t">{{ tr.setup_w_text }}</p>
+      </section>
+
+      {% for s in schritte %}
+      <section class="sw-seite" data-seite="{{ loop.index }}"
+               {# Ueberspringen nur, wo der Schritt ueberhaupt dran ist: ein gesperrter
+                  Schritt wartet noch auf den davor, da ist nichts zu ueberspringen. #}
+               {% if s.haken and not s.fertig and not s.gesperrt %}data-haken="{{ s.key }}"{% endif %}
+               {% if s.formular and not s.fertig %}data-form="sw-form-{{ s.formular }}"{% endif %}
+               hidden>
+        <h2 class="sw-h" id="sw-h-{{ loop.index }}">
+          {% if s.fertig %}✅{% else %}{{ loop.index }}.{% endif %} {{ s.titel }}
+          {% if s.fertig %}<span class="badge badge-green">{{ tr.setup_erledigt }}</span>
+          {% elif not s.pflicht %}<span class="badge badge-gray">{{ tr.setup_optional }}</span>{% endif %}
+        </h2>
+        <p class="sw-t">{{ s.text }}</p>
+        {% if s.grund %}<p class="su-grund">{{ s.grund }}</p>{% endif %}
+
+        {% if s.formular == 'profil' and not s.fertig %}
+        <form method="post" action="/setup/profil" class="su-form" id="sw-form-profil">
+          <label>{{ tr.setup_p_name }}</label>
+          <input type="text" name="username" required minlength="3" autocomplete="username">
+          <label>{{ tr.setup_p_mail }}</label>
+          <input type="email" name="email_addr" autocomplete="email">
+          <label>{{ tr.setup_p_pw }}</label>
+          <input type="password" name="password" required minlength="6" autocomplete="new-password">
+          <label>{{ tr.setup_p_pw2 }}</label>
+          <input type="password" name="pw_confirm" required minlength="6" autocomplete="new-password">
+        </form>
+        {% elif s.formular == 'token' and not s.fertig %}
+        <form method="post" action="/settings/tokens/add" class="su-form" id="sw-form-token">
+          <input type="hidden" name="next" value="/setup">
+          <label>{{ tr.tok_label }}</label>
+          <input type="text" name="label" value="Bot" maxlength="60">
+          <label>{{ tr.tok_field_label }}</label>
+          <input type="password" name="token" required autocomplete="off" spellcheck="false">
+        </form>
+        {# Der Token ist der einzige Schritt, bei dem man das Fenster ohne fremde Seite
+           nicht erledigen kann - also steht der Weg dorthin hier, nicht in der Doku. #}
+        <div class="sw-wo">
+          <p class="sw-wo-h">{{ tr.setup_t_token_wo }}</p>
+          <ol>
+            <li>{{ tr.setup_t_token_1 }}</li>
+            <li>{{ tr.setup_t_token_2 }}</li>
+            <li>{{ tr.setup_t_token_3 }}</li>
+            <li>{{ tr.setup_t_token_4 }}</li>
+            <li>{{ tr.setup_t_token_5 }}</li>
+          </ol>
+          <a href="https://discord.com/developers/applications" target="_blank"
+             rel="noopener noreferrer" class="btn btn-secondary">
+            {{ tr.setup_t_token_link }} ↗</a>
+          <p class="sw-warn">⚠️ {{ tr.setup_t_token_warn }}</p>
+        </div>
+        {% elif s.entfernen %}
+        <div class="su-aktionen">
+          <form method="post" action="/setup/admin-entfernen">
+            <button type="submit" class="btn btn-danger">{{ tr.setup_p_entfernen }}</button>
+          </form>
+        </div>
+        {% elif s.ziel and not s.gesperrt and not s.fertig %}
+        <div class="su-aktionen">
+          <a href="{{ s.ziel }}" target="_blank" rel="noopener" class="btn btn-primary">
+            {{ s.knopf }} ↗</a>
+          <a href="/setup" class="btn btn-secondary">{{ tr.setup_nav_erneut }}</a>
+        </div>
+        <div class="sw-hinweis">{{ tr.setup_neuer_tab }}</div>
+        {% elif s.gesperrt %}
+        <p class="sw-hinweis">{{ tr.setup_gesperrt }}</p>
+        {% endif %}
+
+        {% if s.haken and s.fertig %}
+        {# Einen selbst gesetzten Haken muss man auch wieder wegnehmen koennen - sonst
+           bliebe ein Verklicken fuer immer stehen. #}
+        <div class="su-aktionen">
+          <form method="post" action="/setup/haken/{{ s.key }}">
+            <input type="hidden" name="zurueck" value="1">
+            <input type="hidden" name="seite" value="{{ loop.index }}">
+            <button type="submit" class="btn btn-secondary">{{ tr.setup_haken_weg }}</button>
+          </form>
+        </div>
+        {% endif %}
+      </section>
+      {% endfor %}
+
+      {# Letzte Seite: was offen blieb #}
+      <section class="sw-seite" data-seite="{{ schritte|length + 1 }}" hidden>
+        <h2 class="sw-h" id="sw-h-ende">{% if offen %}🙋{% else %}🎉{% endif %} {{ tr.setup_e_titel }}</h2>
+        <p class="sw-t">
+          {% if offen %}{{ tr.setup_e_offen.replace('{n}', offen|string) }}
+          {% else %}{{ tr.setup_e_fertig }}{% endif %}
+        </p>
+      </section>
+    </div>
+
+    <div class="sw-fuss">
+      <button type="button" class="btn btn-secondary" id="sw-zurueck">{{ tr.setup_nav_zurueck }}</button>
+      <span class="rechts">
+        <button type="button" class="btn btn-secondary" id="sw-skip" hidden>{{ tr.setup_nav_ueberspringen }}</button>
+        <button type="button" class="btn btn-primary" id="sw-weiter">{{ tr.setup_nav_weiter }}</button>
+      </span>
+    </div>
+  </div>
 </div>
-</body>
-</html>
+
+{# Ueberspringen schickt den Haken ab. Eigenes Formular ausserhalb des Fensters, damit es
+   nicht in dem mit den Kontodaten landet - verschachtelte Formulare gibt es in HTML nicht.
+   Ziel und Seitennummer setzt das Skript, je nachdem wo man steht. #}
+<form method="post" id="sw-skip-form" hidden>
+  <input type="hidden" name="seite" id="sw-skip-seite" value="">
+</form>
+
+{# Hinter dem Fenster steht nichts. Diese Seite IST der Assistent - was hier sonst noch
+   stuende, sieht man ohnehin nur halb verdeckt durch das Fenster. Schliessen fuehrt deshalb
+   zurueck aufs Dashboard und nicht auf eine leere Seite.
+   Ohne JavaScript gibt es kein Fenster; dann sagt der Hinweis unten, woran es liegt. #}
+<noscript>
+  <div class="alert alert-danger" style="max-width:720px;">{{ tr.setup_kein_js }}</div>
+</noscript>
+
+<script>
+/* Der Assistent: blaettern, speichern, schliessen. Mehr passiert hier nicht - jede Seite
+   steht fertig im HTML. */
+(function () {
+  var hinter = document.getElementById('sw-hinter');
+  if (!hinter) return;
+  var fenster = hinter.querySelector('.sw-fenster');
+  var seiten = [].slice.call(hinter.querySelectorAll('.sw-seite'));
+  var zaehler = document.getElementById('sw-zaehler');
+  var punkte = [].slice.call(hinter.querySelectorAll('.sw-punkt'));
+  var bZurueck = document.getElementById('sw-zurueck');
+  var bWeiter = document.getElementById('sw-weiter');
+  var bSkip = document.getElementById('sw-skip');
+  var skipForm = document.getElementById('sw-skip-form');
+  var TXT = {
+    schritt: {{ tr.setup_nav_schritt | jsraw }},
+    weiter: {{ tr.setup_nav_weiter | jsraw }},
+    speichern: {{ tr.setup_nav_speichern | jsraw }},
+    los: {{ tr.setup_w_los | jsraw }},
+    fertig: {{ tr.setup_nav_fertig | jsraw }}
+  };
+  var ANZ = {{ schritte|length }};
+  var hier = {{ start }};
+
+  function zeige(i) {
+    hier = Math.max(0, Math.min(seiten.length - 1, i));
+    seiten.forEach(function (s, n) { s.hidden = n !== hier; });
+    punkte.forEach(function (p, n) { p.classList.toggle('hier', n + 1 === hier); });
+    zaehler.textContent = (hier >= 1 && hier <= ANZ)
+      ? TXT.schritt.replace('{n}', hier).replace('{m}', ANZ) : '';
+    bZurueck.hidden = hier === 0;
+    var akt = seiten[hier];
+    bSkip.hidden = !akt.dataset.haken;
+    bWeiter.textContent = hier === 0 ? TXT.los
+      : (akt.dataset.form ? TXT.speichern
+      : (hier === seiten.length - 1 ? TXT.fertig : TXT.weiter));
+    /* Auf der letzten Seite gibt es nichts mehr zu schliessen, solange ein Pflichtschritt
+       offen ist - dann waere "Schliessen" ein Knopf, der nichts tut. */
+    bWeiter.hidden = hier === seiten.length - 1 && !bZu;
+    /* Vorlesegeraete sollen die Ueberschrift der Seite ansagen, auf der man steht - nicht
+       dauerhaft "Willkommen". */
+    var kopf = akt.querySelector('.sw-h');
+    if (kopf && kopf.id) fenster.setAttribute('aria-labelledby', kopf.id);
+    /* Der Fokus gehoert ins erste Feld, das wirklich ausgefuellt werden muss. Sonst stand er
+       bei Schritt 2 in der Bezeichnung ("Bot") und nicht im Token. */
+    var erstes = akt.querySelector('input[required], input, a.btn, button');
+    if (erstes && hier > 0) { try { erstes.focus(); } catch (e) {} }
+  }
+
+  function auf() { hinter.hidden = false; zeige(hier); }
+  /* Schliessen heisst: raus aus der Einrichtung. Dahinter liegt nichts, und eine leere
+     Seite zurueckzulassen waere schlimmer als der Weg aufs Dashboard. */
+  function zu() { hinter.hidden = true; location.href = '/'; }
+
+  bWeiter.addEventListener('click', function () {
+    var akt = seiten[hier];
+    if (akt.dataset.form) {
+      /* "Weiter" ist hier zugleich das Speichern. Die Seite laedt danach neu und der
+         Assistent steht beim naechsten offenen Schritt. */
+      var f = document.getElementById(akt.dataset.form);
+      if (f) { if (f.reportValidity && !f.reportValidity()) return; f.submit(); return; }
+    }
+    if (hier === seiten.length - 1) { if (bZu) zu(); return; }
+    zeige(hier + 1);
+  });
+  bZurueck.addEventListener('click', function () { zeige(hier - 1); });
+  bSkip.addEventListener('click', function () {
+    var key = seiten[hier].dataset.haken;
+    if (!key) return;
+    skipForm.action = '/setup/haken/' + key;
+    document.getElementById('sw-skip-seite').value = String(hier);
+    skipForm.submit();
+  });
+  /* Nur das Kreuz schliesst. Ein Klick daneben und Escape taten es vorher auch - und waren
+     damit zwei Wege, die Einrichtung aus Versehen zu verlassen, waehrend man eigentlich ins
+     Fenster zielte. */
+  var bZu = document.getElementById('sw-zu');
+  if (bZu) bZu.addEventListener('click', zu);
+
+  /* Immer: wer /setup aufruft, will den Assistenten. Es gibt hier nichts anderes. */
+  auf();
+})();
+</script>
+{% endblock %}

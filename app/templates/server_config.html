@@ -1090,6 +1090,20 @@ document.addEventListener('click', function(e) {
                     {% for c in categories %}<option value="{{ c.id }}" {% if p.archive_category_id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
                   </select>
                 </div>
+                <div>
+                  <label style="display:flex;align-items:center;gap:0.5rem;font-weight:400;margin:0;">
+                    <input type="checkbox" name="transcript" value="1" style="width:auto;margin:0;"
+                           {% if p.transcript %}checked{% endif %}>
+                    <strong>{{ tr.tickets_transcript_label }}</strong>
+                  </label>
+                  <p class="hint" style="margin:0.3rem 0 0;">{{ tr.tickets_transcript_hint }}</p>
+                  <label style="font-size:0.75rem;margin-top:0.5rem;">{{ tr.tickets_transcript_channel_label }}</label>
+                  <select name="transcript_channel_id" style="margin-bottom:0;">
+                    <option value="">{{ tr.tickets_transcript_channel_none }}</option>
+                    {% for ch in channels %}<option value="{{ ch.id }}" {% if p.transcript_channel_id == ch.id %}selected{% endif %}>{{ ch.name }}</option>{% endfor %}
+                  </select>
+                  <p class="hint" style="margin:0.2rem 0 0;">{{ tr.tickets_transcript_channel_hint }}</p>
+                </div>
                 <div style="grid-column:1/-1;">
                   <label>{{ tr.tickets_description_label }}</label>
                   <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.tickets_description_hint }}</p>
@@ -1141,6 +1155,98 @@ document.addEventListener('click', function(e) {
               </div>
               <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">{{ tr.btn_save }}</button>
             </form>
+
+            <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);">
+              <div style="font-size:0.8rem;font-weight:700;margin-bottom:0.3rem;color:var(--muted);">{{ tr.tickets_options_heading }}</div>
+              <p class="hint" style="margin:0 0 0.6rem;">{{ tr.tickets_options_hint }}</p>
+
+              {# EIN Formular fuer alle Eintraege, nicht eines je Eintrag.
+
+                 Vorher hatte jeder Eintrag sein eigenes: wer vier Kategorien einrichtete,
+                 musste viermal speichern und wurde jedes Mal in die Gesamtuebersicht
+                 zurueckgeworfen ("der wirft einen immer wieder in die gesamt übersicht
+                 wenn man ein multi ticket post einrichten will").
+
+                 Die Felder tragen deshalb die Nummer des Eintrags im Namen
+                 (label_17, emoji_17, ...) statt Listen zu sein: so ist jede Zeile auch
+                 dann eindeutig ihrem Eintrag zugeordnet, wenn der Browser die Reihenfolge
+                 anders schickt oder zwischendurch einer geloescht wurde.
+
+                 Loeschen und Anlegen haengen mit formaction am selben Formular -
+                 verschachtelte Formulare gibt es in HTML nicht, ein formaction am Knopf
+                 schon. #}
+              <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/options/save">
+              {% for o in p.optionen %}
+              <input type="hidden" name="option_id" value="{{ o.id }}">
+              <div style="border:1px solid var(--border);border-radius:0.5rem;padding:0.6rem 0.7rem;margin-bottom:0.5rem;background:var(--bg);">
+                <div class="grid-2" style="gap:0.6rem;">
+                  <div>
+                    <label style="font-size:0.75rem;">{{ tr.tickets_option_label }}</label>
+                    <input type="text" name="label_{{ o.id }}" value="{{ o.label }}" maxlength="100" required style="margin-bottom:0;">
+                  </div>
+                  <div>
+                    <label style="font-size:0.75rem;">{{ tr.tickets_option_emoji }}</label>
+                    <input type="text" name="emoji_{{ o.id }}" value="{{ o.emoji }}" maxlength="8" style="margin-bottom:0;">
+                  </div>
+                  <div style="grid-column:1/-1;">
+                    <label style="font-size:0.75rem;">{{ tr.tickets_option_description }}</label>
+                    <input type="text" name="description_{{ o.id }}" value="{{ o.description }}" maxlength="100" style="margin-bottom:0;">
+                    <p class="hint" style="margin:0.2rem 0 0;">{{ tr.tickets_option_description_hint }}</p>
+                  </div>
+                  <div>
+                    <label style="font-size:0.75rem;">{{ tr.tickets_option_role }}</label>
+                    <select name="support_role_id_{{ o.id }}" style="margin-bottom:0;">
+                      <option value="">{{ tr.tickets_option_inherit }}</option>
+                      {% for r in roles %}<option value="{{ r.id }}" {% if o.support_role_id == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+                    </select>
+                  </div>
+                  <div>
+                    <label style="font-size:0.75rem;">{{ tr.tickets_option_category }}</label>
+                    <select name="category_id_{{ o.id }}" style="margin-bottom:0;">
+                      <option value="">{{ tr.tickets_option_inherit }}</option>
+                      {% for c in categories %}<option value="{{ c.id }}" {% if o.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+                    </select>
+                  </div>
+                  <div style="grid-column:1/-1;">
+                    <label style="font-size:0.75rem;">{{ tr.tickets_option_message }}</label>
+                    <textarea name="ticket_message_{{ o.id }}" rows="2" maxlength="3900"
+                              style="margin:0;width:100%;box-sizing:border-box;background:var(--surface);color:var(--text);
+                                     border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem 0.7rem;
+                                     font-size:0.8rem;line-height:1.5;resize:vertical;font-family:inherit;outline:none;">{{ o.ticket_message }}</textarea>
+                    <p class="hint" style="margin:0.2rem 0 0;">{{ tr.tickets_option_message_hint }}</p>
+                  </div>
+                </div>
+                <div style="display:flex;margin-top:0.5rem;justify-content:flex-end;">
+                  {# formnovalidate, weil beim Loeschen die Pflichtfelder der ANDEREN
+                     Eintraege nicht im Weg stehen sollen. #}
+                  <button type="submit" class="btn btn-danger" style="font-size:0.7rem;padding:0.2rem 0.5rem;"
+                          formnovalidate
+                          formaction="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/options/{{ o.id }}/delete"
+                          onclick="return confirm({{ tr.tickets_option_confirm_delete.replace('{name}', o.label) | js }})">{{ tr.btn_delete }}</button>
+                </div>
+              </div>
+              {% endfor %}
+
+              {% if p.optionen %}
+              <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.8rem;">
+                <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">💾 {{ tr.tickets_options_save_all }}</button>
+                <span class="hint" style="margin:0;">{{ tr.tickets_options_save_all_hint }}</span>
+              </div>
+              {% endif %}
+
+              {# Neuer Eintrag: eigener Name, damit er nicht mit den bestehenden
+                 kollidiert, und ebenfalls per formaction an seine eigene Route. #}
+              <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                <input type="text" name="neu_label" maxlength="100"
+                       placeholder="{{ tr.tickets_option_new_placeholder }}" style="flex:1;min-width:160px;margin:0;">
+                <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;" formnovalidate
+                        formaction="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/options/create">{{ tr.tickets_option_add }}</button>
+              </div>
+              </form>
+              {% if p.optionen | length == 1 %}
+              <p class="hint" style="margin:0.5rem 0 0;">⚠ {{ tr.tickets_options_single }}</p>
+              {% endif %}
+            </div>
 
             {% if p.status != 'published' %}
             <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);">
@@ -3516,6 +3622,21 @@ document.addEventListener('click', function(e) {
         </label>
         <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_auto_invite_hint }}</div>
       </div>
+
+      {# Austritt aus Discord = raus aus der Gruppe. Standardmaessig aus, und mit Absicht
+         deutlicher ausgezeichnet als die anderen Haken: das ist die einzige Einstellung
+         hier, die jemandem etwas wegnimmt, was er behalten wollte. #}
+      <div style="margin-top:0.9rem;border:1px solid rgba(239,68,68,0.3);border-radius:0.5rem;
+                  padding:0.7rem 0.9rem;background:rgba(239,68,68,0.06);">
+        <label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;">
+          <input type="checkbox" name="vrc_group_kick_on_leave" value="1"
+                 style="width:auto;display:inline;margin:0;"
+                 {% if cfg.get('vrc_group_kick_on_leave') == '1' %}checked{% endif %}>
+          {{ tr.vrc_group_kick_label }}
+        </label>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:0.35rem;">{{ tr.vrc_group_kick_hint }}</div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:0.35rem;">{{ tr.vrc_group_kick_pruefung }}</div>
+      </div>
     </div>
   </div>
   <button type="submit" class="btn btn-primary" style="margin-top:0.9rem;">{{ tr.btn_save }}</button>
@@ -3590,6 +3711,16 @@ document.addEventListener('click', function(e) {
                line-height:1.5;resize:vertical;outline:none;">{{ cfg.get('vrc_dm_linked_text', '') }}</textarea>
     </div>
     <div style="grid-column:1 / -1;">
+      {# Der Text ist abschaltbar - er steht im Panel UND (ohne eigenen DM-Text) in der
+         Begruessungs-DM. Ohne Eintrag gilt "an", sonst wuerde er bei bestehenden Servern
+         mit dem ersten Speichern verschwinden. #}
+      <label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;margin-top:0.6rem;">
+        <input type="checkbox" name="vrc_panel_text_on" value="1"
+               style="width:auto;display:inline;margin:0;"
+               {% if cfg.get('vrc_panel_text_on', '1') != '0' %}checked{% endif %}>
+        {{ tr.vrc_panel_text_on_label }}
+      </label>
+      <div style="font-size:0.72rem;color:var(--muted);margin:0.25rem 0 0.6rem;">{{ tr.vrc_panel_text_on_hint }}</div>
       <label>{{ tr.vrc_panel_text_label }}</label>
       {# base.html styles input and select globally but NOT textarea - each one carries its
          own matching style block, same as everywhere else in this project. #}
@@ -3976,6 +4107,14 @@ async function vrcProbe() {
           onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='⏳';">
       <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;">{{ tr.vrc_refresh_btn }}</button>
     </form>
+    {# Sammel-Einladung. Nachfrage davor, weil sie an jeden geht, der noch nicht in der
+       Gruppe ist - auch an die, die laut Vermerk schon eingeladen wurden. Genau darum
+       geht es: der Vermerk wurde bis v1.19.3 auch bei Fehlschlaegen gesetzt. #}
+    <form method="post" action="/servers/{{ guild.id }}/vrc/invite-all" style="margin:0;"
+          onsubmit="if(!confirm({{ tr.vrc_invite_all_confirm | js }})) return false;
+                    this.querySelector('button').disabled=true;this.querySelector('button').textContent='⏳';">
+      <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;">✉ {{ tr.vrc_invite_all_btn }}</button>
+    </form>
   </div>
   <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.9rem;">{{ tr.vrc_refresh_hint }}</div>
 
@@ -4039,6 +4178,14 @@ async function vrcProbe() {
               <button type="submit" name="action" value="approve" class="btn btn-primary" style="font-size:0.75rem;padding:0.22rem 0.6rem;">{{ tr.vrc_btn_approve }}</button>
               {% endif %}
             </form>
+            {# Einladung von Hand. Nur sinnvoll, solange die Person nicht in der Gruppe
+               ist - steht sie drin, waere der Knopf eine Frage ohne Antwort. #}
+            {% if v.vrc_user_id and not v.vrc_group_member %}
+            <form method="post" action="/servers/{{ guild.id }}/vrc/invite/{{ v.id }}" style="display:inline;margin:0;">
+              <button type="submit" class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;"
+                      title="{{ tr.vrc_btn_invite_hint }}">✉ {{ tr.vrc_btn_invite }}</button>
+            </form>
+            {% endif %}
             <form method="post" action="/servers/{{ guild.id }}/vrc/decide/{{ v.id }}" style="display:inline;margin:0;"
                   onsubmit="return confirm({{ tr.vrc_confirm_delete.replace('{name}', v.vrchat_name) | js }})">
               <button type="submit" name="action" value="delete" class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_delete }}">✕</button>
@@ -5175,6 +5322,16 @@ function updateAmpCmdPreview(id, action, value) {
           </label>
         </div>
       </div>
+      {# Rueckbau: ohne diesen Haken ist eine Regel eine Einbahnstrasse - sie gibt die
+         Rolle, nimmt sie aber nie wieder weg. Gemeldet als "leute die server 1 verlassen
+         hatten ... werden trotzdem auf server 2 verified". Standardmaessig aus, damit
+         sich an bestehenden Servern durch ein Update nichts von selbst aendert. #}
+      <label style="display:flex;align-items:flex-start;gap:0.4rem;margin:0 0 0.35rem;font-weight:400;">
+        <input type="checkbox" name="revoke_on_loss" value="1" style="width:auto;margin:0.2rem 0 0;">
+        <span>{{ tr.rolerules_revoke_label }}
+          <span style="display:block;font-size:0.72rem;color:var(--muted);">{{ tr.rolerules_revoke_hint }}</span>
+        </span>
+      </label>
       {# Die Nachricht gehoert zur einzelnen Regel: bei mehreren Regeln will man je Anlass
          etwas anderes schreiben koennen. Leer heisst, dass der Text des Servers weiter
          unten gilt - eine bestehende Einrichtung aendert sich dadurch nicht. #}
@@ -5286,6 +5443,13 @@ function updateAmpCmdPreview(id, action, value) {
                   </label>
                 </div>
               </div>
+              <label style="display:flex;align-items:flex-start;gap:0.4rem;margin:0 0 0.35rem;font-weight:400;">
+                <input type="checkbox" name="revoke_on_loss" value="1" style="width:auto;margin:0.2rem 0 0;"
+                       {% if rr.revoke_on_loss %}checked{% endif %}>
+                <span>{{ tr.rolerules_revoke_label }}
+                  <span style="display:block;font-size:0.72rem;color:var(--muted);">{{ tr.rolerules_revoke_hint }}</span>
+                </span>
+              </label>
               <label style="display:flex;align-items:center;gap:0.4rem;margin:0 0 0.35rem;font-weight:400;">
                 <input type="checkbox" name="dm_enabled" value="1" style="width:auto;margin:0;"
                        {% if rr.dm_enabled %}checked{% endif %}>

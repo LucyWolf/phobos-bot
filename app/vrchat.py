@@ -667,6 +667,47 @@ async def remove_member_role(group_id: str, user_id: str, role_id: str, auth_coo
     await _member_role("DELETE", group_id, user_id, role_id, auth_cookie, two_factor_cookie)
 
 
+async def remove_group_member(group_id: str, user_id: str, auth_cookie: str,
+                              two_factor_cookie: str = "") -> bool:
+    """Wirft ein Mitglied aus der Gruppe (DELETE /groups/{id}/members/{uid}).
+
+    True heisst: entfernt. False heisst: VRChat sagt 404, das Mitglied war in diesem
+    Moment also schon nicht mehr in der Gruppe - kein Fehler, aber auch nichts, was der
+    Bot getan hat, und der Aufrufer soll das auseinanderhalten koennen. Alles andere wird
+    geworfen und nicht geschluckt: wer jemanden aus einer Gruppe entfernt, muss wissen, ob
+    es passiert ist. Die Rollen gehen mit der Mitgliedschaft; sie vorher einzeln
+    abzunehmen ist nicht noetig.
+
+    403 heisst hier fast immer: dem Bot-Konto fehlt in dieser Gruppe das Recht, Mitglieder
+    zu entfernen, oder das Ziel steht ueber ihm (Eigentuemer, hoehere Rolle). Beides kann
+    nur in VRChat selbst geaendert werden, deshalb steht das so in der Meldung.
+    """
+    url = (f"{API_BASE}/groups/{urllib.parse.quote(group_id, safe='')}"
+           f"/members/{urllib.parse.quote(user_id, safe='')}")
+    async with aiohttp.ClientSession() as session:
+        async with session.delete(url, headers=_headers(auth_cookie, two_factor_cookie),
+                                  timeout=TIMEOUT) as resp:
+            if resp.status in (200, 204):
+                return True
+            if resp.status == 404:
+                return False
+            if resp.status == 403:
+                raise VRChatError("Das Bot-Konto darf in dieser Gruppe keine Mitglieder "
+                                  "entfernen — dafür braucht es dort das entsprechende "
+                                  "Recht, und das Ziel darf nicht über ihm stehen.")
+            if resp.status == 401:
+                raise VRChatError("Die VRChat-Sitzung ist abgelaufen — bitte das Konto im "
+                                  "Dashboard neu verbinden.")
+            if resp.status == 429:
+                raise VRChatError("VRChat bremst gerade zu viele Anfragen aus.")
+            try:
+                data = await resp.json(content_type=None)
+            except Exception:
+                data = {}
+            raise VRChatError(_api_meldung(data if isinstance(data, dict) else {})[:200]
+                              or f"VRChat antwortete mit Status {resp.status}.")
+
+
 async def get_group_instances(group_id: str, auth_cookie: str,
                               two_factor_cookie: str = "") -> list:
     """The group's currently open instances.

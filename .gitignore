@@ -1,0 +1,22 @@
+# Das Datenverzeichnis gehoert der laufenden Installation, nicht dem Repo: Datenbank,
+# Sitzungsschluessel, Profilbilder - und seit v1.19.0 auch das Protokoll des Bots
+# (data/logs/phobos.log). Darin stehen Servernamen, Benutzerkennungen und Fehlertexte
+# aus allen Servern einer Installation.
+#
+# Bisher ging das gut, weil immer gezielt committet wurde ("git add app/ tools/").
+# Ein einziges "git add -A" aus dem Wurzelverzeichnis haette gereicht, um alles davon
+# auf GitHub zu schieben. Diese Datei macht aus der Gewohnheit eine Regel.
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Werkzeuge und Editoren
+.DS_Store
+*.swp
+.idea/
+.vscode/

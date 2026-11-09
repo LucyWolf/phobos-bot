@@ -431,6 +431,74 @@ async def group_membership(group_id: str, vrc_user_id: str, guild_id=None) -> tu
     return "ok", bool(row)
 
 
+# Wann zuletzt vergeblich eingeladen wurde, je Verknuepfung. Nur im Speicher: nach einem
+# Neustart darf es ruhig wieder versucht werden, und eine Spalte dafuer waere eine
+# Migration fuer etwas, das niemand ueberdauern muss.
+#
+# Noetig, seit ein Fehlschlag nicht mehr als erledigt vermerkt wird (sonst war nach einem
+# einzigen abgelehnten Versuch fuer immer Schluss). Ohne Bremse wuerde bei jemandem, den
+# VRChat nicht einladen laesst, jeder Rollenwechsel einen neuen Versuch ausloesen - und
+# wiederholtes Schreiben ist das Muster, das Bot-Konten auffaellig macht.
+EINLADUNG_PAUSE = 600
+_einladung_versucht: dict = {}
+
+
+async def einladen_wenn_gewuenscht(guild_id: int, link) -> tuple:
+    """Einmal in die Gruppe einladen - sofort, wenn der Server das eingeschaltet hat.
+
+    Gedacht fuer den Moment, in dem jemand sich verknuepft: dann steht die Person davor
+    und wartet. Vorher konnte die Einladung erst im naechsten Reihendurchgang
+    herausgehen, und der sieht alle zehn Minuten sechs Konten an - bei vielen
+    Verknuepften dauert das Stunden. Wer testet, haelt das fuer kaputt.
+
+    Gibt (zustand, detail) zurueck wie send_group_invite, oder ("skip", Grund), wenn gar
+    nicht eingeladen werden sollte. Der Vermerk wird nur bei Erfolg gesetzt - ein
+    Fehlschlag darf nicht als erledigt gelten.
+    """
+    if not link or not link["vrc_user_id"]:
+        return "skip", "keine VRChat-Kennung"
+    # Erst freigeben, dann einladen - nie umgekehrt. Gemeldet als "man wird schon davor
+    # eingeladen, das darf nicht sein": die oeffentliche Seite ruft beim Aktualisieren
+    # _vrc_sync_group() auf, und das laedt ein, sobald jemand nicht in der Gruppe ist -
+    # ohne zu fragen, ob die Verknuepfung ueberhaupt schon durch ist. Wer seinen Namen
+    # eintippt und auf die Pruefung wartet, war damit schon in der Gruppe eingeladen.
+    #
+    # Die Pruefung steht HIER und nicht an der Aufrufstelle, weil hier alle Wege
+    # zusammenlaufen (Verknuepfen, Rollenwechsel, Reihendurchgang, Knopf im Dashboard).
+    # Der Reihendurchgang und on_member_update holen ohnehin nur Freigegebene - diese
+    # Zeile deckt die ab, die das nicht tun, und jeden Weg, der noch dazukommt.
+    if (link.get("status") or "") != VRC_STATE_APPROVED:
+        return "skip", "noch nicht freigegeben"
+    if link["vrc_group_member"]:
+        return "skip", "ist schon in der Gruppe"
+    if (link["vrc_group_invited"] or "").strip():
+        return "skip", "wurde schon eingeladen"
+    if (await get_guild_config(guild_id, "vrc_auto_invite") or "") != "1":
+        return "skip", "automatische Einladung ist aus"
+    group_id = (await get_guild_config(guild_id, "vrc_group_id") or "").strip()
+    if not group_id:
+        return "skip", "keine Gruppe eingestellt"
+    # Erst gar nicht fragen, wenn es gerade eben schon nicht ging.
+    schluessel = (int(guild_id), int(link["id"]))
+    zuletzt = _einladung_versucht.get(schluessel, 0.0)
+    if zuletzt and time.monotonic() - zuletzt < EINLADUNG_PAUSE:
+        return "skip", "vor kurzem schon versucht"
+    _einladung_versucht[schluessel] = time.monotonic()
+    zustand, detail = await send_group_invite(group_id, link["vrc_user_id"], guild_id)
+    print(f"[vrc_link] Gruppeneinladung an {link['vrchat_name']}: {zustand}"
+          + (f" ({detail})" if detail else ""))
+    if zustand in ("sent", "already"):
+        # Geklappt - die Bremse wird nicht mehr gebraucht, der Vermerk haelt jetzt fest,
+        # dass es passiert ist.
+        _einladung_versucht.pop(schluessel, None)
+        try:
+            await db_exec("UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
+                          (datetime.datetime.utcnow().isoformat(), link["id"]))
+        except Exception as e:
+            print(f"[vrc_link] Einladungsvermerk nicht gespeichert: {e}")
+    return zustand, detail
+
+
 async def send_group_invite(group_id: str, vrc_user_id: str, guild_id=None) -> tuple:
     """Invite one VRChat account into the group.
 
@@ -582,6 +650,182 @@ async def _woanders_vergeben(guild_id, group_id: str, vrc_user_id: str, role_id:
         if andere and andere == group_id:
             return True
     return False
+
+
+# Bremse fuer das Entfernen aus der Gruppe, je Gruppe und nur im Speicher.
+#
+# Scheitert ein Rauswurf, ist der Grund fast immer dauerhaft: dem Bot-Konto fehlt in dieser
+# Gruppe das Recht, Mitglieder zu entfernen. Ohne Bremse liefe bei einer Bann-Welle je
+# Person eine abgelehnte Anfrage gegen VRChat - dasselbe Muster, das schon bei den
+# Einladungen eine Pause bekommen hat (siehe EINLADUNG_PAUSE): wiederholtes, abgelehntes
+# Schreiben ist das, woran Bot-Konten auffallen.
+#
+# Nach einem Neustart darf es ruhig wieder versucht werden, deshalb keine Spalte dafuer.
+RAUSWURF_PAUSE = 600
+_rauswurf_gescheitert: dict = {}
+
+
+async def _woanders_in_gruppe(bot, guild_id, group_id: str, vrc_user_id: str) -> tuple:
+    """Ob ein ANDERER Discord-Server derselben VRChat-Gruppe dieses Konto noch fuehrt.
+
+    Dieselbe Lage wie bei _woanders_vergeben, nur eine Stufe hoeher: zwei Server auf eine
+    Gruppe sind normal, und wer den einen verlaesst, ist auf dem anderen vielleicht noch
+    freigegebenes Mitglied. Wuerde der Austritt hier die Mitgliedschaft beenden, waere der
+    andere Server mit abgeraeumt - ohne dass dort jemand etwas getan hat.
+
+    Eine vorhandene Verknuepfung allein genuegt dafuer aber NICHT: sie bleibt auch stehen,
+    wenn das Mitglied dort ebenfalls ausgetreten ist (die Zeile ist Absicht, sie ist die
+    Geschichte des Mitglieds). Wuerde schon die Zeile blockieren, blockierten sich zwei
+    Server mit derselben Gruppe gegenseitig fuer immer: hier haelt die Zeile von dort, dort
+    die Zeile von hier - und niemand wird je entfernt. Also wird nachgesehen, ob das
+    Mitglied auf dem anderen Server wirklich noch ist. Nur wo sich das nicht nachsehen
+    laesst (der Bot ist auf diesem Server nicht mehr, Discord antwortet nicht), bleibt es
+    beim Blockieren.
+
+    Gibt (blockiert, grund) zurueck.
+    """
+    if not vrc_user_id:
+        return False, ""
+    try:
+        rows = await db_rows(
+            "SELECT guild_id, user_id FROM vrc_links WHERE vrc_user_id=? AND guild_id!=? "
+            "AND status=?",
+            (vrc_user_id, str(guild_id), VRC_STATE_APPROVED),
+        )
+    except Exception as e:
+        # Nicht pruefbar heisst: nicht entfernen. Lieber bleibt jemand Mitglied, als dass
+        # er wegen eines Datenbankfehlers fliegt.
+        print(f"[vrc_link] konnte andere Server nicht pruefen: {e}")
+        return True, f"andere Server nicht pruefbar ({e})"
+    for row in rows:
+        gid = str(row["guild_id"])
+        if not gid.isdigit():
+            continue
+        andere = (await get_guild_config(int(gid), "vrc_group_id") or "").strip()
+        if not andere or andere != group_id:
+            continue
+        andere_gilde = bot.get_guild(int(gid)) if bot else None
+        if andere_gilde is None:
+            return True, f"Server {gid} teilt die Gruppe, ist aber nicht erreichbar"
+        try:
+            await andere_gilde.fetch_member(int(row["user_id"]))
+        except discord.NotFound:
+            continue          # dort ebenfalls ausgetreten - diese Zeile haelt nichts mehr
+        except Exception as e:
+            return True, f"Mitgliedschaft auf Server {gid} nicht pruefbar ({e})"
+        return True, f"auf Server {gid} noch Mitglied"
+    return False, ""
+
+
+async def _raus_geprueft(bot, guild, link, group_id: str) -> tuple:
+    """Darf dieses Mitglied aus der VRChat-Gruppe entfernt werden? Gibt (ja, Grund).
+
+    Ein Austritt aus Discord kostet hier jemanden die Gruppenmitgliedschaft - das ist nicht
+    zurueckzunehmen, also wird jede Bedingung einzeln geprueft und im Log benannt. Jeder
+    Zweifel endet mit "nein": keine Sitzung, keine Auskunft von VRChat, ein zweiter Server
+    auf derselben Gruppe, ein Mitglied, das in Wahrheit noch auf dem Server ist.
+    """
+    if not link or not (link["vrc_user_id"] or ""):
+        return False, "keine VRChat-Kennung"
+    if (link["status"] or "") != VRC_STATE_APPROVED:
+        return False, "Verknuepfung nicht freigegeben"
+    from vrchat import looks_like_group_id
+    if not group_id or not looks_like_group_id(group_id):
+        return False, "keine Gruppe eingestellt"
+    # Nur wer ueber DIESEN Server in die Gruppe gekommen ist. Wer von selbst beigetreten
+    # war, bevor er sich hier verknuepft hat, hat seine Mitgliedschaft nicht von uns - die
+    # nehmen wir ihm auch nicht.
+    if not (link["vrc_group_invited"] or "").strip():
+        return False, "nicht ueber diesen Server in die Gruppe gekommen"
+    # Das eigene Bot-Konto nie. Es haengt an der Gruppe, nicht am Mitglied.
+    try:
+        konto = await db_one("SELECT vrc_user_id FROM vrc_accounts WHERE guild_id=?",
+                             (await vrc_account_for_guild(guild.id),))
+        if konto and (konto["vrc_user_id"] or "") == link["vrc_user_id"]:
+            return False, "das ist das Bot-Konto selbst"
+    except Exception as e:
+        return False, f"Bot-Konto nicht pruefbar ({e})"
+    # Haelt ein anderer Server dieselbe Gruppe? Kostet im Normalfall eine Datenbankfrage
+    # und steht deshalb vor den Nachfragen bei Discord und VRChat.
+    blockiert, grund = await _woanders_in_gruppe(bot, guild.id, group_id, link["vrc_user_id"])
+    if blockiert:
+        return False, grund or "ein anderer Server fuehrt dieses Konto noch"
+    # Ist die Person ueberhaupt weg? on_member_remove kommt auch, wenn Discord nachtraegt
+    # oder der Gateway stolpert. Eine Nachfrage kostet eine Anfrage und verhindert genau
+    # den Fall, den niemand erklaeren koennte: rausgeworfen, obwohl noch da.
+    try:
+        noch_da = await guild.fetch_member(int(link["user_id"]))
+    except discord.NotFound:
+        noch_da = None
+    except Exception as e:
+        return False, f"Austritt nicht bestaetigt ({e})"
+    if noch_da is not None:
+        return False, "ist noch auf dem Server"
+    # Und zuletzt VRChat selbst fragen. "unavailable" ist ausdruecklich KEIN "ist nicht
+    # drin": bei einer Stoerung wuerde sonst nach jedem Austritt ins Leere entfernt.
+    zustand, drin = await group_membership(group_id, link["vrc_user_id"], guild.id)
+    if zustand != "ok":
+        return False, "VRChat gibt gerade keine Auskunft"
+    if not drin:
+        return False, "ist gar nicht in der Gruppe"
+    return True, ""
+
+
+async def aus_gruppe_werfen_wenn_gewuenscht(bot, guild, link) -> tuple:
+    """Entfernt ein ausgetretenes Mitglied aus der VRChat-Gruppe - wenn der Server das will.
+
+    Standardmaessig aus. Wird der Haken gesetzt, gilt: Discord verlassen (oder gekickt oder
+    gebannt - fuer Discord derselbe Vorgang) heisst auch raus aus der Gruppe.
+
+    Und dann muss die Verknuepfung mit weg. Sonst steht sie weiter auf "freigegeben", und
+    wer zurueckkommt, wird ueber on_member_join sofort wieder eingeladen - ohne je neu
+    geprueft worden zu sein. Wer rausgeworfen wurde, soll den Weg von vorne gehen:
+    verknuepfen, pruefen, freigeben, dann die Einladung. Geloescht wird nur, wenn das
+    Entfernen aus der Gruppe wirklich geklappt hat; blieb es bei einem "skip" oder einem
+    Fehler, ist nichts passiert und die Zeile bleibt unberuehrt.
+
+    Gibt (zustand, detail) zurueck: ("aus", Grund) wenn gar nicht gewollt, ("skip", Grund)
+    wenn eine Pruefung dagegen stand, ("ok", "") bei Erfolg, ("fehler", Meldung) sonst.
+    """
+    if (await get_guild_config(guild.id, "vrc_group_kick_on_leave") or "0") != "1":
+        return "aus", "nicht eingeschaltet"
+    group_id = (await get_guild_config(guild.id, "vrc_group_id") or "").strip()
+    # Bremse vor den Pruefungen: scheiterte es gerade erst, erspart das auch die
+    # Nachfragen bei Discord und VRChat.
+    zuletzt = _rauswurf_gescheitert.get(group_id)
+    if zuletzt and time.monotonic() - zuletzt < RAUSWURF_PAUSE:
+        rest = int(RAUSWURF_PAUSE - (time.monotonic() - zuletzt))
+        print(f"[vrc_link] kein Rauswurf aus {group_id}: letzter Versuch scheiterte, "
+              f"Pause noch {rest} s")
+        return "skip", f"Pause nach Fehlschlag ({rest} s)"
+    darf, grund = await _raus_geprueft(bot, guild, link, group_id)
+    if not darf:
+        print(f"[vrc_link] {link['user_id']} bleibt in der Gruppe: {grund}")
+        return "skip", grund
+    session = await vrc_session_fuer_guild(guild.id)
+    if not session:
+        return "skip", "keine VRChat-Sitzung"
+    from vrchat import remove_group_member
+    try:
+        entfernt = await remove_group_member(group_id, link["vrc_user_id"],
+                                             session["auth_cookie"],
+                                             session["two_factor_cookie"])
+    except Exception as e:
+        _rauswurf_gescheitert[group_id] = time.monotonic()
+        print(f"[vrc_link] {link['vrc_user_id']} konnte nicht aus der Gruppe entfernt "
+              f"werden: {e}")
+        return "fehler", str(e)
+    _rauswurf_gescheitert.pop(group_id, None)
+    await db_exec("DELETE FROM vrc_links WHERE id=?", (link["id"],))
+    # Unterschied festhalten: entfernt heisst entfernt, ein 404 heisst "war in dem Moment
+    # schon nicht mehr drin". Beides endet gleich, aber nur eines davon haben wir getan.
+    if entfernt:
+        print(f"[vrc_link] {link['vrc_user_id']} aus der Gruppe entfernt und Verknuepfung "
+              f"geloescht - {link['user_id']} hat {guild.id} verlassen")
+    else:
+        print(f"[vrc_link] {link['vrc_user_id']} war schon nicht mehr in der Gruppe - "
+              f"Verknuepfung geloescht")
+    return "ok", ""
 
 
 async def sync_vrc_roles(guild, member: discord.Member, link) -> list:
@@ -872,6 +1116,18 @@ def _fuelle(vorlage: str, *, welt: str = "", anzahl="", gruppe: str = "",
             .replace("{name}", name)).strip()
 
 
+async def server_text(guild_id, schluessel: str, sprache: str) -> str:
+    """Was dieser Server fuer einen Baustein geschrieben hat - oder der Standard in seiner Sprache.
+
+    Leer oder nur Leerzeichen heisst ueberall dasselbe: Standard nehmen. Das stand sechsmal
+    fast gleich im Modul, zweimal davon als eigene kleine Hilfsfunktion innerhalb einer
+    Funktion - und bei jeder Abweichung waere genau ein Text anders behandelt worden als
+    seine Nachbarn.
+    """
+    return ((await get_guild_config(guild_id, schluessel) or "").strip()
+            or bot_text(schluessel, sprache))
+
+
 async def _instance_texte(guild) -> dict:
     """Die frei schreibbaren Bausteine dieses Servers, leere auf den Standard gesetzt.
 
@@ -880,9 +1136,7 @@ async def _instance_texte(guild) -> dict:
     """
     sprache = await bot_lang(guild.id)
     async def hol(schluessel):
-        """Ein Baustein aus den Einstellungen; leer oder nur Leerzeichen heisst: Standard nehmen."""
-        return ((await get_guild_config(guild.id, schluessel) or "").strip()
-                or bot_text(schluessel, sprache))
+        return await server_text(guild.id, schluessel, sprache)
     return {
         "titel": await hol("vrc_instance_title"),
         "text": await hol("vrc_instance_message"),
@@ -1392,8 +1646,8 @@ async def _announce_instances(bot, guild) -> int:
         # kommt: gross, eindeutig, und auf dem Handy genauso gut zu treffen.
         view = None
         if link:
-            knopf = ((await get_guild_config(guild.id, "vrc_instance_button") or "").strip()
-                     or bot_text("vrc_instance_button", texte.get("sprache", "de")))
+            knopf = await server_text(guild.id, "vrc_instance_button",
+                                      texte.get("sprache", "de"))
             view = discord.ui.View(timeout=None)
             view.add_item(discord.ui.Button(label=knopf[:MAX_BUTTON_LABEL], emoji="🌍",
                                             style=discord.ButtonStyle.link, url=link))
@@ -1505,8 +1759,7 @@ async def send_personal_link(interaction: discord.Interaction) -> None:
     sprache = await bot_lang(interaction.guild_id)
 
     async def baustein(schluessel):
-        return ((await get_guild_config(interaction.guild_id, schluessel) or "").strip()
-                or bot_text(schluessel, sprache))
+        return await server_text(interaction.guild_id, schluessel, sprache)
 
     if row and row["status"] == VRC_STATE_APPROVED:
         text = (await baustein("vrc_dm_linked_text")).replace("{name}", row["vrchat_name"] or "?")
@@ -1520,19 +1773,33 @@ async def send_personal_link(interaction: discord.Interaction) -> None:
     await interaction.followup.send(text[:2000], view=view, ephemeral=True)
 
 
+async def panel_text(guild_id, sprache: str) -> str:
+    """Der erklaerende Text des Panels - oder nichts, wenn der Server ihn abgeschaltet hat.
+
+    Er steht an zwei Stellen: in der Einbettung im Kanal und, wenn kein eigener DM-Text
+    geschrieben ist, als Rueckfall in der Begruessungs-DM. Wer ihn nicht will, soll ihn an
+    beiden Stellen loswerden koennen - mit einem Haken, nicht indem er das Feld leert, denn
+    ein leeres Feld bedeutet hier "nimm den Standard".
+
+    Ohne Eintrag ist der Haken AN: fuer eine bestehende Installation aendert sich nichts.
+    """
+    if (await get_guild_config(guild_id, "vrc_panel_text_on") or "1") != "1":
+        return ""
+    return await server_text(guild_id, "vrc_panel_text", sprache)
+
+
 async def post_panel(bot, guild: discord.Guild, channel: discord.TextChannel) -> discord.Message:
     """Post the server's link panel. Raises on failure so the dashboard can show the reason -
     a panel that silently never appears is the worst of the possible outcomes here."""
     sprache = await bot_lang(guild.id)
-    title = ((await get_guild_config(guild.id, "vrc_panel_title") or "").strip()
-             or bot_text("vrc_panel_title", sprache))
-    text = ((await get_guild_config(guild.id, "vrc_panel_text") or "").strip()
-            or bot_text("vrc_panel_text", sprache))
-    label = ((await get_guild_config(guild.id, "vrc_panel_button") or "").strip()
-             or bot_text("vrc_panel_button", sprache))
+    title = await server_text(guild.id, "vrc_panel_title", sprache)
+    text = await panel_text(guild.id, sprache)
+    label = await server_text(guild.id, "vrc_panel_button", sprache)
     embed = discord.Embed(
         title=title[:256],
-        description=text.replace("{server}", guild.name)[:4000],
+        # Abgeschaltet heisst wirklich ohne: eine leere Zeile unter der Ueberschrift waere
+        # kein Abschalten, sondern eine Luecke.
+        description=(text.replace("{server}", guild.name)[:4000] or None),
         color=0x8B5CF6,
     )
     if guild.icon:
@@ -1629,14 +1896,16 @@ class VRCLink(commands.Cog):
                     # ginge bei jedem Durchgang eine neue Einladung an VRChat, und
                     # wiederholtes Schreiben ist das Muster, das Bot-Konten auffaellig macht.
                     if automatisch and not row["vrc_group_invited"]:
-                        zustand, detail = await send_group_invite(group_id, row["vrc_user_id"], guild.id)
-                        await db_exec(
-                            "UPDATE vrc_links SET vrc_group_invited=? WHERE id=?",
-                            (datetime.datetime.utcnow().isoformat(), row["id"]),
-                        )
-                        row["vrc_group_invited"] = "x"
-                        print(f"[vrc_link] Gruppeneinladung an {row['vrchat_name']}: {zustand}"
-                              + (f" ({detail})" if detail else ""))
+                        # Ueber denselben Weg wie das Verknuepfen und der Rollenwechsel:
+                        # er prueft Schalter, Gruppe, Vermerk und Bremse und vermerkt nur,
+                        # was wirklich herausging. Drei Stellen, die dasselbe tun, waren
+                        # drei Stellen, an denen es auseinanderlaufen kann.
+                        zustand, detail = await einladen_wenn_gewuenscht(guild.id, row)
+                        if zustand in ("sent", "already"):
+                            # Nur im Speicher nachziehen - geschrieben hat es schon
+                            # einladen_wenn_gewuenscht(). Ohne das wuerde derselbe
+                            # Durchgang die Person gleich nochmal anfassen.
+                            row["vrc_group_invited"] = "x"
                     continue
                 war_schon = bool(row["vrc_group_member"])
                 await db_exec(
@@ -1872,12 +2141,18 @@ class VRCLink(commands.Cog):
                 return
             if (await get_guild_config(member.guild.id, "vrc_dm_on_join") or "0") != "1":
                 return
+            sprache = await bot_lang(member.guild.id)
+            text = ((await get_guild_config(member.guild.id, "vrc_dm_text") or "").strip()
+                    or await panel_text(member.guild.id, sprache))
+            if not text:
+                # Eigener DM-Text leer UND der Panel-Text abgeschaltet: dann gibt es nichts
+                # zu schicken. Eine Nachricht aus nichts als einem Knopf ist keine.
+                return
+            # Erst jetzt den Link bauen: create_link_token() legt eine Zeile an, und ein
+            # Schluessel, der nie bei jemandem ankommt, hat dort nichts verloren.
             url = await personal_link(member.guild.id, member.id)
             if not url:
                 return
-            sprache = await bot_lang(member.guild.id)
-            text = ((await get_guild_config(member.guild.id, "vrc_dm_text") or "").strip()
-                    or bot_text("vrc_panel_text", sprache))
             view = discord.ui.View(timeout=None)
             view.add_item(discord.ui.Button(label=bot_text("vrc_panel_button", sprache), emoji="🔗",
                                             style=discord.ButtonStyle.link, url=url))
@@ -1912,6 +2187,17 @@ class VRCLink(commands.Cog):
             )
             if not row:
                 return
+            # Wer noch nicht in der Gruppe ist, bekommt dort auch keine Rollen -
+            # sync_vrc_roles() steigt bei genau dieser Bedingung aus. Freigeschaltet zu
+            # werden und dann nichts zu bekommen ist aber genau der Moment, in dem die
+            # Einladung faellig ist: "wenn der user in dc frei gegeben wirt zb eine rolle
+            # bekommt dann soll der user auch ... die einladung bekommen".
+            #
+            # Kostet nichts, wenn nichts zu tun ist: einladen_wenn_gewuenscht() prueft
+            # Schalter, gemerkten Gruppenstand und Vermerk, bevor es VRChat ueberhaupt
+            # anspricht.
+            if not row["vrc_group_member"]:
+                await einladen_wenn_gewuenscht(after.guild.id, row)
             geaendert = await sync_vrc_roles(after.guild, after, row)
             if geaendert:
                 print(f"[vrc_link] Rollenwechsel bei {after.id} in {after.guild.id}: "
@@ -1931,6 +2217,13 @@ class VRCLink(commands.Cog):
 
         Die Verknuepfung selbst bleibt stehen. Sie ist die Geschichte dieses Mitglieds, und
         wer zurueckkommt, bekommt ueber on_member_join alles wieder.
+
+        Steht der Haken "beim Austritt aus der Gruppe entfernen", geht es einen Schritt
+        weiter: dann endet die Mitgliedschaft in der VRChat-Gruppe (siehe
+        aus_gruppe_werfen_wenn_gewuenscht - und dort die Pruefungen, die vorher alle
+        zutreffen muessen). Gelingt das, sind die Rollen damit ohnehin weg, und die
+        Verknuepfung wird geloescht: wer wieder in die Gruppe will, muss sich erst wieder
+        verknuepfen und pruefen lassen.
         """
         try:
             if member.bot or not await self._enabled(member.guild.id):
@@ -1940,6 +2233,19 @@ class VRCLink(commands.Cog):
                 (str(member.guild.id), str(member.id)),
             )
             if not row or row["status"] != VRC_STATE_APPROVED:
+                return
+            # Erst die Gruppenfrage: wird das Mitglied ganz aus der Gruppe entfernt, gehen
+            # seine Rollen damit mit - sie vorher einzeln abzunehmen waere eine Anfrage je
+            # Rolle fuer nichts.
+            try:
+                zustand, _detail = await aus_gruppe_werfen_wenn_gewuenscht(
+                    self.bot, member.guild, row)
+            except Exception as e:
+                # Faellt die Gruppenfrage selbst aus, bleibt es beim Verhalten von vorher -
+                # Rollen abnehmen ist dann das Mindeste und darf nicht mit ausfallen.
+                print(f"[vrc_link] Gruppenfrage beim Austritt von {member.id}: {e}")
+                zustand = "fehler"
+            if zustand == "ok":
                 return
             weg = await strip_vrc_roles(member.guild.id, row)
             if weg:
