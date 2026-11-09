@@ -1764,19 +1764,36 @@ async def send_personal_link(interaction: discord.Interaction) -> None:
     await interaction.followup.send(text[:2000], view=view, ephemeral=True)
 
 
+async def panel_text(guild_id, sprache: str) -> str:
+    """Der erklaerende Text des Panels - oder nichts, wenn der Server ihn abgeschaltet hat.
+
+    Er steht an zwei Stellen: in der Einbettung im Kanal und, wenn kein eigener DM-Text
+    geschrieben ist, als Rueckfall in der Begruessungs-DM. Wer ihn nicht will, soll ihn an
+    beiden Stellen loswerden koennen - mit einem Haken, nicht indem er das Feld leert, denn
+    ein leeres Feld bedeutet hier "nimm den Standard".
+
+    Ohne Eintrag ist der Haken AN: fuer eine bestehende Installation aendert sich nichts.
+    """
+    if (await get_guild_config(guild_id, "vrc_panel_text_on") or "1") != "1":
+        return ""
+    return ((await get_guild_config(guild_id, "vrc_panel_text") or "").strip()
+            or bot_text("vrc_panel_text", sprache))
+
+
 async def post_panel(bot, guild: discord.Guild, channel: discord.TextChannel) -> discord.Message:
     """Post the server's link panel. Raises on failure so the dashboard can show the reason -
     a panel that silently never appears is the worst of the possible outcomes here."""
     sprache = await bot_lang(guild.id)
     title = ((await get_guild_config(guild.id, "vrc_panel_title") or "").strip()
              or bot_text("vrc_panel_title", sprache))
-    text = ((await get_guild_config(guild.id, "vrc_panel_text") or "").strip()
-            or bot_text("vrc_panel_text", sprache))
+    text = await panel_text(guild.id, sprache)
     label = ((await get_guild_config(guild.id, "vrc_panel_button") or "").strip()
              or bot_text("vrc_panel_button", sprache))
     embed = discord.Embed(
         title=title[:256],
-        description=text.replace("{server}", guild.name)[:4000],
+        # Abgeschaltet heisst wirklich ohne: eine leere Zeile unter der Ueberschrift waere
+        # kein Abschalten, sondern eine Luecke.
+        description=(text.replace("{server}", guild.name)[:4000] or None),
         color=0x8B5CF6,
     )
     if guild.icon:
@@ -2123,7 +2140,11 @@ class VRCLink(commands.Cog):
                 return
             sprache = await bot_lang(member.guild.id)
             text = ((await get_guild_config(member.guild.id, "vrc_dm_text") or "").strip()
-                    or bot_text("vrc_panel_text", sprache))
+                    or await panel_text(member.guild.id, sprache))
+            if not text:
+                # Eigener DM-Text leer UND der Panel-Text abgeschaltet: dann gibt es nichts
+                # zu schicken. Eine Nachricht aus nichts als einem Knopf ist keine.
+                return
             view = discord.ui.View(timeout=None)
             view.add_item(discord.ui.Button(label=bot_text("vrc_panel_button", sprache), emoji="🔗",
                                             style=discord.ButtonStyle.link, url=url))

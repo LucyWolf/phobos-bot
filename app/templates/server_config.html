@@ -3711,6 +3711,16 @@ document.addEventListener('click', function(e) {
                line-height:1.5;resize:vertical;outline:none;">{{ cfg.get('vrc_dm_linked_text', '') }}</textarea>
     </div>
     <div style="grid-column:1 / -1;">
+      {# Der Text ist abschaltbar - er steht im Panel UND (ohne eigenen DM-Text) in der
+         Begruessungs-DM. Ohne Eintrag gilt "an", sonst wuerde er bei bestehenden Servern
+         mit dem ersten Speichern verschwinden. #}
+      <label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;margin-top:0.6rem;">
+        <input type="checkbox" name="vrc_panel_text_on" value="1"
+               style="width:auto;display:inline;margin:0;"
+               {% if cfg.get('vrc_panel_text_on', '1') != '0' %}checked{% endif %}>
+        {{ tr.vrc_panel_text_on_label }}
+      </label>
+      <div style="font-size:0.72rem;color:var(--muted);margin:0.25rem 0 0.6rem;">{{ tr.vrc_panel_text_on_hint }}</div>
       <label>{{ tr.vrc_panel_text_label }}</label>
       {# base.html styles input and select globally but NOT textarea - each one carries its
          own matching style block, same as everywhere else in this project. #}
