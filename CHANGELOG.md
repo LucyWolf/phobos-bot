@@ -14,6 +14,19 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.24 — `beta` — 11.11.2026
+
+**Einrichtung**
+- Neu: Oben im Fenster steht ein Knopf **„Einrichtung beenden"**. Damit kommt man ins
+  Dashboard, auch wenn noch Pflichtschritte offen sind — den Rest holt man später über
+  den Eintrag „Einrichtung" in der Seitenleiste nach.
+- Den Knopf gibt es erst, wenn das eigene Konto eingerichtet ist (Schritt 1). Solange
+  noch `admin`/`admin` gilt, führt jeder Ausgang auf ein Dashboard, in das jeder
+  hineinkommt, der dieses Projekt kennt — das ist das Einzige, was sich nicht nachholen
+  lässt.
+
+---
+
 ## 1.19.23 — `main` — 09.11.2026
 
 Stand, mit dem diese Datei beginnt. Alles Ältere siehe Commit-Geschichte.

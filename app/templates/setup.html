@@ -37,8 +37,9 @@
               background:rgba(100,116,139,.35); }
   .sw-punkt.fertig { background:#22c55e; }
   .sw-punkt.hier { background:var(--primary, #8b5cf6); transform:scale(1.35); }
-  .sw-zu { background:none; border:none; color:var(--muted); font-size:1.1rem;
-           cursor:pointer; line-height:1; padding:0.2rem 0.3rem; }
+  .sw-zu { background:none; border:1px solid var(--border); border-radius:0.4rem;
+           color:var(--muted); font-size:0.75rem; font-weight:600; white-space:nowrap;
+           cursor:pointer; line-height:1; padding:0.35rem 0.55rem; }
   .sw-zu:hover { color:var(--text); }
   .sw-inhalt { padding:1.3rem 1.3rem 1.1rem; overflow-y:auto; }
   .sw-h { font-size:1.12rem; font-weight:700; margin:0 0 0.55rem; }
@@ -77,10 +78,12 @@
         <span class="sw-punkt {% if s.fertig %}fertig{% endif %}" data-punkt="{{ loop.index }}"></span>
         {% endfor %}
       </span>
-      {% if not offen %}
-      {# Das Kreuz gibt es erst, wenn kein Pflichtschritt mehr offen ist. Vorher fuehrt es
-         nur auf eine Oberflaeche, auf der nichts von dem geht, was sie anbietet. #}
-      <button type="button" class="sw-zu" id="sw-zu" aria-label="{{ tr.setup_nav_fertig }}">✕</button>
+      {% if darf_zu %}
+      {# Raus kommt man, sobald das eigene Konto steht - vorher nicht. Solange noch
+         'admin'/'admin' gilt, fuehrt jeder Ausgang auf ein Dashboard, das jeder betreten
+         kann, der dieses Projekt kennt. Alles Weitere laesst sich nachholen, das nicht. #}
+      <button type="button" class="sw-zu" id="sw-zu">
+        {{ tr.setup_nav_beenden }} ✕</button>
       {% endif %}
     </div>
 

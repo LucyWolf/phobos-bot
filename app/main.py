@@ -3841,10 +3841,15 @@ async def setup_page(request: Request, error: str = "", success: str = "",
     # n+1 ist die Abschlussseite - ein uebersprungener letzter Schritt landet dort.
     if 1 <= schritt <= len(schritte) + 1:
         start = schritt
+    # Beenden darf, wer sein eigenes Konto eingerichtet hat - Schritt 1. Alles andere
+    # laesst sich nachholen, das nicht: solange 'admin'/'admin' gilt, fuehrt der Ausgang
+    # auf ein Dashboard, in das jeder hineinkommt, der dieses Projekt kennt. Ausserhalb
+    # der Erst-Einrichtung gibt es den Knopf immer (dort ist nichts einzurichten).
+    darf_zu = (not phase) or schritte[0]["fertig"]
     return templates.TemplateResponse("setup.html", {
         **session(request), "request": request, "active": "setup",
         "schritte": schritte, "error": error, "success": success, "offen": offen,
-        "start": start,
+        "start": start, "darf_zu": darf_zu,
     })
 
 
