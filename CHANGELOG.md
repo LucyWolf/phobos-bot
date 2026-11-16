@@ -14,6 +14,41 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.29 — `beta` — 16.11.2026
+
+**Der Bot läuft nicht mehr als root**
+- Bis hierher lief `python main.py` im Container als uid 0 — nie Absicht, sondern der
+  Docker-Standard, weil das Dockerfile nie eine `USER`-Zeile hatte. Ein Einstieg war das
+  nicht (kein Docker-Socket, siehe `10cb891`), aber es machte jeden denkbaren Fehler
+  schlimmer: geschrieben worden wäre als root, in das eingehängte Repo — also in den
+  Code, der beim nächsten Start läuft.
+- Der Container startet jetzt als Benutzer `1000`, gibt **alle** Linux-Fähigkeiten ab
+  (`cap_drop: ALL`, nur das Startskript bekommt kurz die fünf, die es zum Umschreiben
+  der Besitzrechte braucht) und kann sich keine zurückholen (`no-new-privileges`).
+  Der laufende Prozess hat am Ende `CapEff: 0000000000000000`.
+- **Einzustellen ist dafür nichts** — kein `user:` in der compose-Datei, keine Nummern.
+  Wessen Dateien auf dem Wirt einer anderen Nummer gehören, setzt `PUID`/`PGID`.
+
+**Damit nichts stehenbleibt**
+- Bei jeder bestehenden Installation gehören `data/` und das Repo root. Das neue
+  `app/entrypoint.sh` rückt die Besitzrechte bei **jedem** Start zurecht, bevor es die
+  Rechte abgibt — angefasst wird dabei nur, was tatsächlich falsch steht. Nötig bei jedem
+  Start, weil auf dem Server per SSH als root im Repo gearbeitet wird.
+- Vor dem Abgeben wird geprüft, ob es überhaupt gutgeht: ob der Rechtewechsel möglich ist
+  und ob das Datenverzeichnis als dieser Benutzer beschreibbar ist. Klappt eines davon
+  nicht (NFS, Docker Desktop, exFAT, fehlende Fähigkeit), **läuft der Bot wie bisher als
+  root weiter** und schreibt den Grund samt Abhilfe ins Container-Protokoll. Ein Container
+  in der Neustartschleife wäre schlimmer als ein Bot mit zu vielen Rechten.
+- `PHOBOS_ROOT=1` erzwingt das alte Verhalten, falls doch irgendwo etwas klemmt.
+- `git config` jetzt `--system` statt `--global`: sonst meldet git im `/repo` als anderer
+  Benutzer „dubious ownership" und das Update über das Dashboard wäre tot.
+
+**Wirksam erst beim Neubauen** (`docker compose up -d --build`). Ein Update über das
+Dashboard holt nur neuen Code und startet den Prozess neu, es baut das Image nicht neu —
+eine laufende Installation ändert sich also erst, wenn sie selbst neu gebaut wird.
+
+---
+
 ## 1.19.28 — `beta` — 16.11.2026
 
 **VRC-Link: Freigabe im Kanal** (alles einzeln abschaltbar, Standard aus)

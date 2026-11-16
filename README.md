@@ -145,6 +145,12 @@ The dashboard is at `http://<server>:8080`. First login is `admin` / `admin` —
 >
 > There is deliberately **no** `/var/run/docker.sock` mount. Handing the Docker socket to a container is effectively root on the host; the update restarts the process by itself instead, and `restart: unless-stopped` brings it back.
 
+> **The bot does not run as root.** Its container starts as user `1000`, drops every Linux capability it doesn't need (`cap_drop: ALL`) and cannot gain any back (`no-new-privileges`). Because the mounted folders (`app/`, `data/`, the repository) belong to whoever created them on the host, the container's start script fixes their ownership on every start before handing over — so an existing installation keeps working without anyone touching a single file by hand.
+>
+> Set `PUID`/`PGID` if your files belong to a different user id. If ownership cannot be changed at all (NFS, Docker Desktop, exFAT), the start script says so in the container log and keeps the bot running as before rather than leaving you with a container that won't come up. `PHOBOS_ROOT=1` forces the old behaviour.
+>
+> This takes effect when the image is **rebuilt** (`docker compose up -d --build`). An update from the dashboard only fetches new code and restarts the process — it does not rebuild the image, so a running installation changes nothing until you rebuild it yourself.
+
 ### Without Compose
 
 The same thing as a single command — useful if you only want to try it out:
@@ -162,6 +168,11 @@ docker run -d \
   -v "$PWD:/repo" \
   -e TZ=Europe/Berlin \
   -e PYTHONUNBUFFERED=1 \
+  -e PUID=1000 -e PGID=1000 \
+  --cap-drop ALL \
+  --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
+  --cap-add SETUID --cap-add SETGID \
+  --security-opt no-new-privileges:true \
   phobos-bot:latest
 ```
 
@@ -858,6 +869,12 @@ Das Dashboard liegt unter `http://<server>:8080`. Erste Anmeldung mit `admin` / 
 >
 > Einen `/var/run/docker.sock`-Mount gibt es bewusst **nicht**. Den Docker-Socket in einen Container zu reichen heißt faktisch Root auf dem Wirt; das Update startet den Prozess stattdessen selbst neu, und `restart: unless-stopped` holt ihn zurück.
 
+> **Der Bot läuft nicht als root.** Sein Container startet als Benutzer `1000`, gibt alle Linux-Fähigkeiten ab, die er nicht braucht (`cap_drop: ALL`), und kann sich keine zurückholen (`no-new-privileges`). Weil die eingehängten Ordner (`app/`, `data/`, das Repository) dem gehören, der sie auf dem Wirt angelegt hat, rückt das Startskript ihre Besitzrechte bei jedem Start zurecht, bevor es die Rechte abgibt — eine bestehende Installation läuft also weiter, ohne dass jemand von Hand eine Datei anfassen muss.
+>
+> `PUID`/`PGID` setzen, wenn die Dateien einer anderen Benutzernummer gehören. Lässt sich der Besitz gar nicht ändern (NFS, Docker Desktop, exFAT), schreibt das Startskript das ins Container-Protokoll und lässt den Bot wie bisher laufen, statt einen Container zu hinterlassen, der nicht hochkommt. `PHOBOS_ROOT=1` erzwingt das alte Verhalten.
+>
+> Wirksam wird das beim **Neubauen** des Images (`docker compose up -d --build`). Ein Update über das Dashboard holt nur neuen Code und startet den Prozess neu — es baut das Image nicht neu, an einer laufenden Installation ändert sich also nichts, bis sie selbst neu gebaut wird.
+
 ### Ohne Compose
 
 Dasselbe als ein einzelner Befehl — praktisch, wenn man es nur ausprobieren will:
@@ -875,6 +892,11 @@ docker run -d \
   -v "$PWD:/repo" \
   -e TZ=Europe/Berlin \
   -e PYTHONUNBUFFERED=1 \
+  -e PUID=1000 -e PGID=1000 \
+  --cap-drop ALL \
+  --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
+  --cap-add SETUID --cap-add SETGID \
+  --security-opt no-new-privileges:true \
   phobos-bot:latest
 ```
 

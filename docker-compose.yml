@@ -13,6 +13,29 @@ services:
     environment:
       - TZ=Europe/Berlin
       - PYTHONUNBUFFERED=1
+    # Hier ist mit Absicht keine "user:"-Zeile noetig und keine Nummer einzustellen: der
+    # Container gibt seine Rechte selbst ab und rueckt die Besitzrechte der eingehaengten
+    # Ordner vorher zurecht (app/entrypoint.sh). Wessen Dateien auf dem Wirt einer anderen
+    # Nummer als 1000 gehoeren, setzt oben PUID/PGID - sonst ist nichts zu tun.
+    #
+    # Der Bot selbst laeuft als Benutzer 1000 und hat damit gar keine Sonderrechte mehr
+    # (siehe app/entrypoint.sh). Die paar Faehigkeiten hier braucht nur das Startskript,
+    # in den zwei Sekunden, bevor es die Rechte abgibt: Besitzrechte der eingehaengten
+    # Ordner geraderuecken (CHOWN, DAC_OVERRIDE, FOWNER) und die Rechte dann tatsaechlich
+    # abgeben koennen (SETUID, SETGID). Alles andere - Netzwerk auf niedriger Ebene,
+    # Einhaengen, fremde Prozesse belauschen - faellt weg.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
+    # Nichts im Container kann sich nachtraeglich mehr Rechte holen, auch nicht ueber ein
+    # Programm mit gesetztem setuid-Bit.
+    security_opt:
+      - no-new-privileges:true
     # Ohne diesen Block schreibt Docker die Ausgabe des Bots in eine Datei, die nie
     # kleiner wird. Am 02.11.2026 war eine davon auf 21 GB angewachsen und die Platte
     # des Servers voll - der Bot lief dabei die ganze Zeit normal weiter, es fiel erst
