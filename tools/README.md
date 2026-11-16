@@ -28,6 +28,15 @@ Walks every Jinja template and reports blocks that do not close. Hooked up as
 it cannot see what ends up inside what at runtime, which is why the test suite renders the
 pages as well.
 
+### `rechte_pruefen.py` — does the container still drop root?
+
+Reads `app/Dockerfile`, `app/entrypoint.sh` and `docker-compose.yml` and fails if the bot
+would come up as root again — a missing `ENTRYPOINT`, a start script that no longer hands
+over, a reinstated `docker.sock` mount, a dropped `cap_drop`. Hooked up as `pre-commit`
+alongside the template check. Nobody has to write "run as root" for this to come back:
+Docker does that by default, so the absence of a line is enough. Whether it works in
+practice is a separate question — `test_rechte.sh` answers that against the real image.
+
 ### `apk_pruefen.py` — do APK, version.txt and release note agree?
 
 Checks that the published Android build, its version file and the release note describe the
@@ -49,6 +58,13 @@ Zwei-Faktor-Anmeldung weg.
 **`vorlagen_pruefen.py`** zählt die Klammern in allen Jinja-Vorlagen und hängt als
 `pre-commit`-Haken davor. Es sieht nur die Klammern, nicht was zur Laufzeit worin steckt —
 deshalb rendern die Tests die Seiten zusätzlich.
+
+**`rechte_pruefen.py`** schlägt an, wenn der Container wieder als root hochkäme — fehlender
+`ENTRYPOINT`, ein Startskript, das nicht mehr übergibt, ein wieder eingehängter
+`docker.sock`, ein verschwundenes `cap_drop`. Hängt ebenfalls als `pre-commit`-Haken davor.
+Niemand muss dafür „als root" schreiben: Docker nimmt root von sich aus, es genügt also,
+dass eine Zeile fehlt. Ob es im Betrieb wirklich klappt, prüft `test_rechte.sh` am echten
+Image.
 
 **`apk_pruefen.py`** prüft vor einer Android-Veröffentlichung, ob APK, `version.txt` und
 Release-Notiz dieselbe Version meinen.
