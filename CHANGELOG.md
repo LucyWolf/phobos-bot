@@ -14,6 +14,120 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.30 — `beta` — 17.11.2026
+
+**Das Startskript fasst keine fremden Dateien mehr an**
+- Auf einem Server mit mehreren Instanzen liegen die Datenordner der *anderen*
+  Installationen im selben Verzeichnis wie das Repo (`data-zerafi/`, `data-paniczone/`).
+  Der Rundumschlag über `/repo` aus 1.19.29 hat sie beim ersten Start mit umgeschrieben —
+  15 Einträge, die diesen Bot nichts angehen. Kaputt ging dabei nichts (jene Container
+  laufen als root und kommen an Dateien von 1000 trotzdem heran), passieren durfte es
+  trotzdem nicht.
+- Angefasst wird jetzt nur noch, was der Bot wirklich braucht: `.git`, das Repo-Verzeichnis
+  selbst und die obersten Einträge, **die git kennt**. Was git nicht kennt, bleibt liegen.
+
+---
+
+## 1.19.29 — `beta` — 16.11.2026
+
+**Der Bot läuft nicht mehr als root**
+- Bis hierher lief `python main.py` im Container als uid 0 — nie Absicht, sondern der
+  Docker-Standard, weil das Dockerfile nie eine `USER`-Zeile hatte. Ein Einstieg war das
+  nicht (kein Docker-Socket, siehe `10cb891`), aber es machte jeden denkbaren Fehler
+  schlimmer: geschrieben worden wäre als root, in das eingehängte Repo — also in den
+  Code, der beim nächsten Start läuft.
+- Der Container startet jetzt als Benutzer `1000`, gibt **alle** Linux-Fähigkeiten ab
+  (`cap_drop: ALL`, nur das Startskript bekommt kurz die fünf, die es zum Umschreiben
+  der Besitzrechte braucht) und kann sich keine zurückholen (`no-new-privileges`).
+  Der laufende Prozess hat am Ende `CapEff: 0000000000000000`.
+- **Einzustellen ist dafür nichts** — kein `user:` in der compose-Datei, keine Nummern.
+  Wessen Dateien auf dem Wirt einer anderen Nummer gehören, setzt `PUID`/`PGID`.
+
+**Damit nichts stehenbleibt**
+- Bei jeder bestehenden Installation gehören `data/` und das Repo root. Das neue
+  `app/entrypoint.sh` rückt die Besitzrechte bei **jedem** Start zurecht, bevor es die
+  Rechte abgibt — angefasst wird dabei nur, was tatsächlich falsch steht. Nötig bei jedem
+  Start, weil auf dem Server per SSH als root im Repo gearbeitet wird.
+- Vor dem Abgeben wird geprüft, ob es überhaupt gutgeht: ob der Rechtewechsel möglich ist
+  und ob das Datenverzeichnis als dieser Benutzer beschreibbar ist. Klappt eines davon
+  nicht (NFS, Docker Desktop, exFAT, fehlende Fähigkeit), **läuft der Bot wie bisher als
+  root weiter** und schreibt den Grund samt Abhilfe ins Container-Protokoll. Ein Container
+  in der Neustartschleife wäre schlimmer als ein Bot mit zu vielen Rechten.
+- `PHOBOS_ROOT=1` erzwingt das alte Verhalten, falls doch irgendwo etwas klemmt.
+- `git config` jetzt `--system` statt `--global`: sonst meldet git im `/repo` als anderer
+  Benutzer „dubious ownership" und das Update über das Dashboard wäre tot.
+
+**Wirksam erst beim Neubauen** (`docker compose up -d --build`). Ein Update über das
+Dashboard holt nur neuen Code und startet den Prozess neu, es baut das Image nicht neu —
+eine laufende Installation ändert sich also erst, wenn sie selbst neu gebaut wird.
+
+---
+
+## 1.19.28 — `beta` — 16.11.2026
+
+**VRC-Link: Freigabe im Kanal** (alles einzeln abschaltbar, Standard aus)
+- Neu: **18+ bei VRChat verlangen.** Ohne bestätigtes 18+ wird niemand automatisch
+  freigegeben — die Anfrage bleibt liegen, abgelehnt wird dabei niemand. „Nicht bestätigt"
+  heißt auch „VRChat sagt gerade nichts dazu".
+- Neu: **18+-Spalte** in der Verknüpfungsliste — vor der Freigabe sichtbar, nicht erst
+  danach.
+- Neu: **Wartende Verknüpfungen im Kanal melden.** Einbettung mit Discord-Name,
+  VRChat-Name, 18+-Status, Trust-Rang und Profillink, darunter ✅ Annehmen und ❌ Ablehnen.
+  Ablehnen fragt nach einem Grund (freiwillig).
+- Entscheiden darf, wer eine einstellbare Rolle hat; ohne Auswahl gilt „Server verwalten".
+- Annehmen gibt Discord-Rolle und Spitzname, die VRChat-Gruppenrollen und die Einladung —
+  derselbe Weg wie im Dashboard. Ablehnen löscht die Verknüpfung, damit der Name für einen
+  neuen Versuch frei ist.
+- Neu: **Entscheidung per DM** an den Betroffenen, bei Ablehnung mit Grund.
+- Neue Log-Kategorie **VRC-Link** für den Log-Kanal.
+- Die Meldung wird nach der Entscheidung umgeschrieben (wer, wann, warum) und verliert
+  ihre Knöpfe — auch dann, wenn im Dashboard entschieden wurde.
+
+---
+
+## 1.19.27 — `beta` — 16.11.2026
+
+**VRC-Link**
+- Neu: **Suche** über der Verknüpfungsliste. Gesucht wird im Discord-Namen, im
+  VRChat-Namen und in beiden Kennungen — wer eine Nummer aus dem Protokoll hat, kann sie
+  einsetzen.
+- Neu: **10, 20 oder 50 Einträge je Seite**, selbst einstellbar, mit Blättern darunter.
+  Suche und Seitengröße wandern beim Umblättern mit.
+- Die Zahl oben zählt weiter alle Verknüpfungen, auch während einer Suche; daneben steht
+  dann, wie viele davon passen.
+
+---
+
+## 1.19.26 — `beta` — 16.11.2026
+
+**Sicherheit**
+- Behoben: Der Server ließ sich dazu bringen, **Adressen im eigenen Netz abzurufen**. Beim
+  Holen eines Umfragebildes (eigene Bildbreite) wurde die Adresse gar nicht geprüft, und
+  beim Suchen eines Vorschaubildes nur die erste — eine fremde Seite konnte per Umleitung
+  auf `http://127.0.0.1:…` zeigen. Umleitungen werden jetzt selbst aufgelöst und vor jedem
+  Schritt geprüft.
+- Behoben: Das **AMP-Passwort folgte einer geänderten Adresse**. Ein leeres Passwortfeld
+  heißt „behalten" — damit reichte es, die Adresse auf einen eigenen Server zu ändern und
+  zu speichern, um die Zugangsdaten dorthin zu schicken. Wer den Host wechselt, muss das
+  Passwort jetzt neu eingeben.
+
+Beides gemeldet aus einer fremden Installation und hier mit echten lokalen Servern
+nachgestellt.
+
+---
+
+## 1.19.25 — `beta` — 16.11.2026
+
+**VRChat**
+- Behoben, dringend: Ein **zweites VRChat-Konto verschwand beim nächsten Neustart**. In der
+  Migrationsliste von `init_db()` — die bei jedem Start durchläuft — standen noch zwei
+  Anweisungen aus der Zeit, als es nur ein Konto gab: sie zogen eine Zeile auf das
+  Standardkonto um und löschten alle übrigen. Seit mehrere Konten möglich sind, räumte das
+  bei jedem Start auf, ohne Meldung und ohne Spur. Gemeldet aus einer fremden Installation,
+  hier nachgestellt und per Test abgesichert.
+
+---
+
 ## 1.19.24 — `beta` — 11.11.2026
 
 **Einrichtung**

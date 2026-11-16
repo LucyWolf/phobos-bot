@@ -24,7 +24,8 @@ from database import get_guild_config, db_exec
 # One entry per loggable bot action. Also unioned into main.py's LOG_CATEGORIES so the
 # existing per-user display filter (server_log.html's "🔍 Filter" checkboxes) covers these
 # the same way it already covers the 9 native Discord-event categories.
-BOT_EVENT_CATEGORIES = ("poll", "ticket", "giveaway", "warning", "automod", "scheduled", "birthday")
+BOT_EVENT_CATEGORIES = ("poll", "ticket", "giveaway", "warning", "automod", "scheduled",
+                        "birthday", "vrclink")
 
 
 async def log_bot_event(bot, guild_id: int, icon: str, title: str, category: str, plain: str = ""):

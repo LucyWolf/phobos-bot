@@ -1807,6 +1807,263 @@ async def post_panel(bot, guild: discord.Guild, channel: discord.TextChannel) ->
     return await channel.send(embed=embed, view=VRCLinkPanelView(label))
 
 
+# ── Freigabe im Kanal ─────────────────────────────────────────────────────────
+#
+# Gewuenscht am 16.11.2026 von einem Server, der den Bot neu einsetzt: eine Meldung in
+# einen Kanal, sobald jemand sich verknuepft hat, mit allem, was fuer die Entscheidung
+# zaehlt - und zwei Knoepfen darunter, statt den Weg ueber das Dashboard.
+#
+# Die Kennung der Verknuepfung steckt in der custom_id der Knoepfe. Eine View laesst sich
+# damit nicht wie das Panel einmal registrieren (dort ist die custom_id fuer alle gleich);
+# stattdessen faengt der Cog die Interaktion in on_interaction ab und liest die Kennung
+# aus der custom_id. Das ueberlebt jeden Neustart, ohne dass irgendwo etwas gemerkt werden
+# muss - die Nachricht selbst traegt alles, was gebraucht wird.
+REVIEW_OK = "vrc:review:ok:"
+REVIEW_NEIN = "vrc:review:nein:"
+REVIEW_GRUND = "vrc:review:grund:"
+
+
+async def review_aktiv(guild_id) -> bool:
+    """Ob dieser Server die Freigabe im Kanal eingeschaltet hat - und wohin."""
+    return (await get_guild_config(guild_id, "vrc_review_enabled") or "0") == "1"
+
+
+def vrc_profil_link(vrc_user_id: str) -> str:
+    """Die Profilseite eines VRChat-Kontos. Ohne Kennung kein Link."""
+    return f"https://vrchat.com/home/user/{vrc_user_id}" if vrc_user_id else ""
+
+
+async def _review_embed(guild, link, sprache: str, ergebnis: str = "") -> discord.Embed:
+    """Die Meldung selbst: alles, was fuer die Entscheidung zaehlt, auf einen Blick.
+
+    18+ steht bewusst als eigene Zeile und nicht im Fliesstext: danach wurde ausdruecklich
+    gefragt ("I don't like it doesn't show me if they're 18+ VRC before approving them").
+    """
+    mitglied = guild.get_member(int(link["user_id"])) if str(link["user_id"]).isdigit() else None
+    titel = bot_text("vrc_review_titel", sprache)
+    farbe = 0x8B5CF6
+    if ergebnis == "ok":
+        farbe = 0x22C55E
+    elif ergebnis == "nein":
+        farbe = 0xEF4444
+    embed = discord.Embed(title=titel[:256], color=farbe)
+    embed.add_field(name=bot_text("vrc_review_discord", sprache),
+                    value=(mitglied.mention if mitglied else f"`{link['user_id']}`"), inline=True)
+    embed.add_field(name=bot_text("vrc_review_vrchat", sprache),
+                    value=f"`{link['vrchat_name']}`", inline=True)
+    # 18+ kennt drei Zustaende, nicht zwei: bestaetigt, nicht bestaetigt, und "VRChat sagt
+    # nichts dazu". Das Dritte als "nein" auszugeben waere eine Behauptung.
+    embed.add_field(name=bot_text("vrc_review_alter", sprache),
+                    value=(bot_text("vrc_review_18_ja", sprache) if link["vrc_age_verified"]
+                           else bot_text("vrc_review_18_nein", sprache)), inline=True)
+    if link["vrc_trust"]:
+        embed.add_field(name=bot_text("vrc_review_trust", sprache),
+                        value=str(link["vrc_trust"]), inline=True)
+    profil = vrc_profil_link(link["vrc_user_id"] or "")
+    if profil:
+        embed.add_field(name=bot_text("vrc_review_profil", sprache),
+                        value=profil, inline=False)
+    if link["vrc_avatar"]:
+        try:
+            embed.set_thumbnail(url=link["vrc_avatar"])
+        except Exception:
+            pass
+    if ergebnis:
+        embed.add_field(name=bot_text("vrc_review_ergebnis", sprache),
+                        value=ergebnis_text(link, sprache), inline=False)
+    return embed
+
+
+def ergebnis_text(link, sprache: str) -> str:
+    """Was nach der Entscheidung in der Meldung steht - wer, wann und warum."""
+    wer = link.get("decided_by") or "?"
+    grund = (link.get("note") or "").strip()
+    zeile = bot_text("vrc_review_von", sprache).replace("{wer}", wer)
+    if grund:
+        zeile += "\n" + bot_text("vrc_review_grund_zeile", sprache).replace("{grund}", grund)
+    return zeile[:1000]
+
+
+def _review_view(sprache: str, link_id) -> discord.ui.View:
+    """Die zwei Knoepfe. timeout=None, damit sie auch morgen noch gehen."""
+    view = discord.ui.View(timeout=None)
+    view.add_item(discord.ui.Button(
+        label=bot_text("vrc_review_btn_ok", sprache)[:MAX_BUTTON_LABEL], emoji="✅",
+        style=discord.ButtonStyle.success, custom_id=f"{REVIEW_OK}{link_id}"))
+    view.add_item(discord.ui.Button(
+        label=bot_text("vrc_review_btn_nein", sprache)[:MAX_BUTTON_LABEL], emoji="❌",
+        style=discord.ButtonStyle.danger, custom_id=f"{REVIEW_NEIN}{link_id}"))
+    return view
+
+
+async def review_melden(bot, guild_id, link) -> str:
+    """Meldet eine wartende Verknuepfung im eingestellten Kanal. Gibt den Grund zurueck,
+    wenn nichts gemeldet wurde - zum Mitlesen im Log, nicht fuer die Oberflaeche."""
+    if not link or (link["status"] or "") != VRC_STATE_PENDING:
+        return "nicht wartend"
+    if not await review_aktiv(guild_id):
+        return "nicht eingeschaltet"
+    kanal_id = (await get_guild_config(guild_id, "vrc_review_channel") or "").strip()
+    if not kanal_id.isdigit():
+        return "kein Kanal eingestellt"
+    guild = bot.get_guild(int(guild_id)) if bot else None
+    kanal = guild.get_channel(int(kanal_id)) if guild else None
+    if not isinstance(kanal, discord.TextChannel):
+        return "Kanal nicht gefunden"
+    sprache = await bot_lang(guild_id)
+    try:
+        nachricht = await kanal.send(embed=await _review_embed(guild, link, sprache),
+                                     view=_review_view(sprache, link["id"]))
+    except discord.Forbidden:
+        print(f"[vrc_link] Freigabe-Meldung nicht moeglich: keine Rechte in {kanal_id}")
+        return "keine Rechte"
+    except Exception as e:
+        print(f"[vrc_link] Freigabe-Meldung fehlgeschlagen: {e}")
+        return str(e)
+    await db_exec("UPDATE vrc_links SET review_message_id=?, review_channel_id=? WHERE id=?",
+                  (str(nachricht.id), str(kanal.id), link["id"]))
+    return ""
+
+
+async def _review_nachricht_abschliessen(bot, guild_id, link, ergebnis: str) -> None:
+    """Schreibt die gepostete Meldung um: Ergebnis rein, Knoepfe weg.
+
+    Stehenlassen waere das schlechtere Verhalten - die Knoepfe sehen aus, als waere noch
+    etwas zu entscheiden, und der naechste Klick findet eine Verknuepfung, die es so nicht
+    mehr gibt.
+    """
+    kanal_id = (link.get("review_channel_id") or "").strip()
+    nachricht_id = (link.get("review_message_id") or "").strip()
+    if not (kanal_id.isdigit() and nachricht_id.isdigit()):
+        return
+    guild = bot.get_guild(int(guild_id)) if bot else None
+    kanal = guild.get_channel(int(kanal_id)) if guild else None
+    if not isinstance(kanal, discord.TextChannel):
+        return
+    sprache = await bot_lang(guild_id)
+    try:
+        nachricht = await kanal.fetch_message(int(nachricht_id))
+        await nachricht.edit(embed=await _review_embed(guild, link, sprache, ergebnis=ergebnis),
+                             view=None)
+    except discord.NotFound:
+        pass
+    except Exception as e:
+        print(f"[vrc_link] Freigabe-Meldung nicht aktualisierbar: {e}")
+
+
+async def _review_dm(bot, guild_id, link, ok: bool, grund: str) -> None:
+    """Die Entscheidung als Direktnachricht - nur wenn der Server das eingeschaltet hat."""
+    if (await get_guild_config(guild_id, "vrc_decision_dm") or "0") != "1":
+        return
+    guild = bot.get_guild(int(guild_id)) if bot else None
+    mitglied = guild.get_member(int(link["user_id"])) if guild and str(link["user_id"]).isdigit() else None
+    if not mitglied:
+        return
+    sprache = await bot_lang(guild_id)
+    text = bot_text("vrc_dm_ja" if ok else "vrc_dm_nein", sprache)
+    text = (text.replace("{server}", guild.name)
+                .replace("{name}", link["vrchat_name"] or "?")
+                .replace("{grund}", grund.strip() or bot_text("vrc_dm_kein_grund", sprache)))
+    try:
+        await mitglied.send(text[:2000])
+    except discord.Forbidden:
+        # Geschlossene Direktnachrichten sind der Normalfall, kein Fehler.
+        pass
+    except Exception as e:
+        print(f"[vrc_link] Entscheidung nicht zustellbar an {link['user_id']}: {e}")
+
+
+async def review_entscheiden(bot, guild_id, link, ok: bool, grund: str, wer: str) -> bool:
+    """Eine wartende Verknuepfung annehmen oder ablehnen - der eine Weg fuer Knopf UND Dashboard.
+
+    Annehmen heisst dasselbe wie im Dashboard: Rolle und Spitzname auf Discord, die
+    VRChat-Rollen, die die Discord-Rollen hergeben, und die Gruppeneinladung, wenn der
+    Server sie eingeschaltet hat.
+
+    Ablehnen loescht die Zeile. Sie stehenzulassen hiesse: wer abgelehnt wurde, kommt nicht
+    noch einmal durch, weil sein Name belegt ist - von ihm selbst.
+    """
+    guild = bot.get_guild(int(guild_id)) if bot else None
+    if not guild:
+        return False
+    jetzt = datetime.datetime.utcnow().isoformat()
+    grund = (grund or "").strip()[:300]
+    if ok:
+        await db_exec(
+            "UPDATE vrc_links SET status=?, decided_at=?, decided_by=?, note=? WHERE id=?",
+            (VRC_STATE_APPROVED, jetzt, wer, grund, link["id"]))
+    else:
+        await db_exec("UPDATE vrc_links SET decided_at=?, decided_by=?, note=? WHERE id=?",
+                      (jetzt, wer, grund, link["id"]))
+    frisch = await db_one("SELECT * FROM vrc_links WHERE id=?", (link["id"],))
+    frisch = dict(frisch) if frisch else dict(link)
+
+    mitglied = guild.get_member(int(link["user_id"])) if str(link["user_id"]).isdigit() else None
+    if ok and mitglied:
+        try:
+            await apply_link(bot, guild, mitglied, frisch["vrchat_name"])
+            await sync_vrc_roles(guild, mitglied, frisch)
+            await einladen_wenn_gewuenscht(guild.id, frisch)
+        except Exception as e:
+            # Die Freigabe selbst steht schon in der Datenbank. Sie an einer VRChat-Stoerung
+            # scheitern zu lassen waere das schlechtere Verhalten - dasselbe Verhalten wie
+            # im Dashboard.
+            print(f"[vrc_link] nach der Freigabe von {link['user_id']}: {e}")
+
+    await review_nachtragen(bot, guild_id, frisch, ok, grund, wer)
+    if not ok:
+        await db_exec("DELETE FROM vrc_links WHERE id=?", (link["id"],))
+    return True
+
+
+async def review_nachtragen(bot, guild_id, link, ok: bool, grund: str, wer: str) -> None:
+    """Das Drumherum einer Entscheidung: Meldung umschreiben, Direktnachricht, Log-Eintrag.
+
+    Getrennt von review_entscheiden(), weil es den Weg ueber das Dashboard genauso gibt wie
+    den ueber die Knoepfe. Wuerde das nur am Knopf haengen, saehe eine im Dashboard
+    getroffene Entscheidung im Kanal fuer immer so aus, als waere sie noch offen.
+    """
+    guild = bot.get_guild(int(guild_id)) if bot else None
+    mitglied = (guild.get_member(int(link["user_id"]))
+                if guild and str(link["user_id"]).isdigit() else None)
+    await _review_nachricht_abschliessen(bot, guild_id, dict(link), "ok" if ok else "nein")
+    await _review_dm(bot, guild_id, link, ok, grund)
+    try:
+        from cogs.log_utils import log_bot_event
+        sprache = await bot_lang(guild_id)
+        titel = bot_text("vrc_log_ja" if ok else "vrc_log_nein", sprache)
+        await log_bot_event(
+            bot, int(guild_id), "✅" if ok else "❌",
+            titel.replace("{name}", link["vrchat_name"] or "?").replace("{wer}", wer),
+            "vrclink",
+            (f"Discord: {mitglied} · VRChat: {link['vrchat_name']}"
+             + (f" · Grund: {grund}" if grund else "")))
+    except Exception as e:
+        print(f"[vrc_link] Log-Eintrag zur Entscheidung: {e}")
+
+
+class _ReviewGrundModal(discord.ui.Modal):
+    """Das Eingabefeld fuer den Grund beim Ablehnen.
+
+    Der Grund ist freiwillig: ein Pflichtfeld hiesse, dass jemand irgendetwas hineinschreibt,
+    nur um den Knopf loszuwerden. Leer heisst dann in der Nachricht 'kein Grund angegeben'.
+    """
+
+    def __init__(self, cog, link, sprache: str):
+        super().__init__(title=bot_text("vrc_review_grund_titel", sprache)[:45],
+                         custom_id=f"{REVIEW_GRUND}{link['id']}")
+        self._cog, self._link = cog, link
+        self.grund = discord.ui.TextInput(
+            label=bot_text("vrc_review_grund_label", sprache)[:45],
+            style=discord.TextStyle.paragraph, required=False, max_length=300)
+        self.add_item(self.grund)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        await review_entscheiden(self._cog.bot, interaction.guild_id, self._link, False,
+                                 str(self.grund.value or ""), str(interaction.user))
+
+
 class VRCLink(commands.Cog):
     """Der Cog selbst: Zeitschaltuhr, Slash-Befehle und die zwei Ereignisse, an denen Rechte haengen.
 
@@ -2204,6 +2461,62 @@ class VRCLink(commands.Cog):
                       f"{', '.join(geaendert)}")
         except Exception as e:
             print(f"[vrc_link] Rollenwechsel bei {after.id} in {after.guild.id}: {e}")
+
+    @commands.Cog.listener()
+    async def on_interaction(self, interaction: discord.Interaction):
+        """Die Knoepfe unter einer Freigabe-Meldung.
+
+        Hier und nicht in einer View: in der custom_id steckt die Kennung der Verknuepfung,
+        und eine View mit wechselnder custom_id laesst sich nicht einmalig registrieren.
+        So bleibt jede Meldung klickbar, egal wie lange sie liegt und wie oft der Bot
+        zwischendurch neu gestartet ist.
+        """
+        try:
+            cid = str(((interaction.data or {}).get("custom_id")) or "")
+            if not cid.startswith("vrc:review:") or cid.startswith(REVIEW_GRUND):
+                return      # das Eingabefeld meldet sich selbst (on_submit)
+            ja = cid.startswith(REVIEW_OK)
+            link_id = cid.rsplit(":", 1)[-1]
+            if not link_id.isdigit() or not interaction.guild:
+                return
+            sprache = await bot_lang(interaction.guild_id)
+            if not await self._darf_entscheiden(interaction):
+                await interaction.response.send_message(
+                    "⛔ " + bot_text("vrc_review_kein_recht", sprache), ephemeral=True)
+                return
+            link = await db_one("SELECT * FROM vrc_links WHERE id=? AND guild_id=?",
+                                (int(link_id), str(interaction.guild_id)))
+            # Zwei Leute druecken gleichzeitig, oder die Verknuepfung wurde im Dashboard
+            # schon entschieden: dann ist hier nichts mehr zu tun, und das muss man sehen.
+            if not link or (link["status"] or "") != VRC_STATE_PENDING:
+                await interaction.response.send_message(
+                    "ℹ️ " + bot_text("vrc_review_schon_weg", sprache), ephemeral=True)
+                if link:
+                    await _review_nachricht_abschliessen(
+                        self.bot, interaction.guild_id, dict(link),
+                        "ok" if (link["status"] or "") == VRC_STATE_APPROVED else "nein")
+                return
+            if not ja:
+                await interaction.response.send_modal(
+                    _ReviewGrundModal(self, dict(link), sprache))
+                return
+            await interaction.response.defer()
+            await review_entscheiden(self.bot, interaction.guild_id, dict(link), True, "",
+                                     str(interaction.user))
+        except Exception as e:
+            print(f"[vrc_link] Freigabe-Knopf: {e}")
+
+    async def _darf_entscheiden(self, interaction: discord.Interaction) -> bool:
+        """Wer im Kanal entscheiden darf.
+
+        Eingestellte Rolle, sonst "Server verwalten". Ohne den Rueckfall waere die Funktion
+        auf einem Server ohne eingestellte Rolle tot - Knoepfe, die niemand druecken kann.
+        """
+        rolle_id = (await get_guild_config(interaction.guild_id, "vrc_review_role") or "").strip()
+        if rolle_id.isdigit():
+            return any(str(r.id) == rolle_id for r in getattr(interaction.user, "roles", []))
+        rechte = getattr(interaction.user, "guild_permissions", None)
+        return bool(rechte and (rechte.manage_guild or rechte.administrator))
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):

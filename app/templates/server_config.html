@@ -25,6 +25,13 @@
   .rank-medal { font-size:1rem; }
   .empty-state { text-align:center; padding:2.5rem; color:var(--muted); font-size:0.9rem; }
   code { background:var(--bg); border:1px solid var(--border); border-radius:0.3rem; padding:0.1rem 0.4rem; font-size:0.8rem; font-family:monospace; }
+  /* Suche und Blaettern in der Verknuepfungsliste */
+  .vrc-suchleiste { display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;
+                    margin-bottom:0.9rem; }
+  .vrc-suchleiste input[type="search"] { margin-bottom:0 !important; }
+  .vrc-blaettern { display:flex; gap:0.6rem; align-items:center; justify-content:center;
+                   flex-wrap:wrap; margin-top:0.9rem; }
+  .vrc-seitenzahl { font-size:0.78rem; color:var(--muted); }
 </style>
 
 {% from '_server_subnav.html' import server_subnav %}
@@ -4096,11 +4103,59 @@ async function vrcProbe() {
 }
 </script>
 
+{# Freigabe im Kanal. Gehoert zum grossen Formular oben (form="vrc-main-form"), obwohl
+   die Karte ausserhalb davon steht - sonst wuerde ein Speichern hier die Haken der
+   anderen Unterreiter leeren. #}
+<div class="card" data-sub="link">
+  <div class="feat-header">{{ tr.vrc_freigabe_heading }}</div>
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.vrc_freigabe_hint }}</p>
+
+  <label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;">
+    <input type="checkbox" name="vrc_require_18" form="vrc-main-form" value="1"
+           style="width:auto;display:inline;margin:0;"
+           {% if cfg.get('vrc_require_18') == '1' %}checked{% endif %}>
+    {{ tr.vrc_require_18_label }}
+  </label>
+  <div style="font-size:0.72rem;color:var(--muted);margin:0.25rem 0 0.9rem;">{{ tr.vrc_require_18_hint }}</div>
+
+  <label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;">
+    <input type="checkbox" name="vrc_review_enabled" form="vrc-main-form" value="1"
+           style="width:auto;display:inline;margin:0;"
+           {% if cfg.get('vrc_review_enabled') == '1' %}checked{% endif %}>
+    {{ tr.vrc_review_on_label }}
+  </label>
+  <div class="form-grid-2" style="margin-top:0.7rem;">
+    <div>
+      <label>{{ tr.vrc_review_channel_label }}</label>
+      <select name="vrc_review_channel" form="vrc-main-form">
+        <option value="">{{ tr.vrc_role_none }}</option>
+        {% for c in channels %}<option value="{{ c.id }}" {% if cfg.get('vrc_review_channel') == c.id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>{{ tr.vrc_review_role_label }}</label>
+      <select name="vrc_review_role" form="vrc-main-form">
+        <option value="">{{ tr.vrc_role_none }}</option>
+        {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('vrc_review_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+      </select>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_review_role_hint }}</div>
+    </div>
+  </div>
+
+  <label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;margin-top:0.3rem;">
+    <input type="checkbox" name="vrc_decision_dm" form="vrc-main-form" value="1"
+           style="width:auto;display:inline;margin:0;"
+           {% if cfg.get('vrc_decision_dm') == '1' %}checked{% endif %}>
+    {{ tr.vrc_decision_dm_label }}
+  </label>
+  <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_decision_dm_hint }}</div>
+</div>
+
 <div class="card" data-sub="link">
   <div class="feat-header" style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
     {{ tr.vrc_links_heading }}
     <span style="font-weight:400;color:var(--muted);font-size:0.8rem;">
-      {{ vrc_links|length }} {{ tr.vrc_links_total }}{% if vrc_pending_count %} · {{ vrc_pending_count }} {{ tr.vrc_pending_total }}{% endif %}
+      {{ vrc_links_gesamt }} {{ tr.vrc_links_total }}{% if vrc_pending_count %} · {{ vrc_pending_count }} {{ tr.vrc_pending_total }}{% endif %}{% if vrc_suche %} · {{ vrc_links_gefunden }} {{ tr.vrc_suche_treffer }}{% endif %}
     </span>
     <div style="flex:1;"></div>
     <form method="post" action="/servers/{{ guild.id }}/vrc/refresh" style="margin:0;"
@@ -4118,11 +4173,30 @@ async function vrcProbe() {
   </div>
   <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.9rem;">{{ tr.vrc_refresh_hint }}</div>
 
+  {# Suche und Seitengroesse. Eigenes GET-Formular: es schickt nur diese drei Werte an die
+     Serverseite zurueck und fasst das grosse Speichern-Formular nicht an. #}
+  <form method="get" action="/servers/{{ guild.id }}" class="vrc-suchleiste">
+    <input type="hidden" name="tab" value="vrclink">
+    <input type="search" name="vrc_q" value="{{ vrc_suche }}" maxlength="80"
+           placeholder="{{ tr.vrc_suche_platzhalter }}" style="margin:0;flex:1;min-width:160px;">
+    <select name="vrc_per" onchange="this.form.submit();" style="margin:0;width:auto;">
+      {% for n in [10, 20, 50] %}
+      <option value="{{ n }}" {% if vrc_pro_seite == n %}selected{% endif %}>{{ n }} {{ tr.vrc_pro_seite }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;">🔍 {{ tr.vrc_suche_btn }}</button>
+    {% if vrc_suche %}
+    <a href="/servers/{{ guild.id }}?tab=vrclink&vrc_per={{ vrc_pro_seite }}"
+       class="btn btn-secondary" style="font-size:0.78rem;">✕ {{ tr.vrc_suche_leeren }}</a>
+    {% endif %}
+  </form>
+
   {% if vrc_links %}
   <div class="table-wrap">
     <table>
       <thead><tr>
         <th>{{ tr.vrc_col_member }}</th><th>{{ tr.vrc_col_vrchat }}</th>
+        <th>{{ tr.vrc_col_age }}</th>
         <th>{{ tr.vrc_col_owner }}</th>
         {% if vrc_group_on %}<th>{{ tr.vrc_col_group }}</th>{% endif %}
         <th>{{ tr.vrc_col_preview }}</th><th>{{ tr.vrc_col_status }}</th><th></th>
@@ -4137,6 +4211,16 @@ async function vrcProbe() {
             <div style="color:var(--muted);font-size:0.68rem;" title="{{ v.vrc_user_id }}">✓ {{ tr.vrc_verified_exists }}</div>
             {% else %}
             <div style="color:var(--muted);font-size:0.68rem;">{{ tr.vrc_unverified }}</div>
+            {% endif %}
+          </td>
+          {# 18+ bei VRChat - danach wurde ausdruecklich gefragt ("I don't like it doesn't
+             show me if they're 18+ VRC before approving them"). Der Wert kommt vom Profil
+             und wird bei jeder Auffrischung neu gelesen. #}
+          <td style="white-space:nowrap;">
+            {% if v.vrc_age_verified %}
+            <span style="color:#4ade80;font-size:0.78rem;">✓ 18+</span>
+            {% else %}
+            <span style="color:var(--muted);font-size:0.78rem;">–</span>
             {% endif %}
           </td>
           {# Whether the member proved the VRChat account is theirs, by putting the bot's
@@ -4196,6 +4280,22 @@ async function vrcProbe() {
       </tbody>
     </table>
   </div>
+  {% if vrc_seiten > 1 %}
+  {# Blaettern. Die Suche und die Seitengroesse wandern in jeden Link mit, sonst faengt
+     man beim Umblaettern wieder von vorne an. #}
+  <div class="vrc-blaettern">
+    {% set basis = "/servers/" ~ guild.id ~ "?tab=vrclink&vrc_per=" ~ vrc_pro_seite ~ "&vrc_q=" ~ vrc_suche|urlencode %}
+    {% if vrc_seite > 1 %}
+    <a class="btn btn-secondary" href="{{ basis }}&vrc_page={{ vrc_seite - 1 }}">← {{ tr.vrc_seite_zurueck }}</a>
+    {% endif %}
+    <span class="vrc-seitenzahl">{{ tr.vrc_seite_von.replace('{n}', vrc_seite|string).replace('{m}', vrc_seiten|string) }}</span>
+    {% if vrc_seite < vrc_seiten %}
+    <a class="btn btn-secondary" href="{{ basis }}&vrc_page={{ vrc_seite + 1 }}">{{ tr.vrc_seite_weiter }} →</a>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% elif vrc_suche %}
+  <p class="hint">{{ tr.vrc_suche_leer.replace('{q}', vrc_suche) }}</p>
   {% else %}
   <p class="hint">{{ tr.vrc_links_empty }}</p>
   {% endif %}

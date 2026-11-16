@@ -5404,8 +5404,28 @@ async def amp_save(
     # A blank password field means "keep the existing one" (same convention as SMTP/Twitch
     # credential forms elsewhere) - only overwrite it if the admin actually typed something,
     # so re-saving the label/URL doesn't silently wipe out a previously stored password.
-    existing = await db_one("SELECT password FROM amp_configs WHERE guild_id=?", (str(guild_id),))
-    final_password = password.strip() or (existing["password"] if existing else "")
+    existing = await db_one("SELECT url, password FROM amp_configs WHERE guild_id=?",
+                            (str(guild_id),))
+    # Aber nicht ueber einen Hostwechsel hinweg. Sonst reicht es, die Adresse auf einen
+    # eigenen Server zu aendern und zu speichern: das Passwortfeld bleibt leer, das alte
+    # Passwort wandert mit - und der Bot meldet sich damit beim fremden Host an. Gemeldet
+    # am 16.11.2026 aus einer fremden Installation ("an existing AMP password follows a
+    # changed integration URL"). Wer die Adresse wechselt, tippt das Passwort neu.
+    def _host(adresse: str) -> str:
+        try:
+            teile = urllib.parse.urlparse(adresse or "")
+        except ValueError:
+            return ""
+        return f"{teile.scheme}://{(teile.netloc or '').lower()}"
+
+    getippt = password.strip()
+    alter_host = _host(existing["url"]) if existing else ""
+    if existing and alter_host and alter_host != _host(url) and (existing["password"] or ""):
+        if not getippt:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=amp&error=Adresse+geändert+—+bitte+das+Passwort+neu+eingeben",
+                status_code=302)
+    final_password = getippt or (existing["password"] if existing else "")
     await db_exec(
         "INSERT INTO amp_configs (guild_id,label,url,username,password,command_channel_id) VALUES (?,?,?,?,?,?) "
         "ON CONFLICT(guild_id) DO UPDATE SET label=excluded.label, url=excluded.url, "
@@ -6892,6 +6912,9 @@ async def vrc_decide(request: Request, guild_id: int, link_id: int):
             await _vrc_sync_group(guild_id, frisch or row)
         except Exception as e:
             print(f"[vrc_link] Gruppenstand nach Freigabe von link {link_id}: {e}")
+        # Dieselbe Entscheidung, nur ueber das Dashboard getroffen: die Meldung im
+        # Freigabe-Kanal muss trotzdem zumachen, die Direktnachricht trotzdem raus.
+        await _vrc_review_nachtragen(guild_id, link_id, True, "", who)
         msg = "Freigegeben"
     elif action == "revoke":
         # Back to pending rather than deleted: the member keeps their entry and the moderator
@@ -6905,6 +6928,11 @@ async def vrc_decide(request: Request, guild_id: int, link_id: int):
         # Reihenfolge wie beim Selbst-Loesen: zuruecknehmen, solange die Zeile noch da ist.
         if row["status"] == "approved":
             await _vrc_apply(guild_id, row["user_id"], row["vrchat_name"], revoke=True)
+        # Eine wartende Anfrage zu loeschen IST die Ablehnung - also dasselbe Nachspiel wie
+        # beim Knopf im Kanal, solange die Zeile noch steht.
+        if row["status"] == VRC_STATE_PENDING:
+            await _vrc_review_nachtragen(guild_id, link_id, False, str(form.get("grund") or ""),
+                                         who)
         await db_exec("DELETE FROM vrc_links WHERE id=?", (link_id,))
         msg = "Eintrag+gelöscht"
     else:
@@ -8124,7 +8152,7 @@ async def vrc_public_name(request: Request, lang: str = Form(""), t: str = Form(
     # that, and the moderator approval below is then what stands between a claim and a role.
     require_proof = (await get_guild_config(int(row["guild_id"]), "vrc_require_ownership")
                      or "1") != "0"
-    auto = (await get_guild_config(int(row["guild_id"]), "vrc_auto_approve") or "0") == "1"
+    auto = await _vrc_auto_ok(int(row["guild_id"]), fields.get("vrc_age_verified"))
     if require_proof:
         new_status = VRC_STATE_UNVERIFIED
         # An unfinished claim for the SAME account keeps the code it was given. The member has
@@ -8196,6 +8224,7 @@ async def vrc_public_name(request: Request, lang: str = Form(""), t: str = Form(
         await _vrc_apply(int(row["guild_id"]), row["user_id"], name)
         return await _vrc_page(request, row, lang, success=tr["vrcp_ok_verified"])
     if new_status == VRC_STATE_PENDING:
+        await _vrc_review_melden(int(row["guild_id"]), stored)
         return await _vrc_page(request, row, lang, success=tr["vrcp_ok_pending"])
     return await _vrc_page(request, row, lang)
 
@@ -8239,7 +8268,7 @@ async def vrc_public_verify(request: Request, lang: str = Form(""), t: str = For
                                error=tr["vrcp_err_nocode"] + " " + extra)
 
     fields = profile_fields(user)
-    approved = (await get_guild_config(int(row["guild_id"]), "vrc_auto_approve") or "0") == "1"
+    approved = await _vrc_auto_ok(int(row["guild_id"]), fields.get("vrc_age_verified"))
     new_status = VRC_STATE_APPROVED if approved else VRC_STATE_PENDING
     now = datetime.datetime.utcnow().isoformat()
     await db_exec(
@@ -8257,6 +8286,9 @@ async def vrc_public_verify(request: Request, lang: str = Form(""), t: str = For
     if approved:
         await _vrc_apply(int(row["guild_id"]), row["user_id"],
                          fields["vrchat_name"] or link["vrchat_name"])
+    else:
+        frisch = await db_one("SELECT * FROM vrc_links WHERE id=?", (link["id"],))
+        await _vrc_review_melden(int(row["guild_id"]), frisch or link)
     return await _vrc_page(request, row, lang,
                            success=tr["vrcp_ok_verified"] if approved else tr["vrcp_ok_pending"])
 
@@ -8302,6 +8334,54 @@ async def vrc_public_refresh(request: Request, lang: str = Form(""), t: str = Fo
     if link["status"] == VRC_STATE_APPROVED:
         await _vrc_apply(int(row["guild_id"]), row["user_id"], name)
     return await _vrc_page(request, row, lang, success=tr["vrcp_ok_refreshed"])
+
+
+async def _vrc_auto_ok(guild_id: int, age_verified) -> bool:
+    """Darf eine Verknuepfung auf diesem Server ohne Menschen freigegeben werden?
+
+    Nur wenn die automatische Freigabe an ist - und, wenn der Server 18+ verlangt, auch nur
+    mit bestaetigtem 18+ bei VRChat. Fehlt die Bestaetigung, bleibt die Anfrage liegen statt
+    abgelehnt zu werden: "nicht bestaetigt" heisst auch "VRChat sagt gerade nichts dazu",
+    und wer gerade erst verifiziert hat, soll nicht ohne Weg zurueck durchfallen. Ein Mensch
+    entscheidet dann - im Kanal oder im Dashboard.
+    """
+    if (await get_guild_config(guild_id, "vrc_auto_approve") or "0") != "1":
+        return False
+    if (await get_guild_config(guild_id, "vrc_require_18") or "0") == "1" and not age_verified:
+        return False
+    return True
+
+
+async def _vrc_review_melden(guild_id: int, link) -> None:
+    """Meldet eine wartende Verknuepfung im Freigabe-Kanal, wenn der Server das will."""
+    try:
+        b = bot._bot_for_guild(guild_id)
+        if not b:
+            return
+        from cogs.vrc_link import review_melden
+        grund = await review_melden(b, guild_id, link)
+        if grund:
+            print(f"[vrc_link] keine Freigabe-Meldung fuer {link['id']}: {grund}")
+    except Exception as e:
+        print(f"[vrc_link] Freigabe-Meldung fuer {guild_id}: {e}")
+
+
+async def _vrc_review_nachtragen(guild_id: int, link_id: int, ok: bool, grund: str,
+                                 wer: str) -> None:
+    """Meldung im Freigabe-Kanal schliessen, Direktnachricht, Log - nach einer Entscheidung
+    im Dashboard. Die Zeile wird vorher frisch gelesen: der Aufrufer hat den Stand von
+    davor."""
+    try:
+        b = bot._bot_for_guild(guild_id)
+        if not b:
+            return
+        zeile = await db_one("SELECT * FROM vrc_links WHERE id=?", (link_id,))
+        if not zeile:
+            return
+        from cogs.vrc_link import review_nachtragen
+        await review_nachtragen(b, guild_id, dict(zeile), ok, grund, wer)
+    except Exception as e:
+        print(f"[vrc_link] Nachtrag zur Entscheidung {link_id}: {e}")
 
 
 async def _vrc_sync_group(guild_id: int, link) -> None:
@@ -10544,6 +10624,7 @@ async def _viewer_allowed_tabs(request: Request, guild_id) -> Optional[set]:
 async def server_config(
     request: Request, guild_id: int,
     saved: bool = False, tab: str = "config", error: str = "", success: str = "",
+    vrc_q: str = "", vrc_per: int = 20, vrc_page: int = 1,
 ):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
@@ -10745,6 +10826,31 @@ async def server_config(
         _vl["preview"] = vrc_nickname(
             cfg.get("vrc_nickname_format") or DEFAULT_VRC_NICKNAME_FORMAT,
             _vl["vrchat_name"], _m.name if _m else "")
+
+    # ── Suche und Seiten fuer die Verknuepfungsliste ─────────────────────────
+    # Auf einem gewachsenen Server stehen hier mehrere hundert Zeilen, und wer EINEN Namen
+    # sucht, scrollt. Gesucht wird ueber beides - den Discord-Namen und den VRChat-Namen -,
+    # und zusaetzlich ueber die Kennungen: wer eine Nummer aus dem Protokoll in der Hand
+    # hat, soll sie hier einsetzen koennen.
+    #
+    # Gezaehlt wird weiter ueber ALLE Verknuepfungen (_vrc_links): die Zahl oben und die
+    # Zahl der offenen Anfragen duerfen sich nicht aendern, nur weil jemand sucht.
+    _vrc_suche = (vrc_q or "").strip()
+    if _vrc_suche:
+        _n = _vrc_suche.lower()
+        _vrc_gefiltert = [v for v in _vrc_links if _n in " ".join([
+            str(v.get("member_name") or ""), str(v.get("vrchat_name") or ""),
+            str(v.get("user_id") or ""), str(v.get("vrc_user_id") or ""),
+        ]).lower()]
+    else:
+        _vrc_gefiltert = _vrc_links
+    # 10, 20 oder 50 - mehr nicht: eine Seite mit 500 Zeilen ist wieder das Problem, das
+    # diese Liste gerade loswerden soll.
+    _vrc_pro_seite = vrc_per if vrc_per in (10, 20, 50) else 20
+    _vrc_seiten = max(1, -(-len(_vrc_gefiltert) // _vrc_pro_seite))
+    _vrc_seite = min(max(1, vrc_page), _vrc_seiten)
+    _vrc_von = (_vrc_seite - 1) * _vrc_pro_seite
+    _vrc_sichtbar = _vrc_gefiltert[_vrc_von:_vrc_von + _vrc_pro_seite]
 
     # Temp Voice
     _tempvoice_configs = await db_rows(
@@ -11107,7 +11213,14 @@ async def server_config(
         ),
         "voice_channels": voice_channels,
         "tempvoice_configs": _tempvoice_configs,
-        "vrc_links": _vrc_links,
+        # Die Liste zeigt nur den Ausschnitt; gezaehlt wird ueber alle.
+        "vrc_links": _vrc_sichtbar,
+        "vrc_links_gesamt": len(_vrc_links),
+        "vrc_links_gefunden": len(_vrc_gefiltert),
+        "vrc_suche": _vrc_suche,
+        "vrc_pro_seite": _vrc_pro_seite,
+        "vrc_seite": _vrc_seite,
+        "vrc_seiten": _vrc_seiten,
         "vrc_pending_count": sum(1 for v in _vrc_links if v["status"] != "approved"),
         "vrc_account": _vrc_account,
         "vrc_konten": _vrc_konten,
@@ -11229,7 +11342,8 @@ _TAB_TEXT_KEYS = {
                 "vrc_instance_title", "vrc_instance_closed_title",
                 "vrc_instance_count_label", "vrc_instance_footer",
                 "vrc_instance_locked_title", "vrc_instance_locked_message",
-                "vrc_dm_link_text", "vrc_dm_linked_text", "vrc_dm_button"],
+                "vrc_dm_link_text", "vrc_dm_linked_text", "vrc_dm_button",
+                "vrc_review_channel", "vrc_review_role"],
     "birthday": ["birthday_channel", "birthday_message", "birthday_commands",
                  "birthday_delete_words", "birthday_reply_saved",
                  "birthday_reply_deleted", "birthday_reply_error"],
@@ -11249,6 +11363,7 @@ _TAB_CHECKBOX_KEYS = {
     "vrclink": ["vrc_enabled", "vrc_nickname_enabled", "vrc_auto_approve", "vrc_dm_on_join",
                 "vrc_require_ownership", "vrc_group_invite", "vrc_auto_invite",
                 "vrc_group_kick_on_leave", "vrc_panel_text_on",
+                "vrc_require_18", "vrc_review_enabled", "vrc_decision_dm",
                 "vrc_instance_cleanup", "vrc_instance_live_count", "vrc_instance_detail"],
     # auto_kick_enabled deliberately NOT here - it needs the previous saved value to detect an
     # off→on transition (see the dedicated handling in server_config_save below), the generic
@@ -12497,6 +12612,41 @@ def _is_public_http_url(url: str) -> bool:
     return True
 
 
+async def _hole_geprueft(session, url: str, headers: dict, hops: int = 4):
+    """GET, bei dem JEDE Adresse der Kette geprueft wird - auch die aus einer Umleitung.
+
+    _is_public_http_url an der Aufrufstelle prueft nur die erste Adresse. aiohttp folgt
+    Umleitungen aber von sich aus, und eine fremde Seite darf selbst bestimmen, wohin sie
+    umleitet: "https://beispiel.example/bild.png" -> "http://127.0.0.1:8080/..." und der
+    Server hat die Verbindung nach innen schon aufgebaut, bevor irgendjemand hinsieht.
+    Gemeldet am 16.11.2026 aus einer fremden Installation ("image fetching can reach
+    loopback despite the public-URL guard").
+
+    Deshalb hier: allow_redirects=False, Location selbst auflesen, vor JEDEM Schritt wieder
+    pruefen. Gibt die Antwort zurueck (der Aufrufer schliesst sie) oder None, wenn eine
+    Adresse der Kette nicht oeffentlich ist, zu oft umgeleitet wird oder der Abruf scheitert.
+
+    Was damit NICHT behoben ist: loest ein Name beim Pruefen auf eine oeffentliche und beim
+    Verbinden auf eine interne Adresse (DNS-Rebinding), hilft keine Pruefung der Adresse -
+    dagegen hilft nur, die geprueffte IP selbst zu verbinden. Das waere ein eigener Umbau
+    mit eigenem TLS-Thema; hier steht es, damit es niemand fuer erledigt haelt.
+    """
+    schleife = asyncio.get_running_loop()
+    for _ in range(hops):
+        if not await schleife.run_in_executor(None, _is_public_http_url, url):
+            return None
+        resp = await session.get(url, headers=headers, allow_redirects=False)
+        if resp.status in (301, 302, 303, 307, 308):
+            ziel = resp.headers.get("Location") or ""
+            resp.release()
+            if not ziel:
+                return None
+            url = urllib.parse.urljoin(url, ziel)
+            continue
+        return resp
+    return None
+
+
 # Womit wir uns beim Holen von Vorschaubildern melden.
 #
 # Frueher stand hier "Mozilla/5.0 (compatible; PhobosBot/1.0; ...)" - ehrlich, aber unbrauchbar:
@@ -12523,13 +12673,15 @@ async def _fetch_og_quelle(url: str) -> tuple:
 
     Gibt bei jedem Fehler ("", "") zurueck - eine langsame oder kaputte fremde Seite darf
     weder das Speichern der Umfrage noch die Vorschau aufhalten."""
-    # Hier geprueft und nicht bei jedem Aufrufer, damit es keiner vergessen kann.
-    if not await asyncio.get_running_loop().run_in_executor(None, _is_public_http_url, url):
-        return "", ""
+    # Hier geprueft und nicht bei jedem Aufrufer, damit es keiner vergessen kann - und
+    # ueber _hole_geprueft, damit auch jede Umleitung geprueft wird.
     try:
         async with aiohttp.ClientSession(timeout=_OG_FETCH_TIMEOUT) as session:
             headers = {"User-Agent": _BILD_ABRUF_UA}
-            async with session.get(url, headers=headers) as resp:
+            resp = await _hole_geprueft(session, url, headers)
+            if resp is None:
+                return "", ""
+            async with resp:
                 if resp.status != 200:
                     return "", ""
                 typ = resp.headers.get("Content-Type", "").lower()
@@ -12707,10 +12859,16 @@ async def _fetch_image_bytes(url: str) -> bytes:
     attachment rather than the original, whatever-size image. Never raises: any failure
     (timeout, non-200, non-image response, oversized body) yields b"", and the caller falls
     back to leaving the image as a plain URL at its original size rather than losing it."""
+    # Hier fehlte die Adresspruefung ganz: wer eine Umfrage-Option mit eigener Bildbreite
+    # anlegt, liess den Server jede Adresse abrufen, die er hineinschrieb - auch
+    # http://127.0.0.1:8080. Gemeldet am 16.11.2026 (F06).
     try:
         async with aiohttp.ClientSession(timeout=_POLL_IMAGE_FETCH_TIMEOUT) as session:
             headers = {"User-Agent": _BILD_ABRUF_UA}
-            async with session.get(url, headers=headers) as resp:
+            resp = await _hole_geprueft(session, url, headers)
+            if resp is None:
+                return b""
+            async with resp:
                 if resp.status != 200:
                     return b""
                 chunks, total = [], 0
