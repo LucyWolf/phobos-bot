@@ -14,6 +14,18 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.25 — `beta` — 16.11.2026
+
+**VRChat**
+- Behoben, dringend: Ein **zweites VRChat-Konto verschwand beim nächsten Neustart**. In der
+  Migrationsliste von `init_db()` — die bei jedem Start durchläuft — standen noch zwei
+  Anweisungen aus der Zeit, als es nur ein Konto gab: sie zogen eine Zeile auf das
+  Standardkonto um und löschten alle übrigen. Seit mehrere Konten möglich sind, räumte das
+  bei jedem Start auf, ohne Meldung und ohne Spur. Gemeldet aus einer fremden Installation,
+  hier nachgestellt und per Test abgesichert.
+
+---
+
 ## 1.19.24 — `beta` — 11.11.2026
 
 **Einrichtung**

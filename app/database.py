@@ -1058,12 +1058,18 @@ async def init_db():
             # from the same machine. The row is kept under the sentinel guild_id below rather
             # than in a new table, so nothing that already reads this table has to change.
             #
-            # These two statements move an existing per-server entry over. UPDATE OR IGNORE
-            # lets the first row take the sentinel and leaves the rest where they are (the
-            # primary key refuses a second one), and the DELETE then clears those leftovers -
-            # they are duplicates of the same account by definition.
-            "UPDATE OR IGNORE vrc_accounts SET guild_id='0'",
-            "DELETE FROM vrc_accounts WHERE guild_id!='0'",
+            # Hier standen bis v1.19.24 zwei Anweisungen, die eine Zeile je Server auf den
+            # Sentinel umzogen und alle uebrigen loeschten. Diese Liste laeuft bei JEDEM
+            # Start - solange es nur ein Konto gab, fiel das nicht auf. Seit es mehrere
+            # VRChat-Konten gibt (vrc_accounts_list, Zuordnung je Server), loeschte der
+            # naechste Neustart jedes Konto ausser dem Standardkonto wieder weg. Gemeldet
+            # am 16.11.2026 aus einer fremden Installation ("a second VRChat account is
+            # deleted by the next init_db/startup") und hier nachgestellt.
+            #
+            # Ersatzlos entfernt statt hinter einen Einmal-Merker gelegt: der Umzug lief
+            # bei jedem Start jeder Installation, seit es ihn gibt. Es kann keine Datenbank
+            # mehr geben, die ihn noch braucht - eine, die ihn noch braucht, haette seither
+            # nie gestartet.
             """CREATE TABLE IF NOT EXISTS auto_thread_channels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL,
