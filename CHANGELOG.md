@@ -14,6 +14,19 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.27 — `beta` — 16.11.2026
+
+**VRC-Link**
+- Neu: **Suche** über der Verknüpfungsliste. Gesucht wird im Discord-Namen, im
+  VRChat-Namen und in beiden Kennungen — wer eine Nummer aus dem Protokoll hat, kann sie
+  einsetzen.
+- Neu: **10, 20 oder 50 Einträge je Seite**, selbst einstellbar, mit Blättern darunter.
+  Suche und Seitengröße wandern beim Umblättern mit.
+- Die Zahl oben zählt weiter alle Verknüpfungen, auch während einer Suche; daneben steht
+  dann, wie viele davon passen.
+
+---
+
 ## 1.19.26 — `beta` — 16.11.2026
 
 **Sicherheit**

@@ -10564,6 +10564,7 @@ async def _viewer_allowed_tabs(request: Request, guild_id) -> Optional[set]:
 async def server_config(
     request: Request, guild_id: int,
     saved: bool = False, tab: str = "config", error: str = "", success: str = "",
+    vrc_q: str = "", vrc_per: int = 20, vrc_page: int = 1,
 ):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
@@ -10765,6 +10766,31 @@ async def server_config(
         _vl["preview"] = vrc_nickname(
             cfg.get("vrc_nickname_format") or DEFAULT_VRC_NICKNAME_FORMAT,
             _vl["vrchat_name"], _m.name if _m else "")
+
+    # ── Suche und Seiten fuer die Verknuepfungsliste ─────────────────────────
+    # Auf einem gewachsenen Server stehen hier mehrere hundert Zeilen, und wer EINEN Namen
+    # sucht, scrollt. Gesucht wird ueber beides - den Discord-Namen und den VRChat-Namen -,
+    # und zusaetzlich ueber die Kennungen: wer eine Nummer aus dem Protokoll in der Hand
+    # hat, soll sie hier einsetzen koennen.
+    #
+    # Gezaehlt wird weiter ueber ALLE Verknuepfungen (_vrc_links): die Zahl oben und die
+    # Zahl der offenen Anfragen duerfen sich nicht aendern, nur weil jemand sucht.
+    _vrc_suche = (vrc_q or "").strip()
+    if _vrc_suche:
+        _n = _vrc_suche.lower()
+        _vrc_gefiltert = [v for v in _vrc_links if _n in " ".join([
+            str(v.get("member_name") or ""), str(v.get("vrchat_name") or ""),
+            str(v.get("user_id") or ""), str(v.get("vrc_user_id") or ""),
+        ]).lower()]
+    else:
+        _vrc_gefiltert = _vrc_links
+    # 10, 20 oder 50 - mehr nicht: eine Seite mit 500 Zeilen ist wieder das Problem, das
+    # diese Liste gerade loswerden soll.
+    _vrc_pro_seite = vrc_per if vrc_per in (10, 20, 50) else 20
+    _vrc_seiten = max(1, -(-len(_vrc_gefiltert) // _vrc_pro_seite))
+    _vrc_seite = min(max(1, vrc_page), _vrc_seiten)
+    _vrc_von = (_vrc_seite - 1) * _vrc_pro_seite
+    _vrc_sichtbar = _vrc_gefiltert[_vrc_von:_vrc_von + _vrc_pro_seite]
 
     # Temp Voice
     _tempvoice_configs = await db_rows(
@@ -11127,7 +11153,14 @@ async def server_config(
         ),
         "voice_channels": voice_channels,
         "tempvoice_configs": _tempvoice_configs,
-        "vrc_links": _vrc_links,
+        # Die Liste zeigt nur den Ausschnitt; gezaehlt wird ueber alle.
+        "vrc_links": _vrc_sichtbar,
+        "vrc_links_gesamt": len(_vrc_links),
+        "vrc_links_gefunden": len(_vrc_gefiltert),
+        "vrc_suche": _vrc_suche,
+        "vrc_pro_seite": _vrc_pro_seite,
+        "vrc_seite": _vrc_seite,
+        "vrc_seiten": _vrc_seiten,
         "vrc_pending_count": sum(1 for v in _vrc_links if v["status"] != "approved"),
         "vrc_account": _vrc_account,
         "vrc_konten": _vrc_konten,
