@@ -6912,6 +6912,9 @@ async def vrc_decide(request: Request, guild_id: int, link_id: int):
             await _vrc_sync_group(guild_id, frisch or row)
         except Exception as e:
             print(f"[vrc_link] Gruppenstand nach Freigabe von link {link_id}: {e}")
+        # Dieselbe Entscheidung, nur ueber das Dashboard getroffen: die Meldung im
+        # Freigabe-Kanal muss trotzdem zumachen, die Direktnachricht trotzdem raus.
+        await _vrc_review_nachtragen(guild_id, link_id, True, "", who)
         msg = "Freigegeben"
     elif action == "revoke":
         # Back to pending rather than deleted: the member keeps their entry and the moderator
@@ -6925,6 +6928,11 @@ async def vrc_decide(request: Request, guild_id: int, link_id: int):
         # Reihenfolge wie beim Selbst-Loesen: zuruecknehmen, solange die Zeile noch da ist.
         if row["status"] == "approved":
             await _vrc_apply(guild_id, row["user_id"], row["vrchat_name"], revoke=True)
+        # Eine wartende Anfrage zu loeschen IST die Ablehnung - also dasselbe Nachspiel wie
+        # beim Knopf im Kanal, solange die Zeile noch steht.
+        if row["status"] == VRC_STATE_PENDING:
+            await _vrc_review_nachtragen(guild_id, link_id, False, str(form.get("grund") or ""),
+                                         who)
         await db_exec("DELETE FROM vrc_links WHERE id=?", (link_id,))
         msg = "Eintrag+gelöscht"
     else:
@@ -8144,7 +8152,7 @@ async def vrc_public_name(request: Request, lang: str = Form(""), t: str = Form(
     # that, and the moderator approval below is then what stands between a claim and a role.
     require_proof = (await get_guild_config(int(row["guild_id"]), "vrc_require_ownership")
                      or "1") != "0"
-    auto = (await get_guild_config(int(row["guild_id"]), "vrc_auto_approve") or "0") == "1"
+    auto = await _vrc_auto_ok(int(row["guild_id"]), fields.get("vrc_age_verified"))
     if require_proof:
         new_status = VRC_STATE_UNVERIFIED
         # An unfinished claim for the SAME account keeps the code it was given. The member has
@@ -8216,6 +8224,7 @@ async def vrc_public_name(request: Request, lang: str = Form(""), t: str = Form(
         await _vrc_apply(int(row["guild_id"]), row["user_id"], name)
         return await _vrc_page(request, row, lang, success=tr["vrcp_ok_verified"])
     if new_status == VRC_STATE_PENDING:
+        await _vrc_review_melden(int(row["guild_id"]), stored)
         return await _vrc_page(request, row, lang, success=tr["vrcp_ok_pending"])
     return await _vrc_page(request, row, lang)
 
@@ -8259,7 +8268,7 @@ async def vrc_public_verify(request: Request, lang: str = Form(""), t: str = For
                                error=tr["vrcp_err_nocode"] + " " + extra)
 
     fields = profile_fields(user)
-    approved = (await get_guild_config(int(row["guild_id"]), "vrc_auto_approve") or "0") == "1"
+    approved = await _vrc_auto_ok(int(row["guild_id"]), fields.get("vrc_age_verified"))
     new_status = VRC_STATE_APPROVED if approved else VRC_STATE_PENDING
     now = datetime.datetime.utcnow().isoformat()
     await db_exec(
@@ -8277,6 +8286,9 @@ async def vrc_public_verify(request: Request, lang: str = Form(""), t: str = For
     if approved:
         await _vrc_apply(int(row["guild_id"]), row["user_id"],
                          fields["vrchat_name"] or link["vrchat_name"])
+    else:
+        frisch = await db_one("SELECT * FROM vrc_links WHERE id=?", (link["id"],))
+        await _vrc_review_melden(int(row["guild_id"]), frisch or link)
     return await _vrc_page(request, row, lang,
                            success=tr["vrcp_ok_verified"] if approved else tr["vrcp_ok_pending"])
 
@@ -8322,6 +8334,54 @@ async def vrc_public_refresh(request: Request, lang: str = Form(""), t: str = Fo
     if link["status"] == VRC_STATE_APPROVED:
         await _vrc_apply(int(row["guild_id"]), row["user_id"], name)
     return await _vrc_page(request, row, lang, success=tr["vrcp_ok_refreshed"])
+
+
+async def _vrc_auto_ok(guild_id: int, age_verified) -> bool:
+    """Darf eine Verknuepfung auf diesem Server ohne Menschen freigegeben werden?
+
+    Nur wenn die automatische Freigabe an ist - und, wenn der Server 18+ verlangt, auch nur
+    mit bestaetigtem 18+ bei VRChat. Fehlt die Bestaetigung, bleibt die Anfrage liegen statt
+    abgelehnt zu werden: "nicht bestaetigt" heisst auch "VRChat sagt gerade nichts dazu",
+    und wer gerade erst verifiziert hat, soll nicht ohne Weg zurueck durchfallen. Ein Mensch
+    entscheidet dann - im Kanal oder im Dashboard.
+    """
+    if (await get_guild_config(guild_id, "vrc_auto_approve") or "0") != "1":
+        return False
+    if (await get_guild_config(guild_id, "vrc_require_18") or "0") == "1" and not age_verified:
+        return False
+    return True
+
+
+async def _vrc_review_melden(guild_id: int, link) -> None:
+    """Meldet eine wartende Verknuepfung im Freigabe-Kanal, wenn der Server das will."""
+    try:
+        b = bot._bot_for_guild(guild_id)
+        if not b:
+            return
+        from cogs.vrc_link import review_melden
+        grund = await review_melden(b, guild_id, link)
+        if grund:
+            print(f"[vrc_link] keine Freigabe-Meldung fuer {link['id']}: {grund}")
+    except Exception as e:
+        print(f"[vrc_link] Freigabe-Meldung fuer {guild_id}: {e}")
+
+
+async def _vrc_review_nachtragen(guild_id: int, link_id: int, ok: bool, grund: str,
+                                 wer: str) -> None:
+    """Meldung im Freigabe-Kanal schliessen, Direktnachricht, Log - nach einer Entscheidung
+    im Dashboard. Die Zeile wird vorher frisch gelesen: der Aufrufer hat den Stand von
+    davor."""
+    try:
+        b = bot._bot_for_guild(guild_id)
+        if not b:
+            return
+        zeile = await db_one("SELECT * FROM vrc_links WHERE id=?", (link_id,))
+        if not zeile:
+            return
+        from cogs.vrc_link import review_nachtragen
+        await review_nachtragen(b, guild_id, dict(zeile), ok, grund, wer)
+    except Exception as e:
+        print(f"[vrc_link] Nachtrag zur Entscheidung {link_id}: {e}")
 
 
 async def _vrc_sync_group(guild_id: int, link) -> None:
@@ -11282,7 +11342,8 @@ _TAB_TEXT_KEYS = {
                 "vrc_instance_title", "vrc_instance_closed_title",
                 "vrc_instance_count_label", "vrc_instance_footer",
                 "vrc_instance_locked_title", "vrc_instance_locked_message",
-                "vrc_dm_link_text", "vrc_dm_linked_text", "vrc_dm_button"],
+                "vrc_dm_link_text", "vrc_dm_linked_text", "vrc_dm_button",
+                "vrc_review_channel", "vrc_review_role"],
     "birthday": ["birthday_channel", "birthday_message", "birthday_commands",
                  "birthday_delete_words", "birthday_reply_saved",
                  "birthday_reply_deleted", "birthday_reply_error"],
@@ -11302,6 +11363,7 @@ _TAB_CHECKBOX_KEYS = {
     "vrclink": ["vrc_enabled", "vrc_nickname_enabled", "vrc_auto_approve", "vrc_dm_on_join",
                 "vrc_require_ownership", "vrc_group_invite", "vrc_auto_invite",
                 "vrc_group_kick_on_leave", "vrc_panel_text_on",
+                "vrc_require_18", "vrc_review_enabled", "vrc_decision_dm",
                 "vrc_instance_cleanup", "vrc_instance_live_count", "vrc_instance_detail"],
     # auto_kick_enabled deliberately NOT here - it needs the previous saved value to detect an
     # off→on transition (see the dedicated handling in server_config_save below), the generic

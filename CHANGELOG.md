@@ -14,6 +14,28 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.28 — `beta` — 16.11.2026
+
+**VRC-Link: Freigabe im Kanal** (alles einzeln abschaltbar, Standard aus)
+- Neu: **18+ bei VRChat verlangen.** Ohne bestätigtes 18+ wird niemand automatisch
+  freigegeben — die Anfrage bleibt liegen, abgelehnt wird dabei niemand. „Nicht bestätigt"
+  heißt auch „VRChat sagt gerade nichts dazu".
+- Neu: **18+-Spalte** in der Verknüpfungsliste — vor der Freigabe sichtbar, nicht erst
+  danach.
+- Neu: **Wartende Verknüpfungen im Kanal melden.** Einbettung mit Discord-Name,
+  VRChat-Name, 18+-Status, Trust-Rang und Profillink, darunter ✅ Annehmen und ❌ Ablehnen.
+  Ablehnen fragt nach einem Grund (freiwillig).
+- Entscheiden darf, wer eine einstellbare Rolle hat; ohne Auswahl gilt „Server verwalten".
+- Annehmen gibt Discord-Rolle und Spitzname, die VRChat-Gruppenrollen und die Einladung —
+  derselbe Weg wie im Dashboard. Ablehnen löscht die Verknüpfung, damit der Name für einen
+  neuen Versuch frei ist.
+- Neu: **Entscheidung per DM** an den Betroffenen, bei Ablehnung mit Grund.
+- Neue Log-Kategorie **VRC-Link** für den Log-Kanal.
+- Die Meldung wird nach der Entscheidung umgeschrieben (wer, wann, warum) und verliert
+  ihre Knöpfe — auch dann, wenn im Dashboard entschieden wurde.
+
+---
+
 ## 1.19.27 — `beta` — 16.11.2026
 
 **VRC-Link**

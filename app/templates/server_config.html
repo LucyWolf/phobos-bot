@@ -4103,6 +4103,54 @@ async function vrcProbe() {
 }
 </script>
 
+{# Freigabe im Kanal. Gehoert zum grossen Formular oben (form="vrc-main-form"), obwohl
+   die Karte ausserhalb davon steht - sonst wuerde ein Speichern hier die Haken der
+   anderen Unterreiter leeren. #}
+<div class="card" data-sub="link">
+  <div class="feat-header">{{ tr.vrc_freigabe_heading }}</div>
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.vrc_freigabe_hint }}</p>
+
+  <label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;">
+    <input type="checkbox" name="vrc_require_18" form="vrc-main-form" value="1"
+           style="width:auto;display:inline;margin:0;"
+           {% if cfg.get('vrc_require_18') == '1' %}checked{% endif %}>
+    {{ tr.vrc_require_18_label }}
+  </label>
+  <div style="font-size:0.72rem;color:var(--muted);margin:0.25rem 0 0.9rem;">{{ tr.vrc_require_18_hint }}</div>
+
+  <label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;">
+    <input type="checkbox" name="vrc_review_enabled" form="vrc-main-form" value="1"
+           style="width:auto;display:inline;margin:0;"
+           {% if cfg.get('vrc_review_enabled') == '1' %}checked{% endif %}>
+    {{ tr.vrc_review_on_label }}
+  </label>
+  <div class="form-grid-2" style="margin-top:0.7rem;">
+    <div>
+      <label>{{ tr.vrc_review_channel_label }}</label>
+      <select name="vrc_review_channel" form="vrc-main-form">
+        <option value="">{{ tr.vrc_role_none }}</option>
+        {% for c in channels %}<option value="{{ c.id }}" {% if cfg.get('vrc_review_channel') == c.id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>{{ tr.vrc_review_role_label }}</label>
+      <select name="vrc_review_role" form="vrc-main-form">
+        <option value="">{{ tr.vrc_role_none }}</option>
+        {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('vrc_review_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+      </select>
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:-0.6rem;">{{ tr.vrc_review_role_hint }}</div>
+    </div>
+  </div>
+
+  <label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;margin-top:0.3rem;">
+    <input type="checkbox" name="vrc_decision_dm" form="vrc-main-form" value="1"
+           style="width:auto;display:inline;margin:0;"
+           {% if cfg.get('vrc_decision_dm') == '1' %}checked{% endif %}>
+    {{ tr.vrc_decision_dm_label }}
+  </label>
+  <div style="font-size:0.72rem;color:var(--muted);margin-top:0.25rem;">{{ tr.vrc_decision_dm_hint }}</div>
+</div>
+
 <div class="card" data-sub="link">
   <div class="feat-header" style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
     {{ tr.vrc_links_heading }}
@@ -4148,6 +4196,7 @@ async function vrcProbe() {
     <table>
       <thead><tr>
         <th>{{ tr.vrc_col_member }}</th><th>{{ tr.vrc_col_vrchat }}</th>
+        <th>{{ tr.vrc_col_age }}</th>
         <th>{{ tr.vrc_col_owner }}</th>
         {% if vrc_group_on %}<th>{{ tr.vrc_col_group }}</th>{% endif %}
         <th>{{ tr.vrc_col_preview }}</th><th>{{ tr.vrc_col_status }}</th><th></th>
@@ -4162,6 +4211,16 @@ async function vrcProbe() {
             <div style="color:var(--muted);font-size:0.68rem;" title="{{ v.vrc_user_id }}">✓ {{ tr.vrc_verified_exists }}</div>
             {% else %}
             <div style="color:var(--muted);font-size:0.68rem;">{{ tr.vrc_unverified }}</div>
+            {% endif %}
+          </td>
+          {# 18+ bei VRChat - danach wurde ausdruecklich gefragt ("I don't like it doesn't
+             show me if they're 18+ VRC before approving them"). Der Wert kommt vom Profil
+             und wird bei jeder Auffrischung neu gelesen. #}
+          <td style="white-space:nowrap;">
+            {% if v.vrc_age_verified %}
+            <span style="color:#4ade80;font-size:0.78rem;">✓ 18+</span>
+            {% else %}
+            <span style="color:var(--muted);font-size:0.78rem;">–</span>
             {% endif %}
           </td>
           {# Whether the member proved the VRChat account is theirs, by putting the bot's
