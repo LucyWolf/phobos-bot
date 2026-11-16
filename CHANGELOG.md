@@ -14,6 +14,20 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.30 — `beta` — 17.11.2026
+
+**Das Startskript fasst keine fremden Dateien mehr an**
+- Auf einem Server mit mehreren Instanzen liegen die Datenordner der *anderen*
+  Installationen im selben Verzeichnis wie das Repo (`data-zerafi/`, `data-paniczone/`).
+  Der Rundumschlag über `/repo` aus 1.19.29 hat sie beim ersten Start mit umgeschrieben —
+  15 Einträge, die diesen Bot nichts angehen. Kaputt ging dabei nichts (jene Container
+  laufen als root und kommen an Dateien von 1000 trotzdem heran), passieren durfte es
+  trotzdem nicht.
+- Angefasst wird jetzt nur noch, was der Bot wirklich braucht: `.git`, das Repo-Verzeichnis
+  selbst und die obersten Einträge, **die git kennt**. Was git nicht kennt, bleibt liegen.
+
+---
+
 ## 1.19.29 — `beta` — 16.11.2026
 
 **Der Bot läuft nicht mehr als root**

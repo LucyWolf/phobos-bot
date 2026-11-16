@@ -95,11 +95,33 @@ fi
 # -h wegen symbolischer Verweise; Fehler werden geschluckt, weil ein einzelner nicht
 # aenderbarer Eintrag den Start nicht verhindern darf - ob es am Ende gereicht hat,
 # entscheidet die Probe weiter unten, nicht der Rueckgabewert von chown.
-for ordner in /repo /app /app/data /home/phobos; do
-    [ -d "$ordner" ] || continue
-    find "$ordner" \( ! -user "$PUID" -o ! -group "$PGID" \) \
+rueck() {
+    [ -e "$1" ] || return 0
+    find "$1" \( ! -user "$PUID" -o ! -group "$PGID" \) \
         -exec chown -h "$PUID:$PGID" {} + 2>/dev/null
+}
+
+for ordner in /app /app/data /home/phobos; do
+    [ -d "$ordner" ] && rueck "$ordner"
 done
+
+# /repo ist der Sonderfall, und zwar ein teuer gelernter: auf einem Server mit mehreren
+# Instanzen liegen im selben Verzeichnis auch die Datenordner der ANDEREN Installationen
+# (data-zerafi/, data-paniczone/ - alles, was git gar nicht kennt). Ein "alles unter
+# /repo"-Durchlauf hat die am 17.11.2026 mit umgeschrieben. Kaputt ging dabei nichts,
+# weil jene Container als root laufen und root an Dateien von 1000 trotzdem herankommt -
+# aber fremde Dateien gehen diesen Bot nichts an.
+#
+# Angefasst wird deshalb nur, was der Bot wirklich braucht: .git (dort schreibt das
+# Update), das Repo-Verzeichnis selbst (damit neue Dateien angelegt werden koennen) und
+# die obersten Eintraege, die git kennt. Was git nicht kennt, bleibt unberuehrt.
+if [ -d /repo/.git ]; then
+    chown -h "$PUID:$PGID" /repo 2>/dev/null
+    rueck /repo/.git
+    for eintrag in $(git -C /repo ls-files 2>/dev/null | cut -d/ -f1 | sort -u); do
+        rueck "/repo/$eintrag"
+    done
+fi
 
 # ── Probe: geht das ueberhaupt gut? ──────────────────────────────────────────
 # Erst wird geprueft, ob der Rechtewechsel an sich klappt (fehlt CAP_SETUID, weil jemand
