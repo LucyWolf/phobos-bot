@@ -5404,8 +5404,28 @@ async def amp_save(
     # A blank password field means "keep the existing one" (same convention as SMTP/Twitch
     # credential forms elsewhere) - only overwrite it if the admin actually typed something,
     # so re-saving the label/URL doesn't silently wipe out a previously stored password.
-    existing = await db_one("SELECT password FROM amp_configs WHERE guild_id=?", (str(guild_id),))
-    final_password = password.strip() or (existing["password"] if existing else "")
+    existing = await db_one("SELECT url, password FROM amp_configs WHERE guild_id=?",
+                            (str(guild_id),))
+    # Aber nicht ueber einen Hostwechsel hinweg. Sonst reicht es, die Adresse auf einen
+    # eigenen Server zu aendern und zu speichern: das Passwortfeld bleibt leer, das alte
+    # Passwort wandert mit - und der Bot meldet sich damit beim fremden Host an. Gemeldet
+    # am 16.11.2026 aus einer fremden Installation ("an existing AMP password follows a
+    # changed integration URL"). Wer die Adresse wechselt, tippt das Passwort neu.
+    def _host(adresse: str) -> str:
+        try:
+            teile = urllib.parse.urlparse(adresse or "")
+        except ValueError:
+            return ""
+        return f"{teile.scheme}://{(teile.netloc or '').lower()}"
+
+    getippt = password.strip()
+    alter_host = _host(existing["url"]) if existing else ""
+    if existing and alter_host and alter_host != _host(url) and (existing["password"] or ""):
+        if not getippt:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=amp&error=Adresse+geändert+—+bitte+das+Passwort+neu+eingeben",
+                status_code=302)
+    final_password = getippt or (existing["password"] if existing else "")
     await db_exec(
         "INSERT INTO amp_configs (guild_id,label,url,username,password,command_channel_id) VALUES (?,?,?,?,?,?) "
         "ON CONFLICT(guild_id) DO UPDATE SET label=excluded.label, url=excluded.url, "
@@ -12497,6 +12517,41 @@ def _is_public_http_url(url: str) -> bool:
     return True
 
 
+async def _hole_geprueft(session, url: str, headers: dict, hops: int = 4):
+    """GET, bei dem JEDE Adresse der Kette geprueft wird - auch die aus einer Umleitung.
+
+    _is_public_http_url an der Aufrufstelle prueft nur die erste Adresse. aiohttp folgt
+    Umleitungen aber von sich aus, und eine fremde Seite darf selbst bestimmen, wohin sie
+    umleitet: "https://beispiel.example/bild.png" -> "http://127.0.0.1:8080/..." und der
+    Server hat die Verbindung nach innen schon aufgebaut, bevor irgendjemand hinsieht.
+    Gemeldet am 16.11.2026 aus einer fremden Installation ("image fetching can reach
+    loopback despite the public-URL guard").
+
+    Deshalb hier: allow_redirects=False, Location selbst auflesen, vor JEDEM Schritt wieder
+    pruefen. Gibt die Antwort zurueck (der Aufrufer schliesst sie) oder None, wenn eine
+    Adresse der Kette nicht oeffentlich ist, zu oft umgeleitet wird oder der Abruf scheitert.
+
+    Was damit NICHT behoben ist: loest ein Name beim Pruefen auf eine oeffentliche und beim
+    Verbinden auf eine interne Adresse (DNS-Rebinding), hilft keine Pruefung der Adresse -
+    dagegen hilft nur, die geprueffte IP selbst zu verbinden. Das waere ein eigener Umbau
+    mit eigenem TLS-Thema; hier steht es, damit es niemand fuer erledigt haelt.
+    """
+    schleife = asyncio.get_running_loop()
+    for _ in range(hops):
+        if not await schleife.run_in_executor(None, _is_public_http_url, url):
+            return None
+        resp = await session.get(url, headers=headers, allow_redirects=False)
+        if resp.status in (301, 302, 303, 307, 308):
+            ziel = resp.headers.get("Location") or ""
+            resp.release()
+            if not ziel:
+                return None
+            url = urllib.parse.urljoin(url, ziel)
+            continue
+        return resp
+    return None
+
+
 # Womit wir uns beim Holen von Vorschaubildern melden.
 #
 # Frueher stand hier "Mozilla/5.0 (compatible; PhobosBot/1.0; ...)" - ehrlich, aber unbrauchbar:
@@ -12523,13 +12578,15 @@ async def _fetch_og_quelle(url: str) -> tuple:
 
     Gibt bei jedem Fehler ("", "") zurueck - eine langsame oder kaputte fremde Seite darf
     weder das Speichern der Umfrage noch die Vorschau aufhalten."""
-    # Hier geprueft und nicht bei jedem Aufrufer, damit es keiner vergessen kann.
-    if not await asyncio.get_running_loop().run_in_executor(None, _is_public_http_url, url):
-        return "", ""
+    # Hier geprueft und nicht bei jedem Aufrufer, damit es keiner vergessen kann - und
+    # ueber _hole_geprueft, damit auch jede Umleitung geprueft wird.
     try:
         async with aiohttp.ClientSession(timeout=_OG_FETCH_TIMEOUT) as session:
             headers = {"User-Agent": _BILD_ABRUF_UA}
-            async with session.get(url, headers=headers) as resp:
+            resp = await _hole_geprueft(session, url, headers)
+            if resp is None:
+                return "", ""
+            async with resp:
                 if resp.status != 200:
                     return "", ""
                 typ = resp.headers.get("Content-Type", "").lower()
@@ -12707,10 +12764,16 @@ async def _fetch_image_bytes(url: str) -> bytes:
     attachment rather than the original, whatever-size image. Never raises: any failure
     (timeout, non-200, non-image response, oversized body) yields b"", and the caller falls
     back to leaving the image as a plain URL at its original size rather than losing it."""
+    # Hier fehlte die Adresspruefung ganz: wer eine Umfrage-Option mit eigener Bildbreite
+    # anlegt, liess den Server jede Adresse abrufen, die er hineinschrieb - auch
+    # http://127.0.0.1:8080. Gemeldet am 16.11.2026 (F06).
     try:
         async with aiohttp.ClientSession(timeout=_POLL_IMAGE_FETCH_TIMEOUT) as session:
             headers = {"User-Agent": _BILD_ABRUF_UA}
-            async with session.get(url, headers=headers) as resp:
+            resp = await _hole_geprueft(session, url, headers)
+            if resp is None:
+                return b""
+            async with resp:
                 if resp.status != 200:
                     return b""
                 chunks, total = [], 0

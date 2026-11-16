@@ -14,6 +14,24 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.26 — `beta` — 16.11.2026
+
+**Sicherheit**
+- Behoben: Der Server ließ sich dazu bringen, **Adressen im eigenen Netz abzurufen**. Beim
+  Holen eines Umfragebildes (eigene Bildbreite) wurde die Adresse gar nicht geprüft, und
+  beim Suchen eines Vorschaubildes nur die erste — eine fremde Seite konnte per Umleitung
+  auf `http://127.0.0.1:…` zeigen. Umleitungen werden jetzt selbst aufgelöst und vor jedem
+  Schritt geprüft.
+- Behoben: Das **AMP-Passwort folgte einer geänderten Adresse**. Ein leeres Passwortfeld
+  heißt „behalten" — damit reichte es, die Adresse auf einen eigenen Server zu ändern und
+  zu speichern, um die Zugangsdaten dorthin zu schicken. Wer den Host wechselt, muss das
+  Passwort jetzt neu eingeben.
+
+Beides gemeldet aus einer fremden Installation und hier mit echten lokalen Servern
+nachgestellt.
+
+---
+
 ## 1.19.25 — `beta` — 16.11.2026
 
 **VRChat**

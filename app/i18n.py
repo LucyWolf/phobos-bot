@@ -3528,6 +3528,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 # Der deutsche Wortlaut ist der Schluessel. Was hier fehlt, bleibt deutsch stehen - eine
 # neue Meldung faellt damit nicht aus, sie spricht nur noch kein Englisch.
 MELDUNGEN_EN = {
+    'Adresse geändert — bitte das Passwort neu eingeben':
+        'Address changed — please enter the password again',
     # Praefixe der zusammengesetzten Meldungen - meldung() schlaegt den Teil vor " (" und
     # vor ": " nach und haengt den Wert unveraendert an.
     'Discord-Fehler': 'Discord error',
