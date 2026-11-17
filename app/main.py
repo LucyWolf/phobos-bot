@@ -4779,6 +4779,75 @@ _AENDERUNGEN_CACHE: dict = {}
 _SCHILDER_CACHE: dict = {"at": None, "nach_sha": {}}
 
 
+def changelog_abschnitte(grenze: int = 25) -> list:
+    """Die Eintraege aus CHANGELOG.md, neueste zuerst.
+
+    Die Updates-Seite zeigte bisher nur Commit-Zeilen von GitHub. Das hat zwei Luecken: ohne
+    Netz steht die Seite leer da - also genau dann, wenn man wissen will, was man sich
+    einspielt -, und eine Commit-Nachricht erklaert immer nur ihre eine Aenderung, nie den
+    Stand einer Version. CHANGELOG.md liegt im Repo, das ohnehin eingehaengt ist; gelesen
+    wird also von der Platte, nicht aus dem Netz.
+
+    Gelesen statt zwischengespeichert: die Datei ist klein, und nach einem Update soll der
+    neue Stand sofort dastehen und nicht bis zum naechsten Neustart der alte.
+    """
+    kandidaten = ["/repo/CHANGELOG.md",
+                  str(Path(__file__).resolve().parent.parent / "CHANGELOG.md")]
+    roh = ""
+    for pfad in kandidaten:
+        try:
+            with open(pfad, encoding="utf-8") as f:
+                roh = f.read()
+            break
+        except OSError:
+            continue
+    if not roh:
+        return []
+
+    abschnitte = []
+    for stueck in roh.split("\n## ")[1:]:
+        zeilen = stueck.split("\n")
+        titel = zeilen[0].strip()
+        # Die Trennlinie zwischen zwei Eintraegen gehoert nicht in den Text.
+        rumpf = "\n".join(zeilen[1:]).strip()
+        while rumpf.endswith("---"):
+            rumpf = rumpf[:-3].strip()
+        abschnitte.append({"titel": titel, "rumpf": rumpf})
+        if len(abschnitte) >= grenze:
+            break
+    return abschnitte
+
+
+def changelog_html(text: str) -> markupsafe.Markup:
+    """Der Eintrag als Anzeige: erst alles entschaerfen, dann die drei Zeichen zurueckholen,
+    die in diesen Notizen wirklich vorkommen - **fett**, `Code` und Aufzaehlungen.
+
+    Absichtlich kein Markdown-Paket: das waere eine neue Abhaengigkeit fuer drei Muster, und
+    jede davon ist eine Stelle mehr, an der fremder Text zu Markup werden kann. Hier wird
+    zuerst escaped - was danach noch zu HTML wird, ist ausschliesslich das, was diese
+    Funktion selbst setzt.
+    """
+    sicher = str(markupsafe.escape(text))
+    sicher = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", sicher)
+    sicher = re.sub(r"`([^`]+?)`", r"<code>\1</code>", sicher)
+    zeilen = []
+    offen = False
+    for zeile in sicher.split("\n"):
+        if zeile.lstrip().startswith("- "):
+            if not offen:
+                zeilen.append("<ul style='margin:0.3rem 0 0.3rem 1.1rem;padding:0;'>")
+                offen = True
+            zeilen.append(f"<li>{zeile.lstrip()[2:]}</li>")
+            continue
+        if offen:
+            zeilen.append("</ul>")
+            offen = False
+        zeilen.append(zeile if zeile.strip() else "<br>")
+    if offen:
+        zeilen.append("</ul>")
+    return markupsafe.Markup("\n".join(zeilen))
+
+
 async def aenderungen_holen(zweig: str) -> list:
     """Was sich auf diesem Zweig zuletzt getan hat - als Liste fuer die Updates-Seite.
 
@@ -4881,6 +4950,11 @@ async def bot_update_page(request: Request, success: str = "", error: str = ""):
                       if _ver_tuple(v[1:]) < _ver_tuple(VERSION)][:30],
         # Was sich auf beiden Zweigen zuletzt getan hat, damit man vor dem Einspielen
         # sieht, was man bekommt - und auf der Beta, was man bekaeme.
+        # Das Changelog kommt von der Platte und nicht aus dem Netz: die Seite wird
+        # gebraucht, wenn etwas nicht stimmt - und dann ist GitHub oft das Erste, was fehlt.
+        "changelog": changelog_abschnitte(),
+        "changelog_html": changelog_html,
+        "repo_url": _GITHUB_REPO_URL,
         "aenderungen_stable": await aenderungen_holen("main"),
         "aenderungen_beta": await aenderungen_holen("beta"),
         "success": success, "error": error,

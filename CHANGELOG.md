@@ -14,6 +14,26 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.34 — `beta` — 17.11.2026
+
+**Das Changelog steht jetzt auf der Updates-Seite**
+- Die Seite zeigte bisher nur Commit-Zeilen, die bei GitHub geholt werden. Ohne Netz stand
+  dort nichts — also genau dann nichts, wenn man wissen will, was man sich einspielt.
+- Neu darunter: **„Was sich mit jeder Version geändert hat"**, aufklappbar, neueste Version
+  offen. Gelesen wird `CHANGELOG.md` aus dem Repo, von der Platte. Dazu ein Verweis auf die
+  ganze Datei bei GitHub.
+- Fremder Text wird dabei nicht zu Markup: erst wird alles entschärft, danach kommen genau
+  drei Dinge zurück — **fett**, `Code` und Aufzählungen. Kein Markdown-Paket dafür, das wäre
+  eine Abhängigkeit mehr für drei Muster und eine Stelle mehr, an der Text zu HTML wird.
+
+**Wie die Notizen ab jetzt geschrieben sind**
+Gegliedert statt als Absatzblock, das Schwerste zuerst, und sie erklären **warum** statt
+**was** — was im Diff steht, gehört nicht in die Notiz. Dazu, wo es nötig ist: was man selbst
+tun muss, und was nicht geprüft werden konnte. Das gilt für diese Datei **und** für die
+Commit-Nachrichten, denn die Updates-Seite baut ihre Liste aus den Commits.
+
+---
+
 ## 1.19.33 — `beta` — 17.11.2026
 
 **Profile: Fehlersuche an der neuen Funktion**
