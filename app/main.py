@@ -364,6 +364,7 @@ COGS = [
     "cogs.auto_delete",
     "cogs.auto_thread",
     "cogs.vrc_link",
+    "cogs.profile",
     "cogs.temp_voice",
     "cogs.scheduler",
     "cogs.birthday",
@@ -8069,6 +8070,63 @@ async def _vrc_page(request: Request, row, lang: str,
     }, status_code=status_code), request)
 
 
+# ── Profile: die Leseadresse fuer die VRChat-Welt ─────────────────────────────
+# Gewuenscht war, die Texte nach Pastebin/Gist zu schieben, damit die Welt sie laden kann.
+# Das waere eine oeffentliche Adresse fuer sehr private Angaben, auf einem Dienst, der
+# nichts davon wieder loswird. Stattdessen liefert Phobos sie selbst - mit drei Schranken,
+# die eine Pastebin-Adresse nicht haette:
+#
+#   1. Der Server muss die Anzeige in der Welt eingeschaltet haben (profil_welt_on).
+#   2. Die Anfrage braucht den Schluessel dieses Servers (profil_welt_key). Ohne Schluessel
+#      antwortet die Adresse ueberhaupt nicht - auch nicht mit "gibt es nicht", das waere
+#      schon eine Auskunft.
+#   3. Die betroffene Person muss ihr Profil selbst freigegeben haben (welt=1). Ohne
+#      Freigabe sieht die Welt nichts, egal wer fragt.
+#
+# Gesucht wird ueber den VRChat-Namen, nicht ueber die Discord-Kennung: in der Welt weiss
+# die Oberflaeche, wer vor ihr steht - naemlich einen VRChat-Namen -, und sonst nichts. Die
+# Zuordnung dazu steht in vrc_links, also genau da, wo sie ohnehin gepflegt wird.
+@web.get("/api/profil")
+async def profil_fuer_welt(request: Request, key: str = "", vrc: str = ""):
+    leer = {"gefunden": False, "felder": []}
+    schluessel = (key or "").strip()
+    name = (vrc or "").strip()
+    if not schluessel or not name:
+        return JSONResponse(leer, status_code=400)
+
+    # Welcher Server hat genau diesen Schluessel? Ueber alle Server zu suchen ist hier
+    # richtig: die Welt kennt keine Server-Kennung, nur ihren eigenen Schluessel.
+    treffer = await db_rows(
+        "SELECT guild_id FROM guild_configs WHERE key='profil_welt_key' AND value=? AND value<>''",
+        (schluessel,))
+    if not treffer:
+        return JSONResponse(leer, status_code=403)
+    guild_id = str(treffer[0]["guild_id"])
+
+    if await get_guild_config(guild_id, "profil_welt_on") != "1":
+        return JSONResponse(leer, status_code=403)
+
+    link = await db_one(
+        "SELECT user_id FROM vrc_links WHERE guild_id=? AND status='approved' "
+        "AND (vrc_user_id=? OR vrchat_name=? COLLATE NOCASE)",
+        (guild_id, name, name))
+    if not link:
+        return JSONResponse(leer)
+
+    rows = await db_rows(
+        "SELECT feld, text, geaendert FROM profil_eintraege "
+        "WHERE guild_id=? AND user_id=? AND welt=1 AND text<>''",
+        (guild_id, str(link["user_id"])))
+    if not rows:
+        return JSONResponse(leer)
+
+    from cogs.profile import FELDER
+    reihenfolge = {f["name"]: i for i, f in enumerate(FELDER)}
+    felder = sorted(({"feld": r["feld"], "text": r["text"], "geaendert": r["geaendert"]}
+                     for r in rows), key=lambda r: reihenfolge.get(r["feld"], 99))
+    return JSONResponse({"gefunden": True, "vrchat_name": name, "felder": felder})
+
+
 async def _vrc_visitor(token: str):
     """The token row this visitor supplied in their form, or None.
 
@@ -10506,7 +10564,7 @@ _SERVER_CONFIG_TAB_LABELS = {
     "giveaways": "🎉 Giveaways", "warnings": "⚠️ Warnungen", "users": "👥 Nutzer",
     "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant", "events": "🗓️ Events",
     "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
-    "autothread": "🧵 Auto-Thread", "vrclink": "🔗 VRC-Link",
+    "autothread": "🧵 Auto-Thread", "vrclink": "🔗 VRC-Link", "profile": "🪪 Profile",
     "amp": "🎮 Gameserver", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
     "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen", "ratings": "⭐ Bewertungen",
 }
@@ -10528,7 +10586,7 @@ _TOGGLEABLE_FEATURES = {
     "commands": "📢 Commands", "tickets": "🎫 Tickets", "giveaways": "🎉 Giveaways",
     "warnings": "⚠️ Warnungen", "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant",
     "events": "🗓️ Events", "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
-    "autothread": "🧵 Auto-Thread", "vrclink": "🔗 VRC-Link",
+    "autothread": "🧵 Auto-Thread", "vrclink": "🔗 VRC-Link", "profile": "🪪 Profile",
     "amp": "🎮 Gameserver", "notifications": "🟣 Streaming", "freestuff": "🎁 Free Stuff",
     "log": "📋 Log", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
     "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen", "ratings": "⭐ Bewertungen",
@@ -11215,6 +11273,9 @@ async def server_config(
         "tempvoice_configs": _tempvoice_configs,
         # Die Liste zeigt nur den Ausschnitt; gezaehlt wird ueber alle.
         "vrc_links": _vrc_sichtbar,
+        # Fuer die Adresse, die in der VRChat-Welt eingetragen wird - ohne sie stuende dort
+        # nur ein Pfad ohne Server davor.
+        "base_url": await link_base_url(),
         "vrc_links_gesamt": len(_vrc_links),
         "vrc_links_gefunden": len(_vrc_gefiltert),
         "vrc_suche": _vrc_suche,
@@ -11333,6 +11394,7 @@ _TAB_TEXT_KEYS = {
         "automod_spam_threshold", "automod_spam_window", "automod_timeout_minutes",
         "automod_banned_words", "automod_action", "automod_warn_message",
     ],
+    "profile": ["profil_18_role", "profil_inspect_role", "profil_welt_key"],
     "vrclink": ["vrc_account", "vrc_linked_role", "vrc_nickname_format", "vrc_panel_channel",
                 "vrc_panel_title", "vrc_panel_text", "vrc_panel_button", "vrc_dm_text",
                 "vrc_group_id", "vrc_group_role", "vrc_link_minutes",
@@ -11360,6 +11422,7 @@ _TAB_CHECKBOX_KEYS = {
     "birthday": [],
     # vrc_require_ownership defaults to ON when absent, so an existing server keeps the
     # proof it already had - see the read in vrc_public_name().
+    "profile": ["profil_enabled", "profil_welt_on"],
     "vrclink": ["vrc_enabled", "vrc_nickname_enabled", "vrc_auto_approve", "vrc_dm_on_join",
                 "vrc_require_ownership", "vrc_group_invite", "vrc_auto_invite",
                 "vrc_group_kick_on_leave", "vrc_panel_text_on",

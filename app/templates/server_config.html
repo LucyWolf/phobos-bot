@@ -3453,6 +3453,61 @@ document.addEventListener('click', function(e) {
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <!-- TAB: VRC-Link                                                       -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Profile -->
+<div class="tab-pane" id="pane-profile">
+
+<form method="post" action="/servers/{{ guild.id }}">
+<input type="hidden" name="tab" value="profile">
+<div class="card">
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.profil_hint }}</p>
+  <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-bottom:0.9rem;">
+    <input type="checkbox" name="profil_enabled" value="1" style="margin:0;" {% if cfg.get('profil_enabled') == '1' %}checked{% endif %}>
+    {{ tr.profil_enabled_label }}
+  </label>
+
+  <div class="grid-2" style="gap:1rem;">
+    <div>
+      <label>{{ tr.profil_18_role_label }}</label>
+      <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.profil_18_role_hint }}</p>
+      <select name="profil_18_role">
+        <option value="">{{ tr.profil_18_role_none }}</option>
+        {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('profil_18_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>{{ tr.profil_inspect_role_label }}</label>
+      <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.profil_inspect_role_hint }}</p>
+      <select name="profil_inspect_role">
+        <option value="">{{ tr.profil_inspect_role_none }}</option>
+        {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('profil_inspect_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin:0 0 0.5rem;font-size:0.95rem;">{{ tr.profil_welt_heading }}</h3>
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.profil_welt_hint }}</p>
+  <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-bottom:0.9rem;">
+    <input type="checkbox" name="profil_welt_on" value="1" style="margin:0;" {% if cfg.get('profil_welt_on') == '1' %}checked{% endif %}>
+    {{ tr.profil_welt_on_label }}
+  </label>
+  <label>{{ tr.profil_welt_key_label }}</label>
+  <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.profil_welt_key_hint }}</p>
+  <input type="text" name="profil_welt_key" maxlength="64" value="{{ cfg.get('profil_welt_key', '') }}"
+         placeholder="{{ tr.profil_welt_key_placeholder }}">
+  {% if cfg.get('profil_welt_key') and cfg.get('profil_welt_on') == '1' %}
+  <p class="hint" style="margin:0.6rem 0 0;">{{ tr.profil_welt_url_label }}</p>
+  <code style="display:block;word-break:break-all;background:var(--bg);border:1px solid var(--border);
+               border-radius:0.5rem;padding:0.5rem 0.7rem;font-size:0.75rem;margin-top:0.3rem;">{{ base_url }}/api/profil?key={{ cfg.get('profil_welt_key')|urlencode }}&amp;vrc=NAME</code>
+  {% endif %}
+</div>
+
+<button type="submit" class="btn">{{ tr.btn_save }}</button>
+</form>
+
+</div>
+
 <div class="tab-pane" id="pane-vrclink">
 
 <div style="position:relative;margin-bottom:1.25rem;">
@@ -6293,7 +6348,7 @@ document.addEventListener('click', function(e) {
 </script>
 
 <script>
-const TABS = ['config','welcome','automod','leveling','rr','commands','tickets','giveaways','polls','ratings','warnings','users','tempvoice','scheduled','events','birthday','autodelete','autothread','vrclink','amp','autokick','embeds','rolerules'];
+const TABS = ['config','welcome','automod','leveling','rr','commands','tickets','giveaways','polls','ratings','warnings','users','tempvoice','scheduled','events','birthday','autodelete','autothread','vrclink','profile','amp','autokick','embeds','rolerules'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {

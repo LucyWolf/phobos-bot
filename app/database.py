@@ -866,6 +866,22 @@ async def init_db():
             # meant to coexist side by side, not be an either/or choice (confirmed: "beides
             # einstellbar") - the average is simply computed on read from rating_votes, never
             # stored redundantly on rating_items itself.
+            # Profile (cogs/profile.py): was jemand ueber sich selbst hinterlegt - Bio und,
+            # hinter einer 18+-Pruefung, kinks/triggers/limits. Ein Eintrag je Person und
+            # Feld, deshalb UNIQUE: ein zweites /bio ersetzt den Text, es haeuft sich nichts
+            # an. `welt` ist die Freigabe fuer die Anzeige in der VRChat-Welt und steht
+            # absichtlich auf 0, bis die Person sie selbst setzt - geschrieben heisst nicht
+            # veroeffentlicht.
+            """CREATE TABLE IF NOT EXISTS profil_eintraege (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                feld TEXT NOT NULL,
+                text TEXT NOT NULL DEFAULT '',
+                welt INTEGER NOT NULL DEFAULT 0,
+                geaendert TEXT NOT NULL DEFAULT '',
+                UNIQUE(guild_id, user_id, feld)
+            )""",
             """CREATE TABLE IF NOT EXISTS rating_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL,

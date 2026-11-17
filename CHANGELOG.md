@@ -14,6 +14,35 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.32 — `beta` — 17.11.2026
+
+**Profile (neu, erste Fassung, Standard aus)**
+Angaben, die Mitglieder selbst über sich hinterlegen — gewünscht für die Anzeige in einer
+VRChat-Welt.
+- Befehle `/bio`, `/kinks`, `/triggers`, `/limits` (Eingabefenster mit dem bisherigen Text
+  darin), `/profil` fürs eigene, `/inspect @person` für fremde, `/profil-loeschen`.
+- Jede Antwort des Bots ist nur für die fragende Person sichtbar. Ein Profil landet nie
+  in einem Kanal.
+- **18+ ist Pflicht** für kinks/triggers/limits, nicht für die Bio. Als Nachweis zählt die
+  VRChat-Altersbestätigung aus dem VRC-Link oder eine Rolle, die der Server dafür bestimmt.
+  Wer keinen Nachweis hat, sieht diese Felder auch bei anderen nicht — darf aber nachsehen
+  und sein eigenes Profil öffnen.
+- Im Dashboard ein eigener Reiter: an/aus, Rolle als 18+-Nachweis, wer `/inspect` benutzen
+  darf.
+
+**Anzeige in der VRChat-Welt — ohne Pastebin**
+- Gewünscht war, die Texte nach Pastebin/Gist zu schieben. Das wäre eine öffentliche
+  Adresse für sehr private Angaben, bei einem Dienst, der nichts davon wieder loswird.
+  Stattdessen liefert Phobos sie selbst: `GET /api/profil?key=…&vrc=NAME`.
+- Drei Schranken, die eine Pastebin-Adresse nicht hätte: die Anzeige muss eingeschaltet
+  sein, die Anfrage braucht den Schlüssel des Servers, und **die betroffene Person muss ihr
+  Profil selbst freigegeben haben**. Ohne Freigabe sieht die Welt nichts, auch mit
+  Schlüssel. Gelöscht ist wirklich gelöscht.
+- Gesucht wird über den VRChat-Namen aus dem VRC-Link — das ist das Einzige, was eine Welt
+  über ihr Gegenüber weiß.
+
+---
+
 ## 1.19.31 — `beta` — 17.11.2026
 
 **Tickets: die Grenze zählt je Kategorie**
