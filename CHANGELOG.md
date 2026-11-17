@@ -14,6 +14,37 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.37 — `beta` — 17.11.2026
+
+**Die Befehlsliste spricht jetzt die Sprache der Person**
+- Gemeldet waren zwei deutsche Befehlsnamen auf einem englischsprachigen Server. Beim
+  Nachsehen war es mehr: deutsch sind nur **vier Namen** (`/bewerten`, `/bewertungen`,
+  `/profil`, `/profil-loeschen`) — die **Beschreibungen** aber bei **allen 39** Befehlen.
+  Unter jedem englisch benannten Befehl stand ein deutscher Satz.
+- Discord kann beides je Sprache ausliefern. Englische Clients sehen ab jetzt `/rate`,
+  `/ratings`, `/profile`, `/profile-delete` samt englischen Beschreibungen und
+  Parameternamen (`grund` → `reason`, `sterne` → `stars`); deutsche Clients alles wie
+  bisher.
+- **Maßgeblich ist die Client-Sprache der Person, nicht `bot_lang` des Servers.** Ein
+  Deutscher auf Zerafis englischem Server sieht weiter Deutsch. Das ist Absicht: die
+  Befehlsliste gehört zur Oberfläche dessen, der sie aufklappt.
+- Andere Sprachen bekommen den deutschen Standardtext — lieber Deutsch als Kauderwelsch.
+
+**Ohne Eingriff in die Befehle selbst**
+discord.py wandelt Namen, Beschreibungen, Parameter und Auswahleinträge von sich aus in
+übersetzbare Zeichenketten um. Es brauchte deshalb keinen Eingriff in die 39 Befehle,
+sondern eine Übersetzungstabelle (`app/befehlstexte.py`) und einen Übersetzer, der nur auf
+Englisch antwortet.
+
+**Was zu tun ist**
+Sichtbar wird es beim nächsten Start des Bots — dann wird die Befehlsliste neu abgeglichen.
+
+**Nicht geprüft:** wie es in Discord wirklich aussieht. Der Test prüft die Übersetzungen,
+die Regeln für Namen (ein einziger ungültiger ließe den Abgleich scheitern, und dann hätte
+der Server **gar keine** Befehle mehr) und dass der Übersetzer vor dem Abgleich gesetzt wird.
+
+---
+
 ## 1.19.36 — `beta` — 17.11.2026
 
 **Profile: zweiter Durchgang**

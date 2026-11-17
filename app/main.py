@@ -140,8 +140,10 @@ from cogs.ratings import (
 )
 from cogs.log_utils import log_bot_event as _log_bot_event, BOT_EVENT_CATEGORIES
 from i18n import get_tr, meldung as _meldung
+from befehlstexte import befehl_en
 import uvicorn
 from discord.ext import commands
+from discord import app_commands
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
@@ -456,6 +458,24 @@ bot = BotManager()
 BOT_FEHLER: dict = {}
 
 
+class BefehlsUebersetzer(app_commands.Translator):
+    """Liefert Namen und Beschreibungen der Slash-Befehle auf Englisch.
+
+    Gefragt wird fuer jede Sprache, die Discord kennt; beantwortet wird nur Englisch. Fuer
+    alles andere kommt None zurueck - dann zeigt Discord den Standardtext, und der ist
+    deutsch. Ein Franzose sieht also Deutsch, nicht Kauderwelsch.
+
+    Massgeblich ist die Client-Sprache der PERSON, nicht `bot_lang` des Servers: die
+    Befehlsliste gehoert zur Oberflaeche dessen, der sie aufklappt. Ein Deutscher auf einem
+    englischen Server sieht weiter Deutsch.
+    """
+
+    async def translate(self, string, locale, context):
+        if not str(getattr(locale, "value", locale)).startswith("en"):
+            return None
+        return befehl_en(string.message)
+
+
 async def _run_single_bot(token_id: int, token: str):
     """Runs one bot instance. Auto-reconnects after unexpected disconnects (e.g. a
     discord.py gateway hiccup) as long as the token stays enabled - only an invalid
@@ -550,6 +570,12 @@ async def _run_single_bot(token_id: int, token: str):
 
         @instance.event
         async def on_ready():
+            # Vor jedem Abgleich: was Discord bekommt, wird beim Zusammenbauen uebersetzt.
+            # Danach gesetzt waere es wirkungslos, bis zum naechsten Sync.
+            try:
+                await instance.tree.set_translator(BefehlsUebersetzer())
+            except Exception as e:
+                print(f"[Token-ID {token_id}] Uebersetzer fuer Befehle nicht gesetzt: {e}")
             await _globale_leeren()
             for guild in list(instance.guilds):
                 await _sync_guild(guild)
