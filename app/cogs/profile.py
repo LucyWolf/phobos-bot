@@ -245,24 +245,40 @@ class FeldModal(ui.Modal):
 
 
 class WeltKnopf(ui.Button):
-    """Der einzige Weg, wie ein Eintrag die Welt erreicht - und er liegt bei der Person."""
+    """Der einzige Weg, wie ein Eintrag die Welt erreicht - und er liegt bei der Person.
 
-    def __init__(self, label: str, an: bool):
-        super().__init__(label=label, style=(discord.ButtonStyle.danger if an
-                                             else discord.ButtonStyle.success))
-        self.an = an
+    Der Zustand wird beim Druecken frisch gelesen und nicht aus dem Knopf genommen. Sonst
+    haengt er an dem Moment, in dem die Nachricht entstanden ist: wer zweimal drueckt oder
+    die Anzeige nebenher in einem zweiten Fenster umstellt, schaltet beim zweiten Mal auf
+    denselben Wert wie beim ersten - der Knopf sagt dann "ausgeschaltet", und es bleibt an.
+    Bei einer Freigabe fuer sehr private Angaben ist das kein Schoenheitsfehler.
+    """
+
+    def __init__(self, label: str):
+        super().__init__(label=label, style=discord.ButtonStyle.secondary)
 
     async def callback(self, interaction: discord.Interaction):
-        neu = not self.an
+        neu = not await welt_sichtbar(interaction.guild_id, interaction.user.id)
         await setze_welt(interaction.guild_id, interaction.user.id, neu)
-        await interaction.response.send_message(
-            await pt(interaction.guild_id, "welt_an" if neu else "welt_aus"), ephemeral=True)
+        self.label = await pt(interaction.guild_id,
+                              "welt_knopf_aus" if neu else "welt_knopf_an")
+        try:
+            await interaction.response.edit_message(view=self.view)
+            await interaction.followup.send(
+                await pt(interaction.guild_id, "welt_an" if neu else "welt_aus"),
+                ephemeral=True)
+        except Exception:
+            # Die Nachricht ist weg oder zu alt - die Umstellung ist trotzdem passiert,
+            # und das muss die Person erfahren.
+            await interaction.followup.send(
+                await pt(interaction.guild_id, "welt_an" if neu else "welt_aus"),
+                ephemeral=True)
 
 
 class ProfilView(ui.View):
-    def __init__(self, label: str, an: bool):
-        super().__init__(timeout=300)
-        self.add_item(WeltKnopf(label, an))
+    def __init__(self, label: str):
+        super().__init__(timeout=900)
+        self.add_item(WeltKnopf(label))
 
 
 async def _vorpruefung(interaction: discord.Interaction, feld: dict | None) -> bool:
@@ -301,22 +317,27 @@ class Profile(commands.Cog):
             await pt(interaction.guild_id, "modal_label"),
             feld["platz"]))
 
+    @app_commands.guild_only()
     @app_commands.command(name="bio", description="Deine Bio eintragen oder ändern")
     async def bio(self, interaction: discord.Interaction):
         await self._bearbeiten(interaction, "bio")
 
+    @app_commands.guild_only()
     @app_commands.command(name="kinks", description="Deine Kinks eintragen oder ändern (18+)")
     async def kinks(self, interaction: discord.Interaction):
         await self._bearbeiten(interaction, "kinks")
 
+    @app_commands.guild_only()
     @app_commands.command(name="triggers", description="Deine Triggers eintragen oder ändern (18+)")
     async def triggers(self, interaction: discord.Interaction):
         await self._bearbeiten(interaction, "triggers")
 
+    @app_commands.guild_only()
     @app_commands.command(name="limits", description="Deine Limits eintragen oder ändern (18+)")
     async def limits(self, interaction: discord.Interaction):
         await self._bearbeiten(interaction, "limits")
 
+    @app_commands.guild_only()
     @app_commands.command(name="profil", description="Dein eigenes Profil ansehen")
     async def profil(self, interaction: discord.Interaction):
         if not await _vorpruefung(interaction, None):
@@ -334,8 +355,9 @@ class Profile(commands.Cog):
         label = await pt(interaction.guild_id,
                          "welt_knopf_aus" if an else "welt_knopf_an")
         await interaction.response.send_message(
-            embed=embed, view=ProfilView(label, an), ephemeral=True)
+            embed=embed, view=ProfilView(label), ephemeral=True)
 
+    @app_commands.guild_only()
     @app_commands.command(name="inspect", description="Das Profil einer Person ansehen")
     @app_commands.describe(person="Wessen Profil? Ohne Angabe dein eigenes.")
     async def inspect(self, interaction: discord.Interaction,
@@ -363,6 +385,7 @@ class Profile(commands.Cog):
             embed=await profil_embed(interaction.guild_id, ziel, eintr, eigenes),
             ephemeral=True)
 
+    @app_commands.guild_only()
     @app_commands.command(name="profil-loeschen",
                           description="Dein Profil vollständig löschen")
     async def loeschen(self, interaction: discord.Interaction):

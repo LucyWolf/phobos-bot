@@ -8086,11 +8086,40 @@ async def _vrc_page(request: Request, row, lang: str,
 # Gesucht wird ueber den VRChat-Namen, nicht ueber die Discord-Kennung: in der Welt weiss
 # die Oberflaeche, wer vor ihr steht - naemlich einen VRChat-Namen -, und sonst nichts. Die
 # Zuordnung dazu steht in vrc_links, also genau da, wo sie ohnehin gepflegt wird.
+# Eine Adresse, die ohne Anmeldung erreichbar ist, wird auch ohne Anmeldung durchprobiert.
+# Die Bremse zaehlt je Absender-Adresse und verhindert, dass jemand Schluessel oder Namen in
+# Serie durchtestet. Ehrlich ueber ihre Grenzen - genau wie die Bremse bei der Anmeldung:
+# die Adresse kommt aus X-Forwarded-For, wer die faelscht, kommt daran vorbei. Gegen den
+# entschlossenen Fall hilft eine Sperre im Proxy, nicht Code hier.
+_PROFIL_API_MAX = 60             # Anfragen
+_PROFIL_API_FENSTER = 60.0       # je Minute
+_profil_api_zaehler: dict[str, list] = {}
+
+
+def _profil_api_zu_viel(request: Request) -> bool:
+    import time as _t
+    jetzt = _t.monotonic()
+    wer = _login_client(request)
+    eintrag = _profil_api_zaehler.get(wer)
+    if not eintrag or jetzt - eintrag[1] > _PROFIL_API_FENSTER:
+        _profil_api_zaehler[wer] = [1, jetzt]
+        # Nicht unbegrenzt wachsen lassen: sonst ist die Bremse selbst der Angriff.
+        if len(_profil_api_zaehler) > 5000:
+            for k in [k for k, v in _profil_api_zaehler.items()
+                      if jetzt - v[1] > _PROFIL_API_FENSTER]:
+                _profil_api_zaehler.pop(k, None)
+        return False
+    eintrag[0] += 1
+    return eintrag[0] > _PROFIL_API_MAX
+
+
 @web.get("/api/profil")
 async def profil_fuer_welt(request: Request, key: str = "", vrc: str = ""):
     leer = {"gefunden": False, "felder": []}
     schluessel = (key or "").strip()
     name = (vrc or "").strip()
+    if _profil_api_zu_viel(request):
+        return JSONResponse(leer, status_code=429)
     if not schluessel or not name:
         return JSONResponse(leer, status_code=400)
 
@@ -8107,7 +8136,7 @@ async def profil_fuer_welt(request: Request, key: str = "", vrc: str = ""):
         return JSONResponse(leer, status_code=403)
 
     link = await db_one(
-        "SELECT user_id FROM vrc_links WHERE guild_id=? AND status='approved' "
+        "SELECT user_id, vrchat_name FROM vrc_links WHERE guild_id=? AND status='approved' "
         "AND (vrc_user_id=? OR vrchat_name=? COLLATE NOCASE)",
         (guild_id, name, name))
     if not link:
@@ -8124,7 +8153,10 @@ async def profil_fuer_welt(request: Request, key: str = "", vrc: str = ""):
     reihenfolge = {f["name"]: i for i, f in enumerate(FELDER)}
     felder = sorted(({"feld": r["feld"], "text": r["text"], "geaendert": r["geaendert"]}
                      for r in rows), key=lambda r: reihenfolge.get(r["feld"], 99))
-    return JSONResponse({"gefunden": True, "vrchat_name": name, "felder": felder})
+    # Der gespeicherte Name, nicht der angefragte: sonst gibt die Antwort zurueck, was
+    # jemand hineingeschrieben hat, und die Welt zeigt am Ende fremden Text an.
+    return JSONResponse({"gefunden": True, "vrchat_name": link["vrchat_name"],
+                         "felder": felder})
 
 
 async def _vrc_visitor(token: str):
@@ -11490,6 +11522,34 @@ async def server_config_save(request: Request, guild_id: int):
             if _name in _MODERATOR_RESTRICTABLE_TABS and _name not in user_allowed_tabs:
                 return _redirect_no_access(guild_id, user_allowed_tabs)
 
+    # Der Schluessel, mit dem die VRChat-Welt Profile liest, ist das einzige Geheimnis
+    # dieser Funktion - und er steht in der Adresse, also in jedem Proxy-Protokoll der Welt.
+    # Zwei Dinge muessen deshalb beim Speichern stimmen, nicht erst beim Lesen:
+    #
+    # Laenge: ohne Mindestmass haette jemand "test" eintragen koennen, und die Adresse waere
+    # in Minuten durchprobiert. 20 Zeichen sind die Untergrenze, und nur wenn die Anzeige
+    # ueberhaupt eingeschaltet wird - wer sie aus laesst, soll nicht genoetigt werden.
+    #
+    # Eindeutigkeit: gesucht wird SPAETER ueber den Schluessel, nicht ueber den Server (die
+    # Welt kennt keine Server-Kennung). Zwei Server mit demselben Schluessel wuerden also auf
+    # dieselbe Zeile zeigen - der eine bekaeme die Profile des anderen zu sehen. Das ist
+    # keine Unschoenheit, das waere ein Datenleck zwischen zwei Gemeinschaften.
+    if tab == "profile":
+        welt_key = str(form.get("profil_welt_key", "")).strip()
+        if form.get("profil_welt_on") and len(welt_key) < 20:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=profile&error=Für+die+Anzeige+in+der+Welt+braucht+es"
+                f"+einen+Schlüssel+mit+mindestens+20+Zeichen", status_code=302)
+        if welt_key:
+            fremd = await db_one(
+                "SELECT guild_id FROM guild_configs WHERE key='profil_welt_key' "
+                "AND value=? AND guild_id<>?", (welt_key, guild_id))
+            if fremd:
+                return RedirectResponse(
+                    f"/servers/{guild_id}?tab=profile&error=Diesen+Schlüssel+benutzt+schon+ein"
+                    f"+anderer+Server+dieser+Installation+—+bitte+einen+eigenen+wählen",
+                    status_code=302)
+
     # Channel-valued keys are validated against the guild's own channels before saving -
     # some are resolved later via a global bot.get_channel() (not guild-scoped), so an
     # unvalidated ID here could otherwise make the bot post into a channel in a different
@@ -11509,7 +11569,8 @@ async def server_config_save(request: Request, guild_id: int):
     # to a silent no-op for a wrong ID, but a non-numeric value saved via a raw POST would raise
     # an unhandled ValueError in welcome.py's on_member_join for every future join).
     role_keys = ["autorole", "auto_kick_role_id", "vrc_linked_role", "vrc_group_role",
-                 "vrc_instance_role", "welcome_ping_role"]
+                 "vrc_instance_role", "welcome_ping_role",
+                 "profil_18_role", "profil_inspect_role"]
     valid_role_ids = {str(ro.id) for ro in guild.roles if not ro.is_default()}
     for key in role_keys:
         value = str(form.get(key, ""))

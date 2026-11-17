@@ -3608,6 +3608,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 MELDUNGEN_EN = {
     'Adresse geändert — bitte das Passwort neu eingeben':
         'Address changed — please enter the password again',
+    'Für die Anzeige in der Welt braucht es einen Schlüssel mit mindestens 20 Zeichen':
+        'Showing profiles in the world needs a key of at least 20 characters',
+    'Diesen Schlüssel benutzt schon ein anderer Server dieser Installation — bitte einen eigenen wählen':
+        'Another server of this installation already uses this key — please pick your own',
     # Praefixe der zusammengesetzten Meldungen - meldung() schlaegt den Teil vor " (" und
     # vor ": " nach und haengt den Wert unveraendert an.
     'Discord-Fehler': 'Discord error',

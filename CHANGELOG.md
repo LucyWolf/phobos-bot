@@ -14,6 +14,30 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.33 — `beta` — 17.11.2026
+
+**Profile: Fehlersuche an der neuen Funktion**
+Sechs Punkte, alle gefunden bevor jemand sie benutzt hat:
+- **Der Freigabe-Knopf schaltete nicht zurück.** Er merkte sich den Zustand aus dem Moment,
+  in dem die Nachricht entstand — beim zweiten Druck schrieb er denselben Wert noch einmal
+  und behauptete trotzdem, ausgeschaltet zu haben. Bei einer Freigabe für kinks/limits war
+  das der gefährlichste Fehler, den diese Funktion haben konnte. Der Zustand wird jetzt beim
+  Drücken frisch gelesen, die Beschriftung ändert sich mit.
+- **Zwei Server mit demselben Schlüssel hätten sich gegenseitig gelesen.** Gesucht wird über
+  den Schlüssel, nicht über den Server — ein zweiter Server mit derselben Zeichenkette hätte
+  die Profile des ersten ausgeliefert. Wird beim Speichern abgelehnt.
+- **Ein Schlüssel wie „test" war erlaubt.** Jetzt mindestens 20 Zeichen, sobald die Anzeige
+  in der Welt eingeschaltet wird.
+- **Die beiden neuen Rollenfelder liefen an der Rollenprüfung vorbei**, die alle anderen
+  durchlaufen. Nachgetragen.
+- **Die Leseadresse hatte keine Bremse.** 60 Anfragen je Minute und Absender; darüber 429.
+- **Die Antwort spiegelte die Eingabe zurück** (`vrchat_name`). Jetzt kommt der gespeicherte
+  Name aus der Verknüpfung.
+- Dazu: die Befehle gelten nur noch auf Servern, nicht in Direktnachrichten — dort gibt es
+  weder Rollen noch einen Server, auf den sich ein Profil beziehen könnte.
+
+---
+
 ## 1.19.32 — `beta` — 17.11.2026
 
 **Profile (neu, erste Fassung, Standard aus)**
