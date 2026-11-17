@@ -1344,6 +1344,15 @@ async def init_db():
             # werden kann statt stehen zu bleiben. Leer heisst: nie eine gepostet.
             "ALTER TABLE vrc_links ADD COLUMN review_message_id TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE vrc_links ADD COLUMN review_channel_id TEXT NOT NULL DEFAULT ''",
+            # Welche Kategorie jemand gewaehlt hat. Bisher merkte sich ein Ticket nur sein
+            # Panel - damit sperrte ein offenes Verification-Ticket auch Report, Bewerbung
+            # und alles andere im selben Panel, obwohl das verschiedene Anliegen sind.
+            # 0 heisst "ohne Kategorie": alte Tickets und Panels mit einem einfachen Knopf.
+            "ALTER TABLE tickets ADD COLUMN option_id INTEGER NOT NULL DEFAULT 0",
+            # Fuer alle, die es weiterhin streng wollen: ein offenes Ticket je Person und
+            # Panel, egal welche Kategorie. Standard aus - die Trennung nach Kategorie ist
+            # das, was die Leute erwarten.
+            "ALTER TABLE ticket_panels ADD COLUMN ein_ticket_gesamt INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await db.execute(col)

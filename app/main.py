@@ -11943,6 +11943,9 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     transcript = 1 if form.get("transcript") else 0
     # Eigener Kanal fuer die Mitschriften; leer heisst weiterhin der normale Log-Kanal.
     transcript_channel_id = (form.get("transcript_channel_id") or "").strip()
+    # Ohne Haken gilt die Grenze je Kategorie: ein offenes Verification-Ticket sperrt keine
+    # Meldung mehr. Mit Haken wie frueher - ein Anliegen nach dem anderen.
+    ein_ticket_gesamt = 1 if form.get("ein_ticket_gesamt") else 0
     # Each is a LIST of blocks now, one <textarea> per block in the form - "+" adds a genuinely
     # separate Discord embed, not just another line inside the same one ("es ist bewusst zwei
     # einbettungen ... wenn ich bei den text + mache das es auch eine neuen einbettung ist").
@@ -12016,10 +12019,10 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     await db_exec(
         "UPDATE ticket_panels SET name=?, button_label=?, close_button_label=?, description=?, ticket_message=?, emoji=?, "
         "support_role_id=?, category_id=?, archive_category_id=?, transcript=?, "
-        "transcript_channel_id=? WHERE id=? AND guild_id=?",
+        "transcript_channel_id=?, ein_ticket_gesamt=? WHERE id=? AND guild_id=?",
         (new_name, new_label, new_close_label, new_description, new_ticket_message, new_emoji,
          support_role_id, category_id, archive_category_id, transcript,
-         transcript_channel_id, panel_id, guild_id),
+         transcript_channel_id, ein_ticket_gesamt, panel_id, guild_id),
     )
     # A published panel's button/embed lives on an already-sent Discord message - saving name/
     # button_label/emoji/description here only touched the DB row until now, so the dashboard

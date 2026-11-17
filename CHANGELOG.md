@@ -14,6 +14,22 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.31 — `beta` — 17.11.2026
+
+**Tickets: die Grenze zählt je Kategorie**
+- Gemeldet an einem Panel mit fünf Kategorien: wer ein Verification-Ticket offen hatte,
+  konnte keinen Regelverstoß mehr melden. Die Prüfung hing am **Panel** und sah die
+  gewählte Kategorie gar nicht an — ein offenes Ticket sperrte alles andere mit, obwohl
+  das verschiedene Anliegen sind, die oft verschiedene Leute bearbeiten.
+- Ein Ticket merkt sich jetzt seine Kategorie (`tickets.option_id`), und die Grenze gilt
+  je Kategorie. Panels mit einfachem Knopf verhalten sich unverändert.
+- Wer es streng will, setzt im Panel den Haken **„Nur ein Ticket gleichzeitig"** und
+  bekommt das alte Verhalten zurück.
+- Eigene Antwort für den Fall „in dieser Kategorie hast du schon eins" — der alte Satz
+  klang falsch, wenn daneben andere Tickets offen stehen dürfen.
+
+---
+
 ## 1.19.30 — `beta` — 17.11.2026
 
 **Das Startskript fasst keine fremden Dateien mehr an**

@@ -1111,6 +1111,14 @@ document.addEventListener('click', function(e) {
                   </select>
                   <p class="hint" style="margin:0.2rem 0 0;">{{ tr.tickets_transcript_channel_hint }}</p>
                 </div>
+                <div>
+                  <label style="display:flex;align-items:center;gap:0.5rem;font-weight:400;margin:0;">
+                    <input type="checkbox" name="ein_ticket_gesamt" value="1" style="width:auto;margin:0;"
+                           {% if p.ein_ticket_gesamt %}checked{% endif %}>
+                    <strong>{{ tr.tickets_ein_gesamt_label }}</strong>
+                  </label>
+                  <p class="hint" style="margin:0.3rem 0 0;">{{ tr.tickets_ein_gesamt_hint }}</p>
+                </div>
                 <div style="grid-column:1/-1;">
                   <label>{{ tr.tickets_description_label }}</label>
                   <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.tickets_description_hint }}</p>
