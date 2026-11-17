@@ -498,9 +498,59 @@ async def _run_single_bot(token_id: int, token: str):
             except Exception as e:
                 print(f"[Token-ID {token_id}] Befehls-Sync für Guild {guild.id} fehlgeschlagen: {e}")
 
+        # Ob die globale Liste in diesem Prozess schon geleert wurde. on_ready feuert nach
+        # jedem Verbindungsabbruch erneut, und zweimal dasselbe zu loeschen ist nur ein
+        # Aufruf an Discord mehr.
+        global_geleert = {"ok": False}
+
+        async def _globale_leeren() -> None:
+            """Loescht die GLOBALE Befehlsliste bei Discord - angemeldet wird nur je Server.
+
+            Vorher wurde beides gemacht: global anmelden UND zusaetzlich in jeden Server
+            kopieren. Solange beide Fassungen gleich aussehen, zeigt Discord nur eine. Nach
+            einem Update aber ist die Server-Kopie sofort aktuell und die globale noch bis
+            zu einer Stunde alt - und dann steht derselbe Befehl zweimal in der Liste, die
+            alte Fassung antwortet mit "this command is outdated".
+            Gemeldet am 17.11.2026 an /inspect, betrifft aber jeden geaenderten Befehl.
+
+            Die Server-Kopien bleiben, weil sie sofort greifen; die globale Liste wird leer.
+            Dazu wird der Baum kurz geleert, die leere Liste geschickt und der Baum danach
+            wieder gefuellt - die Befehle muessen IM Baum bleiben, denn copy_global_to()
+            kopiert genau sie in jeden Server. Das Wiederauffuellen steht in finally: wenn
+            der Aufruf an Discord scheitert, darf der Bot nicht ohne Befehle dastehen.
+
+            Folge, die man wissen muss: in Direktnachrichten gibt es die Befehle dann nicht
+            mehr. Alle Befehle dieses Projekts beziehen sich ohnehin auf einen Server.
+            """
+            if global_geleert["ok"]:
+                return
+            try:
+                vorhanden = await instance.tree.fetch_commands()
+            except Exception as e:
+                print(f"[Token-ID {token_id}] Globale Befehlsliste nicht lesbar: {e}")
+                return
+            global_geleert["ok"] = True
+            if not vorhanden:
+                return
+            merken = list(instance.tree.get_commands())
+            instance.tree.clear_commands(guild=None)
+            try:
+                await instance.tree.sync()
+                print(f"[Token-ID {token_id}] {len(vorhanden)} globale Befehle entfernt - "
+                      f"angemeldet wird je Server, damit nichts doppelt erscheint.")
+            except Exception as e:
+                print(f"[Token-ID {token_id}] Globale Befehle liessen sich nicht "
+                      f"entfernen: {e}")
+            finally:
+                for befehl in merken:
+                    try:
+                        instance.tree.add_command(befehl)
+                    except Exception:
+                        pass
+
         @instance.event
         async def on_ready():
-            await instance.tree.sync()
+            await _globale_leeren()
             for guild in list(instance.guilds):
                 await _sync_guild(guild)
             BOT_FEHLER.pop(token_id, None)

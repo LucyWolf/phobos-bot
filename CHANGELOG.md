@@ -14,6 +14,29 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.35 — `beta` — 17.11.2026
+
+**Slash-Befehle standen doppelt in der Liste**
+- Gemeldet an `/inspect`: zweimal da, und einer antwortete „this command is outdated".
+  Es lag nicht am Befehl — es betraf **jeden** geänderten Befehl nach **jedem** Update.
+- Ursache: der Bot meldete jeden Befehl **global** an und kopierte ihn **zusätzlich** in
+  jeden Server. Sehen beide Fassungen gleich aus, zeigt Discord nur eine. Nach einem Update
+  ist die Server-Kopie aber sofort aktuell und die globale noch bis zu einer Stunde alt —
+  dann stehen zwei verschiedene da, und die alte lässt sich anklicken, ohne zu funktionieren.
+- Jetzt wird die globale Liste beim Start geleert; angemeldet wird nur noch je Server. Die
+  Server-Kopie war ohnehin die, die sofort greift — sie war der Grund, warum die Kopien
+  damals eingebaut wurden.
+- Der Befehlsbaum des Bots behält dabei alle Befehle: ohne sie gäbe es nichts zu kopieren.
+  Scheitert der Abgleich mit Discord, werden sie trotzdem zurückgelegt — ein Bot ohne
+  Befehle wäre schlimmer als ein doppelter Eintrag.
+
+**Was das für dich heißt**
+In **Direktnachrichten** gibt es die Befehle danach nicht mehr. Alle Befehle dieses Projekts
+beziehen sich ohnehin auf einen Server. Die doppelten Einträge verschwinden beim nächsten
+Start des Bots; bis dahin funktioniert der Eintrag mit den Parametern.
+
+---
+
 ## 1.19.34 — `beta` — 17.11.2026
 
 **Das Changelog steht jetzt auf der Updates-Seite**
