@@ -14,6 +14,34 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.36 — `beta` — 17.11.2026
+
+**Profile: zweiter Durchgang**
+
+*„Hat nichts eingetragen" war nicht wahr*
+- Wer keine 18+-Bestätigung hat, sieht nur die Bio. Standen bei jemandem **nur** Felder
+  hinter der Altersschranke, antwortete der Bot trotzdem „hat nichts eingetragen" — glatt
+  falsch, und der Grund blieb verborgen.
+- Jetzt gibt es dafür einen eigenen Satz. Er gilt **beiden** Fällen — wirklich leer und
+  nicht sichtbar —, denn sonst verriete schon die Wahl der Antwort, dass da etwas steht.
+
+*Der Freigabe-Knopf konnte doppelt oder gar nicht antworten*
+- Umschreiben der Nachricht und Rückmeldung standen in **einem** `try`. Schlug das Senden
+  fehl, lief es im `except` noch einmal — die Meldung kam doppelt. Scheiterte schon das
+  Umschreiben, war die Interaktion unbeantwortet und die Rückmeldung lief ins Leere.
+- Jetzt zwei getrennte Schritte: die Umstellung wird in jedem Fall genau einmal gemeldet.
+
+*Die Welt kennt keine Altersschranke*
+- In Discord hängt an kinks/triggers/limits eine 18+-Prüfung. In einer VRChat-Welt gibt es
+  so etwas nicht — was dort auf einer Tafel steht, sieht jeder, der davorsteht.
+- Die Leseadresse markiert deshalb jedes Feld mit `erwachsen: true/false`, damit die Welt
+  selbst entscheiden kann. **Entschieden ist damit nichts** — das muss die Welt tun.
+
+*Aufgeräumt*
+- `FeldModal` merkte sich eine Server-Kennung, die es nie benutzt hat.
+
+---
+
 ## 1.19.35 — `beta` — 17.11.2026
 
 **Slash-Befehle standen doppelt in der Liste**

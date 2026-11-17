@@ -8275,7 +8275,13 @@ async def profil_fuer_welt(request: Request, key: str = "", vrc: str = ""):
 
     from cogs.profile import FELDER
     reihenfolge = {f["name"]: i for i, f in enumerate(FELDER)}
-    felder = sorted(({"feld": r["feld"], "text": r["text"], "geaendert": r["geaendert"]}
+    # "erwachsen" steht mit in der Antwort, damit die Welt selbst entscheiden kann, was sie
+    # jedem Vorbeilaufenden zeigt. Hier im Bot haengt an diesem Merkmal die Altersschranke;
+    # in der Welt gibt es keine - was dort auf einer Tafel steht, sieht jeder, der davor
+    # steht. Ohne die Angabe koennte die Oberflaeche nicht einmal unterscheiden.
+    erwachsen = {f["name"]: bool(f["erwachsen"]) for f in FELDER}
+    felder = sorted(({"feld": r["feld"], "text": r["text"], "geaendert": r["geaendert"],
+                      "erwachsen": erwachsen.get(r["feld"], True)}
                      for r in rows), key=lambda r: reihenfolge.get(r["feld"], 99))
     # Der gespeicherte Name, nicht der angefragte: sonst gibt die Antwort zurueck, was
     # jemand hineingeschrieben hat, und die Welt zeigt am Ende fremden Text an.

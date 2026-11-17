@@ -60,6 +60,12 @@ PROFIL_TEXTE = {
         "geleert":      "{feld} gelöscht.",
         "leer_eigen":   "Du hast noch nichts eingetragen. Fang mit /bio an.",
         "leer_fremd":   "{wer} hat nichts eingetragen.",
+        # Eigener Text, damit nicht "hat nichts eingetragen" dasteht, wo in Wahrheit nur
+        # die Felder hinter der Altersschranke gefuellt sind. Er gilt fuer BEIDE Faelle -
+        # leer und nicht sichtbar -, sonst verraet schon die Wahl der Antwort, dass da
+        # etwas steht.
+        "nichts_sichtbar": "Hier ist für dich nichts zu sehen. Für die weiteren Angaben "
+                           "ist eine Bestätigung als 18+ nötig.",
         "titel_eigen":  "Dein Profil",
         "titel_fremd":  "Profil von {wer}",
         "welt_an":      "Dein Profil wird in der Welt angezeigt.",
@@ -82,6 +88,8 @@ PROFIL_TEXTE = {
         "geleert":      "{feld} deleted.",
         "leer_eigen":   "You haven't written anything yet. Start with /bio.",
         "leer_fremd":   "{wer} hasn't written anything.",
+        "nichts_sichtbar": "There is nothing here for you to see. The remaining entries "
+                           "need a confirmed 18+ status.",
         "titel_eigen":  "Your profile",
         "titel_fremd":  "{wer}'s profile",
         "welt_an":      "Your profile will be shown in the world.",
@@ -206,10 +214,8 @@ class FeldModal(ui.Modal):
     """Ein Fenster je Feld. Der bisherige Text steht schon drin - sonst muesste jeder, der
     eine Kleinigkeit ergaenzen will, alles neu tippen."""
 
-    def __init__(self, guild_id, feld: dict, vorhanden: str, titel: str, label: str,
-                 platz: str):
+    def __init__(self, feld: dict, vorhanden: str, titel: str, label: str, platz: str):
         super().__init__(title=titel[:45])
-        self.guild_id = guild_id
         self.feld = feld
         self.eingabe = ui.TextInput(
             label=label[:45], style=discord.TextStyle.paragraph, required=False,
@@ -262,17 +268,28 @@ class WeltKnopf(ui.Button):
         await setze_welt(interaction.guild_id, interaction.user.id, neu)
         self.label = await pt(interaction.guild_id,
                               "welt_knopf_aus" if neu else "welt_knopf_an")
+        bescheid = await pt(interaction.guild_id, "welt_an" if neu else "welt_aus")
+
+        # Zwei getrennte Schritte, zwei getrennte Fehlerfaelle. Vorher standen beide in
+        # EINEM try: schlug das Nachrichtensenden fehl, lief derselbe Versand im except
+        # noch einmal - die Person bekam die Meldung doppelt. Und scheiterte schon das
+        # Umschreiben, war die Interaktion unbeantwortet, und followup lief ins Leere.
+        geantwortet = False
         try:
             await interaction.response.edit_message(view=self.view)
-            await interaction.followup.send(
-                await pt(interaction.guild_id, "welt_an" if neu else "welt_aus"),
-                ephemeral=True)
-        except Exception:
-            # Die Nachricht ist weg oder zu alt - die Umstellung ist trotzdem passiert,
-            # und das muss die Person erfahren.
-            await interaction.followup.send(
-                await pt(interaction.guild_id, "welt_an" if neu else "welt_aus"),
-                ephemeral=True)
+            geantwortet = True
+        except Exception as e:
+            print(f"[Profile] Knopf liess sich nicht umschreiben: {e!r}")
+
+        # Die Umstellung ist passiert - das muss ankommen, auch wenn die alte Nachricht
+        # nicht mehr erreichbar war.
+        try:
+            if geantwortet:
+                await interaction.followup.send(bescheid, ephemeral=True)
+            else:
+                await interaction.response.send_message(bescheid, ephemeral=True)
+        except Exception as e:
+            print(f"[Profile] Rueckmeldung zur Welt-Freigabe nicht zugestellt: {e!r}")
 
 
 class ProfilView(ui.View):
@@ -312,7 +329,7 @@ class Profile(commands.Cog):
             "SELECT text FROM profil_eintraege WHERE guild_id=? AND user_id=? AND feld=?",
             (str(interaction.guild_id), str(interaction.user.id), name))
         await interaction.response.send_modal(FeldModal(
-            interaction.guild_id, feld, (row or {}).get("text", ""),
+            feld, (row or {}).get("text", ""),
             await pt(interaction.guild_id, "modal_titel", feld=feld["titel"]),
             await pt(interaction.guild_id, "modal_label"),
             feld["platz"]))
@@ -342,11 +359,13 @@ class Profile(commands.Cog):
     async def profil(self, interaction: discord.Interaction):
         if not await _vorpruefung(interaction, None):
             return
+        erwachsen = await ist_18(interaction.guild_id, interaction.user)
         eintr = nur_erlaubte(await eintraege(interaction.guild_id, interaction.user.id),
-                             await ist_18(interaction.guild_id, interaction.user))
+                             erwachsen)
         if not eintr:
             await interaction.response.send_message(
-                await pt(interaction.guild_id, "leer_eigen"), ephemeral=True)
+                await pt(interaction.guild_id,
+                         "leer_eigen" if erwachsen else "nichts_sichtbar"), ephemeral=True)
             return
         an = await welt_sichtbar(interaction.guild_id, interaction.user.id)
         embed = await profil_embed(interaction.guild_id, interaction.user, eintr, True)
@@ -370,12 +389,16 @@ class Profile(commands.Cog):
             await interaction.response.send_message(
                 await pt(interaction.guild_id, "darf_nicht"), ephemeral=True)
             return
-        eintr = nur_erlaubte(await eintraege(interaction.guild_id, ziel.id),
-                             await ist_18(interaction.guild_id, interaction.user))
+        erwachsen = await ist_18(interaction.guild_id, interaction.user)
+        eintr = nur_erlaubte(await eintraege(interaction.guild_id, ziel.id), erwachsen)
         if not eintr:
+            # Wer selbst keine Bestaetigung hat, bekommt IMMER denselben Satz - egal ob die
+            # Person nichts geschrieben hat oder nur Felder, die er nicht sehen darf. Sonst
+            # verriete die Antwort, was er gerade nicht sehen soll.
+            schluessel = ("leer_eigen" if eigenes else "leer_fremd") if erwachsen \
+                else "nichts_sichtbar"
             await interaction.response.send_message(
-                await pt(interaction.guild_id, "leer_eigen" if eigenes else "leer_fremd",
-                         wer=ziel.display_name),
+                await pt(interaction.guild_id, schluessel, wer=ziel.display_name),
                 ephemeral=True)
             return
         # Immer nur fuer den Fragenden sichtbar. Ein Profil in den Kanal zu stellen waere
