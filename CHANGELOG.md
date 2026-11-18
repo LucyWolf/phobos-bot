@@ -14,6 +14,50 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.49 — `beta` + `main` — 18.11.2026
+
+**Zehn Durchgänge über den Verknüpfungslink — zwei echte Fehler**
+
+*Ein Doppelklick auf den Knopf in Discord ergab eine Seite, die nicht funktioniert*
+- Zwei Anfragen mit demselben Schlüssel können gleichzeitig ankommen. Beide lasen die Zeile
+  als gültig, beide tauschten — nur eine traf noch etwas. Die zweite schrieb ihren frischen
+  Schlüssel trotzdem in die Seite: **lauter Formulare mit einem Schlüssel, den es nirgends
+  gibt.** Eine Seite, die heil aussieht und bei jedem Knopf ins Leere läuft.
+- Jetzt entscheidet der Rückgabewert des Tauschs. Wer zu spät kommt, bekommt dieselbe
+  Antwort wie bei einem abgelaufenen Link — ehrlich statt kaputt.
+
+*Ein toter Knopf im Wartezweig*
+- Braucht ein Server die Freigabe durch die Moderation, landet man nach der Bestätigung im
+  Wartezweig — und dort stand weiterhin „Anderes Konto verknüpfen". Der Schlüssel ist zu dem
+  Zeitpunkt gelöscht, der Knopf hätte nur die Abgelaufen-Seite gezeigt. Im Done-Zweig hatte
+  ich das abgefangen, hier nicht.
+
+**Aufgeräumt: ein Test, der nichts prüfte**
+`test_vrcweb.py` führt die **echten** Routen gegen eine echte Datenbank und die echte Seite
+aus — laut dem Commit von v1.17.2 mit 74 Fällen. Die Fälle sind irgendwann aus der Datei
+verschwunden; übrig blieb ein Gerüst, das alles lädt und **nichts** prüft. Es meldete
+stillschweigend „grün", und das ist schlimmer als rot.
+
+Wieder aufgebaut mit 22 Fällen rund um die Frage, um die es gerade geht. Dabei fiel auf,
+dass das Gerüst selbst veraltet war: die VRChat-Attrappe nahm das Server-Konto nicht an, das
+der Cog inzwischen mitgibt. Unbemerkt geblieben, weil die Datei ja nichts ausführte.
+
+Geprüft wird jetzt am laufenden Code: dass das Öffnen den Schlüssel tauscht, dass der aus
+der Adresse weder auf der Seite noch in der Datenbank übrig bleibt, dass ein zweites Öffnen
+**und** jeder POST mit dem alten Schlüssel abgewiesen wird, dass zwei gleichzeitige
+Öffnungen genau einmal gelingen, dass abgelaufen und erfunden gleich aussehen, dass ein
+abgeschalteter Server sofort sperrt, dass die vier Schutz-Kopfzeilen an jeder Antwort hängen
+— und dass der Schlüssel nirgends in einer Adresse der Seite steht, nur in Formularfeldern.
+
+**Beim Durchgehen geprüft und in Ordnung befunden**
+Die Bremse zählt nach dem Tausch weiter richtig (sie wird erst in den POST-Schritten
+angefasst). Die Frist verlängert sich beim Tauschen nicht. Es bleibt bei einer Zeile je
+Person. Der Zeitpunkt des Öffnens (`used_at`) wird festgehalten und von nichts gelesen —
+das bleibt bewusst so: er beantwortet die eine Support-Frage, die sonst niemand beantworten
+kann, nämlich ob jemand seinen Link überhaupt je geöffnet hat.
+
+---
+
 ## 1.19.48 — `beta` + `main` — 18.11.2026
 
 **Der Schlüssel aus der Adresse wird beim Öffnen getauscht**

@@ -8520,16 +8520,30 @@ async def vrc_public_open(request: Request, token: str, lang: str = ""):
     if row:
         frisch = secrets.token_urlsafe(32)
         try:
-            await db_exec(
+            # Ueber den Rueckgabewert und nicht blind: zwei Anfragen mit DEMSELBEN alten
+            # Schluessel koennen gleichzeitig hier ankommen - ein Doppelklick auf den Knopf
+            # in Discord reicht. Beide lesen die Zeile als gueltig, beide wollen tauschen,
+            # aber nur eine trifft noch etwas. Wuerde die zweite ihren frischen Schluessel
+            # trotzdem in die Seite schreiben, bekaeme dieser Fensterinhalt lauter Formulare
+            # mit einem Schluessel, den es nirgends gibt: eine Seite, die aussieht, als
+            # ginge sie, und bei jedem Knopf ins Leere laeuft.
+            getauscht = await db_exec_rowcount(
                 "UPDATE vrc_link_tokens SET token=?, used_at=? WHERE token=?",
                 (frisch, datetime.datetime.utcnow().isoformat(), token))
-            row = dict(row)
-            row["token"] = frisch
         except Exception as e:
-            # Klappt der Tausch nicht, bekommt die Person trotzdem ihre Seite - mit dem
+            # Klappt der Tausch gar nicht, bekommt die Person trotzdem ihre Seite - mit dem
             # alten Schluessel. Ein Link, der laenger gilt als gewollt, ist das kleinere
             # Uebel als einer, der wegen eines Datenbankfehlers gar nicht erst aufgeht.
             print(f"[vrc_link] Schluessel liess sich nicht tauschen: {e}")
+            getauscht = -1
+        if getauscht == 1:
+            row = dict(row)
+            row["token"] = frisch
+        elif getauscht == 0:
+            # Jemand anderes war schneller - das lebende Fenster ist das andere. Hier die
+            # gleiche Antwort wie fuer einen abgelaufenen Link, statt einer Seite, die
+            # nicht funktioniert.
+            return await _vrc_page(request, None, lang)
     return await _vrc_page(request, row, lang)
 
 

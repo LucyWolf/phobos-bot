@@ -234,12 +234,18 @@
   <div class="card">
     <h2>⏳ {{ tr.vrcp_pending_title }}</h2>
     <p class="lead" style="margin:0;">{{ tr.vrcp_pending_text.replace('{server}', guild_name) }}</p>
+    {# Derselbe Grund wie im Done-Zweig: nach der Bestaetigung ist der Schluessel geloescht,
+       dieser Knopf wuerde beim Klick nur die Abgelaufen-Seite zeigen. #}
+    {% if verbraucht %}
+    <p class="lead" style="margin-top:0.9rem;">🔒 {{ tr.vrcp_spent_note }}</p>
+    {% else %}
     <div class="actions">
       <form method="post" action="/vrc/unlink">
         <input type="hidden" name="t" value="{{ token }}"><input type="hidden" name="lang" value="{{ lang }}">
         <button type="submit" class="btn">{{ tr.vrcp_btn_other }}</button>
       </form>
     </div>
+    {% endif %}
   </div>
 
   {# ── Done ─────────────────────────────────────────────────────────────────── #}
