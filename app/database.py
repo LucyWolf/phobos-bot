@@ -1448,6 +1448,13 @@ async def init_db():
                 von TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (kennung, guild_id)
             )""",
+            # Eigene Reihenfolge fuer die Embed-Nachrichten. Gewuenscht am 18.11.2026
+            # zusammen mit dem Markieren: eine Liste, die sich nur nach Anlagedatum
+            # sortiert, laesst sich nicht aufraeumen.
+            # 0 fuer alles Bestehende - danach sortiert es wie bisher (nach id absteigend),
+            # bis jemand das erste Mal verschiebt. Dann bekommt die ganze Liste des Servers
+            # feste Plaetze 1..n.
+            "ALTER TABLE embed_posts ADD COLUMN sortierung INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await db.execute(col)

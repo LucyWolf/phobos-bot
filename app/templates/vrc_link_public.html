@@ -182,7 +182,7 @@
         <button type="submit" class="btn">↻ {{ tr.vrcp_btn_refresh }}</button>
       </form>
       <form method="post" action="/vrc/unlink"
-            onsubmit="return confirm({{ tr.vrcp_confirm_unlink.replace('{name}', link.vrchat_name) | js }});">
+            onsubmit="return frage(this, {{ tr.vrcp_confirm_unlink.replace('{name}', link.vrchat_name) | js }});">
         <input type="hidden" name="t" value="{{ token }}"><input type="hidden" name="lang" value="{{ lang }}">
         <button type="submit" class="btn danger">✕ {{ tr.vrcp_btn_unlink }}</button>
       </form>
@@ -258,7 +258,7 @@
     </details>
     <div class="actions">
       <form method="post" action="/vrc/unlink"
-            onsubmit="return confirm({{ tr.vrcp_confirm_unlink.replace('{name}', link.vrchat_name) | js }});">
+            onsubmit="return frage(this, {{ tr.vrcp_confirm_unlink.replace('{name}', link.vrchat_name) | js }});">
         <input type="hidden" name="t" value="{{ token }}"><input type="hidden" name="lang" value="{{ lang }}">
         <button type="submit" class="btn">{{ tr.vrcp_btn_other }}</button>
       </form>
@@ -305,5 +305,6 @@
 {% endif %}
 
 </div>
+{% include "_frage.html" %}
 </body>
 </html>

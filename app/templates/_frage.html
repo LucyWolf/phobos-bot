@@ -1,0 +1,98 @@
+{# ── Nachfrage-Dialog ──────────────────────────────────────────────────────────────
+   Gewuenscht am 18.11.2026: "ich will das es nicht im browser ist sondern bei den bot
+   selber als pop up das ist dumm im browser". Das eingebaute confirm() des Browsers
+   stellt der Frage "Auf <domain> wird Folgendes angezeigt:" voran - bei einer Adresse
+   wie einer dynamischen DNS-Adresse liest sich die eigene Oberflaeche dadurch wie eine
+   Betrugswarnung. Dieser Dialog gehoert zur Seite und sieht auch so aus.
+
+   Ersetzt wird nur das Aussehen, nicht das Verhalten: ohne Bestaetigung passiert weiter
+   nichts, und abgebrochen wird genauso wie vorher. #}
+<div id="frage-overlay" hidden
+     style="position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.6);
+            display:flex;align-items:center;justify-content:center;padding:1rem;">
+  <div role="alertdialog" aria-modal="true" aria-labelledby="frage-titel"
+       style="background:var(--surface);border:1px solid var(--border);border-radius:0.9rem;
+              max-width:440px;width:100%;box-shadow:0 18px 50px rgba(0,0,0,0.5);
+              padding:1.35rem 1.5rem;">
+    <div id="frage-titel" style="font-weight:700;font-size:1rem;margin-bottom:0.6rem;">
+      {{ tr.ask_title if tr and tr.ask_title else 'Bist du sicher?' }}</div>
+    <p id="frage-text" style="margin:0 0 1.25rem;font-size:0.88rem;line-height:1.6;
+                              color:var(--muted);white-space:pre-line;"></p>
+    <div style="display:flex;gap:0.6rem;justify-content:flex-end;flex-wrap:wrap;">
+      {# Farben hier direkt und nicht ueber btn-secondary/btn-danger: die oeffentliche
+         VRC-Seite bindet denselben Dialog ein, kennt aber nur die Grundklasse .btn -
+         beide Knoepfe saehen dort gleich aus, und "Abbrechen" wie die Hauptaktion. #}
+      <button type="button" id="frage-nein" class="btn"
+              style="background:transparent;color:var(--muted);border:1px solid var(--border);">
+        {{ tr.ask_no if tr and tr.ask_no else 'Abbrechen' }}</button>
+      <button type="button" id="frage-ja" class="btn"
+              style="background:rgba(239,68,68,.15);color:#ef4444;border:1px solid rgba(239,68,68,.4);">
+        {{ tr.ask_yes if tr and tr.ask_yes else 'Ja, machen' }}</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var overlay = document.getElementById('frage-overlay');
+  var textFeld = document.getElementById('frage-text');
+  var titelFeld = document.getElementById('frage-titel');
+  var jaKnopf = document.getElementById('frage-ja');
+  var neinKnopf = document.getElementById('frage-nein');
+  var standardTitel = titelFeld.textContent;
+  var beiJa = null;
+
+  function zu() {
+    overlay.hidden = true;
+    beiJa = null;
+  }
+
+  var neinTitel = neinKnopf.textContent;
+
+  window.zeigeFrage = function (text, titel, dann) {
+    textFeld.textContent = text || '';
+    titelFeld.textContent = titel || standardTitel;
+    beiJa = dann || null;
+    jaKnopf.hidden = false;
+    neinKnopf.textContent = neinTitel;
+    overlay.hidden = false;
+    // Der Fokus landet auf "Abbrechen": wer aus Gewohnheit sofort Enter drueckt, bricht
+    // ab statt zu loeschen.
+    neinKnopf.focus();
+  };
+
+  jaKnopf.addEventListener('click', function () {
+    var tun = beiJa;
+    zu();
+    if (tun) tun();
+  });
+  neinKnopf.addEventListener('click', zu);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) zu(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !overlay.hidden) zu();
+  });
+
+  /* Der Ersatz fuer confirm() in den Vorlagen. `el` ist das Formular selbst (onsubmit)
+     oder ein Knopf darin (onclick) - gesucht wird in beiden Faellen dasselbe Formular.
+     Rueckgabe immer false: abgeschickt wird spaeter, wenn jemand "Ja" gedrueckt hat.
+     form.submit() loest onsubmit nicht erneut aus, es gibt also keine Schleife. */
+  /* Nur ein Hinweis, nichts zu entscheiden - der Ersatz fuer alert(). Derselbe Kasten mit
+     einem Knopf, damit eine Mitteilung nicht ploetzlich wieder aussieht wie eine
+     Browser-Warnung mit Domain davor. */
+  window.hinweis = function (text, titel) {
+    window.zeigeFrage(text, titel, null);
+    jaKnopf.hidden = true;
+    neinKnopf.textContent = 'OK';
+    neinKnopf.focus();
+  };
+
+  window.frage = function (el, text, titel, danach) {
+    var form = el.form || (el.tagName === 'FORM' ? el
+                           : (el.closest ? el.closest('form') : null));
+    window.zeigeFrage(text, titel, function () {
+      if (danach) { try { danach(form); } catch (e) {} }
+      if (form) form.submit();
+    });
+    return false;
+  };
+})();
+</script>

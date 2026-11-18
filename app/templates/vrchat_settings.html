@@ -155,7 +155,7 @@
       <button type="button" class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.6rem;"
               onclick="vrcEdit({{ k.guild_id | js }})" title="{{ tr.vrc_account_edit }}">⚙</button>
       <form method="post" action="/settings/vrchat/delete" style="margin:0;"
-            onsubmit="return confirm({{ tr.vrc_account_confirm_delete | js }})">
+            onsubmit="return frage(this, {{ tr.vrc_account_confirm_delete | js }})">
         <input type="hidden" name="konto" value="{{ k.guild_id }}">
         <button type="submit" class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.5rem;"
                 title="{{ tr.vrc_account_remove }}">✕</button>

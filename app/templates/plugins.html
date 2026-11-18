@@ -71,7 +71,7 @@
       {% endif %}
       <a class="btn btn-secondary" href="/settings/plugins/{{ p.id }}/export">{{ tr.plug_export }}</a>
       <form method="post" action="/settings/plugins/{{ p.id }}/delete" style="margin:0;"
-            onsubmit="return confirm('{{ tr.plug_delete_confirm }}');">
+            onsubmit="return frage(this, '{{ tr.plug_delete_confirm }}');">
         <button type="submit" class="btn btn-danger">{{ tr.plug_delete }}</button>
       </form>
     </div>

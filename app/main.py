@@ -11619,7 +11619,10 @@ async def server_config(
             (p["id"],)) or []
 
     embed_posts = await db_rows(
-        "SELECT * FROM embed_posts WHERE guild_id=? ORDER BY created_at DESC", (guild_id,)
+        # sortierung zuerst: wer die Liste einmal von Hand geordnet hat, soll sie so
+        # wiederfinden. Alles Unverschobene steht auf 0 und bleibt damit in der bisherigen
+        # Reihenfolge - neueste oben.
+        "SELECT * FROM embed_posts WHERE guild_id=? ORDER BY sortierung, id DESC", (guild_id,)
     )
     for ep in embed_posts:
         if ep.get("channel_id"):
@@ -14260,30 +14263,118 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&success=Gespeichert", status_code=302)
 
 
+async def _embed_entfernen(guild_id: int, post_id: int) -> bool:
+    """Eine Embed-Nachricht loeschen - in Discord und in der Datenbank.
+
+    Herausgeloest, weil es das jetzt zweimal gibt: einzeln ueber das X in der Zeile und in
+    einem Rutsch fuer alles Markierte. Zwei Kopien desselben Ablaufs waeren zwei Stellen,
+    an denen man das Loeschen der echten Nachricht vergessen kann.
+    """
+    post = await db_one("SELECT * FROM embed_posts WHERE id=? AND guild_id=?",
+                        (post_id, guild_id))
+    if not post:
+        return False
+    try:
+        guild = bot.get_guild(guild_id)
+        if guild and post.get("thread_id"):
+            # A forum post's live content IS the thread - deleting just the starter message
+            # isn't a thing Discord distinguishes from deleting the whole thread anyway, so
+            # go straight for the thread itself.
+            thread = await _fetch_embed_thread(guild, int(post["thread_id"]))
+            await thread.delete()
+        elif guild and post.get("message_id") and post.get("channel_id"):
+            ch = guild.get_channel(int(post["channel_id"]))
+            if ch:
+                msg = await ch.fetch_message(int(post["message_id"]))
+                await msg.delete()
+    except Exception:
+        pass
+    await db_exec("DELETE FROM embed_posts WHERE id=? AND guild_id=?", (post_id, guild_id))
+    return True
+
+
 @web.post("/servers/{guild_id}/embeds/{post_id}/delete")
 async def embed_post_delete(request: Request, guild_id: int, post_id: int):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
-    post = await db_one("SELECT * FROM embed_posts WHERE id=? AND guild_id=?", (post_id, guild_id))
-    if post:
-        try:
-            guild = bot.get_guild(guild_id)
-            if guild and post.get("thread_id"):
-                # A forum post's live content IS the thread - deleting just the starter message
-                # isn't a thing Discord distinguishes from deleting the whole thread anyway, so
-                # go straight for the thread itself.
-                thread = await _fetch_embed_thread(guild, int(post["thread_id"]))
-                await thread.delete()
-            elif guild and post.get("message_id") and post.get("channel_id"):
-                ch = guild.get_channel(int(post["channel_id"]))
-                if ch:
-                    msg = await ch.fetch_message(int(post["message_id"]))
-                    await msg.delete()
-        except Exception:
-            pass
-    await db_exec("DELETE FROM embed_posts WHERE id=? AND guild_id=?", (post_id, guild_id))
+    await _embed_entfernen(guild_id, post_id)
     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&success=Gelöscht", status_code=302)
+
+
+# ── Markieren, in einem Rutsch loeschen, verschieben ──────────────────────────────────
+# Gewuenscht am 18.11.2026: "ich will bei einträgen zb auch die möglichkeit haben das mann
+# sachen makieren kann und makierte löchen zu können" - und verschieben.
+#
+# Die Zeilen bleiben, wie sie sind: das Markieren haengt an Kaestchen, die ueber das
+# form-Attribut zu einem Formular AUSSERHALB der Tabelle gehoeren. Ein Formular um die
+# Tabelle herum ginge nicht, weil in den Zeilen schon welche stehen und HTML keine
+# verschachtelten Formulare kennt.
+
+def _markierte_ids(form) -> list:
+    """Die angekreuzten Zeilen - nur Zahlen, hoechstens 200 auf einmal."""
+    roh = form.getlist("markiert") if hasattr(form, "getlist") else []
+    aus = []
+    for wert in roh[:200]:
+        try:
+            aus.append(int(str(wert)))
+        except (TypeError, ValueError):
+            continue
+    return aus
+
+
+async def _neu_sortieren(tabelle: str, guild_id, zeile_id: int, richtung: str) -> bool:
+    """Eine Zeile einen Platz nach oben oder unten - und die ganze Liste neu durchnummerieren.
+
+    Nicht nur die zwei betroffenen Zeilen tauschen: bestehende Eintraege stehen alle auf 0,
+    ein Tausch zweier Nullen waere wirkungslos. Nach dem ersten Verschieben hat die Liste
+    feste Plaetze 1..n, und ab da ist jeder weitere Schritt eindeutig.
+
+    Der Tabellenname kommt aus dem Aufruf im Code, nie aus einer Anfrage.
+    """
+    zeilen = await db_rows(
+        f"SELECT id FROM {tabelle} WHERE guild_id=? ORDER BY sortierung, id DESC",
+        (str(guild_id),))
+    ids = [z["id"] for z in zeilen]
+    if zeile_id not in ids:
+        return False
+    i = ids.index(zeile_id)
+    j = i - 1 if richtung == "hoch" else i + 1
+    if j < 0 or j >= len(ids):
+        return False          # schon ganz oben oder ganz unten - kein Fehler, nur nichts zu tun
+    ids[i], ids[j] = ids[j], ids[i]
+    for platz, kennung in enumerate(ids, start=1):
+        await db_exec(f"UPDATE {tabelle} SET sortierung=? WHERE id=? AND guild_id=?",
+                      (platz, kennung, str(guild_id)))
+    return True
+
+
+@web.post("/servers/{guild_id}/embeds/markierte-loeschen")
+async def embed_posts_bulk_delete(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    ids = _markierte_ids(await request.form())
+    if not ids:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=embeds&error=Nichts+markiert", status_code=302)
+    weg = 0
+    for post_id in ids:
+        if await _embed_entfernen(guild_id, post_id):
+            weg += 1
+    return RedirectResponse(
+        f"/servers/{guild_id}?tab=embeds&success={weg}+gelöscht", status_code=302)
+
+
+@web.post("/servers/{guild_id}/embeds/{post_id}/verschieben")
+async def embed_post_move(request: Request, guild_id: int, post_id: int, richtung: str = ""):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    if richtung not in ("hoch", "runter"):
+        richtung = "hoch"
+    await _neu_sortieren("embed_posts", guild_id, post_id, richtung)
+    return RedirectResponse(f"/servers/{guild_id}?tab=embeds", status_code=302)
 
 
 _EMBED_IMAGE_MEDIA_TYPES = {

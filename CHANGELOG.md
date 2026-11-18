@@ -14,6 +14,54 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.42 — `beta` — 18.11.2026
+
+**Nachfragen kommen jetzt aus der Seite, nicht aus dem Browser**
+- Gemeldet: „ich will das es nicht im browser ist sondern bei den bot selber als pop up das
+  ist dumm im browser". Das eingebaute `confirm()` stellt jeder Frage „Auf
+  &lt;domain&gt; wird Folgendes angezeigt:" voran. Bei einer dynamischen DNS-Adresse liest
+  sich die eigene Oberfläche dadurch wie eine Betrugswarnung.
+- **49 Stellen** umgestellt, dazu der eine `alert()` auf der Startseite. Ein eigener Dialog
+  in der Gestaltung des Dashboards, mit Escape zum Abbrechen und einem Klick daneben.
+- **„Abbrechen" bekommt den Fokus**, nicht „Ja". Wer aus Gewohnheit sofort Enter drückt,
+  bricht ab, statt zu löschen.
+- Am Verhalten ändert sich nichts: ohne Bestätigung passiert weiterhin nichts.
+
+Der Dialog liegt in einer eigenen Vorlage (`_frage.html`) und wird von `base.html`
+eingebunden — und von der öffentlichen VRC-Seite, die bewusst nicht von `base.html` erbt.
+Dort kommen Fremde an, die gerade ihr VRChat-Konto bestätigen; ausgerechnet die sollen keine
+Browser-Warnung mit fremder Domain sehen. Die Knopffarben stehen direkt am Dialog, weil jene
+Seite nur die Grundklasse `.btn` kennt — sonst sähe „Abbrechen" dort aus wie die Hauptaktion.
+
+**Einträge markieren, markierte löschen, Reihenfolge ändern**
+- Gewünscht: „ich will bei einträgen zb auch die möglichkeit haben das mann sachen makieren
+  kann und makierte löchen zu können" — und verschieben. Umgesetzt an den
+  **Embed-Nachrichten**, der Liste aus der Meldung.
+- Kästchen je Zeile, eins in der Kopfzeile für alle, und ein Knopf, der mitzählt
+  („Markierte löschen (3)"). Beim Löschen verschwindet auch die geposteten Nachricht in
+  Discord — derselbe Weg wie beim einzelnen X, nicht ein zweiter danebengebaut.
+- Pfeile ↑ ↓ für die Reihenfolge. Am oberen und unteren Ende sind sie ausgegraut.
+
+**Warum beim Verschieben die ganze Liste neu nummeriert wird**
+Alle bestehenden Einträge stehen auf 0. Zwei Nullen zu tauschen wäre wirkungslos — beim
+ersten Verschieben bekommt die Liste dieses Servers deshalb feste Plätze 1…n, und ab da ist
+jeder weitere Schritt eindeutig. Andere Server bleiben dabei unberührt.
+
+**Warum das Formular neben der Tabelle steht**
+In den Zeilen stehen schon Formulare (Löschen, Bearbeiten), und verschachtelte Formulare
+kennt HTML nicht. Die Kästchen gehören deshalb über ihr `form`-Attribut zu einem Formular
+daneben.
+
+**Geprüft:** 130 Prüfungen für den Dialog (kein `confirm`/`alert`/`prompt` mehr in den
+Vorlagen, jede Seite die ihn benutzt bringt ihn auch mit, Fokus und Escape, und dass nach
+einem Hinweis der Ja-Knopf zurückkommt) und 23 fürs Markieren und Verschieben (Unfug aus
+dem Formular, Deckel bei 200, beide Ränder, fremde Zeilennummern, und dass ein anderer
+Server unberührt bleibt).
+
+**Nicht geprüft:** wie der Dialog im Browser aussieht.
+
+---
+
 ## 1.19.41 — `beta` — 18.11.2026
 
 **Dasselbe Backup lässt sich nicht mehr aus Versehen zweimal einspielen**
