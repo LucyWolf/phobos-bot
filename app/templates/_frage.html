@@ -7,9 +7,19 @@
 
    Ersetzt wird nur das Aussehen, nicht das Verhalten: ohne Bestaetigung passiert weiter
    nichts, und abgebrochen wird genauso wie vorher. #}
-<div id="frage-overlay" hidden
-     style="position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.6);
-            display:flex;align-items:center;justify-content:center;padding:1rem;">
+{# Die Gestaltung steht in einem eigenen style-Block und NICHT im style-Attribut des
+   Elements. Grund, teuer gelernt am 18.11.2026: ein "display:flex" im Attribut ueberstimmt
+   das "hidden" des Browsers. Auf dem Dashboard fiel das nicht auf, weil base.html eine
+   Regel "[hidden] { display:none !important }" mitbringt - auf der oeffentlichen VRC-Seite
+   gibt es die nicht, und dort stand der Dialog ab dem Laden der Seite offen und liess sich
+   nicht schliessen: "hatte nur den link geöffnet und war dann schon stuck there".
+   Deshalb bringt der Dialog seine eigene hidden-Regel mit und verlaesst sich auf nichts. #}
+<style>
+  #frage-overlay { position:fixed; inset:0; z-index:9000; background:rgba(0,0,0,0.6);
+                   display:flex; align-items:center; justify-content:center; padding:1rem; }
+  #frage-overlay[hidden] { display:none !important; }
+</style>
+<div id="frage-overlay" hidden>
   <div role="alertdialog" aria-modal="true" aria-labelledby="frage-titel"
        style="background:var(--surface);border:1px solid var(--border);border-radius:0.9rem;
               max-width:440px;width:100%;box-shadow:0 18px 50px rgba(0,0,0,0.5);

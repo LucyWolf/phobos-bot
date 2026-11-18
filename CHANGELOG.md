@@ -14,6 +14,39 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.46 — `beta` + `main` — 18.11.2026
+
+**Dringend: der Nachfrage-Dialog sperrte Leute auf der öffentlichen VRC-Seite ein**
+- Gemeldet von jemandem, der nur den Verknüpfungs-Link geöffnet hatte: „irgendwas stimmt
+  mit der seite nicht / das fenster geht garnicht weg / hatte nur den link geöffnet und war
+  dann schon stuck there". Die Seite war damit **unbenutzbar** — weder verknüpfen noch
+  wegklicken.
+- Ursache: Die Gestaltung des Dialogs stand im `style`-Attribut des Elements, darunter
+  `display:flex`. **Ein `display` im Attribut überstimmt das `hidden`-Merkmal des
+  Browsers.** Der Kasten stand also ab dem Laden offen, und „Abbrechen" setzte zwar
+  `hidden`, was aber nichts bewirkte.
+- Auf dem Dashboard fiel es nicht auf: `base.html` bringt eine eigene Regel
+  `[hidden] { display:none !important }` mit und hat den Fehler zugedeckt. Die öffentliche
+  Seite erbt nicht von `base.html` und hat diese Regel nicht — deshalb traf es genau die
+  Seite, auf der Fremde ankommen.
+- Der Dialog bringt seine Gestaltung jetzt als eigenen `style`-Block mit, **samt eigener
+  `[hidden]`-Regel**, und verlässt sich auf nichts, was die einbindende Seite mitbringt.
+
+**Was ich daraus mitnehme**
+Eine gemeinsame Vorlage in zwei verschiedene Seiten einzubinden heißt, dass sie ohne die
+Umgebung der einen auskommen muss. Geprüft hatte ich, dass der Dialog eingebunden *ist* —
+nicht, ob er dort auch zu bleibt.
+
+**Geprüft:** 12 neue Prüfungen, die genau das festhalten: dass die Überlagerung mit `hidden`
+startet, ihre eigene `[hidden]`-Regel mitbringt, und dass `display` und `position` **nicht**
+wieder ins `style`-Attribut wandern. Dazu, dass es drei Wege wieder hinaus gibt (Abbrechen,
+Escape, Klick daneben).
+
+**Diese Fassung geht sofort auch auf `main`** — die öffentliche Seite ist nichts, wo man auf
+den nächsten geplanten Stand wartet.
+
+---
+
 ## 1.19.45 — `beta` — 18.11.2026
 
 **Das Ziehen hatte drei Fehler**
