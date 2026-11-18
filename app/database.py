@@ -866,6 +866,22 @@ async def init_db():
             # meant to coexist side by side, not be an either/or choice (confirmed: "beides
             # einstellbar") - the average is simply computed on read from rating_votes, never
             # stored redundantly on rating_items itself.
+            # Profile (cogs/profile.py): was jemand ueber sich selbst hinterlegt - Bio und,
+            # hinter einer 18+-Pruefung, kinks/triggers/limits. Ein Eintrag je Person und
+            # Feld, deshalb UNIQUE: ein zweites /bio ersetzt den Text, es haeuft sich nichts
+            # an. `welt` ist die Freigabe fuer die Anzeige in der VRChat-Welt und steht
+            # absichtlich auf 0, bis die Person sie selbst setzt - geschrieben heisst nicht
+            # veroeffentlicht.
+            """CREATE TABLE IF NOT EXISTS profil_eintraege (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                feld TEXT NOT NULL,
+                text TEXT NOT NULL DEFAULT '',
+                welt INTEGER NOT NULL DEFAULT 0,
+                geaendert TEXT NOT NULL DEFAULT '',
+                UNIQUE(guild_id, user_id, feld)
+            )""",
             """CREATE TABLE IF NOT EXISTS rating_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id TEXT NOT NULL,
@@ -1344,6 +1360,101 @@ async def init_db():
             # werden kann statt stehen zu bleiben. Leer heisst: nie eine gepostet.
             "ALTER TABLE vrc_links ADD COLUMN review_message_id TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE vrc_links ADD COLUMN review_channel_id TEXT NOT NULL DEFAULT ''",
+            # Welche Kategorie jemand gewaehlt hat. Bisher merkte sich ein Ticket nur sein
+            # Panel - damit sperrte ein offenes Verification-Ticket auch Report, Bewerbung
+            # und alles andere im selben Panel, obwohl das verschiedene Anliegen sind.
+            # 0 heisst "ohne Kategorie": alte Tickets und Panels mit einem einfachen Knopf.
+            "ALTER TABLE tickets ADD COLUMN option_id INTEGER NOT NULL DEFAULT 0",
+            # Fuer alle, die es weiterhin streng wollen: ein offenes Ticket je Person und
+            # Panel, egal welche Kategorie. Standard aus - die Trennung nach Kategorie ist
+            # das, was die Leute erwarten.
+            "ALTER TABLE ticket_panels ADD COLUMN ein_ticket_gesamt INTEGER NOT NULL DEFAULT 0",
+            # ── Plugins ──────────────────────────────────────────────────────────────────
+            # Gewuenscht am 18.11.2026: Pakete aus Einstellungen, die man bauen, exportieren,
+            # weitergeben und auf einem Server hinzufuegen kann. Kein Code - siehe plugins.py
+            # fuer das Warum.
+            #
+            # Das ganze Paket steht als JSON in "inhalt" und nicht in Einzeltabellen: es wird
+            # immer als Ganzes gelesen, geprueft und exportiert, und eine Tabelle je
+            # Inhaltsart muesste bei jeder neuen Art mitwachsen. Die Kennung ist eindeutig -
+            # dieselbe Datei nochmal hochzuladen ist ein Aktualisieren, kein Zweitplugin.
+            """CREATE TABLE IF NOT EXISTS plugins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kennung TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                version TEXT NOT NULL DEFAULT '',
+                autor TEXT NOT NULL DEFAULT '',
+                beschreibung TEXT NOT NULL DEFAULT '',
+                inhalt TEXT NOT NULL,
+                angelegt TEXT NOT NULL DEFAULT '',
+                geaendert TEXT NOT NULL DEFAULT ''
+            )""",
+            # Ein Plugin auf einem Server: welche Werte dort fuer die Platzhalter gelten und
+            # mit welcher Fassung es zuletzt angewendet wurde. "version" steht hier nochmal,
+            # damit die Seite zeigen kann, dass ein Server noch auf der alten Fassung steht.
+            """CREATE TABLE IF NOT EXISTS plugin_guilds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                plugin_id INTEGER NOT NULL,
+                guild_id TEXT NOT NULL,
+                einstellungen TEXT NOT NULL DEFAULT '{}',
+                version TEXT NOT NULL DEFAULT '',
+                angelegt TEXT NOT NULL DEFAULT '',
+                geaendert TEXT NOT NULL DEFAULT '',
+                UNIQUE(plugin_id, guild_id)
+            )""",
+            # Die Buchfuehrung: welche Zeile in welcher Tabelle stammt aus welchem Plugin.
+            # Ohne sie muesste das Entfernen raten - nach Namen oder Inhalt suchen - und
+            # wuerde frueher oder spaeter etwas loeschen, das jemand von Hand angelegt hat.
+            """CREATE TABLE IF NOT EXISTS plugin_eintraege (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                plugin_guild_id INTEGER NOT NULL,
+                tabelle TEXT NOT NULL,
+                zeile_id INTEGER NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_plugin_eintraege ON plugin_eintraege(plugin_guild_id)",
+            # Ein Plugin darf sagen, wo seine neueste Fassung liegt - dann laesst es sich
+            # ueber das Dashboard aktualisieren, statt dass der Autor allen eine neue Datei
+            # schicken muss. "geprueft" und "neue_version" halten das Ergebnis der letzten
+            # Nachfrage fest, damit die Seite es zeigen kann, ohne bei jedem Aufruf eine
+            # fremde Adresse abzufragen.
+            "ALTER TABLE plugins ADD COLUMN quelle TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE plugins ADD COLUMN homepage TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE plugins ADD COLUMN geprueft TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE plugins ADD COLUMN neue_version TEXT NOT NULL DEFAULT ''",
+            # ── Backups: laufende Nummer und Schutz gegen doppeltes Einspielen ───────────
+            # Gemeldet am 18.11.2026: "ausversehen 3 mal das selbe backup eingespielt".
+            # Das Einspielen legt Zeilen an - dreimal dieselbe Datei heisst dreimal
+            # dieselben Reaction Roles, Befehle und Panels, und man sieht es erst hinterher.
+            #
+            # Jede exportierte Datei bekommt deshalb eine Kennung und eine laufende Nummer
+            # (die auch im Dateinamen steht, damit zwei Dateien im Download-Ordner
+            # unterscheidbar sind). Wer sie einspielt, wird hier vermerkt.
+            """CREATE TABLE IF NOT EXISTS backup_nummern (
+                bereich TEXT PRIMARY KEY,
+                nummer INTEGER NOT NULL DEFAULT 0
+            )""",
+            # Der Schluessel ist Kennung UND Server, nicht die Kennung allein: dieselbe
+            # Datei auf einem ANDEREN Server einzuspielen ist der eigentliche Zweck des
+            # Server-Backups ("einen Server an jemand anderen uebergeben"). Verhindert wird
+            # nur, was wirklich doppelt ist - dieselbe Datei nochmal auf denselben Server.
+            # Ein volles Backup hat keinen Server und traegt hier einen leeren Eintrag.
+            """CREATE TABLE IF NOT EXISTS backup_einspielungen (
+                kennung TEXT NOT NULL,
+                guild_id TEXT NOT NULL DEFAULT '',
+                art TEXT NOT NULL DEFAULT '',
+                nummer TEXT NOT NULL DEFAULT '',
+                datei TEXT NOT NULL DEFAULT '',
+                eingespielt TEXT NOT NULL DEFAULT '',
+                von TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (kennung, guild_id)
+            )""",
+            # Eigene Reihenfolge fuer die Embed-Nachrichten. Gewuenscht am 18.11.2026
+            # zusammen mit dem Markieren: eine Liste, die sich nur nach Anlagedatum
+            # sortiert, laesst sich nicht aufraeumen.
+            # 0 fuer alles Bestehende - danach sortiert es wie bisher (nach id absteigend),
+            # bis jemand das erste Mal verschiebt. Dann bekommt die ganze Liste des Servers
+            # feste Plaetze 1..n.
+            "ALTER TABLE embed_posts ADD COLUMN sortierung INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await db.execute(col)

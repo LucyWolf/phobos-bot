@@ -79,7 +79,9 @@ except ImportError:
     from pytz import timezone as ZoneInfo
 import platform
 import re
+import hashlib
 import secrets
+import uuid
 import shutil
 import smtplib
 import sys
@@ -140,8 +142,10 @@ from cogs.ratings import (
 )
 from cogs.log_utils import log_bot_event as _log_bot_event, BOT_EVENT_CATEGORIES
 from i18n import get_tr, meldung as _meldung
+from befehlstexte import befehl_en
 import uvicorn
 from discord.ext import commands
+from discord import app_commands
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
@@ -176,6 +180,10 @@ from database import (
     bot_text, bot_labels, bot_worte, bot_sprachen, bot_lang,
 )
 import totp
+# Plugins: Pakete aus Einstellungen, die man exportieren und weitergeben kann. Unter
+# eigenem Namen eingebunden, weil "plugins" als Wort in Routen und Variablen zu oft
+# vorkommt - plugin_mod zeigt beim Lesen sofort auf das Modul.
+import plugins as plugin_mod
 
 VERSION = (Path(__file__).parent / "VERSION").read_text().strip()
 # Defaults to the Docker container path - override via PHOBOS_DATA_DIR for non-Docker setups
@@ -364,6 +372,7 @@ COGS = [
     "cogs.auto_delete",
     "cogs.auto_thread",
     "cogs.vrc_link",
+    "cogs.profile",
     "cogs.temp_voice",
     "cogs.scheduler",
     "cogs.birthday",
@@ -455,6 +464,24 @@ bot = BotManager()
 BOT_FEHLER: dict = {}
 
 
+class BefehlsUebersetzer(app_commands.Translator):
+    """Liefert Namen und Beschreibungen der Slash-Befehle auf Englisch.
+
+    Gefragt wird fuer jede Sprache, die Discord kennt; beantwortet wird nur Englisch. Fuer
+    alles andere kommt None zurueck - dann zeigt Discord den Standardtext, und der ist
+    deutsch. Ein Franzose sieht also Deutsch, nicht Kauderwelsch.
+
+    Massgeblich ist die Client-Sprache der PERSON, nicht `bot_lang` des Servers: die
+    Befehlsliste gehoert zur Oberflaeche dessen, der sie aufklappt. Ein Deutscher auf einem
+    englischen Server sieht weiter Deutsch.
+    """
+
+    async def translate(self, string, locale, context):
+        if not str(getattr(locale, "value", locale)).startswith("en"):
+            return None
+        return befehl_en(string.message)
+
+
 async def _run_single_bot(token_id: int, token: str):
     """Runs one bot instance. Auto-reconnects after unexpected disconnects (e.g. a
     discord.py gateway hiccup) as long as the token stays enabled - only an invalid
@@ -497,9 +524,65 @@ async def _run_single_bot(token_id: int, token: str):
             except Exception as e:
                 print(f"[Token-ID {token_id}] Befehls-Sync für Guild {guild.id} fehlgeschlagen: {e}")
 
+        # Ob die globale Liste in diesem Prozess schon geleert wurde. on_ready feuert nach
+        # jedem Verbindungsabbruch erneut, und zweimal dasselbe zu loeschen ist nur ein
+        # Aufruf an Discord mehr.
+        global_geleert = {"ok": False}
+
+        async def _globale_leeren() -> None:
+            """Loescht die GLOBALE Befehlsliste bei Discord - angemeldet wird nur je Server.
+
+            Vorher wurde beides gemacht: global anmelden UND zusaetzlich in jeden Server
+            kopieren. Solange beide Fassungen gleich aussehen, zeigt Discord nur eine. Nach
+            einem Update aber ist die Server-Kopie sofort aktuell und die globale noch bis
+            zu einer Stunde alt - und dann steht derselbe Befehl zweimal in der Liste, die
+            alte Fassung antwortet mit "this command is outdated".
+            Gemeldet am 17.11.2026 an /inspect, betrifft aber jeden geaenderten Befehl.
+
+            Die Server-Kopien bleiben, weil sie sofort greifen; die globale Liste wird leer.
+            Dazu wird der Baum kurz geleert, die leere Liste geschickt und der Baum danach
+            wieder gefuellt - die Befehle muessen IM Baum bleiben, denn copy_global_to()
+            kopiert genau sie in jeden Server. Das Wiederauffuellen steht in finally: wenn
+            der Aufruf an Discord scheitert, darf der Bot nicht ohne Befehle dastehen.
+
+            Folge, die man wissen muss: in Direktnachrichten gibt es die Befehle dann nicht
+            mehr. Alle Befehle dieses Projekts beziehen sich ohnehin auf einen Server.
+            """
+            if global_geleert["ok"]:
+                return
+            try:
+                vorhanden = await instance.tree.fetch_commands()
+            except Exception as e:
+                print(f"[Token-ID {token_id}] Globale Befehlsliste nicht lesbar: {e}")
+                return
+            global_geleert["ok"] = True
+            if not vorhanden:
+                return
+            merken = list(instance.tree.get_commands())
+            instance.tree.clear_commands(guild=None)
+            try:
+                await instance.tree.sync()
+                print(f"[Token-ID {token_id}] {len(vorhanden)} globale Befehle entfernt - "
+                      f"angemeldet wird je Server, damit nichts doppelt erscheint.")
+            except Exception as e:
+                print(f"[Token-ID {token_id}] Globale Befehle liessen sich nicht "
+                      f"entfernen: {e}")
+            finally:
+                for befehl in merken:
+                    try:
+                        instance.tree.add_command(befehl)
+                    except Exception:
+                        pass
+
         @instance.event
         async def on_ready():
-            await instance.tree.sync()
+            # Vor jedem Abgleich: was Discord bekommt, wird beim Zusammenbauen uebersetzt.
+            # Danach gesetzt waere es wirkungslos, bis zum naechsten Sync.
+            try:
+                await instance.tree.set_translator(BefehlsUebersetzer())
+            except Exception as e:
+                print(f"[Token-ID {token_id}] Uebersetzer fuer Befehle nicht gesetzt: {e}")
+            await _globale_leeren()
             for guild in list(instance.guilds):
                 await _sync_guild(guild)
             BOT_FEHLER.pop(token_id, None)
@@ -2535,6 +2618,89 @@ async def _restore_event_series(db, series_rows, guild_id_override: str | None) 
     return restored_any
 
 
+# ══════════════════════════════════════════════════════════════════════════════════════
+#  Backups: Kennung, laufende Nummer, und kein zweites Mal aus Versehen
+#
+#  Gemeldet am 18.11.2026: "ausversehen 3 mal das selbe backup eingespielt". Das
+#  Einspielen LEGT AN - es gleicht nicht ab. Dieselbe Datei dreimal heisst dreimal
+#  dieselben Reaction Roles, Befehle und Panels, und auffallen tut es erst danach.
+#
+#  Zwei Teile dagegen: jede exportierte Datei traegt eine Kennung, und wer eine Kennung
+#  schon eingespielt hat, bekommt sie nicht ein zweites Mal durch - ausser er sagt
+#  ausdruecklich, dass er genau das will.
+# ══════════════════════════════════════════════════════════════════════════════════════
+
+async def _backup_nummer(bereich: str) -> int:
+    """Die naechste laufende Nummer fuer diesen Bereich ("full" oder "guild:123").
+
+    Je Bereich gezaehlt und nicht global: "das siebte Backup DIESES Servers" ist die
+    Angabe, die jemandem etwas sagt, wenn er zwei Dateien nebeneinander liegen hat.
+    """
+    try:
+        await db_exec(
+            "INSERT INTO backup_nummern (bereich, nummer) VALUES (?, 0) "
+            "ON CONFLICT(bereich) DO NOTHING", (bereich,))
+        await db_exec("UPDATE backup_nummern SET nummer=nummer+1 WHERE bereich=?", (bereich,))
+        zeile = await db_one("SELECT nummer FROM backup_nummern WHERE bereich=?", (bereich,))
+        return int(zeile["nummer"]) if zeile else 1
+    except Exception:
+        # Ein Zaehler, der klemmt, darf kein Backup verhindern - das waere die weit
+        # schlimmere Richtung. Dann gibt es dieses eine Mal eben keine Nummer.
+        return 0
+
+
+def _backup_kennung(roh: bytes, meta: dict) -> str:
+    """Woran man diese Backup-DATEI wiedererkennt.
+
+    Zwei Wege, weil es zwei Sorten Dateien gibt: neue tragen ihre Kennung im Kopf, aeltere
+    nicht. Fuer die aelteren tut es der Fingerabdruck der Datei selbst - dieselbe Datei
+    nochmal hochzuladen faellt damit genauso auf, und genau das war der gemeldete Fall.
+    """
+    k = str(meta.get("kennung") or "").strip().lower()
+    if re.fullmatch(r"[0-9a-f]{16,64}", k):
+        return k
+    return "sha:" + hashlib.sha256(roh).hexdigest()
+
+
+async def _backup_schon_da(kennung: str, guild_id="") -> Optional[dict]:
+    """Wurde genau diese Datei auf genau diesem Server schon eingespielt?
+
+    Auf einem ANDEREN Server ist dieselbe Datei kein Versehen, sondern der Zweck des
+    Server-Backups - dort wird nichts doppelt, dort entsteht es zum ersten Mal.
+    """
+    try:
+        return await db_one(
+            "SELECT nummer, datei, eingespielt, von FROM backup_einspielungen "
+            "WHERE kennung=? AND guild_id=?", (kennung, str(guild_id or "")))
+    except Exception:
+        return None
+
+
+async def _backup_vermerken(kennung: str, art: str, guild_id, meta: dict,
+                            datei: str, von: str) -> None:
+    try:
+        await db_exec(
+            "INSERT INTO backup_einspielungen (kennung, guild_id, art, nummer, datei, "
+            "eingespielt, von) VALUES (?,?,?,?,?,?,?) "
+            "ON CONFLICT(kennung, guild_id) DO UPDATE SET "
+            "eingespielt=excluded.eingespielt, von=excluded.von",
+            (kennung, str(guild_id or ""), art, str(meta.get("nummer") or ""),
+             (datei or "")[:200], datetime.datetime.utcnow().isoformat(), von))
+    except Exception as e:
+        print(f"[backup] Einspielung liess sich nicht vermerken: {e}")
+
+
+def _backup_doppelt_text(alt: dict) -> str:
+    """Der Satz, den jemand bekommt, der dieselbe Datei ein zweites Mal hochlaedt."""
+    wann = (alt.get("eingespielt") or "")[:16].replace("T", " um ")
+    wer = alt.get("von") or "jemandem"
+    nummer = f" (Nr. {alt['nummer']})" if alt.get("nummer") else ""
+    return (f"Dieses Backup{nummer} wurde am {wann} von {wer} schon einmal eingespielt. "
+            f"Einspielen legt Einträge AN, es gleicht nicht ab — ein zweites Mal gäbe alles "
+            f"doppelt. Wenn du es trotzdem willst, setze den Haken „auch wenn es schon "
+            f"eingespielt wurde“.")
+
+
 async def _build_full_backup(exported_by: str) -> dict:
     scheduled = await db_rows("SELECT * FROM scheduled_messages WHERE sent=0")
     data: dict = {
@@ -2543,6 +2709,9 @@ async def _build_full_backup(exported_by: str) -> dict:
             "app_version": VERSION,
             "exported_at": datetime.datetime.utcnow().isoformat(),
             "exported_by": exported_by,
+            # Woran diese eine Datei wiedererkannt wird, und die wievielte sie ist.
+            "kennung": uuid.uuid4().hex,
+            "nummer": await _backup_nummer("full"),
         },
         "users": await db_rows("SELECT * FROM users"),
         "bot_tokens": await db_rows("SELECT * FROM bot_tokens"),
@@ -2582,6 +2751,10 @@ async def _build_guild_backup(guild_id: int, exported_by: str, include_secrets: 
             "exported_by": exported_by,
             "source_guild_id": gid_str,
             "source_guild_name": guild.name if guild else None,
+            # Siehe _backup_kennung: die Kennung macht dieselbe Datei beim zweiten
+            # Einspielen erkennbar, die Nummer macht zwei Dateien unterscheidbar.
+            "kennung": uuid.uuid4().hex,
+            "nummer": await _backup_nummer(f"guild:{gid_str}"),
         },
         "guild_configs": await db_rows(
             "SELECT key, value FROM guild_configs WHERE guild_id=?", (guild_id,)
@@ -2694,12 +2867,13 @@ async def backup_export_all(request: Request, password: str = Form("")):
     by = request.session.get("username", "admin")
     data = await _build_full_backup(by)
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-    return _json_dl(data, f"backup_full_{ts}.json", password)
+    nr = f"nr{int(data['meta'].get('nummer') or 0):04d}_"
+    return _json_dl(data, f"backup_full_{nr}{ts}.json", password)
 
 
 @web.post("/admin/backup/restore")
 async def backup_restore(request: Request, backup_file: UploadFile = File(...),
-                         password: str = Form("")):
+                         password: str = Form(""), nochmal: str = Form("")):
     if r := admin_redirect(request): return r
     try:
         raw = await backup_file.read()
@@ -2725,6 +2899,14 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...),
     meta = data.get("meta", {})
     if not meta.get("version"):
         return RedirectResponse("/users?error=Kein+gültiges+Phobos-Backup", status_code=302)
+
+    # Dieselbe Datei ein zweites Mal? Dann erst fragen. Siehe _backup_kennung.
+    kennung = _backup_kennung(raw, meta)
+    if nochmal != "1":
+        if alt := await _backup_schon_da(kennung):
+            return RedirectResponse(
+                f"/users?error={urllib.parse.quote_plus(_backup_doppelt_text(alt))}",
+                status_code=302)
 
     restored: list[str] = []
 
@@ -2961,6 +3143,11 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...),
         except Exception:
             pass  # best-effort, same as every other post-restore reload here
 
+    # Erst vermerken, wenn es wirklich durch ist: eine Datei, deren Einspielen unterwegs
+    # abgebrochen ist, soll man noch einmal versuchen koennen, ohne den Haken zu setzen.
+    await _backup_vermerken(kennung, "full", "", meta,
+                            getattr(backup_file, "filename", ""),
+                            request.session.get("username", "admin"))
     summary = ", ".join(restored) if restored else "Nichts"
     return RedirectResponse(
         f"/users?success=Backup+eingespielt:+{urllib.parse.quote(summary)}", status_code=302
@@ -2984,13 +3171,17 @@ async def server_backup_export(request: Request, guild_id: int,
     # that would be awkward or invalid in one, unlike the guild_id fallback which is already
     # filename-safe on its own.
     name_part = re.sub(r"[^\w\-]+", "_", guild.name).strip("_") if guild else str(guild_id)
-    return _json_dl(data, f"backup_server_{name_part or guild_id}_{ts}.json", password)
+    # Die laufende Nummer steht im Dateinamen, damit zwei Backups desselben Servers im
+    # Download-Ordner auseinanderzuhalten sind - "(1)", das der Browser anhaengt, sagt nur
+    # etwas ueber die Reihenfolge des Herunterladens, nichts ueber die Datei.
+    nr = f"nr{int(data['meta'].get('nummer') or 0):04d}_"
+    return _json_dl(data, f"backup_server_{name_part or guild_id}_{nr}{ts}.json", password)
 
 
 @web.post("/servers/{guild_id}/backup/restore")
 async def server_backup_restore(request: Request, guild_id: int,
                                 backup_file: UploadFile = File(...),
-                                password: str = Form("")):
+                                password: str = Form(""), nochmal: str = Form("")):
     if r := admin_redirect(request): return r
     try:
         raw = await backup_file.read()
@@ -3024,6 +3215,15 @@ async def server_backup_restore(request: Request, guild_id: int,
             f"/servers/{guild_id}?tab=config&error=Das+ist+kein+Server-Backup+(falscher+Typ)",
             status_code=302,
         )
+
+    # Dieselbe Datei ein zweites Mal auf DIESEN Server? Erst fragen - der gemeldete Fall.
+    kennung = _backup_kennung(raw, meta)
+    if nochmal != "1":
+        if alt := await _backup_schon_da(kennung, guild_id):
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=config"
+                f"&error={urllib.parse.quote_plus(_backup_doppelt_text(alt))}",
+                status_code=302)
 
     gid_str = str(guild_id)
     restored: list[str] = []
@@ -3132,6 +3332,9 @@ async def server_backup_restore(request: Request, guild_id: int,
         except Exception:
             pass
 
+    await _backup_vermerken(kennung, "guild", guild_id, meta,
+                            getattr(backup_file, "filename", ""),
+                            request.session.get("username", "admin"))
     summary = ", ".join(restored) if restored else "Nichts"
     return RedirectResponse(
         f"/servers/{guild_id}?tab=config&success=Server-Backup+eingespielt:+{urllib.parse.quote(summary)}",
@@ -4778,6 +4981,75 @@ _AENDERUNGEN_CACHE: dict = {}
 _SCHILDER_CACHE: dict = {"at": None, "nach_sha": {}}
 
 
+def changelog_abschnitte(grenze: int = 25) -> list:
+    """Die Eintraege aus CHANGELOG.md, neueste zuerst.
+
+    Die Updates-Seite zeigte bisher nur Commit-Zeilen von GitHub. Das hat zwei Luecken: ohne
+    Netz steht die Seite leer da - also genau dann, wenn man wissen will, was man sich
+    einspielt -, und eine Commit-Nachricht erklaert immer nur ihre eine Aenderung, nie den
+    Stand einer Version. CHANGELOG.md liegt im Repo, das ohnehin eingehaengt ist; gelesen
+    wird also von der Platte, nicht aus dem Netz.
+
+    Gelesen statt zwischengespeichert: die Datei ist klein, und nach einem Update soll der
+    neue Stand sofort dastehen und nicht bis zum naechsten Neustart der alte.
+    """
+    kandidaten = ["/repo/CHANGELOG.md",
+                  str(Path(__file__).resolve().parent.parent / "CHANGELOG.md")]
+    roh = ""
+    for pfad in kandidaten:
+        try:
+            with open(pfad, encoding="utf-8") as f:
+                roh = f.read()
+            break
+        except OSError:
+            continue
+    if not roh:
+        return []
+
+    abschnitte = []
+    for stueck in roh.split("\n## ")[1:]:
+        zeilen = stueck.split("\n")
+        titel = zeilen[0].strip()
+        # Die Trennlinie zwischen zwei Eintraegen gehoert nicht in den Text.
+        rumpf = "\n".join(zeilen[1:]).strip()
+        while rumpf.endswith("---"):
+            rumpf = rumpf[:-3].strip()
+        abschnitte.append({"titel": titel, "rumpf": rumpf})
+        if len(abschnitte) >= grenze:
+            break
+    return abschnitte
+
+
+def changelog_html(text: str) -> markupsafe.Markup:
+    """Der Eintrag als Anzeige: erst alles entschaerfen, dann die drei Zeichen zurueckholen,
+    die in diesen Notizen wirklich vorkommen - **fett**, `Code` und Aufzaehlungen.
+
+    Absichtlich kein Markdown-Paket: das waere eine neue Abhaengigkeit fuer drei Muster, und
+    jede davon ist eine Stelle mehr, an der fremder Text zu Markup werden kann. Hier wird
+    zuerst escaped - was danach noch zu HTML wird, ist ausschliesslich das, was diese
+    Funktion selbst setzt.
+    """
+    sicher = str(markupsafe.escape(text))
+    sicher = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", sicher)
+    sicher = re.sub(r"`([^`]+?)`", r"<code>\1</code>", sicher)
+    zeilen = []
+    offen = False
+    for zeile in sicher.split("\n"):
+        if zeile.lstrip().startswith("- "):
+            if not offen:
+                zeilen.append("<ul style='margin:0.3rem 0 0.3rem 1.1rem;padding:0;'>")
+                offen = True
+            zeilen.append(f"<li>{zeile.lstrip()[2:]}</li>")
+            continue
+        if offen:
+            zeilen.append("</ul>")
+            offen = False
+        zeilen.append(zeile if zeile.strip() else "<br>")
+    if offen:
+        zeilen.append("</ul>")
+    return markupsafe.Markup("\n".join(zeilen))
+
+
 async def aenderungen_holen(zweig: str) -> list:
     """Was sich auf diesem Zweig zuletzt getan hat - als Liste fuer die Updates-Seite.
 
@@ -4880,6 +5152,11 @@ async def bot_update_page(request: Request, success: str = "", error: str = ""):
                       if _ver_tuple(v[1:]) < _ver_tuple(VERSION)][:30],
         # Was sich auf beiden Zweigen zuletzt getan hat, damit man vor dem Einspielen
         # sieht, was man bekommt - und auf der Beta, was man bekaeme.
+        # Das Changelog kommt von der Platte und nicht aus dem Netz: die Seite wird
+        # gebraucht, wenn etwas nicht stimmt - und dann ist GitHub oft das Erste, was fehlt.
+        "changelog": changelog_abschnitte(),
+        "changelog_html": changelog_html,
+        "repo_url": _GITHUB_REPO_URL,
         "aenderungen_stable": await aenderungen_holen("main"),
         "aenderungen_beta": await aenderungen_holen("beta"),
         "success": success, "error": error,
@@ -5215,6 +5492,27 @@ async def _do_git_update(ziel: str = ""):
 
     try:
         _ulog("$ phobos-bot update — " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "cmd")
+
+        # /repo ist der Projektordner des Wirts, in den Container eingehaengt. Ohne ihn gibt
+        # es hier kein Git und damit kein Update. Gemeldet am 18.11.2026 von einer fremden
+        # Installation beim Wechsel auf den Beta-Kanal: git meldete "cannot change to
+        # '/repo': No such file or directory", die Seite zeigte "exit 128" - eine Zahl, aus
+        # der niemand den fehlenden Einhaengepunkt ablesen kann.
+        #
+        # Der Bot kann das auch nicht selbst richten: Docker uebernimmt Einbindungen nur
+        # beim NEUERSTELLEN eines Containers, ein Neustart aendert daran nichts. Die
+        # Meldung muss also sagen, was auf dem Wirt zu tun ist - sonst beschreibt sie nur
+        # ein Problem, und das hilft niemandem.
+        if not IS_ANDROID and not os.path.isdir("/repo/.git"):
+            was = ("ist nicht eingehängt" if not os.path.isdir("/repo")
+                   else "enthält kein Git-Repository")
+            raise RuntimeError(
+                f"Der Projektordner /repo {was}. Das Update holt den Code per git aus "
+                f"/repo — ohne diesen Ordner geht es nicht, und der Bot kann es von innen "
+                f"nicht beheben. Auf dem Wirt, im Ordner mit der docker-compose.yml: unter "
+                f"\"volumes:\" muss die Zeile \"- .:/repo\" stehen, danach einmal "
+                f"\"docker compose up -d\" ausführen. Ein Neustart des Containers reicht "
+                f"nicht — Docker übernimmt Einbindungen erst beim Neuerstellen.")
 
         # Vor dem ersten Befehl nachsehen. Ein git fetch, dem mittendrin der Platz
         # ausgeht, laesst halb geschriebene Objekte im Repo liegen - der naechste Versuch
@@ -8069,6 +8367,101 @@ async def _vrc_page(request: Request, row, lang: str,
     }, status_code=status_code), request)
 
 
+# ── Profile: die Leseadresse fuer die VRChat-Welt ─────────────────────────────
+# Gewuenscht war, die Texte nach Pastebin/Gist zu schieben, damit die Welt sie laden kann.
+# Das waere eine oeffentliche Adresse fuer sehr private Angaben, auf einem Dienst, der
+# nichts davon wieder loswird. Stattdessen liefert Phobos sie selbst - mit drei Schranken,
+# die eine Pastebin-Adresse nicht haette:
+#
+#   1. Der Server muss die Anzeige in der Welt eingeschaltet haben (profil_welt_on).
+#   2. Die Anfrage braucht den Schluessel dieses Servers (profil_welt_key). Ohne Schluessel
+#      antwortet die Adresse ueberhaupt nicht - auch nicht mit "gibt es nicht", das waere
+#      schon eine Auskunft.
+#   3. Die betroffene Person muss ihr Profil selbst freigegeben haben (welt=1). Ohne
+#      Freigabe sieht die Welt nichts, egal wer fragt.
+#
+# Gesucht wird ueber den VRChat-Namen, nicht ueber die Discord-Kennung: in der Welt weiss
+# die Oberflaeche, wer vor ihr steht - naemlich einen VRChat-Namen -, und sonst nichts. Die
+# Zuordnung dazu steht in vrc_links, also genau da, wo sie ohnehin gepflegt wird.
+# Eine Adresse, die ohne Anmeldung erreichbar ist, wird auch ohne Anmeldung durchprobiert.
+# Die Bremse zaehlt je Absender-Adresse und verhindert, dass jemand Schluessel oder Namen in
+# Serie durchtestet. Ehrlich ueber ihre Grenzen - genau wie die Bremse bei der Anmeldung:
+# die Adresse kommt aus X-Forwarded-For, wer die faelscht, kommt daran vorbei. Gegen den
+# entschlossenen Fall hilft eine Sperre im Proxy, nicht Code hier.
+_PROFIL_API_MAX = 60             # Anfragen
+_PROFIL_API_FENSTER = 60.0       # je Minute
+_profil_api_zaehler: dict[str, list] = {}
+
+
+def _profil_api_zu_viel(request: Request) -> bool:
+    import time as _t
+    jetzt = _t.monotonic()
+    wer = _login_client(request)
+    eintrag = _profil_api_zaehler.get(wer)
+    if not eintrag or jetzt - eintrag[1] > _PROFIL_API_FENSTER:
+        _profil_api_zaehler[wer] = [1, jetzt]
+        # Nicht unbegrenzt wachsen lassen: sonst ist die Bremse selbst der Angriff.
+        if len(_profil_api_zaehler) > 5000:
+            for k in [k for k, v in _profil_api_zaehler.items()
+                      if jetzt - v[1] > _PROFIL_API_FENSTER]:
+                _profil_api_zaehler.pop(k, None)
+        return False
+    eintrag[0] += 1
+    return eintrag[0] > _PROFIL_API_MAX
+
+
+@web.get("/api/profil")
+async def profil_fuer_welt(request: Request, key: str = "", vrc: str = ""):
+    leer = {"gefunden": False, "felder": []}
+    schluessel = (key or "").strip()
+    name = (vrc or "").strip()
+    if _profil_api_zu_viel(request):
+        return JSONResponse(leer, status_code=429)
+    if not schluessel or not name:
+        return JSONResponse(leer, status_code=400)
+
+    # Welcher Server hat genau diesen Schluessel? Ueber alle Server zu suchen ist hier
+    # richtig: die Welt kennt keine Server-Kennung, nur ihren eigenen Schluessel.
+    treffer = await db_rows(
+        "SELECT guild_id FROM guild_configs WHERE key='profil_welt_key' AND value=? AND value<>''",
+        (schluessel,))
+    if not treffer:
+        return JSONResponse(leer, status_code=403)
+    guild_id = str(treffer[0]["guild_id"])
+
+    if await get_guild_config(guild_id, "profil_welt_on") != "1":
+        return JSONResponse(leer, status_code=403)
+
+    link = await db_one(
+        "SELECT user_id, vrchat_name FROM vrc_links WHERE guild_id=? AND status='approved' "
+        "AND (vrc_user_id=? OR vrchat_name=? COLLATE NOCASE)",
+        (guild_id, name, name))
+    if not link:
+        return JSONResponse(leer)
+
+    rows = await db_rows(
+        "SELECT feld, text, geaendert FROM profil_eintraege "
+        "WHERE guild_id=? AND user_id=? AND welt=1 AND text<>''",
+        (guild_id, str(link["user_id"])))
+    if not rows:
+        return JSONResponse(leer)
+
+    from cogs.profile import FELDER
+    reihenfolge = {f["name"]: i for i, f in enumerate(FELDER)}
+    # "erwachsen" steht mit in der Antwort, damit die Welt selbst entscheiden kann, was sie
+    # jedem Vorbeilaufenden zeigt. Hier im Bot haengt an diesem Merkmal die Altersschranke;
+    # in der Welt gibt es keine - was dort auf einer Tafel steht, sieht jeder, der davor
+    # steht. Ohne die Angabe koennte die Oberflaeche nicht einmal unterscheiden.
+    erwachsen = {f["name"]: bool(f["erwachsen"]) for f in FELDER}
+    felder = sorted(({"feld": r["feld"], "text": r["text"], "geaendert": r["geaendert"],
+                      "erwachsen": erwachsen.get(r["feld"], True)}
+                     for r in rows), key=lambda r: reihenfolge.get(r["feld"], 99))
+    # Der gespeicherte Name, nicht der angefragte: sonst gibt die Antwort zurueck, was
+    # jemand hineingeschrieben hat, und die Welt zeigt am Ende fremden Text an.
+    return JSONResponse({"gefunden": True, "vrchat_name": link["vrchat_name"],
+                         "felder": felder})
+
+
 async def _vrc_visitor(token: str):
     """The token row this visitor supplied in their form, or None.
 
@@ -10083,6 +10476,452 @@ async def smtp_test(request: Request, test_email: str = Form(...)):
 
 # ── Token Management ──────────────────────────────────────────────────────────
 
+# ══════════════════════════════════════════════════════════════════════════════════════
+#  Plugins - Pakete aus Einstellungen
+#
+#  Gewuenscht am 18.11.2026. Die eigentliche Arbeit (Format, Pruefung, Anwenden,
+#  Entfernen) steht in plugins.py; hier liegt nur die Oberflaeche davor.
+#
+#  Alle Routen sind Admin-Sache, nicht Moderator: ein Plugin legt auf einen Schlag
+#  Befehle, Panels und Rollenregeln an - dieselbe Hausnummer wie ein eingespieltes
+#  Backup, und das kann hier auch nur ein Admin.
+# ══════════════════════════════════════════════════════════════════════════════════════
+
+def _plugin_fehler(ziel: str, text: str) -> RedirectResponse:
+    trenn = "&" if "?" in ziel else "?"
+    return RedirectResponse(f"{ziel}{trenn}error={urllib.parse.quote_plus(text[:220])}",
+                            status_code=302)
+
+
+def _plugin_ok(ziel: str, text: str) -> RedirectResponse:
+    trenn = "&" if "?" in ziel else "?"
+    return RedirectResponse(f"{ziel}{trenn}success={urllib.parse.quote_plus(text[:220])}",
+                            status_code=302)
+
+
+async def _plugins_fuer_server(guild_id, lang: str = "de") -> list:
+    """Alle Plugins dieser Installation, je Server um den Stand davor ergaenzt.
+
+    Eine Liste statt zweier (installiert / hinzugefuegt): die Seite zeigt beides in
+    derselben Reihe, und was hinzugefuegt ist, erkennt man am Schalter, nicht an der
+    Position.
+    """
+    gid = str(guild_id)
+    aus = []
+    for zeile in await db_rows(
+            "SELECT id, kennung, name, version, autor, beschreibung, inhalt FROM plugins "
+            "ORDER BY name COLLATE NOCASE"):
+        try:
+            paket = _djson.loads(zeile["inhalt"])
+        except Exception:
+            # Eine Zeile, die sich nicht mehr lesen laesst, darf nicht die ganze Seite
+            # mitnehmen - sie wird uebersprungen und faellt beim Export auf.
+            continue
+        dabei = await db_one(
+            "SELECT id, einstellungen, version, angelegt FROM plugin_guilds "
+            "WHERE plugin_id=? AND guild_id=?", (zeile["id"], gid))
+        werte = {}
+        if dabei:
+            try:
+                werte = _djson.loads(dabei["einstellungen"]) or {}
+            except Exception:
+                werte = {}
+        # Was dort tatsaechlich steht, mit Namen - erst nachgeschlagen, wenn das Plugin auf
+        # diesem Server auch angelegt ist.
+        angelegt = (await plugin_mod.angelegte_eintraege(dabei["id"], lang)) if dabei else {}
+        aus.append({
+            "id": zeile["id"], "kennung": zeile["kennung"], "name": zeile["name"],
+            "version": zeile["version"], "autor": zeile["autor"],
+            "beschreibung": zeile["beschreibung"],
+            "angelegt": angelegt,
+            "einstellungen": paket.get("einstellungen", []),
+            "teile": plugin_mod.zusammenfassung(paket, lang),
+            "aktiv": bool(dabei),
+            "werte": werte,
+            "stand": (dabei or {}).get("version", ""),
+            # Das Plugin wurde seit dem Hinzufuegen neu hochgeladen: auf diesem Server
+            # stehen noch die Zeilen der alten Fassung.
+            "veraltet": bool(dabei and (dabei.get("version") or "") != zeile["version"]),
+        })
+    return aus
+
+
+@web.get("/settings/plugins", response_class=HTMLResponse)
+async def plugins_page(request: Request, success: str = "", error: str = ""):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    lang = request.session.get("lang", "de")
+    liste = await plugin_mod.plugin_liste()
+    for p in liste:
+        paket = await plugin_mod.plugin_paket(p["id"]) or {}
+        p["teile"] = plugin_mod.zusammenfassung(paket, lang)
+        p["einstellungen"] = paket.get("einstellungen", [])
+    return templates.TemplateResponse("plugins.html", {
+        **session(request), "request": request,
+        "guilds": await _guild_list(request), "token_set": await _token_configured(),
+        "active": "plugins", "plugins": liste,
+        "arten": sorted(plugin_mod.ARTEN),
+        "format": plugin_mod.FORMAT,
+        "success": success, "error": error,
+    })
+
+
+async def _plugin_speichern(paket: dict, quelle: str = "") -> str:
+    """Ein geprueftes Paket ablegen - neu oder als neue Fassung - und sagen, was geschah.
+
+    Dieselbe Kennung nochmal ist eine neue Fassung, kein zweites Plugin. Die Server, die es
+    benutzen, werden NICHT von selbst umgestellt: das wuerde ihre Zeilen hinter ihrem
+    Ruecken ersetzen. Sie sehen auf ihrer Seite, dass etwas Neueres bereitliegt.
+    """
+    jetzt = datetime.datetime.utcnow().isoformat()
+    # Kommt das Paket von einer Adresse, aber nennt selbst keine, gilt die Adresse, von der
+    # es geholt wurde. Sonst waere ein ueber einen Link eingespieltes Plugin beim naechsten
+    # Mal wieder nur von Hand zu aktualisieren.
+    paket["quelle"] = paket.get("quelle") or quelle
+    text = _djson.dumps(paket, ensure_ascii=False)
+    vorhanden = await db_one("SELECT id, version FROM plugins WHERE kennung=?",
+                             (paket["kennung"],))
+    if vorhanden:
+        await db_exec(
+            "UPDATE plugins SET name=?, version=?, autor=?, beschreibung=?, quelle=?, "
+            "homepage=?, inhalt=?, geaendert=?, neue_version='' WHERE id=?",
+            (paket["name"], paket["version"], paket["autor"], paket["beschreibung"],
+             paket["quelle"], paket.get("homepage", ""), text, jetzt, vorhanden["id"]))
+        benutzt = (await db_one("SELECT COUNT(*) AS n FROM plugin_guilds WHERE plugin_id=?",
+                                (vorhanden["id"],)))["n"]
+        hinweis = (f" {benutzt} Server benutzen es — dort steht noch die alte Fassung, "
+                   f"bis jemand dort auf „Auf die neue Fassung bringen“ drückt.") if benutzt else ""
+        return (f"„{paket['name']}“ auf {paket['version']} gebracht "
+                f"(vorher {vorhanden['version'] or '?'}).{hinweis}")
+
+    await db_exec(
+        "INSERT INTO plugins (kennung, name, version, autor, beschreibung, quelle, "
+        "homepage, inhalt, angelegt, geaendert) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (paket["kennung"], paket["name"], paket["version"], paket["autor"],
+         paket["beschreibung"], paket["quelle"], paket.get("homepage", ""),
+         text, jetzt, jetzt))
+    return (f"„{paket['name']}“ hinzugefügt. Auf einem Server anlegen: Server öffnen, "
+            f"Reiter „Plugins“.")
+
+
+@web.post("/settings/plugins/import")
+async def plugins_import(request: Request, plugin_file: UploadFile = File(None),
+                         quelle: str = Form("")):
+    """Einspielen - als hochgeladene Datei oder ueber einen Link.
+
+    Beides in einer Route, weil es danach derselbe Weg ist: lesen, pruefen, ablegen. Der
+    Unterschied liegt nur in den ersten zwei Zeilen.
+    """
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    url = (quelle or "").strip()
+    # Ein leer gelassenes Dateifeld schickt der Browser trotzdem mit, nur ohne Namen.
+    hat_datei = bool(plugin_file and (plugin_file.filename or "").strip())
+    if not hat_datei and not url:
+        return _plugin_fehler("/settings/plugins",
+                              "Weder eine Datei noch eine Adresse angegeben.")
+    try:
+        if hat_datei:
+            paket = plugin_mod.lese_paket(await plugin_file.read())
+            url = ""
+        else:
+            url = plugin_mod.pruefe_quelle(url)
+            paket = await plugin_mod.hole_paket(url)
+    except plugin_mod.PluginFehler as e:
+        return _plugin_fehler("/settings/plugins", str(e))
+    except Exception as e:
+        print(f"[plugins] einspielen fehlgeschlagen: {e}")
+        return _plugin_fehler("/settings/plugins",
+                              "Das Plugin liess sich nicht lesen." if hat_datei
+                              else "Die Adresse war nicht erreichbar.")
+    return _plugin_ok("/settings/plugins", await _plugin_speichern(paket, url))
+
+
+async def _plugin_nachsehen(zeile: dict) -> str:
+    """Bei der Bezugsadresse eines Plugins nachfragen und das Ergebnis festhalten."""
+    jetzt = datetime.datetime.utcnow().isoformat()
+    paket = await plugin_mod.hole_paket(zeile["quelle"])
+    if paket["kennung"] != zeile["kennung"]:
+        # Unter der Adresse liegt inzwischen ein ANDERES Plugin. Das ist kein Update - weder
+        # von selbst noch auf Knopfdruck -, denn es wuerde auf jedem Server, der das alte
+        # benutzt, fremden Inhalt anlegen.
+        await db_exec("UPDATE plugins SET geprueft=?, neue_version='' WHERE id=?",
+                      (jetzt, zeile["id"]))
+        raise plugin_mod.PluginFehler(
+            f"Unter der Adresse liegt „{paket['kennung']}“, hier steht aber "
+            f"„{zeile['kennung']}“. Das wird nicht eingespielt.")
+    neuer = plugin_mod.version_neuer(paket["version"], zeile["version"])
+    await db_exec("UPDATE plugins SET geprueft=?, neue_version=? WHERE id=?",
+                  (jetzt, paket["version"] if neuer else "", zeile["id"]))
+    if neuer:
+        return f"„{zeile['name']}“: {paket['version']} liegt bereit (hier: {zeile['version']})."
+    return f"„{zeile['name']}“ ist aktuell ({zeile['version']})."
+
+
+@web.post("/settings/plugins/pruefen")
+async def plugins_pruefen_alle(request: Request):
+    """Bei allen Plugins nachsehen, die eine Adresse nennen."""
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    zeilen = await db_rows(
+        "SELECT id, kennung, name, version, quelle FROM plugins WHERE quelle<>''")
+    if not zeilen:
+        return _plugin_fehler("/settings/plugins",
+                              "Kein Plugin nennt eine Adresse, bei der man nachsehen könnte.")
+    neu, fehler = [], []
+    for z in zeilen:
+        try:
+            await _plugin_nachsehen(z)
+        except plugin_mod.PluginFehler as e:
+            fehler.append(f"{z['name']}: {e}")
+            continue
+        except Exception:
+            fehler.append(f"{z['name']}: nicht erreichbar")
+            continue
+    # Nach dem Durchgang einmal frisch lesen, statt beim Zaehlen mitzuschreiben.
+    for z in await db_rows("SELECT name, neue_version FROM plugins WHERE neue_version<>''"):
+        neu.append(f"{z['name']} → {z['neue_version']}")
+    teile = []
+    teile.append(f"{len(zeilen)} geprüft")
+    teile.append(("neu: " + ", ".join(neu)) if neu else "alles aktuell")
+    if fehler:
+        teile.append("nicht geklappt: " + "; ".join(fehler[:3]))
+    return _plugin_ok("/settings/plugins", " — ".join(teile))
+
+
+@web.post("/settings/plugins/{plugin_id}/pruefen")
+async def plugins_pruefen(request: Request, plugin_id: int):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    zeile = await db_one(
+        "SELECT id, kennung, name, version, quelle FROM plugins WHERE id=?", (plugin_id,))
+    if not zeile or not zeile["quelle"]:
+        return _plugin_fehler("/settings/plugins",
+                              "Dieses Plugin nennt keine Adresse zum Nachsehen.")
+    try:
+        return _plugin_ok("/settings/plugins", await _plugin_nachsehen(zeile))
+    except plugin_mod.PluginFehler as e:
+        return _plugin_fehler("/settings/plugins", str(e))
+    except Exception as e:
+        print(f"[plugins] pruefen fehlgeschlagen: {e}")
+        return _plugin_fehler("/settings/plugins", "Die Adresse war nicht erreichbar.")
+
+
+@web.post("/settings/plugins/{plugin_id}/aktualisieren")
+async def plugins_aktualisieren(request: Request, plugin_id: int):
+    """Die neueste Fassung von der Bezugsadresse holen und ablegen.
+
+    Holt in jedem Fall neu, statt sich auf das Ergebnis des letzten Nachsehens zu verlassen:
+    zwischen "nachgesehen" und "gedrueckt" koennen Tage liegen.
+    """
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    zeile = await db_one(
+        "SELECT id, kennung, name, version, quelle FROM plugins WHERE id=?", (plugin_id,))
+    if not zeile or not zeile["quelle"]:
+        return _plugin_fehler("/settings/plugins",
+                              "Dieses Plugin nennt keine Adresse zum Nachladen.")
+    try:
+        paket = await plugin_mod.hole_paket(zeile["quelle"])
+        if paket["kennung"] != zeile["kennung"]:
+            raise plugin_mod.PluginFehler(
+                f"Unter der Adresse liegt „{paket['kennung']}“, hier steht aber "
+                f"„{zeile['kennung']}“. Das wird nicht eingespielt.")
+    except plugin_mod.PluginFehler as e:
+        return _plugin_fehler("/settings/plugins", str(e))
+    except Exception as e:
+        print(f"[plugins] aktualisieren fehlgeschlagen: {e}")
+        return _plugin_fehler("/settings/plugins", "Die Adresse war nicht erreichbar.")
+    if not plugin_mod.version_neuer(paket["version"], zeile["version"]) \
+            and paket["version"] == zeile["version"]:
+        return _plugin_ok("/settings/plugins",
+                          f"„{zeile['name']}“ war schon auf {zeile['version']}.")
+    return _plugin_ok("/settings/plugins",
+                      await _plugin_speichern(paket, zeile["quelle"]))
+
+
+@web.get("/settings/plugins/{plugin_id}/export")
+async def plugins_export(request: Request, plugin_id: int):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    paket = await plugin_mod.plugin_paket(plugin_id)
+    if not paket:
+        return _plugin_fehler("/settings/plugins", "Dieses Plugin gibt es nicht mehr.")
+    name = re.sub(r"[^\w\-]+", "_", paket.get("kennung", "plugin")).strip("_") or "plugin"
+    fassung = re.sub(r"[^\w\.\-]+", "", paket.get("version", "")) or "1"
+    return _json_dl(plugin_mod.paket_als_datei(paket), f"plugin_{name}_{fassung}.json")
+
+
+@web.post("/settings/plugins/{plugin_id}/delete")
+async def plugins_delete(request: Request, plugin_id: int):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    zeile = await db_one("SELECT name FROM plugins WHERE id=?", (plugin_id,))
+    if not zeile:
+        return _plugin_fehler("/settings/plugins", "Dieses Plugin gibt es nicht mehr.")
+    # Erst von jedem Server herunternehmen, dann loeschen. Andersherum blieben Befehle und
+    # Panels auf den Servern stehen, ohne dass sie noch jemand entfernen koennte - die
+    # Buchfuehrung, die weiss welche Zeilen dazugehoeren, waere ja weg.
+    server = 0
+    for pg in await db_rows("SELECT id FROM plugin_guilds WHERE plugin_id=?", (plugin_id,)):
+        await plugin_mod.entfernen(pg["id"])
+        server += 1
+    await db_exec("DELETE FROM plugin_guilds WHERE plugin_id=?", (plugin_id,))
+    await db_exec("DELETE FROM plugins WHERE id=?", (plugin_id,))
+    zusatz = f" Auf {server} Server wurde es vorher entfernt." if server else ""
+    return _plugin_ok("/settings/plugins", f"„{zeile['name']}“ gelöscht.{zusatz}")
+
+
+async def _plugin_anwenden(guild_id: int, plugin_id: int, werte_roh: dict) -> str:
+    """Gemeinsamer Weg fuer „hinzufuegen", „Einstellungen speichern" und „aktualisieren".
+
+    Alle drei tun dasselbe: Werte pruefen, merken, Inhalt neu anlegen. Getrennte Routen
+    dafuer waeren drei Stellen, an denen dieselbe Pruefung vergessen werden kann.
+    """
+    paket = await plugin_mod.plugin_paket(plugin_id)
+    if not paket:
+        raise plugin_mod.PluginFehler("Dieses Plugin gibt es nicht mehr.")
+    werte = plugin_mod.pruefe_werte(paket, werte_roh)
+
+    gid = str(guild_id)
+    jetzt = datetime.datetime.utcnow().isoformat()
+    zeile = await db_one("SELECT id FROM plugin_guilds WHERE plugin_id=? AND guild_id=?",
+                         (plugin_id, gid))
+    if zeile:
+        pg_id = zeile["id"]
+        await db_exec(
+            "UPDATE plugin_guilds SET einstellungen=?, version=?, geaendert=? WHERE id=?",
+            (_djson.dumps(werte, ensure_ascii=False), paket.get("version", ""), jetzt, pg_id))
+    else:
+        pg_id = await db_insert(
+            "INSERT INTO plugin_guilds (plugin_id, guild_id, einstellungen, version, "
+            "angelegt, geaendert) VALUES (?,?,?,?,?,?)",
+            (plugin_id, gid, _djson.dumps(werte, ensure_ascii=False),
+             paket.get("version", ""), jetzt, jetzt))
+
+    bilanz = await plugin_mod.anwenden(pg_id, paket, guild_id, werte)
+    if not bilanz:
+        return f"„{paket.get('name')}“ hinzugefügt — es ist allerdings nichts entstanden."
+    teile = ", ".join(f"{n}× {a}" for a, n in sorted(bilanz.items()))
+    return f"„{paket.get('name')}“ angelegt: {teile}."
+
+
+def _werte_aus_formular(form) -> dict:
+    """Die Felder des Einstellungsformulars - jedes mit „e_" davor.
+
+    Das Praefix trennt sie von allem anderen im Formular: ein Plugin koennte sonst eine
+    Einstellung „plugin_id" erklaeren und damit beim Absenden auf eine andere Zeile zeigen.
+    """
+    return {k[2:]: v for k, v in form.items()
+            if isinstance(k, str) and k.startswith("e_") and isinstance(v, str)}
+
+
+@web.post("/servers/{guild_id}/plugins/{plugin_id}/anwenden")
+async def server_plugin_anwenden(request: Request, guild_id: int, plugin_id: int):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    ziel = f"/servers/{guild_id}?tab=plugins"
+    try:
+        meldung = await _plugin_anwenden(guild_id, plugin_id,
+                                         _werte_aus_formular(await request.form()))
+    except plugin_mod.PluginFehler as e:
+        return _plugin_fehler(ziel, str(e))
+    except Exception as e:
+        print(f"[plugins] anwenden fehlgeschlagen: {e}")
+        return _plugin_fehler(ziel, "Das Plugin liess sich nicht anlegen.")
+    return _plugin_ok(ziel, meldung)
+
+
+@web.post("/servers/{guild_id}/plugins/{plugin_id}/entfernen")
+async def server_plugin_entfernen(request: Request, guild_id: int, plugin_id: int):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    ziel = f"/servers/{guild_id}?tab=plugins"
+    zeile = await db_one("SELECT id FROM plugin_guilds WHERE plugin_id=? AND guild_id=?",
+                         (plugin_id, str(guild_id)))
+    if not zeile:
+        return _plugin_fehler(ziel, "Dieses Plugin ist auf dem Server gar nicht angelegt.")
+    weg = await plugin_mod.entfernen(zeile["id"])
+    await db_exec("DELETE FROM plugin_guilds WHERE id=?", (zeile["id"],))
+    return _plugin_ok(ziel, f"Entfernt — {weg} Einträge wurden zurückgenommen.")
+
+
+@web.get("/servers/{guild_id}/plugins/{plugin_id}/einstellungen")
+async def server_plugin_einstellungen_export(request: Request, guild_id: int, plugin_id: int):
+    """Nur die Werte dieses Servers, nicht das Plugin selbst.
+
+    Zwei getrennte Dateien mit Absicht: das Plugin gibt man weiter, die Werte sind die
+    eigenen (Rollennummern, Kanalnummern, eigene Texte). Wer beides in einer Datei
+    verschickt, verschickt die Struktur seines Servers gleich mit.
+    """
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    zeile = await db_one(
+        "SELECT p.kennung, p.name, p.version, g.einstellungen FROM plugin_guilds g "
+        "JOIN plugins p ON p.id=g.plugin_id WHERE g.plugin_id=? AND g.guild_id=?",
+        (plugin_id, str(guild_id)))
+    if not zeile:
+        return _plugin_fehler(f"/servers/{guild_id}?tab=plugins",
+                              "Dieses Plugin ist auf dem Server nicht angelegt.")
+    try:
+        werte = _djson.loads(zeile["einstellungen"]) or {}
+    except Exception:
+        werte = {}
+    name = re.sub(r"[^\w\-]+", "_", zeile["kennung"]).strip("_") or "plugin"
+    return _json_dl({
+        "phobos_plugin_einstellungen": plugin_mod.FORMAT,
+        "kennung": zeile["kennung"],
+        "plugin": zeile["name"],
+        "version": zeile["version"],
+        "werte": werte,
+    }, f"einstellungen_{name}.json")
+
+
+@web.post("/servers/{guild_id}/plugins/{plugin_id}/einstellungen")
+async def server_plugin_einstellungen_import(request: Request, guild_id: int, plugin_id: int,
+                                             einstellungen_file: UploadFile = File(...)):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    ziel = f"/servers/{guild_id}?tab=plugins"
+    try:
+        roh = await einstellungen_file.read()
+        if len(roh) > plugin_mod.MAX_DATEI:
+            raise plugin_mod.PluginFehler("Die Datei ist zu groß.")
+        daten = _djson.loads(roh.decode("utf-8"))
+        if not isinstance(daten, dict) or "phobos_plugin_einstellungen" not in daten:
+            raise plugin_mod.PluginFehler(
+                "Das ist keine Einstellungsdatei. Ein ganzes Plugin wird unter "
+                "Einstellungen → Plugins eingespielt, nicht hier.")
+    except plugin_mod.PluginFehler as e:
+        return _plugin_fehler(ziel, str(e))
+    except Exception:
+        return _plugin_fehler(ziel, "Die Datei ist kein gültiges JSON.")
+
+    # Die Werte eines Plugins in ein anderes zu schieben ergaebe Unsinn: die Namen sind
+    # verschieden, und was zufaellig gleich heisst, meint etwas anderes.
+    paket = await plugin_mod.plugin_paket(plugin_id)
+    if not paket:
+        return _plugin_fehler(ziel, "Dieses Plugin gibt es nicht mehr.")
+    if str(daten.get("kennung") or "") != str(paket.get("kennung") or ""):
+        return _plugin_fehler(
+            ziel, f"Die Datei gehört zu „{daten.get('kennung') or '?'}“, hier steht aber "
+                  f"„{paket.get('kennung')}“.")
+
+    werte = daten.get("werte")
+    if not isinstance(werte, dict):
+        return _plugin_fehler(ziel, "In der Datei stehen keine Werte.")
+    try:
+        meldung = await _plugin_anwenden(
+            guild_id, plugin_id,
+            {k: v for k, v in werte.items() if isinstance(k, str)})
+    except plugin_mod.PluginFehler as e:
+        return _plugin_fehler(ziel, str(e))
+    except Exception as e:
+        print(f"[plugins] Einstellungen einspielen fehlgeschlagen: {e}")
+        return _plugin_fehler(ziel, "Die Einstellungen liessen sich nicht anwenden.")
+    return _plugin_ok(ziel, "Einstellungen eingespielt. " + meldung)
+
+
 @web.get("/settings/tokens", response_class=HTMLResponse)
 async def tokens_page(request: Request, success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
@@ -10506,7 +11345,8 @@ _SERVER_CONFIG_TAB_LABELS = {
     "giveaways": "🎉 Giveaways", "warnings": "⚠️ Warnungen", "users": "👥 Nutzer",
     "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant", "events": "🗓️ Events",
     "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
-    "autothread": "🧵 Auto-Thread", "vrclink": "🔗 VRC-Link",
+    "autothread": "🧵 Auto-Thread", "vrclink": "🔗 VRC-Link", "profile": "🪪 Profile",
+    "plugins": "🧩 Plugins",
     "amp": "🎮 Gameserver", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
     "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen", "ratings": "⭐ Bewertungen",
 }
@@ -10528,7 +11368,10 @@ _TOGGLEABLE_FEATURES = {
     "commands": "📢 Commands", "tickets": "🎫 Tickets", "giveaways": "🎉 Giveaways",
     "warnings": "⚠️ Warnungen", "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant",
     "events": "🗓️ Events", "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
-    "autothread": "🧵 Auto-Thread", "vrclink": "🔗 VRC-Link",
+    "autothread": "🧵 Auto-Thread", "vrclink": "🔗 VRC-Link", "profile": "🪪 Profile",
+    # Plugins stehen in dieser Liste, damit ein Server, der keine benutzt, den Reiter
+    # ausblenden kann - wie jede andere Funktion auch.
+    "plugins": "🧩 Plugins",
     "amp": "🎮 Gameserver", "notifications": "🟣 Streaming", "freestuff": "🎁 Free Stuff",
     "log": "📋 Log", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
     "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen", "ratings": "⭐ Bewertungen",
@@ -10776,7 +11619,10 @@ async def server_config(
             (p["id"],)) or []
 
     embed_posts = await db_rows(
-        "SELECT * FROM embed_posts WHERE guild_id=? ORDER BY created_at DESC", (guild_id,)
+        # sortierung zuerst: wer die Liste einmal von Hand geordnet hat, soll sie so
+        # wiederfinden. Alles Unverschobene steht auf 0 und bleibt damit in der bisherigen
+        # Reihenfolge - neueste oben.
+        "SELECT * FROM embed_posts WHERE guild_id=? ORDER BY sortierung, id DESC", (guild_id,)
     )
     for ep in embed_posts:
         if ep.get("channel_id"):
@@ -11177,6 +12023,11 @@ async def server_config(
         "role_rules_debug_log": role_rules_debug_log,
         "role_rules_cog_missing": role_rules_cog_missing,
         "roles": roles, "categories": categories,
+        # Die Plugins dieser Installation samt dem, was auf DIESEM Server davon angelegt
+        # ist. Immer geladen, auch wenn der Reiter ausgeblendet ist: es sind zwei kleine
+        # Abfragen, und ein halb gefuellter Kontext waere die unangenehmere Fehlerquelle.
+        "plugins_liste": await _plugins_fuer_server(
+            guild_id, request.session.get("lang", "de")),
         "token_set": token_set, "saved": saved,
         "active": f"server_{guild_id}",
         "guilds": await _guild_list(request),
@@ -11215,6 +12066,9 @@ async def server_config(
         "tempvoice_configs": _tempvoice_configs,
         # Die Liste zeigt nur den Ausschnitt; gezaehlt wird ueber alle.
         "vrc_links": _vrc_sichtbar,
+        # Fuer die Adresse, die in der VRChat-Welt eingetragen wird - ohne sie stuende dort
+        # nur ein Pfad ohne Server davor.
+        "base_url": await link_base_url(),
         "vrc_links_gesamt": len(_vrc_links),
         "vrc_links_gefunden": len(_vrc_gefiltert),
         "vrc_suche": _vrc_suche,
@@ -11333,6 +12187,7 @@ _TAB_TEXT_KEYS = {
         "automod_spam_threshold", "automod_spam_window", "automod_timeout_minutes",
         "automod_banned_words", "automod_action", "automod_warn_message",
     ],
+    "profile": ["profil_18_role", "profil_inspect_role", "profil_welt_key"],
     "vrclink": ["vrc_account", "vrc_linked_role", "vrc_nickname_format", "vrc_panel_channel",
                 "vrc_panel_title", "vrc_panel_text", "vrc_panel_button", "vrc_dm_text",
                 "vrc_group_id", "vrc_group_role", "vrc_link_minutes",
@@ -11360,6 +12215,7 @@ _TAB_CHECKBOX_KEYS = {
     "birthday": [],
     # vrc_require_ownership defaults to ON when absent, so an existing server keeps the
     # proof it already had - see the read in vrc_public_name().
+    "profile": ["profil_enabled", "profil_welt_on"],
     "vrclink": ["vrc_enabled", "vrc_nickname_enabled", "vrc_auto_approve", "vrc_dm_on_join",
                 "vrc_require_ownership", "vrc_group_invite", "vrc_auto_invite",
                 "vrc_group_kick_on_leave", "vrc_panel_text_on",
@@ -11427,6 +12283,34 @@ async def server_config_save(request: Request, guild_id: int):
             if _name in _MODERATOR_RESTRICTABLE_TABS and _name not in user_allowed_tabs:
                 return _redirect_no_access(guild_id, user_allowed_tabs)
 
+    # Der Schluessel, mit dem die VRChat-Welt Profile liest, ist das einzige Geheimnis
+    # dieser Funktion - und er steht in der Adresse, also in jedem Proxy-Protokoll der Welt.
+    # Zwei Dinge muessen deshalb beim Speichern stimmen, nicht erst beim Lesen:
+    #
+    # Laenge: ohne Mindestmass haette jemand "test" eintragen koennen, und die Adresse waere
+    # in Minuten durchprobiert. 20 Zeichen sind die Untergrenze, und nur wenn die Anzeige
+    # ueberhaupt eingeschaltet wird - wer sie aus laesst, soll nicht genoetigt werden.
+    #
+    # Eindeutigkeit: gesucht wird SPAETER ueber den Schluessel, nicht ueber den Server (die
+    # Welt kennt keine Server-Kennung). Zwei Server mit demselben Schluessel wuerden also auf
+    # dieselbe Zeile zeigen - der eine bekaeme die Profile des anderen zu sehen. Das ist
+    # keine Unschoenheit, das waere ein Datenleck zwischen zwei Gemeinschaften.
+    if tab == "profile":
+        welt_key = str(form.get("profil_welt_key", "")).strip()
+        if form.get("profil_welt_on") and len(welt_key) < 20:
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=profile&error=Für+die+Anzeige+in+der+Welt+braucht+es"
+                f"+einen+Schlüssel+mit+mindestens+20+Zeichen", status_code=302)
+        if welt_key:
+            fremd = await db_one(
+                "SELECT guild_id FROM guild_configs WHERE key='profil_welt_key' "
+                "AND value=? AND guild_id<>?", (welt_key, guild_id))
+            if fremd:
+                return RedirectResponse(
+                    f"/servers/{guild_id}?tab=profile&error=Diesen+Schlüssel+benutzt+schon+ein"
+                    f"+anderer+Server+dieser+Installation+—+bitte+einen+eigenen+wählen",
+                    status_code=302)
+
     # Channel-valued keys are validated against the guild's own channels before saving -
     # some are resolved later via a global bot.get_channel() (not guild-scoped), so an
     # unvalidated ID here could otherwise make the bot post into a channel in a different
@@ -11446,7 +12330,8 @@ async def server_config_save(request: Request, guild_id: int):
     # to a silent no-op for a wrong ID, but a non-numeric value saved via a raw POST would raise
     # an unhandled ValueError in welcome.py's on_member_join for every future join).
     role_keys = ["autorole", "auto_kick_role_id", "vrc_linked_role", "vrc_group_role",
-                 "vrc_instance_role", "welcome_ping_role"]
+                 "vrc_instance_role", "welcome_ping_role",
+                 "profil_18_role", "profil_inspect_role"]
     valid_role_ids = {str(ro.id) for ro in guild.roles if not ro.is_default()}
     for key in role_keys:
         value = str(form.get(key, ""))
@@ -11943,6 +12828,9 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     transcript = 1 if form.get("transcript") else 0
     # Eigener Kanal fuer die Mitschriften; leer heisst weiterhin der normale Log-Kanal.
     transcript_channel_id = (form.get("transcript_channel_id") or "").strip()
+    # Ohne Haken gilt die Grenze je Kategorie: ein offenes Verification-Ticket sperrt keine
+    # Meldung mehr. Mit Haken wie frueher - ein Anliegen nach dem anderen.
+    ein_ticket_gesamt = 1 if form.get("ein_ticket_gesamt") else 0
     # Each is a LIST of blocks now, one <textarea> per block in the form - "+" adds a genuinely
     # separate Discord embed, not just another line inside the same one ("es ist bewusst zwei
     # einbettungen ... wenn ich bei den text + mache das es auch eine neuen einbettung ist").
@@ -12016,10 +12904,10 @@ async def tickets_panel_update(request: Request, guild_id: int, panel_id: int):
     await db_exec(
         "UPDATE ticket_panels SET name=?, button_label=?, close_button_label=?, description=?, ticket_message=?, emoji=?, "
         "support_role_id=?, category_id=?, archive_category_id=?, transcript=?, "
-        "transcript_channel_id=? WHERE id=? AND guild_id=?",
+        "transcript_channel_id=?, ein_ticket_gesamt=? WHERE id=? AND guild_id=?",
         (new_name, new_label, new_close_label, new_description, new_ticket_message, new_emoji,
          support_role_id, category_id, archive_category_id, transcript,
-         transcript_channel_id, panel_id, guild_id),
+         transcript_channel_id, ein_ticket_gesamt, panel_id, guild_id),
     )
     # A published panel's button/embed lives on an already-sent Discord message - saving name/
     # button_label/emoji/description here only touched the DB row until now, so the dashboard
@@ -13375,30 +14263,118 @@ async def embed_post_update(request: Request, guild_id: int, post_id: int):
     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&success=Gespeichert", status_code=302)
 
 
+async def _embed_entfernen(guild_id: int, post_id: int) -> bool:
+    """Eine Embed-Nachricht loeschen - in Discord und in der Datenbank.
+
+    Herausgeloest, weil es das jetzt zweimal gibt: einzeln ueber das X in der Zeile und in
+    einem Rutsch fuer alles Markierte. Zwei Kopien desselben Ablaufs waeren zwei Stellen,
+    an denen man das Loeschen der echten Nachricht vergessen kann.
+    """
+    post = await db_one("SELECT * FROM embed_posts WHERE id=? AND guild_id=?",
+                        (post_id, guild_id))
+    if not post:
+        return False
+    try:
+        guild = bot.get_guild(guild_id)
+        if guild and post.get("thread_id"):
+            # A forum post's live content IS the thread - deleting just the starter message
+            # isn't a thing Discord distinguishes from deleting the whole thread anyway, so
+            # go straight for the thread itself.
+            thread = await _fetch_embed_thread(guild, int(post["thread_id"]))
+            await thread.delete()
+        elif guild and post.get("message_id") and post.get("channel_id"):
+            ch = guild.get_channel(int(post["channel_id"]))
+            if ch:
+                msg = await ch.fetch_message(int(post["message_id"]))
+                await msg.delete()
+    except Exception:
+        pass
+    await db_exec("DELETE FROM embed_posts WHERE id=? AND guild_id=?", (post_id, guild_id))
+    return True
+
+
 @web.post("/servers/{guild_id}/embeds/{post_id}/delete")
 async def embed_post_delete(request: Request, guild_id: int, post_id: int):
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
         return RedirectResponse("/servers", status_code=302)
-    post = await db_one("SELECT * FROM embed_posts WHERE id=? AND guild_id=?", (post_id, guild_id))
-    if post:
-        try:
-            guild = bot.get_guild(guild_id)
-            if guild and post.get("thread_id"):
-                # A forum post's live content IS the thread - deleting just the starter message
-                # isn't a thing Discord distinguishes from deleting the whole thread anyway, so
-                # go straight for the thread itself.
-                thread = await _fetch_embed_thread(guild, int(post["thread_id"]))
-                await thread.delete()
-            elif guild and post.get("message_id") and post.get("channel_id"):
-                ch = guild.get_channel(int(post["channel_id"]))
-                if ch:
-                    msg = await ch.fetch_message(int(post["message_id"]))
-                    await msg.delete()
-        except Exception:
-            pass
-    await db_exec("DELETE FROM embed_posts WHERE id=? AND guild_id=?", (post_id, guild_id))
+    await _embed_entfernen(guild_id, post_id)
     return RedirectResponse(f"/servers/{guild_id}?tab=embeds&success=Gelöscht", status_code=302)
+
+
+# ── Markieren, in einem Rutsch loeschen, verschieben ──────────────────────────────────
+# Gewuenscht am 18.11.2026: "ich will bei einträgen zb auch die möglichkeit haben das mann
+# sachen makieren kann und makierte löchen zu können" - und verschieben.
+#
+# Die Zeilen bleiben, wie sie sind: das Markieren haengt an Kaestchen, die ueber das
+# form-Attribut zu einem Formular AUSSERHALB der Tabelle gehoeren. Ein Formular um die
+# Tabelle herum ginge nicht, weil in den Zeilen schon welche stehen und HTML keine
+# verschachtelten Formulare kennt.
+
+def _markierte_ids(form) -> list:
+    """Die angekreuzten Zeilen - nur Zahlen, hoechstens 200 auf einmal."""
+    roh = form.getlist("markiert") if hasattr(form, "getlist") else []
+    aus = []
+    for wert in roh[:200]:
+        try:
+            aus.append(int(str(wert)))
+        except (TypeError, ValueError):
+            continue
+    return aus
+
+
+async def _neu_sortieren(tabelle: str, guild_id, zeile_id: int, richtung: str) -> bool:
+    """Eine Zeile einen Platz nach oben oder unten - und die ganze Liste neu durchnummerieren.
+
+    Nicht nur die zwei betroffenen Zeilen tauschen: bestehende Eintraege stehen alle auf 0,
+    ein Tausch zweier Nullen waere wirkungslos. Nach dem ersten Verschieben hat die Liste
+    feste Plaetze 1..n, und ab da ist jeder weitere Schritt eindeutig.
+
+    Der Tabellenname kommt aus dem Aufruf im Code, nie aus einer Anfrage.
+    """
+    zeilen = await db_rows(
+        f"SELECT id FROM {tabelle} WHERE guild_id=? ORDER BY sortierung, id DESC",
+        (str(guild_id),))
+    ids = [z["id"] for z in zeilen]
+    if zeile_id not in ids:
+        return False
+    i = ids.index(zeile_id)
+    j = i - 1 if richtung == "hoch" else i + 1
+    if j < 0 or j >= len(ids):
+        return False          # schon ganz oben oder ganz unten - kein Fehler, nur nichts zu tun
+    ids[i], ids[j] = ids[j], ids[i]
+    for platz, kennung in enumerate(ids, start=1):
+        await db_exec(f"UPDATE {tabelle} SET sortierung=? WHERE id=? AND guild_id=?",
+                      (platz, kennung, str(guild_id)))
+    return True
+
+
+@web.post("/servers/{guild_id}/embeds/markierte-loeschen")
+async def embed_posts_bulk_delete(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    ids = _markierte_ids(await request.form())
+    if not ids:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=embeds&error=Nichts+markiert", status_code=302)
+    weg = 0
+    for post_id in ids:
+        if await _embed_entfernen(guild_id, post_id):
+            weg += 1
+    return RedirectResponse(
+        f"/servers/{guild_id}?tab=embeds&success={weg}+gelöscht", status_code=302)
+
+
+@web.post("/servers/{guild_id}/embeds/{post_id}/verschieben")
+async def embed_post_move(request: Request, guild_id: int, post_id: int, richtung: str = ""):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    if richtung not in ("hoch", "runter"):
+        richtung = "hoch"
+    await _neu_sortieren("embed_posts", guild_id, post_id, richtung)
+    return RedirectResponse(f"/servers/{guild_id}?tab=embeds", status_code=302)
 
 
 _EMBED_IMAGE_MEDIA_TYPES = {

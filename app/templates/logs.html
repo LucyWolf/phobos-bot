@@ -44,7 +44,7 @@
 
   <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
     <form method="post" action="/settings/logs/clear" style="margin:0;"
-          onsubmit="return confirm({{ tr.logs_clear_confirm | js }})">
+          onsubmit="return frage(this, {{ tr.logs_clear_confirm | js }})">
       <button type="submit" class="btn btn-danger" style="font-size:0.8rem;">🗑 {{ tr.logs_clear }}</button>
     </form>
     <a href="/settings/logs/download" class="btn btn-secondary" style="font-size:0.8rem;">⬇ {{ tr.logs_download }}</a>

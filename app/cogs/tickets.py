@@ -41,6 +41,9 @@ TICKET_TEXTE = {
         "panel_gone":     "Panel nicht gefunden.",
         "panel_off":      "Dieses Panel ist aktuell nicht aktiv.",
         "already_open":   "Du hast bereits ein offenes Ticket: {kanal}",
+        # Getrennter Text, weil "du hast schon ein Ticket" sonst falsch klingt, wenn es
+        # nur fuer diese eine Kategorie gilt und andere offen stehen.
+        "already_open_kat": "Du hast in dieser Kategorie bereits ein offenes Ticket: {kanal}",
         "created_reason": "Ticket von {wer} – Panel: {panel}",
         "created":        "Ticket erstellt: {kanal}",
         "failed":         "Ticket konnte nicht erstellt werden. Bitte kontaktiere einen Admin.",
@@ -63,6 +66,7 @@ TICKET_TEXTE = {
         "panel_gone":     "Panel not found.",
         "panel_off":      "This panel is currently inactive.",
         "already_open":   "You already have an open ticket: {kanal}",
+        "already_open_kat": "You already have an open ticket in this category: {kanal}",
         "created_reason": "Ticket from {wer} – panel: {panel}",
         "created":        "Ticket created: {kanal}",
         "failed":         "The ticket could not be created. Please contact an admin.",
@@ -500,16 +504,35 @@ class PanelButton(ui.Button):
             await _antwort(interaction, await tt(interaction.guild_id, "panel_off"))
             return
 
-        existing = await db_one(
-            "SELECT channel_id FROM tickets WHERE guild_id=? AND user_id=? AND panel_id=? AND status='open'",
-            (guild.id, interaction.user.id, panel_id),
-        )
+        # Wie viele Tickets jemand gleichzeitig offen haben darf, haengt an der Kategorie,
+        # nicht am Panel. Vorher zaehlte nur das Panel - wer ein Verification-Ticket offen
+        # hatte, konnte keinen Regelverstoss mehr melden, obwohl das zwei voellig
+        # verschiedene Anliegen sind und oft verschiedene Leute bearbeiten.
+        #
+        # Wer es weiterhin streng will (ein Anliegen nach dem anderen), setzt im Panel den
+        # Haken "ein_ticket_gesamt". Panels mit einfachem Knopf haben gar keine Kategorien;
+        # dort ist option_id immer 0, und beide Wege kommen aufs selbe heraus.
+        streng = bool(panel.get("ein_ticket_gesamt")) or not option_id
+        if streng:
+            existing = await db_one(
+                "SELECT channel_id FROM tickets WHERE guild_id=? AND user_id=? AND panel_id=? "
+                "AND status='open'",
+                (guild.id, interaction.user.id, panel_id),
+            )
+        else:
+            existing = await db_one(
+                "SELECT channel_id FROM tickets WHERE guild_id=? AND user_id=? AND panel_id=? "
+                "AND option_id=? AND status='open'",
+                (guild.id, interaction.user.id, panel_id, option_id),
+            )
         if existing:
             ch = guild.get_channel(existing["channel_id"])
             if ch:
                 await _antwort(
                     interaction,
-                    await tt(interaction.guild_id, "already_open", kanal=ch.mention))
+                    await tt(interaction.guild_id,
+                             "already_open" if streng else "already_open_kat",
+                             kanal=ch.mention))
                 return
             # Channel wurde extern gelöscht — altes Ticket bereinigen
             await db_exec("UPDATE tickets SET status='closed' WHERE channel_id=?", (existing["channel_id"],))
@@ -548,8 +571,9 @@ class PanelButton(ui.Button):
                                 wer=interaction.user, panel=panel["name"]),
             )
             await db_exec(
-                "INSERT INTO tickets (guild_id, channel_id, user_id, panel_id) VALUES (?,?,?,?)",
-                (guild.id, channel.id, interaction.user.id, panel_id),
+                "INSERT INTO tickets (guild_id, channel_id, user_id, panel_id, option_id) "
+                "VALUES (?,?,?,?,?)",
+                (guild.id, channel.id, interaction.user.id, panel_id, option_id or 0),
             )
 
             # ticket_message is its OWN field, split from the panel's advertisement text
@@ -563,7 +587,7 @@ class PanelButton(ui.Button):
                       or [await tt(guild.id, "ticket_intro")])
             embeds = []
             for i, block in enumerate(blocks[:10]):
-                # User-reported ("Hallo @Zerafi! {user}, your ticket has been created." - the
+                # User-reported ("Hallo @Name! {user}, your ticket has been created." - the
                 # admin had typed their own {user} placeholder expecting it to be substituted,
                 # same as the {user}/{server} placeholders already supported elsewhere in this
                 # project (welcome messages, Auto-Kick reminders) - there was no substitution at

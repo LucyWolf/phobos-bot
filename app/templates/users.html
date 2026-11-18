@@ -41,7 +41,7 @@
     {{ tr.usr_sessions_hint }}
   </p>
   <form method="post" action="/admin/logout-all"
-        onsubmit="return confirm('Wirklich ALLE Sitzungen sofort beenden? Auch du wirst dabei ausgeloggt.')">
+        onsubmit="return frage(this, 'Wirklich ALLE Sitzungen sofort beenden? Auch du wirst dabei ausgeloggt.')">
     <button type="submit" class="btn btn-danger">🔒 {{ tr.usr_sessions_button }}</button>
   </form>
 </div>
@@ -121,7 +121,7 @@
                aufzuheben gibt. #}
             {% if u.sperren %}
             <form method="post" action="/users/{{ u.id }}/unlock" style="display:inline"
-                  onsubmit="return confirm({{ (tr.usr_unlock ~ ': ' ~ u.username ~ '?') | js }})">
+                  onsubmit="return frage(this, {{ (tr.usr_unlock ~ ': ' ~ u.username ~ '?') | js }})">
               <button type="submit" class="btn btn-secondary"
                       style="font-size:0.78rem; padding:0.25rem 0.6rem;" title="{{ tr.usr_unlock }}">🔓</button>
             </form>
@@ -129,7 +129,7 @@
             {% if u.username == username %}
             <span style="font-size:0.78rem; color:var(--muted);">Du</span>
             {% if admin_count > 1 %}
-            <form method="post" action="/users/delete/{{ u.id }}?next=/users" onsubmit="return confirm({{ ('Eigenes Konto „' ~ u.username ~ '“ wirklich löschen? Du wirst danach ausgeloggt.') | js }})" style="display:inline">
+            <form method="post" action="/users/delete/{{ u.id }}?next=/users" onsubmit="return frage(this, {{ ('Eigenes Konto „' ~ u.username ~ '“ wirklich löschen? Du wirst danach ausgeloggt.') | js }})" style="display:inline">
               <button type="submit" class="btn btn-danger" title="{{ tr.btn_delete }}">✕</button>
             </form>
             {% endif %}
@@ -156,7 +156,7 @@
             <button type="button" onclick="togglePw({{ u.id }})"
                     class="btn btn-secondary" style="font-size:0.78rem; padding:0.25rem 0.6rem;" title="{{ tr.usr_change_pw }}">🔑</button>
             <form method="post" action="/users/{{ u.id }}/toggle-active" style="display:inline"
-                  onsubmit="return confirm({{ ('Konto ' ~ u.username ~ ' ' ~ ('deaktivieren' if u.active else 'aktivieren') ~ '?') | js }})">
+                  onsubmit="return frage(this, {{ ('Konto ' ~ u.username ~ ' ' ~ ('deaktivieren' if u.active else 'aktivieren') ~ '?') | js }})">
               <button type="submit" class="btn btn-secondary" style="font-size:0.78rem; padding:0.25rem 0.6rem;"
                       title="{% if u.active %}Deaktivieren{% else %}Aktivieren{% endif %}">
                 {% if u.active %}🚫{% else %}✅{% endif %}
@@ -164,7 +164,7 @@
             </form>
             <form method="post" action="/admin/backup/user/{{ u.id }}" style="display:inline;margin:0;"><button type="submit" class="btn btn-secondary"
                style="font-size:0.78rem;padding:0.25rem 0.6rem;" title="Backup herunterladen">💾</button></form>
-            <form method="post" action="/users/delete/{{ u.id }}?next=/users" onsubmit="return confirm({{ ('Benutzer „' ~ u.username ~ '“ wirklich löschen?') | js }})" style="display:inline">
+            <form method="post" action="/users/delete/{{ u.id }}?next=/users" onsubmit="return frage(this, {{ ('Benutzer „' ~ u.username ~ '“ wirklich löschen?') | js }})" style="display:inline">
               <button type="submit" class="btn btn-danger" title="{{ tr.btn_delete }}">✕</button>
             </form>
             {% endif %}
@@ -231,6 +231,10 @@
     <input type="password" name="password" autocomplete="new-password"
            placeholder="{{ tr.usr_restore_pw }}"
            style="margin-bottom:1rem;">
+    <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;font-weight:400;margin-bottom:1rem;">
+      <input type="checkbox" name="nochmal" value="1" style="margin:0;">
+      {{ tr.backup_again_label }}
+    </label>
     <button type="submit" class="btn btn-primary">📂 {{ tr.usr_restore_button }}</button>
   </form>
 </div>

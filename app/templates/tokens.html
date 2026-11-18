@@ -71,7 +71,7 @@
         </button>
       </form>
       <form method="post" action="/settings/tokens/delete/{{ t.id }}" style="margin:0;"
-            onsubmit="return confirm({{ tr.tok_delete_confirm.replace('{name}', t.label) | js }})">
+            onsubmit="return frage(this, {{ tr.tok_delete_confirm.replace('{name}', t.label) | js }})">
         <button type="submit" class="btn" style="padding:0.3rem 0.65rem;font-size:0.8rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
       </form>
     </div>

@@ -118,6 +118,12 @@
       <input type="password" name="password" autocomplete="new-password"
              placeholder="{{ tr.backup_password_restore_ph }}" style="margin:0;max-width:230px;">
       <button type="submit" class="btn btn-primary">{{ tr.server_backup_restore_btn }}</button>
+      {# Erst setzen, wenn der Bot sagt, dass diese Datei hier schon durchgelaufen ist.
+         Ungesetzt heisst: ein zweites Mal wird abgelehnt statt alles zu verdoppeln. #}
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.78rem;font-weight:400;margin:0;flex-basis:100%;">
+        <input type="checkbox" name="nochmal" value="1" style="margin:0;">
+        {{ tr.backup_again_label }}
+      </label>
     </form>
   </div>
 </div>
@@ -388,7 +394,7 @@ document.addEventListener('click', function(e) {
       <button type="submit" class="btn btn-secondary" style="padding:0.4rem 0.6rem;" title="{{ tr.btn_save }}">💾</button>
     </form>
     <form method="post" action="/servers/{{ guild.id }}/automod-presets/delete/{{ p.id }}" style="margin:0;"
-          onsubmit="return confirm({{ tr.automod_confirm_delete_category.replace('{name}', p.label) | js }})">
+          onsubmit="return frage(this, {{ tr.automod_confirm_delete_category.replace('{name}', p.label) | js }})">
       <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">✕</button>
     </form>
   </div>
@@ -536,7 +542,7 @@ document.addEventListener('click', function(e) {
     <span class="badge" style="background:var(--accent-light);color:#a78bfa;">{{ tr.leveling_lvl_badge_prefix }} {{ lr.level }}</span>
     <span style="flex:1;font-size:0.85rem;">{{ lr.role_name }}</span>
     <form method="post" action="/servers/{{ guild.id }}/level-roles/delete/{{ lr.id }}" style="margin:0;"
-          onsubmit="return confirm({{ tr.leveling_role_confirm_delete.replace('{level}', lr.level|string) | js }})">
+          onsubmit="return frage(this, {{ tr.leveling_role_confirm_delete.replace('{level}', lr.level|string) | js }})">
       <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">✕</button>
     </form>
   </div>
@@ -568,7 +574,7 @@ document.addEventListener('click', function(e) {
     <span class="badge" style="background:var(--accent-light);color:#a78bfa;">{{ tr.leveling_lvl_badge_prefix }} {{ lrw.level }}</span>
     <span style="flex:1;font-size:0.85rem;">{{ lrw.reward }}</span>
     <form method="post" action="/servers/{{ guild.id }}/level-rewards/delete/{{ lrw.id }}" style="margin:0;"
-          onsubmit="return confirm({{ tr.leveling_reward_confirm_delete.replace('{level}', lrw.level|string) | js }})">
+          onsubmit="return frage(this, {{ tr.leveling_reward_confirm_delete.replace('{level}', lrw.level|string) | js }})">
       <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">✕</button>
     </form>
   </div>
@@ -656,7 +662,7 @@ renderLvlChannelsList();
           <td style="color:var(--muted)">{{ e.voice_minutes }}</td>
           <td style="text-align:right;">
             <form method="post" action="/servers/{{ guild.id }}/levels/delete/{{ e.user_id }}" style="margin:0;"
-                  onsubmit="return confirm({{ tr.leveling_leaderboard_confirm_delete.replace('{user}', e.username) | js }})">
+                  onsubmit="return frage(this, {{ tr.leveling_leaderboard_confirm_delete.replace('{user}', e.username) | js }})">
               <button class="btn btn-danger" type="submit" style="padding:0.2rem 0.5rem;" title="{{ tr.btn_delete }}">✕</button>
             </form>
           </td>
@@ -727,7 +733,7 @@ renderLvlChannelsList();
           <td><span class="badge badge-moderator">{{ rr.role_name }}</span></td>
           <td style="white-space:nowrap;">
             <button type="button" class="btn btn-secondary" onclick="toggleRrEdit({{ rr.id }})" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_settings }}">⚙</button>
-            <form method="post" action="/servers/{{ guild.id }}/reaction_roles/{{ rr.id }}/delete" style="display:inline" onsubmit="return confirm({{ tr.rr_confirm_delete.replace('{emoji}', (':' ~ rr.emoji_name ~ ':') if rr.emoji_name else rr.emoji).replace('{role}', rr.role_name) | js }})">
+            <form method="post" action="/servers/{{ guild.id }}/reaction_roles/{{ rr.id }}/delete" style="display:inline" onsubmit="return frage(this, {{ tr.rr_confirm_delete.replace('{emoji}', (':' ~ rr.emoji_name ~ ':') if rr.emoji_name else rr.emoji).replace('{role}', rr.role_name) | js }})">
               <button class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_delete }}">✕</button>
             </form>
           </td>
@@ -923,7 +929,7 @@ function toggleRrEdit(id) {
           <td><code>!{{ c.trigger }}</code></td>
           <td style="color:var(--muted);max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.response }}</td>
           <td>
-            <form method="post" action="/servers/{{ guild.id }}/commands/{{ c.id }}/delete" style="display:inline" onsubmit="return confirm({{ tr.commands_confirm_delete.replace('{trigger}', c.trigger) | js }})">
+            <form method="post" action="/servers/{{ guild.id }}/commands/{{ c.id }}/delete" style="display:inline" onsubmit="return frage(this, {{ tr.commands_confirm_delete.replace('{trigger}', c.trigger) | js }})">
               <button class="btn btn-danger" title="{{ tr.btn_delete }}">✕</button>
             </form>
           </td>
@@ -1047,7 +1053,7 @@ document.addEventListener('click', function(e) {
                 <button class="btn btn-secondary" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="{{ tr.tickets_btn_deactivate }}">⏸</button>
               </form>
               {% endif %}
-              <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/delete" style="display:inline;" onsubmit="return confirm({{ tr.tickets_panel_confirm_delete.replace('{name}', p.name) | js }})">
+              <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/delete" style="display:inline;" onsubmit="return frage(this, {{ tr.tickets_panel_confirm_delete.replace('{name}', p.name) | js }})">
                 <button class="btn btn-danger" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="{{ tr.btn_delete }}">✕</button>
               </form>
             </div>
@@ -1110,6 +1116,14 @@ document.addEventListener('click', function(e) {
                     {% for ch in channels %}<option value="{{ ch.id }}" {% if p.transcript_channel_id == ch.id %}selected{% endif %}>{{ ch.name }}</option>{% endfor %}
                   </select>
                   <p class="hint" style="margin:0.2rem 0 0;">{{ tr.tickets_transcript_channel_hint }}</p>
+                </div>
+                <div>
+                  <label style="display:flex;align-items:center;gap:0.5rem;font-weight:400;margin:0;">
+                    <input type="checkbox" name="ein_ticket_gesamt" value="1" style="width:auto;margin:0;"
+                           {% if p.ein_ticket_gesamt %}checked{% endif %}>
+                    <strong>{{ tr.tickets_ein_gesamt_label }}</strong>
+                  </label>
+                  <p class="hint" style="margin:0.3rem 0 0;">{{ tr.tickets_ein_gesamt_hint }}</p>
                 </div>
                 <div style="grid-column:1/-1;">
                   <label>{{ tr.tickets_description_label }}</label>
@@ -1229,7 +1243,7 @@ document.addEventListener('click', function(e) {
                   <button type="submit" class="btn btn-danger" style="font-size:0.7rem;padding:0.2rem 0.5rem;"
                           formnovalidate
                           formaction="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/options/{{ o.id }}/delete"
-                          onclick="return confirm({{ tr.tickets_option_confirm_delete.replace('{name}', o.label) | js }})">{{ tr.btn_delete }}</button>
+                          onclick="return frage(this, {{ tr.tickets_option_confirm_delete.replace('{name}', o.label) | js }})">{{ tr.btn_delete }}</button>
                 </div>
               </div>
               {% endfor %}
@@ -1294,11 +1308,11 @@ document.addEventListener('click', function(e) {
           <td style="color:var(--muted);font-size:0.8rem">{{ t.created_at | dt }}</td>
           <td style="display:flex;gap:0.4rem;align-items:center;">
             <form method="post" action="/servers/{{ guild.id }}/tickets/{{ t.id }}/close"
-                  onsubmit="return confirm({{ tr.tickets_confirm_close.replace('{user}', t.username) | js }})" style="margin:0">
+                  onsubmit="return frage(this, {{ tr.tickets_confirm_close.replace('{user}', t.username) | js }})" style="margin:0">
               <button class="btn btn-secondary" style="font-size:0.75rem;padding:0.22rem 0.55rem;">{{ tr.tickets_btn_close_ticket }}</button>
             </form>
             <form method="post" action="/servers/{{ guild.id }}/tickets/{{ t.id }}/delete"
-                  onsubmit="return confirm({{ tr.tickets_confirm_delete_entry | js }})" style="margin:0">
+                  onsubmit="return frage(this, {{ tr.tickets_confirm_delete_entry | js }})" style="margin:0">
               <button class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.5rem;" title="{{ tr.btn_delete }}">✕</button>
             </form>
           </td>
@@ -1436,10 +1450,10 @@ document.addEventListener('click', function(e) {
           <td style="color:var(--muted);font-size:0.8rem">{{ g.ends_at | dt }}</td>
           <td style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
             <form method="post" action="/servers/{{ guild.id }}/giveaways/{{ g.id }}/end" style="display:inline">
-              <button class="btn btn-danger" onclick="return confirm({{ tr.giveaways_confirm_end | js }})">{{ tr.giveaways_btn_end }}</button>
+              <button class="btn btn-danger" onclick="return frage(this, {{ tr.giveaways_confirm_end | js }})">{{ tr.giveaways_btn_end }}</button>
             </form>
             <form method="post" action="/servers/{{ guild.id }}/giveaways/{{ g.id }}/reroll" style="display:inline">
-              <button class="btn" style="background:var(--accent-light);color:#a78bfa;border:1px solid rgba(124,58,237,0.3);" onclick="return confirm({{ tr.giveaways_confirm_reroll | js }})">{{ tr.giveaways_btn_reroll }}</button>
+              <button class="btn" style="background:var(--accent-light);color:#a78bfa;border:1px solid rgba(124,58,237,0.3);" onclick="return frage(this, {{ tr.giveaways_confirm_reroll | js }})">{{ tr.giveaways_btn_reroll }}</button>
             </form>
           </td>
         </tr>
@@ -1578,12 +1592,12 @@ document.addEventListener('click', function(e) {
             <button type="button" class="btn btn-secondary" onclick="togglePanelEdit('poll-{{ p.id }}')" title="{{ tr.btn_settings }}" style="padding:0.22rem 0.55rem;font-size:0.75rem;">⚙</button>
             <form method="post" action="/servers/{{ guild.id }}/polls/{{ p.id }}/end" style="display:inline">
               {% if p.starts_at and not p.message_id %}
-              <button class="btn btn-danger" onclick="return confirm({{ tr.polls_confirm_cancel_scheduled | js }})">{{ tr.polls_btn_cancel_scheduled }}</button>
+              <button class="btn btn-danger" onclick="return frage(this, {{ tr.polls_confirm_cancel_scheduled | js }})">{{ tr.polls_btn_cancel_scheduled }}</button>
               {% else %}
-              <button class="btn btn-danger" onclick="return confirm({{ tr.polls_confirm_end | js }})">{{ tr.polls_btn_end }}</button>
+              <button class="btn btn-danger" onclick="return frage(this, {{ tr.polls_confirm_end | js }})">{{ tr.polls_btn_end }}</button>
               {% endif %}
             </form>
-            <form method="post" action="/servers/{{ guild.id }}/polls/{{ p.id }}/delete" style="display:inline" onsubmit="return confirm({{ tr.polls_confirm_delete.replace('{question}', p.question) | js }})">
+            <form method="post" action="/servers/{{ guild.id }}/polls/{{ p.id }}/delete" style="display:inline" onsubmit="return frage(this, {{ tr.polls_confirm_delete.replace('{question}', p.question) | js }})">
               <button class="btn btn-danger" title="{{ tr.btn_delete }}">✕</button>
             </form>
           </td>
@@ -2304,7 +2318,7 @@ document.querySelectorAll('.poll-form').forEach(function(form) {
       <td style="padding:0.5rem;text-align:right;white-space:nowrap;">
         <button type="button" class="btn btn-secondary" onclick="toggleRatingEdit({{ r.id }})" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_settings }}">⚙</button>
         <form method="post" action="/servers/{{ guild.id }}/ratings/delete/{{ r.id }}" style="margin:0;display:inline;"
-          onsubmit="return confirm({{ tr.ratings_confirm_delete.replace('{name}', r.label) | js }})">
+          onsubmit="return frage(this, {{ tr.ratings_confirm_delete.replace('{name}', r.label) | js }})">
           <button type="submit" class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_delete }}">✕</button>
         </form>
       </td>
@@ -2430,7 +2444,7 @@ function toggleRatingEdit(id) {
           <td style="color:var(--muted);font-size:0.8rem">{{ wg.last | dt }}</td>
           <td>
             <form method="post" action="/servers/{{ guild.id }}/warnings/{{ wg.user_id }}/clear" style="display:inline">
-              <button class="btn btn-danger" onclick="return confirm({{ tr.warnings_confirm_clear.replace('{user}', wg.username) | js }})" title="{{ tr.btn_delete }}">✕</button>
+              <button class="btn btn-danger" onclick="return frage(this, {{ tr.warnings_confirm_clear.replace('{user}', wg.username) | js }})" title="{{ tr.btn_delete }}">✕</button>
             </form>
           </td>
         </tr>
@@ -2988,7 +3002,7 @@ function toggleScheduledEdit(id) {
         {% if ev.status.name == 'scheduled' %}
         <button type="button" class="btn btn-secondary" onclick="toggleEventEdit('{{ ev.id }}')" style="padding:0.2rem 0.6rem;font-size:0.78rem;" title="{{ tr.btn_settings }}">⚙</button>
         {% endif %}
-        <form method="post" action="/servers/{{ guild.id }}/events/delete/{{ ev.id }}" style="margin:0;display:inline;" onsubmit="return confirm({{ tr.events_confirm_delete.replace('{name}', ev.name) | js }})">
+        <form method="post" action="/servers/{{ guild.id }}/events/delete/{{ ev.id }}" style="margin:0;display:inline;" onsubmit="return frage(this, {{ tr.events_confirm_delete.replace('{name}', ev.name) | js }})">
           <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
         </form>
       </td>
@@ -3080,7 +3094,7 @@ function toggleScheduledEdit(id) {
         <form method="post" action="/servers/{{ guild.id }}/events/series/pause/{{ s.id }}" style="margin:0;display:inline;">
           <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;margin-right:0.3rem;" title="{{ tr.events_series_btn_resume if s.paused else tr.events_series_btn_pause }}">{{ '▶' if s.paused else '⏸' }}</button>
         </form>
-        <form method="post" action="/servers/{{ guild.id }}/events/series/delete/{{ s.id }}" style="margin:0;display:inline;" onsubmit="return confirm({{ tr.events_series_confirm_stop.replace('{name}', s.name) | js }})">
+        <form method="post" action="/servers/{{ guild.id }}/events/series/delete/{{ s.id }}" style="margin:0;display:inline;" onsubmit="return frage(this, {{ tr.events_series_confirm_stop.replace('{name}', s.name) | js }})">
           <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);" title="{{ tr.events_series_btn_stop }}">✕</button>
         </form>
       </td>
@@ -3404,7 +3418,7 @@ document.addEventListener('click', function(e) {
     <span class="badge" style="background:var(--accent-light);color:#a78bfa;white-space:nowrap;">{{ rem.hours }}h</span>
     <span style="flex:1;font-size:0.85rem;">{{ rem.message }}</span>
     <form method="post" action="/servers/{{ guild.id }}/auto-kick/reminders/delete/{{ rem.id }}" style="margin:0;"
-          onsubmit="return confirm({{ tr.autokick_reminder_confirm_delete.replace('{hours}', rem.hours|string) | js }})">
+          onsubmit="return frage(this, {{ tr.autokick_reminder_confirm_delete.replace('{hours}', rem.hours|string) | js }})">
       <button class="btn btn-danger" type="submit" title="{{ tr.btn_delete }}">✕</button>
     </form>
   </div>
@@ -3445,6 +3459,201 @@ document.addEventListener('click', function(e) {
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <!-- TAB: VRC-Link                                                       -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Profile -->
+<div class="tab-pane" id="pane-profile">
+
+<form method="post" action="/servers/{{ guild.id }}">
+<input type="hidden" name="tab" value="profile">
+<div class="card">
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.profil_hint }}</p>
+  <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-bottom:0.9rem;">
+    <input type="checkbox" name="profil_enabled" value="1" style="margin:0;" {% if cfg.get('profil_enabled') == '1' %}checked{% endif %}>
+    {{ tr.profil_enabled_label }}
+  </label>
+
+  <div class="grid-2" style="gap:1rem;">
+    <div>
+      <label>{{ tr.profil_18_role_label }}</label>
+      <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.profil_18_role_hint }}</p>
+      <select name="profil_18_role">
+        <option value="">{{ tr.profil_18_role_none }}</option>
+        {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('profil_18_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>{{ tr.profil_inspect_role_label }}</label>
+      <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.profil_inspect_role_hint }}</p>
+      <select name="profil_inspect_role">
+        <option value="">{{ tr.profil_inspect_role_none }}</option>
+        {% for r in roles %}<option value="{{ r.id }}" {% if cfg.get('profil_inspect_role') == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin:0 0 0.5rem;font-size:0.95rem;">{{ tr.profil_welt_heading }}</h3>
+  <p class="hint" style="margin-bottom:1rem;">{{ tr.profil_welt_hint }}</p>
+  <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:400;margin-bottom:0.9rem;">
+    <input type="checkbox" name="profil_welt_on" value="1" style="margin:0;" {% if cfg.get('profil_welt_on') == '1' %}checked{% endif %}>
+    {{ tr.profil_welt_on_label }}
+  </label>
+  <label>{{ tr.profil_welt_key_label }}</label>
+  <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.profil_welt_key_hint }}</p>
+  <input type="text" name="profil_welt_key" maxlength="64" value="{{ cfg.get('profil_welt_key', '') }}"
+         placeholder="{{ tr.profil_welt_key_placeholder }}">
+  {% if cfg.get('profil_welt_key') and cfg.get('profil_welt_on') == '1' %}
+  <p class="hint" style="margin:0.6rem 0 0;">{{ tr.profil_welt_url_label }}</p>
+  <code style="display:block;word-break:break-all;background:var(--bg);border:1px solid var(--border);
+               border-radius:0.5rem;padding:0.5rem 0.7rem;font-size:0.75rem;margin-top:0.3rem;">{{ base_url }}/api/profil?key={{ cfg.get('profil_welt_key')|urlencode }}&amp;vrc=NAME</code>
+  {% endif %}
+</div>
+
+<button type="submit" class="btn">{{ tr.btn_save }}</button>
+</form>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Plugins -->
+{# Hier wird entschieden, WO ein Plugin wirkt - in die Installation kommt es unter
+   Einstellungen -> Plugins. Jedes Plugin bekommt sein eigenes Formular, weil die Felder
+   aus dem Paket kommen und bei jedem anders aussehen. #}
+<div class="tab-pane" id="pane-plugins">
+
+<p class="hint" style="margin-bottom:1.25rem;">{{ tr.plug_server_hint }}</p>
+
+{% if not plugins_liste %}
+  <div class="card"><p class="hint" style="margin:0;">{{ tr.plug_server_none }}</p></div>
+{% endif %}
+
+{% for p in plugins_liste %}
+<div class="card">
+  <div style="display:flex;align-items:flex-start;gap:0.75rem;flex-wrap:wrap;">
+    <div style="flex:1;min-width:220px;">
+      <div style="font-weight:700;font-size:0.95rem;">
+        {{ p.name }}
+        <span style="color:var(--muted);font-weight:400;font-size:0.78rem;">{{ p.version }}</span>
+        {% if p.aktiv %}
+        <span style="background:rgba(34,197,94,0.15);border:1px solid #22c55e;color:#22c55e;
+                     border-radius:999px;padding:0.1rem 0.55rem;font-size:0.68rem;margin-left:0.3rem;">
+          ✓ {{ tr.plug_active }}</span>
+        {% endif %}
+      </div>
+      <div style="color:var(--muted);font-size:0.75rem;margin-top:0.15rem;">
+        <code>{{ p.kennung }}</code>{% if p.autor %} · {{ tr.plug_author }} {{ p.autor }}{% endif %}
+      </div>
+      {% if p.beschreibung %}
+      <p style="margin:0.6rem 0 0;font-size:0.82rem;line-height:1.6;">{{ p.beschreibung }}</p>
+      {% endif %}
+      <div style="margin-top:0.7rem;display:flex;gap:0.4rem;flex-wrap:wrap;">
+        {% for t in p.teile %}
+        <span style="background:var(--bg);border:1px solid var(--border);border-radius:999px;
+                     padding:0.15rem 0.6rem;font-size:0.72rem;">
+          {{ t.titel }}: {{ t.anzahl }}{% if t.kinder %} (+{{ t.kinder }}){% endif %}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {# Was dort wirklich steht - nachgeschlagen in den echten Tabellen, nicht aus der Datei
+     abgeschrieben. Eine Zahl beantwortet die Frage nicht, die man davor hat. #}
+  {% if p.aktiv and p.angelegt and p.angelegt.gruppen %}
+  <div style="margin-top:1rem;padding:0.8rem 1rem;background:var(--bg);
+              border:1px solid var(--border);border-radius:0.6rem;">
+    <div style="font-size:0.78rem;font-weight:700;margin-bottom:0.5rem;">{{ tr.plug_created }}</div>
+    {% for g in p.angelegt.gruppen %}
+    <div style="font-size:0.8rem;line-height:1.7;">
+      <span style="color:var(--muted);">{{ g.titel }}:</span>
+      {% for n in g.namen %}<code style="background:var(--surface);border:1px solid var(--border);
+         border-radius:0.35rem;padding:0.05rem 0.35rem;margin-right:0.25rem;">{{ n }}</code>{% endfor %}
+    </div>
+    {% endfor %}
+    {% if p.angelegt.fehlend %}
+    <p class="hint" style="margin:0.6rem 0 0;color:#f59e0b;">
+      ⚠️ {{ p.angelegt.fehlend }} {{ tr.plug_missing }}
+    </p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if p.aktiv and p.veraltet %}
+  <div class="alert alert-error" style="margin:0.9rem 0 0;">
+    ⚠️ {{ tr.plug_outdated }} ({{ p.stand or '?' }} → {{ p.version }})
+  </div>
+  {% endif %}
+
+  <form method="post" action="/servers/{{ guild.id }}/plugins/{{ p.id }}/anwenden"
+        style="margin-top:1rem;">
+    {% if p.einstellungen %}
+    <div class="grid-2" style="gap:1rem;">
+      {% for e in p.einstellungen %}
+      <div>
+        <label>{{ e.titel }}{% if e.pflicht %} <span style="color:#f59e0b;font-size:0.7rem;">({{ tr.plug_required }})</span>{% endif %}</label>
+        {% if e.hinweis %}<p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ e.hinweis }}</p>{% endif %}
+        {% set wert = p.werte.get(e.name, e.standard) %}
+        {% if e.art == 'rolle' %}
+          <select name="e_{{ e.name }}">
+            <option value="">{{ tr.plug_pick_role }}</option>
+            {% for r in roles %}<option value="{{ r.id }}" {% if wert == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+          </select>
+        {% elif e.art == 'kanal' %}
+          <select name="e_{{ e.name }}">
+            <option value="">{{ tr.plug_pick_channel }}</option>
+            {% for c in channels %}<option value="{{ c.id }}" {% if wert == c.id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
+          </select>
+        {% elif e.art == 'kategorie' %}
+          <select name="e_{{ e.name }}">
+            <option value="">{{ tr.plug_pick_category }}</option>
+            {% for c in categories %}<option value="{{ c.id }}" {% if wert == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+          </select>
+        {% elif e.art == 'mehrzeilig' %}
+          <textarea name="e_{{ e.name }}" rows="3">{{ wert }}</textarea>
+        {% elif e.art == 'zahl' %}
+          <input type="number" name="e_{{ e.name }}" value="{{ wert }}">
+        {% else %}
+          <input type="text" name="e_{{ e.name }}" maxlength="4000" value="{{ wert }}">
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="hint" style="margin:0 0 0.8rem;">{{ tr.plug_no_settings }}</p>
+    {% endif %}
+
+    {% if p.aktiv %}
+    <p class="hint" style="margin:0.9rem 0 0.6rem;">{{ tr.plug_reapply_hint }}</p>
+    {% endif %}
+    <button type="submit" class="btn" style="margin-top:0.4rem;">
+      {% if p.aktiv %}{% if p.veraltet %}{{ tr.plug_update }}{% else %}{{ tr.plug_save }}{% endif %}{% else %}{{ tr.plug_add }}{% endif %}
+    </button>
+  </form>
+
+  {% if p.aktiv %}
+  <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);
+              display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
+    <a class="btn btn-secondary" href="/servers/{{ guild.id }}/plugins/{{ p.id }}/einstellungen">
+      {{ tr.plug_settings_export }}</a>
+    <form method="post" action="/servers/{{ guild.id }}/plugins/{{ p.id }}/einstellungen"
+          enctype="multipart/form-data" style="margin:0;display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+      <input type="file" name="einstellungen_file" accept=".json,application/json" required
+             style="max-width:230px;">
+      <button type="submit" class="btn btn-secondary">{{ tr.plug_settings_import }}</button>
+    </form>
+    <form method="post" action="/servers/{{ guild.id }}/plugins/{{ p.id }}/entfernen"
+          style="margin:0;margin-left:auto;"
+          onsubmit="return frage(this, '{{ tr.plug_remove_confirm }}');">
+      <button type="submit" class="btn btn-danger">{{ tr.plug_remove }}</button>
+    </form>
+  </div>
+  <p class="hint" style="margin:0.6rem 0 0;font-size:0.72rem;">{{ tr.plug_settings_import_hint }}</p>
+  {% endif %}
+</div>
+{% endfor %}
+
+</div>
+
 <div class="tab-pane" id="pane-vrclink">
 
 <div style="position:relative;margin-bottom:1.25rem;">
@@ -4166,8 +4375,9 @@ async function vrcProbe() {
        Gruppe ist - auch an die, die laut Vermerk schon eingeladen wurden. Genau darum
        geht es: der Vermerk wurde bis v1.19.3 auch bei Fehlschlaegen gesetzt. #}
     <form method="post" action="/servers/{{ guild.id }}/vrc/invite-all" style="margin:0;"
-          onsubmit="if(!confirm({{ tr.vrc_invite_all_confirm | js }})) return false;
-                    this.querySelector('button').disabled=true;this.querySelector('button').textContent='⏳';">
+          onsubmit="return frage(this, {{ tr.vrc_invite_all_confirm | js }}, null,
+                    function (f) { var k = f.querySelector('button');
+                                   k.disabled = true; k.textContent = '⏳'; })">
       <button type="submit" class="btn btn-secondary" style="font-size:0.78rem;">✉ {{ tr.vrc_invite_all_btn }}</button>
     </form>
   </div>
@@ -4271,7 +4481,7 @@ async function vrcProbe() {
             </form>
             {% endif %}
             <form method="post" action="/servers/{{ guild.id }}/vrc/decide/{{ v.id }}" style="display:inline;margin:0;"
-                  onsubmit="return confirm({{ tr.vrc_confirm_delete.replace('{name}', v.vrchat_name) | js }})">
+                  onsubmit="return frage(this, {{ tr.vrc_confirm_delete.replace('{name}', v.vrchat_name) | js }})">
               <button type="submit" name="action" value="delete" class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_delete }}">✕</button>
             </form>
           </td>
@@ -5064,7 +5274,7 @@ function toggleAdEdit(id) {
   </form>
   {% if amp_cfg and amp_cfg.url %}
   <form method="post" action="/servers/{{ guild.id }}/amp/delete" style="margin-top:0.75rem;"
-        onsubmit="return confirm({{ tr.amp_confirm_delete.replace('{name}', amp_cfg.label or 'Gameserver') | js }})">
+        onsubmit="return frage(this, {{ tr.amp_confirm_delete.replace('{name}', amp_cfg.label or 'Gameserver') | js }})">
     <button type="submit" class="btn btn-danger" title="{{ tr.btn_delete }}">🗑️ {{ tr.btn_delete }}</button>
   </form>
   {% endif %}
@@ -5191,23 +5401,43 @@ function updateAmpCmdPreview(id, action, value) {
     </form>
   </div>
 
+  {# Das Formular steht NEBEN der Tabelle, nicht um sie herum: in den Zeilen stehen schon
+     Formulare, und verschachtelte kennt HTML nicht. Die Kaestchen gehoeren ueber ihr
+     form-Attribut hierher, die Pfeile leihen es sich mit formaction. #}
+  <form id="embeds-bulk" method="post"
+        action="/servers/{{ guild.id }}/embeds/markierte-loeschen" style="margin:0;"></form>
+
   <div class="table-wrap">
     <table>
-      <thead><tr><th>{{ tr.label_name }}</th><th>{{ tr.label_channel }}</th><th></th></tr></thead>
+      <thead><tr>
+        <th style="width:1.8rem;"><input type="checkbox" onclick="alleMarkieren(this,'embeds-bulk')"
+              title="{{ tr.mark_all }}" style="margin:0;"></th>
+        <th>{{ tr.label_name }}</th><th>{{ tr.label_channel }}</th><th></th>
+      </tr></thead>
       <tbody>
         {% for ep in embed_posts %}
         <tr>
+          <td><input type="checkbox" name="markiert" value="{{ ep.id }}" form="embeds-bulk"
+                     onchange="zaehleMarkierte('embeds-bulk')" style="margin:0;"></td>
           <td style="font-weight:600;font-size:0.88rem;">{{ ep.name }}</td>
           <td style="color:var(--muted);font-size:0.8rem;">{% if ep.channel_id %}#{{ ep.channel_name or ep.channel_id }}{% else %}—{% endif %}</td>
           <td style="text-align:right;white-space:nowrap;">
+            <button type="submit" form="embeds-bulk" class="btn btn-secondary"
+                    formaction="/servers/{{ guild.id }}/embeds/{{ ep.id }}/verschieben?richtung=hoch"
+                    style="padding:0.2rem 0.45rem;font-size:0.78rem;" title="{{ tr.move_up }}"
+                    {% if loop.first %}disabled{% endif %}>↑</button>
+            <button type="submit" form="embeds-bulk" class="btn btn-secondary"
+                    formaction="/servers/{{ guild.id }}/embeds/{{ ep.id }}/verschieben?richtung=runter"
+                    style="padding:0.2rem 0.45rem;font-size:0.78rem;" title="{{ tr.move_down }}"
+                    {% if loop.last %}disabled{% endif %}>↓</button>
             <button type="button" class="btn btn-secondary" onclick="togglePanelEdit('ep-{{ ep.id }}')" style="padding:0.2rem 0.6rem;font-size:0.78rem;" title="{{ tr.btn_settings }}">⚙</button>
-            <form method="post" action="/servers/{{ guild.id }}/embeds/{{ ep.id }}/delete" style="margin:0;display:inline;" onsubmit="return confirm({{ tr.embeds_confirm_delete.replace('{name}', ep.name) | js }})">
+            <form method="post" action="/servers/{{ guild.id }}/embeds/{{ ep.id }}/delete" style="margin:0;display:inline;" onsubmit="return frage(this, {{ tr.embeds_confirm_delete.replace('{name}', ep.name) | js }})">
               <button type="submit" class="btn" style="padding:0.2rem 0.6rem;font-size:0.78rem;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);">✕</button>
             </form>
           </td>
         </tr>
         <tr id="panel-edit-ep-{{ ep.id }}" style="display:none;" class="panel-edit-row">
-          <td colspan="3" style="padding:1rem 1.25rem;">
+          <td colspan="4" style="padding:1rem 1.25rem;">
             <form method="post" action="/servers/{{ guild.id }}/embeds/{{ ep.id }}/update" enctype="multipart/form-data">
               <div class="grid-2" style="gap:0.75rem;margin-bottom:0.75rem;">
                 <div>
@@ -5279,11 +5509,21 @@ function updateAmpCmdPreview(id, action, value) {
         </tr>
         {% endfor %}
         {% if not embed_posts %}
-        <tr><td colspan="3" style="text-align:center;padding:2rem;color:var(--muted);">{{ tr.embeds_empty }}</td></tr>
+        <tr><td colspan="4" style="text-align:center;padding:2rem;color:var(--muted);">{{ tr.embeds_empty }}</td></tr>
         {% endif %}
       </tbody>
     </table>
   </div>
+
+  {% if embed_posts %}
+  <div style="margin-top:0.9rem;display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+    <button type="submit" form="embeds-bulk" id="embeds-bulk-btn" class="btn btn-danger" disabled
+            onclick="return frage(this, '{{ tr.mark_delete_confirm }}');">
+      🗑 <span id="embeds-bulk-zahl">{{ tr.mark_delete }}</span>
+    </button>
+    <span class="hint" style="margin:0;">{{ tr.mark_hint }}</span>
+  </div>
+  {% endif %}
 </div>
 </div>
 
@@ -5491,7 +5731,7 @@ function updateAmpCmdPreview(id, action, value) {
           </td>
           <td style="text-align:right;white-space:nowrap;">
             <button type="button" class="btn btn-secondary" onclick="toggleRoleRuleEdit({{ rr.id }})" style="padding:0.2rem 0.6rem;font-size:0.78rem;" title="{{ tr.btn_settings }}">⚙</button>
-            <form method="post" action="/servers/{{ guild.id }}/role-rules/delete/{{ rr.id }}" style="display:inline;" onsubmit="return confirm({{ tr.rolerules_confirm_delete.replace('{name}', rr.name or ('#' ~ rr.id)) | js }})">
+            <form method="post" action="/servers/{{ guild.id }}/role-rules/delete/{{ rr.id }}" style="display:inline;" onsubmit="return frage(this, {{ tr.rolerules_confirm_delete.replace('{name}', rr.name or ('#' ~ rr.id)) | js }})">
               <button type="submit" class="btn btn-danger" style="padding:0.2rem 0.6rem;font-size:0.78rem;">✕</button>
             </form>
           </td>
@@ -5786,7 +6026,7 @@ function updateAmpCmdPreview(id, action, value) {
                     style="font-size:0.75rem;padding:0.22rem 0.6rem;" title="{{ tr.btn_settings }}">⚙</button>
             <form method="post" action="/servers/{{ guild.id }}/coop/{{ c.id }}/delete"
                   style="display:inline;margin:0;"
-                  onsubmit="return confirm('{{ tr.coop_delete_confirm }}');">
+                  onsubmit="return frage(this, '{{ tr.coop_delete_confirm }}');">
               <button class="btn btn-danger" style="font-size:0.75rem;padding:0.22rem 0.6rem;"
                       title="{{ tr.coop_delete_btn }}">✕</button>
             </form>
@@ -6285,7 +6525,31 @@ document.addEventListener('click', function(e) {
 </script>
 
 <script>
-const TABS = ['config','welcome','automod','leveling','rr','commands','tickets','giveaways','polls','ratings','warnings','users','tempvoice','scheduled','events','birthday','autodelete','autothread','vrclink','amp','autokick','embeds','rolerules'];
+const TABS = ['config','welcome','automod','leveling','rr','commands','tickets','giveaways','polls','ratings','warnings','users','tempvoice','scheduled','events','birthday','autodelete','autothread','vrclink','profile','plugins','amp','autokick','embeds','rolerules'];
+// ── Markieren in Listen ────────────────────────────────────────────────────────────
+// Allgemein gehalten, nicht nur fuer die Embed-Liste: jede Liste, die ein Formular mit
+// eigener Kennung danebenstellt und ihre Kaestchen per form="..." daran haengt, benutzt
+// dieselben zwei Funktionen.
+function markierteKaesten(formId) {
+  return Array.from(document.querySelectorAll('input[name="markiert"][form="' + formId + '"]'));
+}
+function zaehleMarkierte(formId) {
+  const an = markierteKaesten(formId).filter(k => k.checked).length;
+  const knopf = document.getElementById(formId + '-btn');
+  const zahl = document.getElementById(formId + '-zahl');
+  if (knopf) knopf.disabled = an === 0;
+  // Der Knopf sagt, wie viele es trifft. "Markierte löschen" allein laesst einen raten,
+  // ob das Kaestchen oben wirklich alle erwischt hat.
+  if (zahl) {
+    if (!zahl.dataset.text) zahl.dataset.text = zahl.textContent.trim();
+    zahl.textContent = an ? zahl.dataset.text + ' (' + an + ')' : zahl.dataset.text;
+  }
+}
+function alleMarkieren(quelle, formId) {
+  markierteKaesten(formId).forEach(k => { k.checked = quelle.checked; });
+  zaehleMarkierte(formId);
+}
+
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {

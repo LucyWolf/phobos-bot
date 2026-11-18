@@ -69,7 +69,7 @@
       {% if invite_url %}
       <a href="{{ invite_url }}&guild_id={{ g.id }}&disable_guild_select=true" target="_blank" class="btn btn-secondary" style="font-size:0.8rem;padding:0.45rem 0.9rem;" title="{{ tr.srv_reinvite_hint }}">🔄 {{ tr.srv_reinvite }}</a>
       {% endif %}
-      <form method="post" action="/servers/{{ g.id }}/leave" onsubmit="return confirm({{ tr.srv_leave_confirm.replace('{name}', g.name) | js }})">
+      <form method="post" action="/servers/{{ g.id }}/leave" onsubmit="return frage(this, {{ tr.srv_leave_confirm.replace('{name}', g.name) | js }})">
         <button type="submit" class="btn btn-danger" style="font-size:0.8rem;padding:0.45rem 0.9rem;" title="{{ tr.srv_leave }}">✕</button>
       </form>
     </div>

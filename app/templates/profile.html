@@ -37,7 +37,7 @@
       </form>
       {% if has_avatar %}
       <form method="post" action="/profile/avatar/delete" style="margin:0;align-self:flex-start;">
-        <button type="submit" class="btn btn-danger" onclick="return confirm('{{ tr.profile_avatar_delete }}?')">🗑 {{ tr.profile_avatar_delete }}</button>
+        <button type="submit" class="btn btn-danger" onclick="return frage(this, '{{ tr.profile_avatar_delete }}?')">🗑 {{ tr.profile_avatar_delete }}</button>
       </form>
       {% endif %}
     </div>
@@ -141,14 +141,14 @@
     <p class="hint" style="margin-bottom:1rem;color:#22c55e;">✅ {{ tr.profile_2fa_enabled }}</p>
 
     <button type="button" class="btn btn-secondary" onclick="toggle2faBackupForm()" style="margin-bottom:0.75rem;">🔑 {{ tr.profile_2fa_backup_regenerate }}</button>
-    <form method="post" action="/profile/2fa/backup-codes/regenerate" id="2fa-backup-form" data-pwmanager="off" style="display:none;margin-bottom:1.25rem;" onsubmit="return confirm({{ tr.profile_2fa_backup_regenerate_confirm | js }})">
+    <form method="post" action="/profile/2fa/backup-codes/regenerate" id="2fa-backup-form" data-pwmanager="off" style="display:none;margin-bottom:1.25rem;" onsubmit="return frage(this, {{ tr.profile_2fa_backup_regenerate_confirm | js }})">
       <p class="hint" style="margin-bottom:0.5rem;">{{ tr.profile_2fa_backup_regenerate_hint }}</p>
       <label>{{ tr.label_password }}</label>
       <input type="password" name="password" required autocomplete="current-password">
       <button type="submit" class="btn btn-primary">{{ tr.profile_2fa_backup_regenerate }}</button>
     </form>
 
-    <form method="post" action="/profile/2fa/disable" data-pwmanager="off" onsubmit="return confirm({{ tr.profile_2fa_disable_confirm | js }})">
+    <form method="post" action="/profile/2fa/disable" data-pwmanager="off" onsubmit="return frage(this, {{ tr.profile_2fa_disable_confirm | js }})">
       <label>{{ tr.label_password }}</label>
       <input type="password" name="password" required autocomplete="current-password">
       <button type="submit" class="btn btn-danger">{{ tr.profile_2fa_disable }}</button>
@@ -235,7 +235,7 @@
     <p style="font-size:0.82rem;color:var(--muted);margin-bottom:1rem;">
       {{ tr.prof_delete_hint }}
     </p>
-    <form method="post" action="/profile/delete" onsubmit="return confirm({{ tr.prof_delete_confirm | js }})">
+    <form method="post" action="/profile/delete" onsubmit="return frage(this, {{ tr.prof_delete_confirm | js }})">
       <label>{{ tr.prof_pw_enter }}</label>
       <input type="password" name="pw1" required autocomplete="current-password" placeholder="{{ tr.usr_password }}">
       <label>{{ tr.prof_pw_repeat }}</label>
