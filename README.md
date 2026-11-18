@@ -442,11 +442,14 @@ tables listed below.
 
 | | |
 |---|---|
-| **Settings → Plugins** | the installation's plugins: import, export, delete |
-| **Server → Plugins** | which of them act on *this* server, with their settings |
+| **Settings → Plugins** | the installation's plugins: import, export, delete, and add to a server |
+| **a server's sidebar** | one entry per plugin running on that server, by its own icon and name |
 
-Importing a plugin applies it to nothing. It becomes active only when someone adds it to a
-specific server and fills in that server's values.
+Importing a plugin applies it to nothing. Under **Settings → Plugins** you then pick a
+server for it and fill in that server's values. From there on the plugin shows up in that
+server's sidebar under its own name (and `icon`, if it declares one) — there is no generic
+"Plugins" tab. Clicking it opens that plugin's settings; removing it there takes it back off
+the server and out of the sidebar.
 
 ### The file format
 
@@ -455,6 +458,7 @@ specific server and fills in that server's values.
   "phobos_plugin": "1.0",
   "kennung": "support-basics",
   "name": "Support basics",
+  "icon": "🎫",
   "version": "1.0.0",
   "autor": "you",
   "beschreibung": "A ticket panel with three categories and two commands.",
@@ -1607,11 +1611,14 @@ wird gelesen, geprüft und in genau die Tabellen geschrieben, die unten stehen.
 
 | | |
 |---|---|
-| **Einstellungen → Plugins** | die Plugins der Installation: einspielen, exportieren, löschen |
-| **Server → Plugins** | welche davon auf *diesem* Server wirken, mit ihren Werten |
+| **Einstellungen → Plugins** | die Plugins der Installation: einspielen, exportieren, löschen, auf einen Server anlegen |
+| **die Leiste eines Servers** | je laufendem Plugin ein Eintrag mit eigenem Icon und Namen |
 
-Ein eingespieltes Plugin tut zunächst gar nichts. Wirksam wird es erst, wenn es jemand auf
-einem bestimmten Server anlegt und dort die Werte ausfüllt.
+Ein eingespieltes Plugin tut zunächst gar nichts. Unter **Einstellungen → Plugins** wählst
+du dann einen Server dafür und füllst dessen Werte aus. Ab da erscheint das Plugin in der
+Leiste dieses Servers unter seinem Namen (und `icon`, falls es eins angibt) — einen
+generischen „Plugins"-Reiter gibt es nicht. Ein Klick öffnet die Einstellungen des Plugins;
+dort entfernt heißt: wieder vom Server herunter und aus der Leiste.
 
 ### Das Dateiformat
 
@@ -1620,6 +1627,7 @@ einem bestimmten Server anlegt und dort die Werte ausfüllt.
   "phobos_plugin": "1.0",
   "kennung": "support-basis",
   "name": "Support-Grundgerüst",
+  "icon": "🎫",
   "version": "1.0.0",
   "autor": "du",
   "beschreibung": "Ein Ticket-Panel mit drei Kategorien und zwei Befehlen.",

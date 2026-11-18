@@ -2,6 +2,7 @@
   "phobos_plugin": "1.0",
   "kennung": "beispiel-welt-tafel",
   "name": "Daten für eine VRChat-Welt",
+  "icon": "🌐",
   "version": "1.0.0",
   "autor": "Phobos",
   "beschreibung": "Ein Plugin, das nichts anlegt, sondern nur Daten bereitstellt: freigegebene Profile und die Rangliste, abrufbar unter einer Adresse. Gedacht für eine Welt, die alles einmal lädt und dann selbst durchsucht.",
