@@ -14,6 +14,54 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.43 — `beta` — 18.11.2026
+
+**Ein Plugin kann jetzt auch Daten lesen**
+- Gewünscht: „mach bei den plugins das mann auch andere datenpunkte nehmen kann und
+  verwenden also das was der andere tüp wolte kann ein eigenes plugin machen und selber
+  einbinden". Das ist die Antwort auf die Anfrage von außen: wer eine eigene Abfrage für
+  eine VRChat-Welt braucht, baut sich ein Plugin — statt dass für jeden Sonderfall eine
+  neue Schnittstelle in den Bot muss.
+- Ein Plugin erklärt unter `daten`, was es lesen möchte. Drei Quellen: **Profile** (nur
+  selbst freigegebene), **Level und XP**, **VRChat-Verknüpfungen** — jeweils mit Auswahl
+  der Felder.
+- Abrufbar unter `/api/plugin/<kennung>?key=…`, **alles in einer Antwort**. Eine Welt lädt
+  einmal und sucht selbst darin, statt pro Besucher zu fragen. Bei VRChats Sperrzeit
+  zwischen zwei Ladevorgängen ist das der Unterschied zwischen „geht" und „geht nicht".
+- Ein Plugin, das nur liest und nichts anlegt, ist jetzt ein gültiges Plugin. Beispiel zum
+  Abschreiben: `tools/plugin-beispiel-welt.json`.
+
+**Ein Plugin fragt nur — entschieden wird am Server**
+Ein eingespieltes Plugin kommt an gar nichts. Je Ansicht ein Haken und ein eigener
+Schlüssel, beides aus, bis jemand es einschaltet. Alle Haken entfernen schaltet den Abruf ab
+und löscht den Schlüssel; ein geänderter Schlüssel sperrt die alte Adresse sofort aus. Der
+Schlüssel muss mindestens 20 Zeichen haben und darf nicht schon anderswo verwendet werden —
+gesucht wird beim Abruf über ihn, ein doppelter zeigte auf den falschen Server.
+
+**Drei Regeln, die nicht einstellbar sind**
+1. **Nur freigegebene Profile.** Ein Text erscheint genau dann, wenn die Person selbst den
+   Knopf gesetzt hat. Eintragen ist nicht Veröffentlichen.
+2. **Keine Discord-Kennungen.** Gefunden wird über den VRChat-Namen aus der Verknüpfung;
+   wer keine hat, steht nirgends. Sonst wäre die Antwort eine fertige Liste „VRChat-Name →
+   Discord-Konto", und die hat niemand bestellt.
+3. **Nur die aufgezählten Quellen und Felder.** Kein Plugin kann eine Tabelle oder Spalte
+   nennen, an die niemand gedacht hat — E-Mail-Adressen, Tokens und Verwarnungen sind damit
+   nicht „noch nicht freigegeben", sondern unerreichbar. Eine unbekannte Quelle lässt die
+   Datei schon beim Hochladen durchfallen, nicht erst im Betrieb.
+
+Dazu dieselbe Bremse je Adresse wie bei der Profil-Schnittstelle: eine Welt fragt alle paar
+Minuten, wer dreißigmal in der Minute fragt, probiert Schlüssel durch.
+
+**Geprüft:** 104 Prüfungen (vorher 80). Neu: abgelehnte Quellen und Felder, doppelte
+Quellen, leere Feldlisten, ein Plugin das nur liest, eins das gar nichts tut — und an echten
+Zeilen: dass ohne Freigabe nichts herauskommt, dass nur das Freigegebene kommt, dass ein
+nicht freigegebenes Profilfeld fehlt, dass jemand ohne Verknüpfung nirgends auftaucht, eine
+wartende Verknüpfung auch nicht, und dass in **keiner** Zeile eine Discord-Kennung steht.
+
+**Nicht geprüft:** die Oberfläche im Browser und der Abruf aus einer echten Welt.
+
+---
+
 ## 1.19.42 — `beta` — 18.11.2026
 
 **Nachfragen kommen jetzt aus der Seite, nicht aus dem Browser**

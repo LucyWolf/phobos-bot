@@ -10518,8 +10518,8 @@ async def _plugins_fuer_server(guild_id, lang: str = "de") -> list:
             # mitnehmen - sie wird uebersprungen und faellt beim Export auf.
             continue
         dabei = await db_one(
-            "SELECT id, einstellungen, version, angelegt FROM plugin_guilds "
-            "WHERE plugin_id=? AND guild_id=?", (zeile["id"], gid))
+            "SELECT id, einstellungen, version, angelegt, daten_an, daten_key "
+            "FROM plugin_guilds WHERE plugin_id=? AND guild_id=?", (zeile["id"], gid))
         werte = {}
         if dabei:
             try:
@@ -10535,6 +10535,14 @@ async def _plugins_fuer_server(guild_id, lang: str = "de") -> list:
             "beschreibung": zeile["beschreibung"],
             "angelegt": angelegt,
             "einstellungen": paket.get("einstellungen", []),
+            # Was das Plugin lesen moechte, und was dieser Server davon freigegeben hat.
+            "daten": [
+                {**a,
+                 "titel": plugin_mod.DATENQUELLEN[a["quelle"]]["titel"][0 if lang != "en" else 1],
+                 "an": a["quelle"] in {q for q in ((dabei or {}).get("daten_an") or "").split(",") if q}}
+                for a in paket.get("daten", []) if a["quelle"] in plugin_mod.DATENQUELLEN
+            ],
+            "daten_key": (dabei or {}).get("daten_key", ""),
             "teile": plugin_mod.zusammenfassung(paket, lang),
             "aktiv": bool(dabei),
             "werte": werte,
@@ -10830,6 +10838,114 @@ async def server_plugin_anwenden(request: Request, guild_id: int, plugin_id: int
         print(f"[plugins] anwenden fehlgeschlagen: {e}")
         return _plugin_fehler(ziel, "Das Plugin liess sich nicht anlegen.")
     return _plugin_ok(ziel, meldung)
+
+
+@web.post("/servers/{guild_id}/plugins/{plugin_id}/daten")
+async def server_plugin_daten(request: Request, guild_id: int, plugin_id: int):
+    """Welche Datenansichten dieses Plugin auf diesem Server lesen darf - und womit.
+
+    Getrennt vom Anlegen gespeichert: ein erneutes Anwenden des Plugins (geaenderte
+    Einstellungen, neue Fassung) soll eine einmal erteilte Freigabe weder loeschen noch
+    stillschweigend erweitern.
+    """
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    ziel = f"/servers/{guild_id}?tab=plugins"
+    form = await request.form()
+    zeile = await db_one("SELECT id FROM plugin_guilds WHERE plugin_id=? AND guild_id=?",
+                         (plugin_id, str(guild_id)))
+    if not zeile:
+        return _plugin_fehler(ziel, "Dieses Plugin ist auf dem Server nicht angelegt.")
+
+    paket = await plugin_mod.plugin_paket(plugin_id) or {}
+    moeglich = {a["quelle"] for a in paket.get("daten", [])}
+    an = [q for q in form.getlist("daten_an") if q in moeglich]
+    schluessel = (form.get("daten_key") or "").strip()
+
+    if an:
+        # Dieselben Regeln wie beim Schluessel der Profil-Schnittstelle: kurz genug zum
+        # Raten ist kein Schluessel, und zwei Server duerfen sich keinen teilen - gesucht
+        # wird beim Abruf ueber den Schluessel, ein doppelter zeigte auf den falschen.
+        if len(schluessel) < 20:
+            return _plugin_fehler(
+                ziel, "Der Schlüssel muss mindestens 20 Zeichen haben. Ohne ihn kann die "
+                      "Welt nichts abrufen — und mit einem kurzen kann es jeder.")
+        fremd = await db_one(
+            "SELECT id FROM plugin_guilds WHERE daten_key=? AND daten_key<>'' AND id<>?",
+            (schluessel, zeile["id"]))
+        if fremd:
+            return _plugin_fehler(ziel, "Diesen Schlüssel benutzt schon eine andere "
+                                        "Freigabe. Nimm einen eigenen.")
+    else:
+        # Nichts freigegeben heisst auch: kein Schluessel, der weiterhin irgendwo steht.
+        schluessel = ""
+
+    await db_exec("UPDATE plugin_guilds SET daten_an=?, daten_key=? WHERE id=?",
+                  (",".join(an), schluessel, zeile["id"]))
+    if not an:
+        return _plugin_ok(ziel, "Datenfreigabe ausgeschaltet.")
+    return _plugin_ok(ziel, f"Freigegeben: {', '.join(an)}.")
+
+
+# Wie bei der Profil-Schnittstelle: eine Bremse je Adresse. Eine Welt fragt alle paar
+# Minuten, nicht hundertmal die Sekunde - wer das tut, probiert Schluessel durch.
+_plugin_api_zugriffe: dict = {}
+
+
+def _plugin_api_zu_viel(request: Request) -> bool:
+    jetzt = time.time()
+    adresse = (request.client.host if request.client else "?")
+    fenster = [t for t in _plugin_api_zugriffe.get(adresse, []) if jetzt - t < 60]
+    fenster.append(jetzt)
+    _plugin_api_zugriffe[adresse] = fenster
+    if len(_plugin_api_zugriffe) > 2000:
+        for a in [a for a, ts in _plugin_api_zugriffe.items() if not ts or jetzt - ts[-1] > 300]:
+            _plugin_api_zugriffe.pop(a, None)
+    return len(fenster) > 30
+
+
+@web.get("/api/plugin/{kennung}")
+async def plugin_daten_api(request: Request, kennung: str, key: str = ""):
+    """Die freigegebenen Daten eines Plugins - das, was eine VRChat-Welt abruft.
+
+    Gewuenscht am 18.11.2026: wer etwas Eigenes braucht, baut sich ein Plugin und holt
+    sich seine Daten selbst, statt dass fuer jeden Sonderfall eine Schnittstelle in den
+    Bot muss.
+
+    Gesucht wird ueber den Schluessel, nicht ueber eine Server-Kennung: die Welt kennt
+    ihren Schluessel und sonst nichts. Antwort immer gleich aufgebaut, auch im Fehlerfall -
+    wer Schluessel durchprobiert, soll an der Antwort nichts ablesen koennen.
+    """
+    leer = {"gefunden": False, "daten": {}}
+    schluessel = (key or "").strip()
+    if _plugin_api_zu_viel(request):
+        return JSONResponse(leer, status_code=429)
+    if not schluessel or len(schluessel) < 20:
+        return JSONResponse(leer, status_code=400)
+
+    zeile = await db_one(
+        "SELECT g.guild_id, g.daten_an, p.kennung, p.name, p.version, p.inhalt "
+        "FROM plugin_guilds g JOIN plugins p ON p.id=g.plugin_id "
+        "WHERE g.daten_key=? AND g.daten_key<>''", (schluessel,))
+    if not zeile or zeile["kennung"] != kennung:
+        return JSONResponse(leer, status_code=403)
+    erlaubt = {q for q in (zeile["daten_an"] or "").split(",") if q}
+    if not erlaubt:
+        return JSONResponse(leer, status_code=403)
+
+    try:
+        paket = _djson.loads(zeile["inhalt"])
+    except Exception:
+        return JSONResponse(leer, status_code=500)
+
+    daten = await plugin_mod.daten_holen(zeile["guild_id"], paket.get("daten", []), erlaubt)
+    return JSONResponse({
+        "gefunden": True,
+        "plugin": zeile["kennung"],
+        "version": zeile["version"],
+        "stand": datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "daten": daten,
+    })
 
 
 @web.post("/servers/{guild_id}/plugins/{plugin_id}/entfernen")

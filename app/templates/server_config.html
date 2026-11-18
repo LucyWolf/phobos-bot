@@ -3630,6 +3630,39 @@ document.addEventListener('click', function(e) {
     </button>
   </form>
 
+  {# Datenfreigabe. Nur wenn das Plugin überhaupt etwas lesen möchte - und immer aus,
+     bis jemand hier einen Haken setzt. Ein eingespieltes Plugin greift nichts ab. #}
+  {% if p.aktiv and p.daten %}
+  <div style="margin-top:1rem;padding:0.9rem 1rem;border:1px solid var(--border);
+              border-radius:0.6rem;background:var(--bg);">
+    <div style="font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">{{ tr.plug_data_heading }}</div>
+    <p class="hint" style="margin:0 0 0.8rem;">{{ tr.plug_data_hint }}</p>
+    <form method="post" action="/servers/{{ guild.id }}/plugins/{{ p.id }}/daten">
+      {% for d in p.daten %}
+      <label style="display:flex;align-items:flex-start;gap:0.45rem;font-size:0.83rem;font-weight:400;margin-bottom:0.55rem;">
+        <input type="checkbox" name="daten_an" value="{{ d.quelle }}" style="margin:0.15rem 0 0;"
+               {% if d.an %}checked{% endif %}>
+        <span>{{ d.titel }}
+          <span style="color:var(--muted);font-size:0.75rem;">— {{ d.felder|join(', ') }}</span>
+          {% if d.zweck %}<br><span style="color:var(--muted);font-size:0.75rem;">{{ d.zweck }}</span>{% endif %}
+        </span>
+      </label>
+      {% endfor %}
+      <label style="margin-top:0.5rem;">{{ tr.plug_data_key }}</label>
+      <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.plug_data_key_hint }}</p>
+      <input type="text" name="daten_key" maxlength="80" value="{{ p.daten_key }}"
+             placeholder="{{ tr.plug_data_key_ph }}">
+      <button type="submit" class="btn" style="margin-top:0.5rem;">{{ tr.btn_save }}</button>
+    </form>
+    {% if p.daten_key and p.daten|selectattr('an')|list %}
+    <p class="hint" style="margin:0.8rem 0 0.2rem;">{{ tr.plug_data_url }}</p>
+    <code style="display:block;word-break:break-all;background:var(--surface);
+                 border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem 0.7rem;
+                 font-size:0.75rem;">{{ base_url }}/api/plugin/{{ p.kennung }}?key={{ p.daten_key|urlencode }}</code>
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% if p.aktiv %}
   <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);
               display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">

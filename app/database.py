@@ -1455,6 +1455,11 @@ async def init_db():
             # bis jemand das erste Mal verschiebt. Dann bekommt die ganze Liste des Servers
             # feste Plaetze 1..n.
             "ALTER TABLE embed_posts ADD COLUMN sortierung INTEGER NOT NULL DEFAULT 0",
+            # Was ein Plugin auf DIESEM Server lesen darf, und womit. Beides leer heisst:
+            # nichts geht nach draussen - der Standard, auch wenn das Plugin Daten
+            # anfragt. Siehe DATENQUELLEN in plugins.py.
+            "ALTER TABLE plugin_guilds ADD COLUMN daten_an TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE plugin_guilds ADD COLUMN daten_key TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)
