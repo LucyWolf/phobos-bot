@@ -493,6 +493,68 @@ address of the file's newest version — put it on GitHub and the bot can fetch 
 there instead of you mailing a file to everyone. `homepage` is a link for humans, shown
 next to the plugin.
 
+### A plugin can also read data
+
+Besides creating things, a plugin may declare what it would like to **read** — so somebody
+who needs their own feed for a VRChat world builds a plugin and hooks it up themselves,
+instead of a new endpoint going into the bot for every special case.
+
+```json
+"daten": [
+  { "quelle": "profile", "felder": ["bio", "kinks"], "zweck": "For the boards in the world" },
+  { "quelle": "level",   "felder": ["level", "xp"],  "zweck": "For the ranking on the wall" }
+]
+```
+
+A complete example that only reads and creates nothing is
+[`tools/plugin-beispiel-welt.json`](tools/plugin-beispiel-welt.json).
+
+| `quelle` | Fields |
+|---|---|
+| `profile` | `bio`, `kinks`, `triggers`, `limits` |
+| `level` | `level`, `xp`, `messages`, `voice_minutes`, `voice_level` |
+| `vrchat` | `trust`, `verifiziert_18`, `supporter`, `gruppenmitglied` |
+
+Leaving `felder` out means all of them. `zweck` is one sentence shown to the admin, saying
+what it is for.
+
+**A plugin only asks.** Whether it may is decided per server: a checkbox per view and a key
+of its own, both off until somebody turns them on. Importing a plugin therefore gives it
+access to nothing. Once released, the data is at:
+
+```
+GET https://your-dashboard/api/plugin/<kennung>?key=<KEY>
+```
+
+```json
+{
+  "gefunden": true,
+  "plugin": "my-world-boards",
+  "stand": "2026-11-18T17:40:12Z",
+  "daten": {
+    "profile": [{ "vrchat_name": "SomeUser", "bio": "…", "geaendert": "2026-11-17T20:11" }],
+    "level":   [{ "vrchat_name": "SomeUser", "level": 9, "xp": 900 }]
+  }
+}
+```
+
+Everything comes in one answer, so a world loads once and searches it itself — no request
+per visitor, which matters given VRChat's global cooldown between string downloads.
+
+Three rules are built into this and cannot be configured away:
+
+1. **Only released profiles.** A profile text appears exactly when the person pressed the
+   button for it themselves. Writing something is not publishing it.
+2. **No Discord ids.** Lookup goes by the VRChat name from the link; whoever has no link
+   appears nowhere. Otherwise the answer would be a ready-made "VRChat name → Discord
+   account" list, which nobody asked for.
+3. **Only what is listed above.** No plugin can name a table or column nobody thought
+   about here — email addresses, tokens and warnings are not "not released yet", they are
+   unreachable.
+
+Unticking every box switches fetching off entirely and clears the key. Changing the key
+locks the old address out immediately. Requests are rate-limited per address.
+
 ### Keeping a plugin up to date
 
 With a `quelle` on the plugin, **Settings → Plugins** can ask the source whether something
@@ -1565,6 +1627,69 @@ sonst stünde am Ende `{{name}}` wörtlich in irgendeinem Befehl.
 ist die Adresse der jeweils neuesten Fassung — liegt die auf GitHub, kann der Bot Updates
 von dort holen, statt dass du allen eine Datei schicken musst. `homepage` ist ein Link für
 Menschen und steht neben dem Plugin.
+
+### Ein Plugin kann auch Daten lesen
+
+Neben dem Anlegen darf ein Plugin erklären, was es **lesen** möchte — damit sich jemand,
+der eine eigene Abfrage für eine VRChat-Welt braucht, ein Plugin baut und selbst einbindet,
+statt dass für jeden Sonderfall eine neue Schnittstelle in den Bot muss.
+
+```json
+"daten": [
+  { "quelle": "profile", "felder": ["bio", "kinks"], "zweck": "Für die Tafeln in der Welt" },
+  { "quelle": "level",   "felder": ["level", "xp"],  "zweck": "Für die Rangliste an der Wand" }
+]
+```
+
+Ein vollständiges Beispiel, das nur liest und nichts anlegt, liegt in
+[`tools/plugin-beispiel-welt.json`](tools/plugin-beispiel-welt.json).
+
+| `quelle` | Felder |
+|---|---|
+| `profile` | `bio`, `kinks`, `triggers`, `limits` |
+| `level` | `level`, `xp`, `messages`, `voice_minutes`, `voice_level` |
+| `vrchat` | `trust`, `verifiziert_18`, `supporter`, `gruppenmitglied` |
+
+Lässt man `felder` weg, gelten alle. `zweck` ist ein Satz, der dem Admin angezeigt wird und
+sagt, wofür das gebraucht wird.
+
+**Ein Plugin fragt nur.** Ob es darf, entscheidet jeder Server selbst: ein Haken je Ansicht
+und ein eigener Schlüssel, beides aus, bis jemand es einschaltet. Ein eingespieltes Plugin
+kommt damit an gar nichts. Freigegeben liegen die Daten unter:
+
+```
+GET https://dein-dashboard/api/plugin/<kennung>?key=<SCHLÜSSEL>
+```
+
+```json
+{
+  "gefunden": true,
+  "plugin": "meine-welt-tafeln",
+  "stand": "2026-11-18T17:40:12Z",
+  "daten": {
+    "profile": [{ "vrchat_name": "Jemand", "bio": "…", "geaendert": "2026-11-17T20:11" }],
+    "level":   [{ "vrchat_name": "Jemand", "level": 9, "xp": 900 }]
+  }
+}
+```
+
+Alles kommt in **einer** Antwort — eine Welt lädt einmal und sucht dann selbst darin, statt
+pro Besucher eine Abfrage zu starten. Das ist bei VRChats Sperrzeit zwischen zwei
+Ladevorgängen der Unterschied zwischen „geht" und „geht nicht".
+
+Drei Regeln sind dabei fest eingebaut und nicht einstellbar:
+
+1. **Nur freigegebene Profile.** Ein Profiltext erscheint genau dann, wenn die Person selbst
+   den Knopf dafür gesetzt hat. Eintragen ist nicht Veröffentlichen.
+2. **Keine Discord-Kennungen.** Gefunden wird über den VRChat-Namen aus der Verknüpfung; wer
+   keine hat, steht nirgends. Sonst wäre die Antwort eine fertige Liste „VRChat-Name →
+   Discord-Konto", und die hat niemand bestellt.
+3. **Nur was oben steht.** Kein Plugin kann eine Tabelle oder Spalte nennen, an die hier
+   niemand gedacht hat — E-Mail-Adressen, Tokens und Verwarnungen sind damit nicht „noch
+   nicht freigegeben", sondern unerreichbar.
+
+Alle Haken zu entfernen schaltet den Abruf ganz ab und löscht den Schlüssel. Ein geänderter
+Schlüssel sperrt die alte Adresse sofort aus. Abrufe sind je Adresse gedrosselt.
 
 ### Ein Plugin aktuell halten
 
