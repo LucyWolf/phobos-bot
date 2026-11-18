@@ -178,6 +178,10 @@ from database import (
     bot_text, bot_labels, bot_worte, bot_sprachen, bot_lang,
 )
 import totp
+# Plugins: Pakete aus Einstellungen, die man exportieren und weitergeben kann. Unter
+# eigenem Namen eingebunden, weil "plugins" als Wort in Routen und Variablen zu oft
+# vorkommt - plugin_mod zeigt beim Lesen sofort auf das Modul.
+import plugins as plugin_mod
 
 VERSION = (Path(__file__).parent / "VERSION").read_text().strip()
 # Defaults to the Docker container path - override via PHOBOS_DATA_DIR for non-Docker setups
@@ -10350,6 +10354,318 @@ async def smtp_test(request: Request, test_email: str = Form(...)):
 
 # ── Token Management ──────────────────────────────────────────────────────────
 
+# ══════════════════════════════════════════════════════════════════════════════════════
+#  Plugins - Pakete aus Einstellungen
+#
+#  Gewuenscht am 18.11.2026. Die eigentliche Arbeit (Format, Pruefung, Anwenden,
+#  Entfernen) steht in plugins.py; hier liegt nur die Oberflaeche davor.
+#
+#  Alle Routen sind Admin-Sache, nicht Moderator: ein Plugin legt auf einen Schlag
+#  Befehle, Panels und Rollenregeln an - dieselbe Hausnummer wie ein eingespieltes
+#  Backup, und das kann hier auch nur ein Admin.
+# ══════════════════════════════════════════════════════════════════════════════════════
+
+def _plugin_fehler(ziel: str, text: str) -> RedirectResponse:
+    trenn = "&" if "?" in ziel else "?"
+    return RedirectResponse(f"{ziel}{trenn}error={urllib.parse.quote_plus(text[:220])}",
+                            status_code=302)
+
+
+def _plugin_ok(ziel: str, text: str) -> RedirectResponse:
+    trenn = "&" if "?" in ziel else "?"
+    return RedirectResponse(f"{ziel}{trenn}success={urllib.parse.quote_plus(text[:220])}",
+                            status_code=302)
+
+
+async def _plugins_fuer_server(guild_id, lang: str = "de") -> list:
+    """Alle Plugins dieser Installation, je Server um den Stand davor ergaenzt.
+
+    Eine Liste statt zweier (installiert / hinzugefuegt): die Seite zeigt beides in
+    derselben Reihe, und was hinzugefuegt ist, erkennt man am Schalter, nicht an der
+    Position.
+    """
+    gid = str(guild_id)
+    aus = []
+    for zeile in await db_rows(
+            "SELECT id, kennung, name, version, autor, beschreibung, inhalt FROM plugins "
+            "ORDER BY name COLLATE NOCASE"):
+        try:
+            paket = _djson.loads(zeile["inhalt"])
+        except Exception:
+            # Eine Zeile, die sich nicht mehr lesen laesst, darf nicht die ganze Seite
+            # mitnehmen - sie wird uebersprungen und faellt beim Export auf.
+            continue
+        dabei = await db_one(
+            "SELECT id, einstellungen, version, angelegt FROM plugin_guilds "
+            "WHERE plugin_id=? AND guild_id=?", (zeile["id"], gid))
+        werte = {}
+        if dabei:
+            try:
+                werte = _djson.loads(dabei["einstellungen"]) or {}
+            except Exception:
+                werte = {}
+        aus.append({
+            "id": zeile["id"], "kennung": zeile["kennung"], "name": zeile["name"],
+            "version": zeile["version"], "autor": zeile["autor"],
+            "beschreibung": zeile["beschreibung"],
+            "einstellungen": paket.get("einstellungen", []),
+            "teile": plugin_mod.zusammenfassung(paket, lang),
+            "aktiv": bool(dabei),
+            "werte": werte,
+            "stand": (dabei or {}).get("version", ""),
+            # Das Plugin wurde seit dem Hinzufuegen neu hochgeladen: auf diesem Server
+            # stehen noch die Zeilen der alten Fassung.
+            "veraltet": bool(dabei and (dabei.get("version") or "") != zeile["version"]),
+        })
+    return aus
+
+
+@web.get("/settings/plugins", response_class=HTMLResponse)
+async def plugins_page(request: Request, success: str = "", error: str = ""):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    lang = request.session.get("lang", "de")
+    liste = await plugin_mod.plugin_liste()
+    for p in liste:
+        paket = await plugin_mod.plugin_paket(p["id"]) or {}
+        p["teile"] = plugin_mod.zusammenfassung(paket, lang)
+        p["einstellungen"] = paket.get("einstellungen", [])
+    return templates.TemplateResponse("plugins.html", {
+        **session(request), "request": request,
+        "guilds": await _guild_list(request), "token_set": await _token_configured(),
+        "active": "plugins", "plugins": liste,
+        "arten": sorted(plugin_mod.ARTEN),
+        "format": plugin_mod.FORMAT,
+        "success": success, "error": error,
+    })
+
+
+@web.post("/settings/plugins/import")
+async def plugins_import(request: Request, plugin_file: UploadFile = File(...)):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    try:
+        roh = await plugin_file.read()
+        paket = plugin_mod.lese_paket(roh)
+    except plugin_mod.PluginFehler as e:
+        return _plugin_fehler("/settings/plugins", str(e))
+    except Exception:
+        return _plugin_fehler("/settings/plugins", "Die Datei liess sich nicht lesen.")
+
+    jetzt = datetime.datetime.utcnow().isoformat()
+    text = _djson.dumps(paket, ensure_ascii=False)
+    vorhanden = await db_one("SELECT id, version FROM plugins WHERE kennung=?",
+                             (paket["kennung"],))
+    if vorhanden:
+        # Dieselbe Kennung nochmal: das ist eine neue Fassung, kein zweites Plugin. Die
+        # Server, die es benutzen, werden NICHT von selbst umgestellt - das wuerde ihre
+        # Zeilen hinter ihrem Ruecken ersetzen. Sie bekommen auf ihrer Seite den Hinweis,
+        # dass eine neuere Fassung bereitliegt, und entscheiden selbst.
+        await db_exec(
+            "UPDATE plugins SET name=?, version=?, autor=?, beschreibung=?, inhalt=?, "
+            "geaendert=? WHERE id=?",
+            (paket["name"], paket["version"], paket["autor"], paket["beschreibung"],
+             text, jetzt, vorhanden["id"]))
+        benutzt = (await db_one("SELECT COUNT(*) AS n FROM plugin_guilds WHERE plugin_id=?",
+                                (vorhanden["id"],)))["n"]
+        hinweis = (f" {benutzt} Server benutzen es — dort steht noch die alte Fassung, "
+                   f"bis jemand auf „Aktualisieren“ drückt.") if benutzt else ""
+        return _plugin_ok("/settings/plugins",
+                          f"„{paket['name']}“ auf {paket['version']} aktualisiert."
+                          + hinweis)
+
+    await db_exec(
+        "INSERT INTO plugins (kennung, name, version, autor, beschreibung, inhalt, "
+        "angelegt, geaendert) VALUES (?,?,?,?,?,?,?,?)",
+        (paket["kennung"], paket["name"], paket["version"], paket["autor"],
+         paket["beschreibung"], text, jetzt, jetzt))
+    return _plugin_ok("/settings/plugins",
+                      f"„{paket['name']}“ hinzugefügt. Auf einem Server anlegen: "
+                      f"Server öffnen, Reiter „Plugins“.")
+
+
+@web.get("/settings/plugins/{plugin_id}/export")
+async def plugins_export(request: Request, plugin_id: int):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    paket = await plugin_mod.plugin_paket(plugin_id)
+    if not paket:
+        return _plugin_fehler("/settings/plugins", "Dieses Plugin gibt es nicht mehr.")
+    name = re.sub(r"[^\w\-]+", "_", paket.get("kennung", "plugin")).strip("_") or "plugin"
+    fassung = re.sub(r"[^\w\.\-]+", "", paket.get("version", "")) or "1"
+    return _json_dl(plugin_mod.paket_als_datei(paket), f"plugin_{name}_{fassung}.json")
+
+
+@web.post("/settings/plugins/{plugin_id}/delete")
+async def plugins_delete(request: Request, plugin_id: int):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    zeile = await db_one("SELECT name FROM plugins WHERE id=?", (plugin_id,))
+    if not zeile:
+        return _plugin_fehler("/settings/plugins", "Dieses Plugin gibt es nicht mehr.")
+    # Erst von jedem Server herunternehmen, dann loeschen. Andersherum blieben Befehle und
+    # Panels auf den Servern stehen, ohne dass sie noch jemand entfernen koennte - die
+    # Buchfuehrung, die weiss welche Zeilen dazugehoeren, waere ja weg.
+    server = 0
+    for pg in await db_rows("SELECT id FROM plugin_guilds WHERE plugin_id=?", (plugin_id,)):
+        await plugin_mod.entfernen(pg["id"])
+        server += 1
+    await db_exec("DELETE FROM plugin_guilds WHERE plugin_id=?", (plugin_id,))
+    await db_exec("DELETE FROM plugins WHERE id=?", (plugin_id,))
+    zusatz = f" Auf {server} Server wurde es vorher entfernt." if server else ""
+    return _plugin_ok("/settings/plugins", f"„{zeile['name']}“ gelöscht.{zusatz}")
+
+
+async def _plugin_anwenden(guild_id: int, plugin_id: int, werte_roh: dict) -> str:
+    """Gemeinsamer Weg fuer „hinzufuegen", „Einstellungen speichern" und „aktualisieren".
+
+    Alle drei tun dasselbe: Werte pruefen, merken, Inhalt neu anlegen. Getrennte Routen
+    dafuer waeren drei Stellen, an denen dieselbe Pruefung vergessen werden kann.
+    """
+    paket = await plugin_mod.plugin_paket(plugin_id)
+    if not paket:
+        raise plugin_mod.PluginFehler("Dieses Plugin gibt es nicht mehr.")
+    werte = plugin_mod.pruefe_werte(paket, werte_roh)
+
+    gid = str(guild_id)
+    jetzt = datetime.datetime.utcnow().isoformat()
+    zeile = await db_one("SELECT id FROM plugin_guilds WHERE plugin_id=? AND guild_id=?",
+                         (plugin_id, gid))
+    if zeile:
+        pg_id = zeile["id"]
+        await db_exec(
+            "UPDATE plugin_guilds SET einstellungen=?, version=?, geaendert=? WHERE id=?",
+            (_djson.dumps(werte, ensure_ascii=False), paket.get("version", ""), jetzt, pg_id))
+    else:
+        pg_id = await db_insert(
+            "INSERT INTO plugin_guilds (plugin_id, guild_id, einstellungen, version, "
+            "angelegt, geaendert) VALUES (?,?,?,?,?,?)",
+            (plugin_id, gid, _djson.dumps(werte, ensure_ascii=False),
+             paket.get("version", ""), jetzt, jetzt))
+
+    bilanz = await plugin_mod.anwenden(pg_id, paket, guild_id, werte)
+    if not bilanz:
+        return f"„{paket.get('name')}“ hinzugefügt — es ist allerdings nichts entstanden."
+    teile = ", ".join(f"{n}× {a}" for a, n in sorted(bilanz.items()))
+    return f"„{paket.get('name')}“ angelegt: {teile}."
+
+
+def _werte_aus_formular(form) -> dict:
+    """Die Felder des Einstellungsformulars - jedes mit „e_" davor.
+
+    Das Praefix trennt sie von allem anderen im Formular: ein Plugin koennte sonst eine
+    Einstellung „plugin_id" erklaeren und damit beim Absenden auf eine andere Zeile zeigen.
+    """
+    return {k[2:]: v for k, v in form.items()
+            if isinstance(k, str) and k.startswith("e_") and isinstance(v, str)}
+
+
+@web.post("/servers/{guild_id}/plugins/{plugin_id}/anwenden")
+async def server_plugin_anwenden(request: Request, guild_id: int, plugin_id: int):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    ziel = f"/servers/{guild_id}?tab=plugins"
+    try:
+        meldung = await _plugin_anwenden(guild_id, plugin_id,
+                                         _werte_aus_formular(await request.form()))
+    except plugin_mod.PluginFehler as e:
+        return _plugin_fehler(ziel, str(e))
+    except Exception as e:
+        print(f"[plugins] anwenden fehlgeschlagen: {e}")
+        return _plugin_fehler(ziel, "Das Plugin liess sich nicht anlegen.")
+    return _plugin_ok(ziel, meldung)
+
+
+@web.post("/servers/{guild_id}/plugins/{plugin_id}/entfernen")
+async def server_plugin_entfernen(request: Request, guild_id: int, plugin_id: int):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    ziel = f"/servers/{guild_id}?tab=plugins"
+    zeile = await db_one("SELECT id FROM plugin_guilds WHERE plugin_id=? AND guild_id=?",
+                         (plugin_id, str(guild_id)))
+    if not zeile:
+        return _plugin_fehler(ziel, "Dieses Plugin ist auf dem Server gar nicht angelegt.")
+    weg = await plugin_mod.entfernen(zeile["id"])
+    await db_exec("DELETE FROM plugin_guilds WHERE id=?", (zeile["id"],))
+    return _plugin_ok(ziel, f"Entfernt — {weg} Einträge wurden zurückgenommen.")
+
+
+@web.get("/servers/{guild_id}/plugins/{plugin_id}/einstellungen")
+async def server_plugin_einstellungen_export(request: Request, guild_id: int, plugin_id: int):
+    """Nur die Werte dieses Servers, nicht das Plugin selbst.
+
+    Zwei getrennte Dateien mit Absicht: das Plugin gibt man weiter, die Werte sind die
+    eigenen (Rollennummern, Kanalnummern, eigene Texte). Wer beides in einer Datei
+    verschickt, verschickt die Struktur seines Servers gleich mit.
+    """
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    zeile = await db_one(
+        "SELECT p.kennung, p.name, p.version, g.einstellungen FROM plugin_guilds g "
+        "JOIN plugins p ON p.id=g.plugin_id WHERE g.plugin_id=? AND g.guild_id=?",
+        (plugin_id, str(guild_id)))
+    if not zeile:
+        return _plugin_fehler(f"/servers/{guild_id}?tab=plugins",
+                              "Dieses Plugin ist auf dem Server nicht angelegt.")
+    try:
+        werte = _djson.loads(zeile["einstellungen"]) or {}
+    except Exception:
+        werte = {}
+    name = re.sub(r"[^\w\-]+", "_", zeile["kennung"]).strip("_") or "plugin"
+    return _json_dl({
+        "phobos_plugin_einstellungen": plugin_mod.FORMAT,
+        "kennung": zeile["kennung"],
+        "plugin": zeile["name"],
+        "version": zeile["version"],
+        "werte": werte,
+    }, f"einstellungen_{name}.json")
+
+
+@web.post("/servers/{guild_id}/plugins/{plugin_id}/einstellungen")
+async def server_plugin_einstellungen_import(request: Request, guild_id: int, plugin_id: int,
+                                             einstellungen_file: UploadFile = File(...)):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    ziel = f"/servers/{guild_id}?tab=plugins"
+    try:
+        roh = await einstellungen_file.read()
+        if len(roh) > plugin_mod.MAX_DATEI:
+            raise plugin_mod.PluginFehler("Die Datei ist zu groß.")
+        daten = _djson.loads(roh.decode("utf-8"))
+        if not isinstance(daten, dict) or "phobos_plugin_einstellungen" not in daten:
+            raise plugin_mod.PluginFehler(
+                "Das ist keine Einstellungsdatei. Ein ganzes Plugin wird unter "
+                "Einstellungen → Plugins eingespielt, nicht hier.")
+    except plugin_mod.PluginFehler as e:
+        return _plugin_fehler(ziel, str(e))
+    except Exception:
+        return _plugin_fehler(ziel, "Die Datei ist kein gültiges JSON.")
+
+    # Die Werte eines Plugins in ein anderes zu schieben ergaebe Unsinn: die Namen sind
+    # verschieden, und was zufaellig gleich heisst, meint etwas anderes.
+    paket = await plugin_mod.plugin_paket(plugin_id)
+    if not paket:
+        return _plugin_fehler(ziel, "Dieses Plugin gibt es nicht mehr.")
+    if str(daten.get("kennung") or "") != str(paket.get("kennung") or ""):
+        return _plugin_fehler(
+            ziel, f"Die Datei gehört zu „{daten.get('kennung') or '?'}“, hier steht aber "
+                  f"„{paket.get('kennung')}“.")
+
+    werte = daten.get("werte")
+    if not isinstance(werte, dict):
+        return _plugin_fehler(ziel, "In der Datei stehen keine Werte.")
+    try:
+        meldung = await _plugin_anwenden(
+            guild_id, plugin_id,
+            {k: v for k, v in werte.items() if isinstance(k, str)})
+    except plugin_mod.PluginFehler as e:
+        return _plugin_fehler(ziel, str(e))
+    except Exception as e:
+        print(f"[plugins] Einstellungen einspielen fehlgeschlagen: {e}")
+        return _plugin_fehler(ziel, "Die Einstellungen liessen sich nicht anwenden.")
+    return _plugin_ok(ziel, "Einstellungen eingespielt. " + meldung)
+
+
 @web.get("/settings/tokens", response_class=HTMLResponse)
 async def tokens_page(request: Request, success: str = "", error: str = ""):
     if r := auth_redirect(request): return r
@@ -10774,6 +11090,7 @@ _SERVER_CONFIG_TAB_LABELS = {
     "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant", "events": "🗓️ Events",
     "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
     "autothread": "🧵 Auto-Thread", "vrclink": "🔗 VRC-Link", "profile": "🪪 Profile",
+    "plugins": "🧩 Plugins",
     "amp": "🎮 Gameserver", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
     "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen", "ratings": "⭐ Bewertungen",
 }
@@ -10796,6 +11113,9 @@ _TOGGLEABLE_FEATURES = {
     "warnings": "⚠️ Warnungen", "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant",
     "events": "🗓️ Events", "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
     "autothread": "🧵 Auto-Thread", "vrclink": "🔗 VRC-Link", "profile": "🪪 Profile",
+    # Plugins stehen in dieser Liste, damit ein Server, der keine benutzt, den Reiter
+    # ausblenden kann - wie jede andere Funktion auch.
+    "plugins": "🧩 Plugins",
     "amp": "🎮 Gameserver", "notifications": "🟣 Streaming", "freestuff": "🎁 Free Stuff",
     "log": "📋 Log", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
     "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen", "ratings": "⭐ Bewertungen",
@@ -11444,6 +11764,11 @@ async def server_config(
         "role_rules_debug_log": role_rules_debug_log,
         "role_rules_cog_missing": role_rules_cog_missing,
         "roles": roles, "categories": categories,
+        # Die Plugins dieser Installation samt dem, was auf DIESEM Server davon angelegt
+        # ist. Immer geladen, auch wenn der Reiter ausgeblendet ist: es sind zwei kleine
+        # Abfragen, und ein halb gefuellter Kontext waere die unangenehmere Fehlerquelle.
+        "plugins_liste": await _plugins_fuer_server(
+            guild_id, request.session.get("lang", "de")),
         "token_set": token_set, "saved": saved,
         "active": f"server_{guild_id}",
         "guilds": await _guild_list(request),

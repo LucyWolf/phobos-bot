@@ -3508,6 +3508,125 @@ document.addEventListener('click', function(e) {
 
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- TAB: Plugins -->
+{# Hier wird entschieden, WO ein Plugin wirkt - in die Installation kommt es unter
+   Einstellungen -> Plugins. Jedes Plugin bekommt sein eigenes Formular, weil die Felder
+   aus dem Paket kommen und bei jedem anders aussehen. #}
+<div class="tab-pane" id="pane-plugins">
+
+<p class="hint" style="margin-bottom:1.25rem;">{{ tr.plug_server_hint }}</p>
+
+{% if not plugins_liste %}
+  <div class="card"><p class="hint" style="margin:0;">{{ tr.plug_server_none }}</p></div>
+{% endif %}
+
+{% for p in plugins_liste %}
+<div class="card">
+  <div style="display:flex;align-items:flex-start;gap:0.75rem;flex-wrap:wrap;">
+    <div style="flex:1;min-width:220px;">
+      <div style="font-weight:700;font-size:0.95rem;">
+        {{ p.name }}
+        <span style="color:var(--muted);font-weight:400;font-size:0.78rem;">{{ p.version }}</span>
+        {% if p.aktiv %}
+        <span style="background:rgba(34,197,94,0.15);border:1px solid #22c55e;color:#22c55e;
+                     border-radius:999px;padding:0.1rem 0.55rem;font-size:0.68rem;margin-left:0.3rem;">
+          ✓ {{ tr.plug_active }}</span>
+        {% endif %}
+      </div>
+      <div style="color:var(--muted);font-size:0.75rem;margin-top:0.15rem;">
+        <code>{{ p.kennung }}</code>{% if p.autor %} · {{ tr.plug_author }} {{ p.autor }}{% endif %}
+      </div>
+      {% if p.beschreibung %}
+      <p style="margin:0.6rem 0 0;font-size:0.82rem;line-height:1.6;">{{ p.beschreibung }}</p>
+      {% endif %}
+      <div style="margin-top:0.7rem;display:flex;gap:0.4rem;flex-wrap:wrap;">
+        {% for t in p.teile %}
+        <span style="background:var(--bg);border:1px solid var(--border);border-radius:999px;
+                     padding:0.15rem 0.6rem;font-size:0.72rem;">
+          {{ t.titel }}: {{ t.anzahl }}{% if t.kinder %} (+{{ t.kinder }}){% endif %}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {% if p.aktiv and p.veraltet %}
+  <div class="alert alert-error" style="margin:0.9rem 0 0;">
+    ⚠️ {{ tr.plug_outdated }} ({{ p.stand or '?' }} → {{ p.version }})
+  </div>
+  {% endif %}
+
+  <form method="post" action="/servers/{{ guild.id }}/plugins/{{ p.id }}/anwenden"
+        style="margin-top:1rem;">
+    {% if p.einstellungen %}
+    <div class="grid-2" style="gap:1rem;">
+      {% for e in p.einstellungen %}
+      <div>
+        <label>{{ e.titel }}{% if e.pflicht %} <span style="color:#f59e0b;font-size:0.7rem;">({{ tr.plug_required }})</span>{% endif %}</label>
+        {% if e.hinweis %}<p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ e.hinweis }}</p>{% endif %}
+        {% set wert = p.werte.get(e.name, e.standard) %}
+        {% if e.art == 'rolle' %}
+          <select name="e_{{ e.name }}">
+            <option value="">{{ tr.plug_pick_role }}</option>
+            {% for r in roles %}<option value="{{ r.id }}" {% if wert == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+          </select>
+        {% elif e.art == 'kanal' %}
+          <select name="e_{{ e.name }}">
+            <option value="">{{ tr.plug_pick_channel }}</option>
+            {% for c in channels %}<option value="{{ c.id }}" {% if wert == c.id %}selected{% endif %}>#{{ c.name }}</option>{% endfor %}
+          </select>
+        {% elif e.art == 'kategorie' %}
+          <select name="e_{{ e.name }}">
+            <option value="">{{ tr.plug_pick_category }}</option>
+            {% for c in categories %}<option value="{{ c.id }}" {% if wert == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+          </select>
+        {% elif e.art == 'mehrzeilig' %}
+          <textarea name="e_{{ e.name }}" rows="3">{{ wert }}</textarea>
+        {% elif e.art == 'zahl' %}
+          <input type="number" name="e_{{ e.name }}" value="{{ wert }}">
+        {% else %}
+          <input type="text" name="e_{{ e.name }}" maxlength="4000" value="{{ wert }}">
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="hint" style="margin:0 0 0.8rem;">{{ tr.plug_no_settings }}</p>
+    {% endif %}
+
+    {% if p.aktiv %}
+    <p class="hint" style="margin:0.9rem 0 0.6rem;">{{ tr.plug_reapply_hint }}</p>
+    {% endif %}
+    <button type="submit" class="btn" style="margin-top:0.4rem;">
+      {% if p.aktiv %}{% if p.veraltet %}{{ tr.plug_update }}{% else %}{{ tr.plug_save }}{% endif %}{% else %}{{ tr.plug_add }}{% endif %}
+    </button>
+  </form>
+
+  {% if p.aktiv %}
+  <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);
+              display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
+    <a class="btn btn-secondary" href="/servers/{{ guild.id }}/plugins/{{ p.id }}/einstellungen">
+      {{ tr.plug_settings_export }}</a>
+    <form method="post" action="/servers/{{ guild.id }}/plugins/{{ p.id }}/einstellungen"
+          enctype="multipart/form-data" style="margin:0;display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+      <input type="file" name="einstellungen_file" accept=".json,application/json" required
+             style="max-width:230px;">
+      <button type="submit" class="btn btn-secondary">{{ tr.plug_settings_import }}</button>
+    </form>
+    <form method="post" action="/servers/{{ guild.id }}/plugins/{{ p.id }}/entfernen"
+          style="margin:0;margin-left:auto;"
+          onsubmit="return confirm('{{ tr.plug_remove_confirm }}');">
+      <button type="submit" class="btn btn-danger">{{ tr.plug_remove }}</button>
+    </form>
+  </div>
+  <p class="hint" style="margin:0.6rem 0 0;font-size:0.72rem;">{{ tr.plug_settings_import_hint }}</p>
+  {% endif %}
+</div>
+{% endfor %}
+
+</div>
+
 <div class="tab-pane" id="pane-vrclink">
 
 <div style="position:relative;margin-bottom:1.25rem;">
@@ -6348,7 +6467,7 @@ document.addEventListener('click', function(e) {
 </script>
 
 <script>
-const TABS = ['config','welcome','automod','leveling','rr','commands','tickets','giveaways','polls','ratings','warnings','users','tempvoice','scheduled','events','birthday','autodelete','autothread','vrclink','profile','amp','autokick','embeds','rolerules'];
+const TABS = ['config','welcome','automod','leveling','rr','commands','tickets','giveaways','polls','ratings','warnings','users','tempvoice','scheduled','events','birthday','autodelete','autothread','vrclink','profile','plugins','amp','autokick','embeds','rolerules'];
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {

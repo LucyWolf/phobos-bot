@@ -406,6 +406,12 @@
         </a>
         {% endif %}
         {% if role == 'admin' %}
+        <a href="/settings/plugins" class="nav-item nav-sub {% if active == 'plugins' %}active{% endif %}">
+          <span class="icon">🧩</span>
+          <span class="label">{{ tr.nav_plugins }}</span>
+        </a>
+        {% endif %}
+        {% if role == 'admin' %}
         <a href="/settings/vrchat" class="nav-item nav-sub {% if active == 'vrchat' %}active{% endif %}">
           <span class="icon">🔗</span>
           <span class="label">{{ tr.nav_vrchat }}</span>

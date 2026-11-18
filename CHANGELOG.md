@@ -14,6 +14,69 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.39 — `beta` — 18.11.2026
+
+**Plugins: Pakete aus Einstellungen, die man weitergeben kann**
+- Gewünscht war ein Plugin-System, „damit Leute selber bauen können": in den Einstellungen
+  Plugins mit Import und Export, dann auf einem Server hinzufügen, und dessen Einstellungen
+  getrennt exportieren und einspielen.
+- Ein Plugin ist eine JSON-Datei, die **beschreibt**, was angelegt werden soll: Befehle, ein
+  Ticket-Panel samt Kategorien, Level-Rollen, Level-Belohnungen, Wortlisten. Der Bot legt es
+  an. Nichts Bestehendes wurde umgebaut — wer kein Plugin einspielt, merkt von der Sache
+  nichts.
+
+**Warum kein Code ausgeführt wird**
+Ein Python-Plugin liefe im selben Prozess wie der Bot: Bot-Token, ganze Datenbank samt
+E-Mail-Adressen, Passwort-Hashes und 2FA-Geheimnissen der Dashboard-Konten, Dateien des
+Wirts. Python bietet keine Abschottung, die das zuverlässig verhindert — wer hochladen darf,
+hätte den Bot. Einen Tag nach der Umstellung auf einen Container ohne root wäre das der
+Schritt zurück gewesen. Eine Beschreibung kann das nicht: sie wird gelesen, geprüft und in
+genau fünf bekannte Tabellen geschrieben.
+
+**Warum Platzhalter statt Nummern**
+Ein Server-Backup darf Rollen- und Kanalnummern roh enthalten — es wandert von einem Server
+zum nächsten. Ein Plugin soll auf Servern laufen, die sein Autor nie gesehen hat; dort wären
+seine Nummern schlicht falsch. Es erklärt deshalb seine offenen Stellen selbst
+(`einstellungen`) und setzt im Inhalt `{{platzhalter}}`. Ein Platzhalter, den das Plugin
+nicht erklärt, lässt die Datei beim Hochladen durchfallen — sonst stünde er am Ende wörtlich
+in einem Befehl.
+
+**Entfernen nimmt nur das Eigene weg**
+Zu jeder angelegten Zeile wird mitgeschrieben, aus welchem Plugin sie stammt. Ein Entfernen,
+das stattdessen nach Namen oder Inhalt sucht, trifft früher oder später etwas, das jemand
+von Hand angelegt hat. Ein von Hand geschriebener Befehl überlebt sogar ein Plugin, das
+denselben anlegen wollte: er wird beim Anlegen übersprungen, also nicht mitgeschrieben, also
+auch nicht gelöscht.
+
+**Was bewusst nicht geht**
+- **Reaction Roles** hängen an der Nummer einer bestehenden Nachricht — die kann kein Paket
+  mitbringen, es zeigte auf jedem Server ins Leere.
+- **Die Server-Einstellungen selbst** sind der Generalschlüssel (Rollen, Schalter, der
+  Schlüssel der Profil-Schnittstelle). Eine Datei soll keine Funktionen anschalten können,
+  die niemand bestellt hat.
+- **Ein eingespieltes Ticket-Panel bleibt Entwurf.** Veröffentlichen postet eine Nachricht in
+  einen Kanal — das löst ein Mensch aus, kein Datei-Upload.
+
+**Neue Fassung heißt nicht sofortiges Umstellen**
+Dieselbe Kennung nochmal hochzuladen aktualisiert das Plugin in der Installation, lässt die
+Server aber auf ihrer Fassung stehen. Sie bekommen einen Hinweis und entscheiden selbst —
+ein Upload soll nicht hinter ihrem Rücken ihre Zeilen ersetzen.
+
+**Was zu tun ist**
+Nichts. Der Reiter „🧩 Plugins" erscheint bei den Einstellungen und je Server; ohne
+eingespieltes Plugin steht dort nur, wo man eines herbekommt. Das Format steht in der README,
+eine Beispieldatei zum Abschreiben in `tools/plugin-beispiel.json`.
+
+**Geprüft:** 53 Prüfungen gegen echte Tabellen — was abgelehnt werden muss (kaputtes JSON,
+Server-Backup statt Plugin, fremdes Format, unbekannte Inhaltsart, unerklärte Platzhalter,
+fehlende Pflichtfelder, zu große Dateien), das Einsetzen der Werte, und vor allem: dass
+Anlegen nicht verdoppelt, Entfernen genau die eigenen Zeilen nimmt, Handarbeit stehen bleibt
+und ein zweiter Server unberührt bleibt.
+
+**Nicht geprüft:** die Oberfläche im Browser.
+
+---
+
 ## 1.19.38 — `beta` — 18.11.2026
 
 **Update scheiterte mit „exit 128", wenn der Projektordner fehlt**

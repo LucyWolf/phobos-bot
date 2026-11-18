@@ -1,0 +1,92 @@
+{
+  "phobos_plugin": "1.0",
+  "kennung": "beispiel-support",
+  "name": "Support-Grundgerüst",
+  "version": "1.0.0",
+  "autor": "Phobos",
+  "beschreibung": "Ein Ticket-Panel mit drei Kategorien, zwei Befehle und eine Level-Belohnung. Gedacht als Vorlage zum Abschreiben: alles, was von Server zu Server verschieden ist, steht als Platzhalter drin.",
+
+  "einstellungen": [
+    {
+      "name": "support_rolle",
+      "art": "rolle",
+      "titel": "Support-Rolle",
+      "hinweis": "Wer die Tickets sieht und beantwortet.",
+      "pflicht": true
+    },
+    {
+      "name": "ticket_kategorie",
+      "art": "kategorie",
+      "titel": "Kategorie für neue Tickets",
+      "hinweis": "Leer lassen, dann landen Tickets dort, wo das Panel steht."
+    },
+    {
+      "name": "log_kanal",
+      "art": "kanal",
+      "titel": "Kanal für geschlossene Tickets"
+    },
+    {
+      "name": "servername",
+      "art": "text",
+      "titel": "Wie der Server in Texten heißen soll",
+      "standard": "unserem Server"
+    }
+  ],
+
+  "inhalt": {
+    "ticket_panels": [
+      {
+        "name": "Support",
+        "description": "Du brauchst Hilfe? Wähle unten aus, worum es geht.",
+        "button_label": "Ticket öffnen",
+        "emoji": "🎫",
+        "support_role_id": "{{support_rolle}}",
+        "category_id": "{{ticket_kategorie}}",
+        "log_channel_id": "{{log_kanal}}",
+        "close_button_label": "Ticket schließen",
+        "ticket_message": "Willkommen bei {{servername}}! Beschreibe dein Anliegen, das Team meldet sich.",
+        "optionen": [
+          {
+            "label": "Frage",
+            "description": "Allgemeine Fragen",
+            "emoji": "❓",
+            "sortierung": 1
+          },
+          {
+            "label": "Meldung",
+            "description": "Jemanden melden",
+            "emoji": "🚨",
+            "support_role_id": "{{support_rolle}}",
+            "ticket_message": "Schildere bitte, was passiert ist — mit Namen und, wenn möglich, Bildern.",
+            "sortierung": 2
+          },
+          {
+            "label": "Bewerbung",
+            "description": "Ins Team",
+            "emoji": "📨",
+            "sortierung": 3
+          }
+        ]
+      }
+    ],
+
+    "befehle": [
+      {
+        "trigger": "!support",
+        "response": "Mach einfach ein Ticket auf, das Team von {{servername}} kümmert sich darum."
+      },
+      {
+        "trigger": "!team",
+        "response": "Zuständig ist <@&{{support_rolle}}>."
+      }
+    ],
+
+    "level_belohnungen": [
+      { "level": 10, "reward": "Darf eigene Bilder posten" }
+    ],
+
+    "wortlisten": [
+      { "label": "Werbung", "words": "discord.gg, join my server, free nitro" }
+    ]
+  }
+}

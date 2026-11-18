@@ -1369,6 +1369,49 @@ async def init_db():
             # Panel, egal welche Kategorie. Standard aus - die Trennung nach Kategorie ist
             # das, was die Leute erwarten.
             "ALTER TABLE ticket_panels ADD COLUMN ein_ticket_gesamt INTEGER NOT NULL DEFAULT 0",
+            # ── Plugins ──────────────────────────────────────────────────────────────────
+            # Gewuenscht am 18.11.2026: Pakete aus Einstellungen, die man bauen, exportieren,
+            # weitergeben und auf einem Server hinzufuegen kann. Kein Code - siehe plugins.py
+            # fuer das Warum.
+            #
+            # Das ganze Paket steht als JSON in "inhalt" und nicht in Einzeltabellen: es wird
+            # immer als Ganzes gelesen, geprueft und exportiert, und eine Tabelle je
+            # Inhaltsart muesste bei jeder neuen Art mitwachsen. Die Kennung ist eindeutig -
+            # dieselbe Datei nochmal hochzuladen ist ein Aktualisieren, kein Zweitplugin.
+            """CREATE TABLE IF NOT EXISTS plugins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kennung TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                version TEXT NOT NULL DEFAULT '',
+                autor TEXT NOT NULL DEFAULT '',
+                beschreibung TEXT NOT NULL DEFAULT '',
+                inhalt TEXT NOT NULL,
+                angelegt TEXT NOT NULL DEFAULT '',
+                geaendert TEXT NOT NULL DEFAULT ''
+            )""",
+            # Ein Plugin auf einem Server: welche Werte dort fuer die Platzhalter gelten und
+            # mit welcher Fassung es zuletzt angewendet wurde. "version" steht hier nochmal,
+            # damit die Seite zeigen kann, dass ein Server noch auf der alten Fassung steht.
+            """CREATE TABLE IF NOT EXISTS plugin_guilds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                plugin_id INTEGER NOT NULL,
+                guild_id TEXT NOT NULL,
+                einstellungen TEXT NOT NULL DEFAULT '{}',
+                version TEXT NOT NULL DEFAULT '',
+                angelegt TEXT NOT NULL DEFAULT '',
+                geaendert TEXT NOT NULL DEFAULT '',
+                UNIQUE(plugin_id, guild_id)
+            )""",
+            # Die Buchfuehrung: welche Zeile in welcher Tabelle stammt aus welchem Plugin.
+            # Ohne sie muesste das Entfernen raten - nach Namen oder Inhalt suchen - und
+            # wuerde frueher oder spaeter etwas loeschen, das jemand von Hand angelegt hat.
+            """CREATE TABLE IF NOT EXISTS plugin_eintraege (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                plugin_guild_id INTEGER NOT NULL,
+                tabelle TEXT NOT NULL,
+                zeile_id INTEGER NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_plugin_eintraege ON plugin_eintraege(plugin_guild_id)",
         ]:
             try:
                 await db.execute(col)

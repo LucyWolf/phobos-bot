@@ -36,6 +36,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 - [Auto-Thread](#auto-thread)
 - [VRC-Link (VRChat)](#vrc-link-vrchat)
 - [Profiles](#profiles)
+- [Plugins](#plugins)
 - [Scheduled Messages](#scheduled-messages)
 - [Discord Events](#discord-events)
 - [CrossVerification](#crossverification)
@@ -393,6 +394,111 @@ behind a button, a separate room, or your own 18+ gate. The bot cannot make that
 In Udon: `VRCStringDownloader.LoadUrl(url, (IUdonEventReceiver)this)`, then read
 `result.Result` in `OnStringLoadSuccess`. `VRCUrl` cannot be built from a string at runtime,
 so the address has to sit in a public `VRCUrl` field — one per world, with the key in it.
+
+---
+
+## Plugins
+
+*Available from 1.19.39 (beta).*
+
+A plugin is a **package of settings**, not a program. One JSON file describes what should be
+created — commands, a ticket panel with its categories, level rewards, auto-mod word lists —
+and the bot creates it. You can export it, hand it to someone else, and they can apply it to
+their own server.
+
+**A plugin executes no code.** That is deliberate and not a temporary limitation: a Python
+plugin would run in the same process as the bot, with access to the bot token, the whole
+database (dashboard emails, password hashes, 2FA secrets) and the host's filesystem. Python
+offers no sandbox that reliably prevents this. Whoever could upload a plugin would own the
+bot. A description cannot do that: it is read, validated, and written into exactly the
+tables listed below.
+
+### Where things live
+
+| | |
+|---|---|
+| **Settings → Plugins** | the installation's plugins: import, export, delete |
+| **Server → Plugins** | which of them act on *this* server, with their settings |
+
+Importing a plugin applies it to nothing. It becomes active only when someone adds it to a
+specific server and fills in that server's values.
+
+### The file format
+
+```json
+{
+  "phobos_plugin": "1.0",
+  "kennung": "support-basics",
+  "name": "Support basics",
+  "version": "1.0.0",
+  "autor": "you",
+  "beschreibung": "A ticket panel with three categories and two commands.",
+
+  "einstellungen": [
+    { "name": "support_role", "art": "rolle", "titel": "Support role", "pflicht": true },
+    { "name": "greeting", "art": "text", "titel": "Greeting", "standard": "Hi!" }
+  ],
+
+  "inhalt": {
+    "befehle": [
+      { "trigger": "!team", "response": "Ask <@&{{support_role}}>." }
+    ]
+  }
+}
+```
+
+A full, working example is in [`tools/plugin-beispiel.json`](tools/plugin-beispiel.json).
+
+**`kennung`** identifies the plugin across versions — lowercase letters, digits, `-` and
+`_`. Uploading the same identifier again is a *new version*, not a second plugin. Servers
+already using it keep running the old one until somebody presses "move to the new version".
+
+**`einstellungen`** are the open slots. A plugin is meant to work on servers its author has
+never seen, so it cannot carry role or channel numbers. It declares what it needs and the
+admin fills a form in when adding it. Types: `text`, `mehrzeilig`, `zahl`, `rolle`, `kanal`,
+`kategorie` — the last three render as a picker of that server's roles/channels/categories.
+
+**Placeholders** are `{{name}}` and may appear in any text of the content. A placeholder the
+plugin does not declare is rejected at upload — otherwise `{{name}}` would end up verbatim
+in somebody's command.
+
+### What a plugin may create
+
+| Key | Creates |
+|---|---|
+| `befehle` | custom commands (`trigger`, `response`) |
+| `ticket_panels` | ticket panels, with their categories nested under `optionen` |
+| `level_rollen` | level → role assignments (`level`, `role_id`) |
+| `level_belohnungen` | level → reward text (`level`, `reward`) |
+| `wortlisten` | auto-mod word lists (`label`, `words`) |
+
+Anything else in `inhalt` is refused. Three things are deliberately not on the list:
+reaction roles (they hang off the id of an existing message, which no package can bring
+along), the per-server config keys (that is the server's master switch — a file should not
+be able to turn features on), and anything holding people's data.
+
+An imported ticket panel is created as a **draft** and is not published on its own:
+publishing posts a message into a channel, and a human should trigger that, not a file
+upload.
+
+### Adding, changing, removing
+
+Applying is **replacing**: whatever the plugin created on that server before is removed
+first, then created fresh. So a change to the settings and an update to a new version are
+the same operation, and a plugin never leaves two sets of commands side by side.
+
+Every row a plugin creates is recorded. **Removing takes back exactly those rows** — never
+something that looks similar. A command you wrote by hand survives a plugin that wanted to
+create the same one (it is skipped at creation, so it is never recorded, so it is never
+deleted). Changes somebody made to a plugin's own rows afterwards are lost on the next
+apply, and the dashboard says so before you press it.
+
+### Settings, exported separately
+
+The plugin and a server's values for it are **two different files**. The plugin is what you
+hand around; the values (role ids, channel ids, your own wording) are yours. Under
+**Server → Plugins** each applied plugin can export its settings and import another
+server's — the file fits that one plugin and is refused for any other.
 
 ---
 
@@ -855,6 +961,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 - [Auto-Thread](#auto-thread-1)
 - [VRC-Link (VRChat)](#vrc-link-vrchat-1)
 - [Profile](#profile)
+- [Plugins](#plugins-1)
 - [Geplante Nachrichten](#geplante-nachrichten)
 - [Discord-Events](#discord-events-1)
 - [CrossVerification](#crossverification-1)
@@ -1188,6 +1295,116 @@ liest jeder, der davorsteht. Deshalb steht in jeder Antwort, welches Feld dahint
   Ergebnis behalten.
 - **HTTPS.** Das Dashboard hinter einen Proxy mit Zertifikat; der Schlüssel steht in der
   Adresse.
+
+---
+
+## Plugins
+
+*Ab 1.19.39 (beta).*
+
+Ein Plugin ist ein **Paket aus Einstellungen**, kein Programm. Eine JSON-Datei beschreibt,
+was angelegt werden soll — Befehle, ein Ticket-Panel mit seinen Kategorien,
+Level-Belohnungen, Wortlisten für den Spam-Schutz —, und der Bot legt es an. Die Datei lässt
+sich exportieren, weitergeben und auf einem fremden Server einspielen.
+
+**Ein Plugin führt keinen Code aus.** Das ist Absicht und keine Einschränkung auf Zeit: Ein
+Python-Plugin liefe im selben Prozess wie der Bot und käme an den Bot-Token, an die ganze
+Datenbank (E-Mail-Adressen, Passwort-Hashes und 2FA-Geheimnisse der Dashboard-Konten) und an
+die Dateien des Wirts. In Python gibt es keine Abschottung, die das zuverlässig verhindert —
+wer ein Plugin hochladen dürfte, hätte den ganzen Bot. Eine Beschreibung kann das nicht: sie
+wird gelesen, geprüft und in genau die Tabellen geschrieben, die unten stehen.
+
+### Wo was liegt
+
+| | |
+|---|---|
+| **Einstellungen → Plugins** | die Plugins der Installation: einspielen, exportieren, löschen |
+| **Server → Plugins** | welche davon auf *diesem* Server wirken, mit ihren Werten |
+
+Ein eingespieltes Plugin tut zunächst gar nichts. Wirksam wird es erst, wenn es jemand auf
+einem bestimmten Server anlegt und dort die Werte ausfüllt.
+
+### Das Dateiformat
+
+```json
+{
+  "phobos_plugin": "1.0",
+  "kennung": "support-basis",
+  "name": "Support-Grundgerüst",
+  "version": "1.0.0",
+  "autor": "du",
+  "beschreibung": "Ein Ticket-Panel mit drei Kategorien und zwei Befehlen.",
+
+  "einstellungen": [
+    { "name": "support_rolle", "art": "rolle", "titel": "Support-Rolle", "pflicht": true },
+    { "name": "gruss", "art": "text", "titel": "Begrüßung", "standard": "Moin!" }
+  ],
+
+  "inhalt": {
+    "befehle": [
+      { "trigger": "!team", "response": "Zuständig ist <@&{{support_rolle}}>." }
+    ]
+  }
+}
+```
+
+Ein vollständiges Beispiel zum Abschreiben liegt in
+[`tools/plugin-beispiel.json`](tools/plugin-beispiel.json).
+
+**`kennung`** ist das, was ein Plugin über Versionen hinweg identifiziert — Kleinbuchstaben,
+Ziffern, `-` und `_`. Dieselbe Kennung nochmal hochzuladen ist eine *neue Fassung*, kein
+zweites Plugin. Server, die es benutzen, behalten die alte Fassung, bis dort jemand auf
+„Auf die neue Fassung bringen" drückt.
+
+**`einstellungen`** sind die offenen Stellen. Ein Plugin soll auf Servern laufen, die sein
+Autor nie gesehen hat — Rollen- und Kanalnummern kann es deshalb nicht mitbringen. Es sagt,
+was es braucht, und der Admin füllt beim Anlegen ein Formular aus. Arten: `text`,
+`mehrzeilig`, `zahl`, `rolle`, `kanal`, `kategorie` — die letzten drei zeigen eine
+Auswahlliste des jeweiligen Servers.
+
+**Platzhalter** heißen `{{name}}` und dürfen in jedem Text des Inhalts stehen. Ein
+Platzhalter, den das Plugin nicht erklärt, lässt die Datei beim Hochladen durchfallen —
+sonst stünde am Ende `{{name}}` wörtlich in irgendeinem Befehl.
+
+### Was ein Plugin anlegen darf
+
+| Schlüssel | Legt an |
+|---|---|
+| `befehle` | eigene Befehle (`trigger`, `response`) |
+| `ticket_panels` | Ticket-Panels, Kategorien verschachtelt unter `optionen` |
+| `level_rollen` | Level → Rolle (`level`, `role_id`) |
+| `level_belohnungen` | Level → Belohnungstext (`level`, `reward`) |
+| `wortlisten` | Wortlisten für den Spam-Schutz (`label`, `words`) |
+
+Alles andere unter `inhalt` wird abgelehnt. Drei Dinge fehlen mit Absicht: Reaction Roles
+(sie hängen an der Nummer einer bestehenden Nachricht, die kein Paket mitbringen kann), die
+Server-Einstellungen selbst (das ist der Generalschlüssel — eine Datei soll keine Funktionen
+anschalten können) und alles, worin Daten von Personen stehen.
+
+Ein eingespieltes Ticket-Panel steht als **Entwurf** da und wird nicht von selbst
+veröffentlicht: Veröffentlichen postet eine Nachricht in einen Kanal, und das soll ein
+Mensch auslösen, kein Datei-Upload.
+
+### Anlegen, ändern, entfernen
+
+Anlegen ist **ersetzen**: Was das Plugin auf diesem Server vorher angelegt hatte, wird erst
+entfernt und dann neu erzeugt. Eine geänderte Einstellung und ein Wechsel auf eine neue
+Fassung sind damit derselbe Vorgang, und es stehen nie zwei Sätze Befehle nebeneinander.
+
+Zu jeder angelegten Zeile wird mitgeschrieben, aus welchem Plugin sie stammt. **Entfernt
+wird genau das — nie etwas, das nur ähnlich aussieht.** Ein Befehl, den jemand von Hand
+geschrieben hat, überlebt ein Plugin, das denselben anlegen wollte: er wird beim Anlegen
+übersprungen, also nicht mitgeschrieben, also auch nicht gelöscht. Änderungen, die jemand
+nachträglich an den Zeilen des Plugins gemacht hat, gehen beim nächsten Anlegen verloren —
+das steht auch im Dashboard, bevor man drückt.
+
+### Einstellungen, getrennt exportierbar
+
+Das Plugin und die Werte eines Servers sind **zwei verschiedene Dateien**. Das Plugin gibt
+man weiter; die Werte (Rollennummern, Kanalnummern, eigene Formulierungen) sind die eigenen.
+Unter **Server → Plugins** lassen sich die Einstellungen je Plugin exportieren und die eines
+anderen Servers einspielen — die Datei passt nur zu genau diesem Plugin und wird für jedes
+andere abgelehnt.
 
 ---
 
