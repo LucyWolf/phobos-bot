@@ -14,6 +14,43 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.44 — `beta` — 18.11.2026
+
+**Reihenfolge ändern durch Ziehen**
+- Gewünscht: „nicht nur das verschieben per pfeil sondern links gedrückt halten und
+  nachoben ziehen und losslassen". Zeile festhalten, schieben, loslassen — die neue
+  Reihenfolge wird sofort gespeichert und die Seite lädt neu.
+- **Die Pfeile bleiben.** Ziehen gibt es auf einem Touchgerät nicht und mit der Tastatur
+  auch nicht; wer nur die Pfeile hat, soll nicht ausgeschlossen sein.
+- Der Mauszeiger wird beim Darüberfahren zur Hand. Ohne das findet die Funktion niemand,
+  der nicht danach sucht.
+
+**Zwei Dinge, die dabei schiefgehen können**
+- **Die ausgeklappte Bearbeitungszeile wandert mit.** Unter jeder Zeile hängt ihr
+  Bearbeiten-Bereich; ohne das stünde er nach dem Ziehen unter einem fremden Eintrag.
+- **Ein Klick auf ein Kästchen oder einen Knopf zieht nicht.** Wer etwas ankreuzt, will
+  nicht umsortieren.
+
+**Was die Seite schickt, wird nicht geglaubt**
+Beim Speichern kommt eine ganze Reihenfolge auf einmal an. Abgeglichen wird sie gegen die
+Liste des Servers: fremde und erfundene Nummern fliegen raus, Doppelte zählen einmal, und
+was der Browser nicht kannte — im anderen Fenster angelegt — hängt hinten an, statt verloren
+zu gehen. Eine leere Liste ändert nichts.
+
+Gespeichert wird als gewöhnliches Formular, danach lädt die Seite neu. Sie zeigt damit, was
+in der Datenbank steht, und nicht, was der Browser glaubt — ein fehlgeschlagenes Speichern
+fällt sofort auf, statt bis zum nächsten Aufruf hübsch auszusehen.
+
+**Geprüft:** 38 Prüfungen (vorher 23). Neu: die übernommene Reihenfolge, fremde und doppelte
+Nummern, eine unvollständige Liste, eine leere Liste, der unberührte Nachbarserver — und
+dass die Vorlage alles mitbringt, woran das Ziehen hängt (ziehbare Zeilen, der Aufruf, die
+mitwandernde Bearbeitungszeile, der ausgenommene Klick auf Bedienelemente, und dass die
+Pfeile noch da sind).
+
+**Nicht geprüft:** das Ziehen selbst — das läuft im Browser.
+
+---
+
 ## 1.19.43 — `beta` — 18.11.2026
 
 **Ein Plugin kann jetzt auch Daten lesen**

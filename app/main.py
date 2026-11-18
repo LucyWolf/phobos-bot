@@ -14465,6 +14465,43 @@ async def _neu_sortieren(tabelle: str, guild_id, zeile_id: int, richtung: str) -
     return True
 
 
+async def _reihenfolge_setzen(tabelle: str, guild_id, ids: list) -> int:
+    """Eine ganze Reihenfolge auf einmal festschreiben - das Gegenstueck zum Ziehen.
+
+    Gegen die Liste des Servers abgeglichen, nicht blind uebernommen: was die Seite
+    mitschickt, kann veraltet sein oder gar nicht hierher gehoeren. Fremde Nummern fliegen
+    raus, Doppelte auch, und was der Browser nicht kannte (in einem anderen Fenster
+    angelegt), haengt hinten an, statt verloren zu gehen.
+    """
+    vorhanden = [z["id"] for z in await db_rows(
+        f"SELECT id FROM {tabelle} WHERE guild_id=? ORDER BY sortierung, id DESC",
+        (str(guild_id),))]
+    bekannt = set(vorhanden)
+    neu = [i for i in dict.fromkeys(ids) if i in bekannt]
+    neu += [i for i in vorhanden if i not in set(neu)]
+    for platz, zeile_id in enumerate(neu, start=1):
+        await db_exec(f"UPDATE {tabelle} SET sortierung=? WHERE id=? AND guild_id=?",
+                      (platz, zeile_id, str(guild_id)))
+    return len(neu)
+
+
+@web.post("/servers/{guild_id}/embeds/reihenfolge")
+async def embed_posts_order(request: Request, guild_id: int):
+    """Nach dem Ziehen: die neue Reihenfolge am Stueck."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    ids = []
+    for teil in (form.get("reihenfolge") or "").split(",")[:500]:
+        teil = teil.strip()
+        if teil.isdigit():
+            ids.append(int(teil))
+    if ids:
+        await _reihenfolge_setzen("embed_posts", guild_id, ids)
+    return RedirectResponse(f"/servers/{guild_id}?tab=embeds", status_code=302)
+
+
 @web.post("/servers/{guild_id}/embeds/markierte-loeschen")
 async def embed_posts_bulk_delete(request: Request, guild_id: int):
     if r := auth_redirect(request): return r

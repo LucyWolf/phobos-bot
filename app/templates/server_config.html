@@ -5437,6 +5437,14 @@ function updateAmpCmdPreview(id, action, value) {
   {# Das Formular steht NEBEN der Tabelle, nicht um sie herum: in den Zeilen stehen schon
      Formulare, und verschachtelte kennt HTML nicht. Die Kaestchen gehoeren ueber ihr
      form-Attribut hierher, die Pfeile leihen es sich mit formaction. #}
+  <style>
+    /* Der Mauszeiger ist der einzige Hinweis darauf, dass man ziehen kann - ohne ihn
+       findet es niemand, der nicht danach sucht. */
+    #embeds-liste tr[data-id] { cursor: grab; }
+    #embeds-liste tr[data-id]:active { cursor: grabbing; }
+    #embeds-liste tr[data-id] input,
+    #embeds-liste tr[data-id] button { cursor: pointer; }
+  </style>
   <form id="embeds-bulk" method="post"
         action="/servers/{{ guild.id }}/embeds/markierte-loeschen" style="margin:0;"></form>
 
@@ -5447,9 +5455,9 @@ function updateAmpCmdPreview(id, action, value) {
               title="{{ tr.mark_all }}" style="margin:0;"></th>
         <th>{{ tr.label_name }}</th><th>{{ tr.label_channel }}</th><th></th>
       </tr></thead>
-      <tbody>
+      <tbody id="embeds-liste">
         {% for ep in embed_posts %}
-        <tr>
+        <tr draggable="true" data-id="{{ ep.id }}" title="{{ tr.drag_hint }}">
           <td><input type="checkbox" name="markiert" value="{{ ep.id }}" form="embeds-bulk"
                      onchange="zaehleMarkierte('embeds-bulk')" style="margin:0;"></td>
           <td style="font-weight:600;font-size:0.88rem;">{{ ep.name }}</td>
@@ -6583,6 +6591,81 @@ function alleMarkieren(quelle, formId) {
   zaehleMarkierte(formId);
 }
 
+// ── Reihenfolge per Ziehen ─────────────────────────────────────────────────────────
+// Gewuenscht am 18.11.2026: "nicht nur das verschieben per pfeil sondern links gedrückt
+// halten und nachoben ziehen und losslassen". Die Pfeile bleiben trotzdem - Ziehen gibt
+// es auf einem Touchgeraet nicht, und mit der Tastatur auch nicht.
+//
+// Zwei Dinge, die hier anders sind als in einer gewoehnlichen Liste:
+//   * Unter jeder Zeile haengt ihre ausgeklappte Bearbeitungszeile. Die muss mitwandern,
+//     sonst steht sie nach dem Ziehen unter einem fremden Eintrag.
+//   * Angefasst wird nicht, was in der Zeile anklickbar ist. Wer ein Kaestchen ankreuzt
+//     oder einen Knopf drueckt, will nicht ziehen.
+function ziehbareListe(tbodyId, speicherUrl) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+  let gezogen = null, anhang = null, geaendert = false;
+
+  function anhangVon(zeile) {
+    const n = zeile.nextElementSibling;
+    return (n && n.classList.contains('panel-edit-row')) ? n : null;
+  }
+  function nachZiel(ziel) {
+    const a = anhangVon(ziel);
+    return a ? a.nextSibling : ziel.nextSibling;
+  }
+
+  tbody.addEventListener('dragstart', function (e) {
+    const zeile = e.target.closest('tr[data-id]');
+    if (!zeile) return;
+    if (e.target.closest('input,button,a,select,textarea')) { e.preventDefault(); return; }
+    gezogen = zeile;
+    anhang = anhangVon(zeile);
+    zeile.style.opacity = '0.45';
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', zeile.dataset.id); } catch (err) {}
+    }
+  });
+
+  tbody.addEventListener('dragover', function (e) {
+    if (!gezogen) return;
+    e.preventDefault();
+    const ziel = e.target.closest('tr[data-id]');
+    if (!ziel || ziel === gezogen) return;
+    const kasten = ziel.getBoundingClientRect();
+    const obereHaelfte = (e.clientY - kasten.top) < kasten.height / 2;
+    tbody.insertBefore(gezogen, obereHaelfte ? ziel : nachZiel(ziel));
+    if (anhang) gezogen.after(anhang);
+    geaendert = true;
+  });
+
+  tbody.addEventListener('drop', function (e) { if (gezogen) e.preventDefault(); });
+
+  tbody.addEventListener('dragend', function () {
+    if (!gezogen) return;
+    gezogen.style.opacity = '';
+    gezogen = null;
+    anhang = null;
+    if (!geaendert) return;
+    geaendert = false;
+    // Gespeichert wird als gewoehnliches Formular, nicht per fetch: danach laedt die Seite
+    // neu und zeigt genau das, was in der Datenbank steht - nicht das, was der Browser
+    // glaubt. Ein fehlgeschlagenes Speichern faellt so sofort auf.
+    const ids = Array.from(tbody.querySelectorAll('tr[data-id]')).map(z => z.dataset.id);
+    const form = document.createElement('form');
+    form.method = 'post';
+    form.action = speicherUrl;
+    const feld = document.createElement('input');
+    feld.type = 'hidden';
+    feld.name = 'reihenfolge';
+    feld.value = ids.join(',');
+    form.appendChild(feld);
+    document.body.appendChild(form);
+    form.submit();
+  });
+}
+
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {
@@ -6590,6 +6673,8 @@ function showTab(name) {
     if (pane) pane.classList.toggle('active', t === name);
   });
 }
+ziehbareListe('embeds-liste', '/servers/{{ guild.id }}/embeds/reihenfolge');
+
 const init = new URLSearchParams(location.search).get('tab') || '{{ tab }}' || 'config';
 showTab(init);
 
