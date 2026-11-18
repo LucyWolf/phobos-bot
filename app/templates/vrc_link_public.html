@@ -165,7 +165,7 @@
         {%- else %}{{ tr.vrcp_group_no }}{% endif %}
       </span>
     </div>
-    {% if group_can_invite and not group_member and link.status == 'approved' %}
+    {% if group_can_invite and not group_member and link.status == 'approved' and not verbraucht %}
     <div class="actions">
       <form method="post" action="/vrc/invite">
         <input type="hidden" name="t" value="{{ token }}"><input type="hidden" name="lang" value="{{ lang }}">
@@ -175,7 +175,7 @@
     {% endif %}
     {% endif %}
 
-    {% if link and link.status == 'approved' %}
+    {% if link and link.status == 'approved' and not verbraucht %}
     <div class="actions">
       <form method="post" action="/vrc/refresh">
         <input type="hidden" name="t" value="{{ token }}"><input type="hidden" name="lang" value="{{ lang }}">
@@ -256,6 +256,12 @@
         <div class="kv"><span>{{ tr.vrcp_detail_since }}</span><span>{{ link.verified_at[:10] or link.requested_at[:10] or '—' }}</span></div>
       </div>
     </details>
+    {# Nach der Bestaetigung ist der Schluessel geloescht - ein Knopf hier wuerde beim
+       Klick nur die "Link abgelaufen"-Seite zeigen. Stattdessen der Satz, wie man
+       wiederkommt. #}
+    {% if verbraucht %}
+    <p class="lead" style="margin-top:0.9rem;">🔒 {{ tr.vrcp_spent_note }}</p>
+    {% else %}
     <div class="actions">
       <form method="post" action="/vrc/unlink"
             onsubmit="return frage(this, {{ tr.vrcp_confirm_unlink.replace('{name}', link.vrchat_name) | js }});">
@@ -263,6 +269,7 @@
         <button type="submit" class="btn">{{ tr.vrcp_btn_other }}</button>
       </form>
     </div>
+    {% endif %}
   </div>
   {% endif %}
 

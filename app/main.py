@@ -8309,7 +8309,8 @@ def _vrc_public_lang(request: Request, lang: str = "") -> str:
 
 
 async def _vrc_page(request: Request, row, lang: str,
-                    error: str = "", success: str = "", status_code: int = 200):
+                    error: str = "", success: str = "", status_code: int = 200,
+                    verbraucht: bool = False):
     """Render the member's page from scratch, whatever just happened to them.
 
     `row` is the token row this visitor proved they hold, or None. Every route below ends here
@@ -8363,6 +8364,10 @@ async def _vrc_page(request: Request, row, lang: str,
         "group_can_invite": cfg.get("vrc_group_invite") == "1",
         "nick_preview": nick_preview if cfg.get("vrc_nickname_enabled") == "1" else "",
         "needs_approval": cfg.get("vrc_auto_approve") != "1",
+        # Der Schluessel ist mit dieser Antwort verbraucht: die Seite zeigt dann keine
+        # Knoepfe mehr an, die beim naechsten Klick ohnehin ins Leere liefen, sondern einen
+        # Satz, wie man wieder herkommt. Ein toter Knopf ist aergerlicher als keiner.
+        "verbraucht": verbraucht,
         "error": error, "success": success,
     }, status_code=status_code), request)
 
@@ -8477,11 +8482,40 @@ async def vrc_public_open(request: Request, token: str, lang: str = ""):
 
     Rendered directly rather than redirected: with no cookie there is nothing to carry the
     member across a redirect, so the page is served here and every form on it takes the token
-    along in its body from then on. Reloading this address keeps working for the hour the link
-    is valid, which is the whole reason it is not spent on first sight.
+    along in its body from then on.
+
+    ── Einmal oeffnen, dann zu ──────────────────────────────────────────────────────────
+    Bis v1.19.46 blieb diese Adresse die volle Stunde abrufbar. Das war Absicht gewesen
+    (wer neu laedt, soll nicht ausgesperrt sein), hat sich aber als die falsche Abwaegung
+    erwiesen und wurde von aussen gemeldet: wer die Adresse in dem Fenster in die Finger
+    bekommt, sieht die Abschluss-Seite mit Discord-Name, VRChat-Name, Spitznamen und
+    Pruefmerkmalen - auch lange nachdem die Person fertig war.
+
+    Verbraucht wird nur das OEFFNEN. Die Schritte danach laufen ueber POST und tragen den
+    Schluessel im Rumpf; die gelten weiter bis zum Ablauf. Sonst waere der Ablauf nach dem
+    ersten Klick zu Ende - und zwischen "Name eintragen" und "Code in den Status setzen"
+    liegt ein Ausflug nach VRChat, von dem man zurueckkommen muss.
+
+    Wer die Seite doch noch einmal braucht, holt sich mit /vrc-link einen neuen Link; das
+    steht auch auf der Seite, die er stattdessen bekommt.
     """
     lang = _vrc_public_lang(request, lang)
-    return await _vrc_page(request, await _vrc_token_row(token), lang)
+    row = await _vrc_token_row(token)
+    if row and (row.get("used_at") or "").strip():
+        # Schon einmal geoeffnet. Dieselbe Seite wie bei einem abgelaufenen Link: die
+        # Person kann die Faelle ohnehin nicht auseinanderhalten, und die Antwort ist in
+        # beiden dieselbe - hol dir einen frischen.
+        return await _vrc_page(request, None, lang)
+    if row:
+        try:
+            await db_exec("UPDATE vrc_link_tokens SET used_at=? WHERE token=?",
+                          (datetime.datetime.utcnow().isoformat(), token))
+        except Exception as e:
+            # Laesst sich der Verbrauch nicht vermerken, bekommt die Person trotzdem ihre
+            # Seite. Ein Link, der zu lange gilt, ist das kleinere Uebel als einer, der
+            # wegen eines Datenbankfehlers gar nicht erst aufgeht.
+            print(f"[vrc_link] konnte den Link nicht als benutzt vermerken: {e}")
+    return await _vrc_page(request, row, lang)
 
 
 @web.post("/vrc/lang", response_class=HTMLResponse)
@@ -8682,7 +8716,23 @@ async def vrc_public_verify(request: Request, lang: str = Form(""), t: str = For
     else:
         frisch = await db_one("SELECT * FROM vrc_links WHERE id=?", (link["id"],))
         await _vrc_review_melden(int(row["guild_id"]), frisch or link)
-    return await _vrc_page(request, row, lang,
+
+    # ── Hier ist der Vorgang zu Ende, also ist es der Schluessel auch ───────────────────
+    # Gewuenscht am 18.11.2026: "der link darf danach nicht mehr existieren weil das eine
+    # gefahr sein könnte". Geloescht statt nur als verbraucht vermerkt - eine Zeile, die es
+    # nicht mehr gibt, kann auch kein spaeterer Fehler wieder aufmachen.
+    #
+    # Was danach kommt, kommt aus Discord: /vrc-link gibt jederzeit einen frischen Link.
+    # Die Abschluss-Seite unten wird noch aus der Zeile im Speicher gebaut - die Person
+    # sieht ihre Bestaetigung also vollstaendig, nur ein zweiter Aufruf der Adresse geht
+    # ins Leere.
+    try:
+        await db_exec("DELETE FROM vrc_link_tokens WHERE token=?", (row["token"],))
+    except Exception as e:
+        # Bleibt er doch stehen, laeuft er spaetestens mit seiner Frist ab - und das
+        # Oeffnen ist ohnehin schon verbraucht.
+        print(f"[vrc_link] konnte den verbrauchten Link nicht loeschen: {e}")
+    return await _vrc_page(request, row, lang, verbraucht=True,
                            success=tr["vrcp_ok_verified"] if approved else tr["vrcp_ok_pending"])
 
 

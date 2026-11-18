@@ -14,6 +14,49 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.47 — `beta` + `main` — 18.11.2026
+
+**Der Verknüpfungslink gilt für ein einziges Öffnen und ist danach weg**
+- Gemeldet von außen und als Gefahr eingestuft: „der link zum registrieren solte nur einmal
+  benutzt werden dann wieder schliessen" / „der link darf danach nicht mehr existieren weil
+  das eine gefahr sein könnte".
+- Bisher blieb die Adresse die volle Stunde abrufbar — auch lange nachdem die Person fertig
+  war. Wer sie in dem Fenster in die Finger bekam (weitergeleitete Nachricht, Blick über die
+  Schulter, geteilter Bildschirm, Verlauf), sah die Abschluss-Seite mit **Discord-Name,
+  VRChat-Name, Spitznamen und Prüfmerkmalen**.
+- **Öffnen geht jetzt einmal.** Ein zweiter Aufruf bekommt dieselbe Seite wie ein
+  abgelaufener Link: „hol dir einen neuen".
+- **Nach der Bestätigung wird der Schlüssel gelöscht**, nicht nur als verbraucht vermerkt.
+  Eine Zeile, die es nicht mehr gibt, kann auch kein späterer Fehler wieder aufmachen.
+
+**Warum die Zwischenschritte weiterlaufen**
+Verbraucht wird nur das **Öffnen**. Die Schritte danach gehen über POST und tragen den
+Schlüssel im Rumpf — die gelten bis zum Ablauf weiter. Sonst wäre der Vorgang nach dem
+ersten Klick zu Ende, und zwischen „Namen eintragen" und „Code in den Status setzen" liegt
+ein Ausflug nach VRChat, von dem man zurückkommen muss.
+
+**Keine toten Knöpfe**
+Nach dem Löschen würden „Einladung anfordern", „Aktualisieren" und „Anderes Konto
+verknüpfen" beim Klick nur noch die Abgelaufen-Seite zeigen. Sie werden deshalb nicht mehr
+angezeigt; stattdessen steht da ein Satz, wie man wiederkommt: `/vrc-link` gibt jederzeit
+einen frischen Link.
+
+**Was das kostet**
+Wer die Seite später noch einmal braucht — Gruppeneinladung nachfordern, Konto wechseln —,
+holt sich einen neuen Link. Das ist ein Schritt mehr und die bewusste Gegenseite dieser
+Entscheidung.
+
+Bestehende Links aus der Zeit davor gelten weiter und werden beim nächsten Öffnen einmal
+verbraucht, statt mit dem Update sofort tot zu sein.
+
+**Geprüft:** 24 Prüfungen. Dass die Weiche im Öffnen sitzt und nicht in den POST-Schritten
+(sonst käme niemand mehr durch), dass `_vrc_token_row` sie nicht über Umwege doch anwendet,
+dass die Zeile nach der Bestätigung **gelöscht** und nicht nur markiert wird, dass das erst
+nach dem Vergeben der Rolle passiert, dass die Abschluss-Seite trotzdem noch gebaut wird —
+und dass ein Fehler beim Vermerken niemanden aussperrt.
+
+---
+
 ## 1.19.46 — `beta` + `main` — 18.11.2026
 
 **Dringend: der Nachfrage-Dialog sperrte Leute auf der öffentlichen VRC-Seite ein**

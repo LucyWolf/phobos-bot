@@ -1463,6 +1463,17 @@ async def init_db():
             # Dieselbe eigene Reihenfolge wie bei den Embed-Nachrichten, jetzt auch fuer
             # die Ticket-Panels - gewuenscht zusammen mit dem Markieren.
             "ALTER TABLE ticket_panels ADD COLUMN sortierung INTEGER NOT NULL DEFAULT 0",
+            # Wann der Verknuepfungslink zum ersten Mal geoeffnet wurde. Leer heisst: noch
+            # nie. Gewuenscht am 18.11.2026 nach einer Meldung von aussen - "der link zum
+            # registrieren solte nur einmal benutzt werden dann wieder schliessen".
+            #
+            # Bis dahin blieb die Adresse die volle Stunde offen, auch wenn die Person
+            # laengst fertig war: wer sie in dem Fenster in die Finger bekam, sah die
+            # Abschluss-Seite mit Discord-Name, VRChat-Name, Spitzname und Pruefmerkmalen.
+            #
+            # Bestehende Links gelten weiter wie bisher: sie stehen auf '' und werden beim
+            # naechsten Oeffnen einmal verbraucht, statt sofort tot zu sein.
+            "ALTER TABLE vrc_link_tokens ADD COLUMN used_at TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)
