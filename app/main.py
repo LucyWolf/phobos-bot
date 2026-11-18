@@ -8224,6 +8224,10 @@ def _vrc_harden(response, request: Request):
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["X-Frame-Options"] = "DENY"
+    # Billig und ohne Nebenwirkung: sollte eine dieser Adressen je bei einem Crawler landen,
+    # soll sie nicht in einem Suchindex stehen. Ein Treffer dort waere dauerhaft, auch
+    # nachdem der Schluessel laengst weg ist.
+    response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
     return response
 
 # VRChat display names are at most 32 characters; anything longer is not a name, it is a
@@ -8484,37 +8488,48 @@ async def vrc_public_open(request: Request, token: str, lang: str = ""):
     member across a redirect, so the page is served here and every form on it takes the token
     along in its body from then on.
 
-    ── Einmal oeffnen, dann zu ──────────────────────────────────────────────────────────
+    ── Der Schluessel aus der Adresse wird beim Oeffnen verbraucht ──────────────────────
     Bis v1.19.46 blieb diese Adresse die volle Stunde abrufbar. Das war Absicht gewesen
     (wer neu laedt, soll nicht ausgesperrt sein), hat sich aber als die falsche Abwaegung
     erwiesen und wurde von aussen gemeldet: wer die Adresse in dem Fenster in die Finger
     bekommt, sieht die Abschluss-Seite mit Discord-Name, VRChat-Name, Spitznamen und
     Pruefmerkmalen - auch lange nachdem die Person fertig war.
 
-    Verbraucht wird nur das OEFFNEN. Die Schritte danach laufen ueber POST und tragen den
-    Schluessel im Rumpf; die gelten weiter bis zum Ablauf. Sonst waere der Ablauf nach dem
-    ersten Klick zu Ende - und zwischen "Name eintragen" und "Code in den Status setzen"
-    liegt ein Ausflug nach VRChat, von dem man zurueckkommen muss.
+    Beim Oeffnen wird der Schluessel deshalb GETAUSCHT: die Zeile bekommt einen frischen,
+    der ausschliesslich in den Formularen dieser einen Antwort steht. Der Schluessel aus
+    der Adresse existiert danach nicht mehr - weder fuer ein zweites Oeffnen noch fuer
+    irgendeine der POST-Routen. Eine Adresse aus einem Protokoll, einem Verlauf oder einem
+    weitergeleiteten Screenshot ist damit tot, nicht bloss "nicht mehr anzeigbar".
+
+    Das ist das Token-Drehen aus v1.17.1, nur ohne das Cookie, das damals dazugehoerte:
+    jenes brauchte eine Weiterleitung, um die Adresszeile zu saeubern, und eine
+    Weiterleitung braucht etwas, das den Besucher traegt. Hier wird nicht weitergeleitet,
+    sondern direkt ausgeliefert - der frische Schluessel reist im Rumpf der Formulare, und
+    es gibt nichts zu tragen.
+
+    Getauscht wird nur hier, nicht bei jedem Schritt. Ein Schluessel, der sich mit jeder
+    Antwort aendert, macht die Zurueck-Taste und einen doppelten Klick zur Sackgasse -
+    mitten in einem Ablauf, bei dem man zwischendurch zu VRChat und wieder zurueck muss.
+    Das Risiko sitzt in der ADRESSE, und die gibt es genau einmal.
 
     Wer die Seite doch noch einmal braucht, holt sich mit /vrc-link einen neuen Link; das
     steht auch auf der Seite, die er stattdessen bekommt.
     """
     lang = _vrc_public_lang(request, lang)
     row = await _vrc_token_row(token)
-    if row and (row.get("used_at") or "").strip():
-        # Schon einmal geoeffnet. Dieselbe Seite wie bei einem abgelaufenen Link: die
-        # Person kann die Faelle ohnehin nicht auseinanderhalten, und die Antwort ist in
-        # beiden dieselbe - hol dir einen frischen.
-        return await _vrc_page(request, None, lang)
     if row:
+        frisch = secrets.token_urlsafe(32)
         try:
-            await db_exec("UPDATE vrc_link_tokens SET used_at=? WHERE token=?",
-                          (datetime.datetime.utcnow().isoformat(), token))
+            await db_exec(
+                "UPDATE vrc_link_tokens SET token=?, used_at=? WHERE token=?",
+                (frisch, datetime.datetime.utcnow().isoformat(), token))
+            row = dict(row)
+            row["token"] = frisch
         except Exception as e:
-            # Laesst sich der Verbrauch nicht vermerken, bekommt die Person trotzdem ihre
-            # Seite. Ein Link, der zu lange gilt, ist das kleinere Uebel als einer, der
-            # wegen eines Datenbankfehlers gar nicht erst aufgeht.
-            print(f"[vrc_link] konnte den Link nicht als benutzt vermerken: {e}")
+            # Klappt der Tausch nicht, bekommt die Person trotzdem ihre Seite - mit dem
+            # alten Schluessel. Ein Link, der laenger gilt als gewollt, ist das kleinere
+            # Uebel als einer, der wegen eines Datenbankfehlers gar nicht erst aufgeht.
+            print(f"[vrc_link] Schluessel liess sich nicht tauschen: {e}")
     return await _vrc_page(request, row, lang)
 
 

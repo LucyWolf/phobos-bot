@@ -14,6 +14,57 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.48 — `beta` + `main` — 18.11.2026
+
+**Der Schlüssel aus der Adresse wird beim Öffnen getauscht**
+- Nachgefragt wurde, ob die Einmal-Regel von 1.19.47 wirklich sicher ist. Sie war es nur
+  halb: das **Öffnen** war verbraucht, der Schlüssel selbst stand aber weiter in der
+  Datenbank — und alle Schritte der Seite laufen über POST, die prüfen das Öffnen nicht.
+  Wer die Adresse hatte, konnte also weiterhin von Hand eine Anfrage schicken, solange der
+  Vorgang lief.
+- Jetzt bekommt die Zeile beim Öffnen einen **frischen Schlüssel**, der nur in den
+  Formularen dieser einen Antwort steht. Der aus der Adresse existiert danach nicht mehr —
+  weder fürs Öffnen noch für irgendeine POST-Route. Eine Adresse aus einem Protokoll, einem
+  Verlauf oder einem weitergeleiteten Screenshot ist damit **tot**, nicht bloß „nicht mehr
+  anzeigbar".
+
+**Ohne Cookie, wie gewünscht**
+Das ist das Token-Drehen aus v1.17.1 — damals mit Cookie, weil es eine Weiterleitung
+brauchte, um die Adresszeile zu säubern, und eine Weiterleitung etwas braucht, das den
+Besucher trägt. Hier wird nicht weitergeleitet, sondern direkt ausgeliefert: der frische
+Schlüssel reist im Rumpf der Formulare, es gibt nichts zu tragen. **Es war also doch ohne
+Cookie möglich.**
+
+**Warum nur beim Öffnen und nicht bei jedem Schritt**
+Ein Schlüssel, der sich mit jeder Antwort ändert, macht die Zurück-Taste und einen doppelten
+Klick zur Sackgasse — mitten in einem Ablauf, bei dem man zwischendurch zu VRChat und zurück
+muss. Das Risiko sitzt in der **Adresse**, und die gibt es genau einmal.
+
+**Dazu beim Durchsehen**
+- `X-Robots-Tag: noindex, nofollow, noarchive` ergänzt. Billig, ohne Nebenwirkung — sollte
+  so eine Adresse je bei einem Crawler landen, wäre ein Suchtreffer dauerhaft, auch wenn der
+  Schlüssel längst weg ist.
+- Nachgesehen und in Ordnung: der Link wird als **Discord-Knopf** verschickt, nicht als Text
+  in der Nachricht. Discord erzeugt für Knopf-Adressen keine Vorschau, holt sie also nicht
+  selbst ab — sonst hätte die Vorschau den Schlüssel verbraucht, bevor ein Mensch klickt.
+- Ebenfalls geprüft: `Referrer-Policy: no-referrer` (die Adresse reist zu nichts mit, was man
+  von der Seite aus anklickt), `Cache-Control: no-store` (ein geliehener Browser hält die
+  Seite nicht für den Nächsten bereit), `X-Frame-Options: DENY`.
+
+**Was offen bleibt, ehrlich gesagt**
+Der Link steht weiterhin **einmal** in der Adresszeile, im Verlauf und im Zugriffsprotokoll
+des Proxys — ein Link kann seinen Schlüssel nicht anders tragen. Neu ist: er ist in dem
+Moment, in dem die Seite aufgeht, bereits verbraucht. Wer ihn später dort findet, hat nichts
+davon.
+
+**Geprüft:** 35 Prüfungen. Dass getauscht und nicht nur markiert wird, dass der frische
+Schlüssel in die Antwort kommt, dass die POST-Schritte **nicht** erneut tauschen (sonst wäre
+die Zurück-Taste eine Sackgasse), dass die Route keine Weiterleitung baut (die bräuchte ein
+Cookie) — und an echten Zeilen: dass der Schlüssel aus der Adresse hinterher nirgends mehr
+zu finden ist, die Frist sich dabei nicht verlängert und es bei einer Zeile je Person bleibt.
+
+---
+
 ## 1.19.47 — `beta` + `main` — 18.11.2026
 
 **Der Verknüpfungslink gilt für ein einziges Öffnen und ist danach weg**
