@@ -133,6 +133,21 @@ services:
     environment:
       - TZ=Europe/Berlin
       - PYTHONUNBUFFERED=1
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 ```
 
 Then:
@@ -159,6 +174,10 @@ The dashboard is at `http://<server>:8080`. First login is `admin` / `admin` —
 >
 > This takes effect when the image is **rebuilt** (`docker compose up -d --build`). An update from the dashboard only fetches new code and restarts the process — it does not rebuild the image, so a running installation changes nothing until you rebuild it yourself.
 
+> **The `logging` block is not optional in practice.** Without it Docker writes the bot's output into a file that never gets smaller. On 2 November 2026 one of those had grown to 21 GB and filled the server's disk — the bot kept running the whole time and it only showed up when nothing could be saved any more. 20 MB × 5 files caps it at 100 MB per container.
+>
+> Docker applies this when a container is **created**, so adding it to an existing installation needs `docker compose up -d`, not a restart. To limit by *time* rather than size, use `tools/logrotate-phobos.conf` — Docker itself only knows size and count.
+
 ### Without Compose
 
 The same thing as a single command — useful if you only want to try it out:
@@ -181,8 +200,11 @@ docker run -d \
   --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
   --cap-add SETUID --cap-add SETGID \
   --security-opt no-new-privileges:true \
+  --log-opt max-size=20m --log-opt max-file=5 \
   phobos-bot:latest
 ```
+
+> The two `--log-opt` flags are the ones people leave off, and they are the ones that bite: without them Docker writes the output into a file that never gets smaller. See the note under Docker Compose above.
 
 Updating then means doing by hand what Compose does for you:
 
@@ -1195,6 +1217,21 @@ services:
     environment:
       - TZ=Europe/Berlin
       - PYTHONUNBUFFERED=1
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 ```
 
 Dann:
@@ -1221,6 +1258,10 @@ Das Dashboard liegt unter `http://<server>:8080`. Erste Anmeldung mit `admin` / 
 >
 > Wirksam wird das beim **Neubauen** des Images (`docker compose up -d --build`). Ein Update über das Dashboard holt nur neuen Code und startet den Prozess neu — es baut das Image nicht neu, an einer laufenden Installation ändert sich also nichts, bis sie selbst neu gebaut wird.
 
+> **Der `logging`-Block ist in der Praxis nicht freiwillig.** Ohne ihn schreibt Docker die Ausgabe des Bots in eine Datei, die nie kleiner wird. Am 02.11.2026 war eine davon auf 21 GB angewachsen und die Platte des Servers voll — der Bot lief dabei die ganze Zeit normal weiter, es fiel erst auf, als nichts mehr gespeichert werden konnte. 20 MB × 5 Dateien sind höchstens 100 MB je Container.
+>
+> Docker übernimmt das beim **Anlegen** des Containers. Wer es einer bestehenden Installation hinzufügt, braucht `docker compose up -d`, kein Neustart. Wer nach **Zeit** statt nach Größe begrenzen will, nimmt `tools/logrotate-phobos.conf` — Docker selbst kennt nur Größe und Anzahl.
+
 ### Ohne Compose
 
 Dasselbe als ein einzelner Befehl — praktisch, wenn man es nur ausprobieren will:
@@ -1243,8 +1284,11 @@ docker run -d \
   --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
   --cap-add SETUID --cap-add SETGID \
   --security-opt no-new-privileges:true \
+  --log-opt max-size=20m --log-opt max-file=5 \
   phobos-bot:latest
 ```
+
+> Die zwei `--log-opt` lässt man gern weg, und genau die rächen sich: ohne sie schreibt Docker die Ausgabe in eine Datei, die nie kleiner wird. Siehe den Hinweis unter Docker Compose oben.
 
 Ein Update heißt dann von Hand, was Compose sonst übernimmt:
 
