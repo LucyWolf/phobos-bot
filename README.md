@@ -35,6 +35,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 - [Auto-Delete](#auto-delete)
 - [Auto-Thread](#auto-thread)
 - [VRC-Link (VRChat)](#vrc-link-vrchat)
+- [Profiles](#profiles)
 - [Scheduled Messages](#scheduled-messages)
 - [Discord Events](#discord-events)
 - [CrossVerification](#crossverification)
@@ -302,6 +303,96 @@ The first run only records what is already open, so switching the feature on doe
 **Debug report.** One button prints, ready to copy, everything the bot can see on the VRChat side: the settings in force, the bot account (without password, secret or session cookie), the group, its roles and your mappings, every open lobby raw, a separate lookup per lobby with the state and name fields pulled out, the bot's own stored state, and how many members are linked. It only reads and changes nothing.
 
 The link address is taken from the address you have the dashboard open at — the same way the invite link in the user administration works, so there is nothing to configure. A **base address** set in the settings wins over it.
+
+---
+
+## Profiles
+
+Members fill in what should be known about them with `/bio`, `/kinks`, `/triggers` and
+`/limits`, and look at other people's entries with `/inspect`. `/profil` shows your own,
+`/profil-loeschen` removes everything. Every reply is only visible to the person who asked —
+a profile is never posted into a channel.
+
+**18+ is required** for kinks, triggers and limits, not for the bio. Either the VRChat age
+verification from VRC-Link counts as proof, or a role the server picks for it. Somebody
+without proof may still look at profiles — they just see the bio and nothing else, and the
+answer is the same one they get for an empty profile, so it never gives away that something
+is hidden.
+
+Switch it on under **Server → 🪪 Profiles**, where you also pick the 18+ role and who may use
+`/inspect`.
+
+### Reading profiles from a VRChat world
+
+A world can fetch the entries over a read address of its own. Three things have to line up,
+and all three are deliberate:
+
+1. the server has **Display in the VRChat world** enabled,
+2. the request carries that server's **key** (at least 20 characters, set on the same page),
+3. the person has **released their own profile** for it — the button under `/profil`.
+
+Without the release the world gets nothing, key or no key. Writing something down is not
+publishing it.
+
+```
+GET  https://your-dashboard/api/profil?key=<KEY>&vrc=<VRCHAT NAME OR ID>
+```
+
+`vrc` takes either the VRChat display name or the `usr_…` id. The lookup goes through the
+VRC-Link table, so only members who linked their VRChat account can be found at all.
+
+```json
+{
+  "gefunden": true,
+  "vrchat_name": "LucyVR",
+  "felder": [
+    {"feld": "bio",      "text": "…", "geaendert": "2026-11-17 15:04", "erwachsen": false},
+    {"feld": "kinks",    "text": "…", "geaendert": "2026-11-17 15:04", "erwachsen": true},
+    {"feld": "triggers", "text": "…", "geaendert": "2026-11-17 15:04", "erwachsen": true},
+    {"feld": "limits",   "text": "…", "geaendert": "2026-11-17 15:04", "erwachsen": true}
+  ]
+}
+```
+
+Fields come in a fixed order (bio, kinks, triggers, limits) and only the filled ones are
+included. `gefunden: false` with an empty list means: unknown name, nothing written, or
+nothing released — the answer is the same for all three on purpose, so the address cannot be
+used to find out who has what.
+
+| Status | Means |
+|---|---|
+| `200` | Answer as above, `gefunden` tells you whether there is anything. |
+| `400` | `key` or `vrc` missing. |
+| `403` | Wrong key, or the display is switched off for that server. |
+| `429` | More than 60 requests a minute from your address. |
+
+**`erwachsen` is yours to act on.** Inside Discord those fields sit behind an age check. A
+VRChat world has no such thing — whatever stands on a board is read by whoever walks past it.
+The flag is in the answer so your UI can decide: show the bio to everyone and keep the rest
+behind a button, a separate room, or your own 18+ gate. The bot cannot make that call for you.
+
+### What to expect from VRChat itself
+
+- **Untrusted URLs.** VRChat only loads strings from a short list of trusted hosts
+  (`*.github.io`, `gist.githubusercontent.com`, `pastebin.com`, `*.disbridge.com`,
+  `*.vrcdn.cloud`, `assets.vrchat.com`). A self-hosted dashboard is not on it, so every
+  visitor needs **Allow Untrusted URLs** switched on in their settings, or they see nothing.
+  Plan for that in the world: say so on the board instead of showing an empty panel. For
+  public instances the domain also has to be added to the world's allowed hosts on
+  vrchat.com. The current list is served by VRChat's own config endpoint as
+  `stringHostUrlList` and can change.
+- **Mirroring to a trusted host is not the answer.** Pastebin or a gist would load without
+  that setting — and would also put kinks, triggers and limits on a public address that
+  nothing ever takes back. That is exactly why this endpoint exists.
+- **One download at a time.** `VRCStringDownloader` has a global cooldown of about five
+  seconds across the whole world. Fetch once when a player comes into range, keep the result,
+  and queue rather than calling it per frame.
+- **HTTPS.** Put the dashboard behind a proxy with a certificate; the key travels in the
+  address.
+
+In Udon: `VRCStringDownloader.LoadUrl(url, (IUdonEventReceiver)this)`, then read
+`result.Result` in `OnStringLoadSuccess`. `VRCUrl` cannot be built from a string at runtime,
+so the address has to sit in a public `VRCUrl` field — one per world, with the key in it.
 
 ---
 
@@ -763,6 +854,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 - [Auto-Delete](#auto-delete-1)
 - [Auto-Thread](#auto-thread-1)
 - [VRC-Link (VRChat)](#vrc-link-vrchat-1)
+- [Profile](#profile)
 - [Geplante Nachrichten](#geplante-nachrichten)
 - [Discord-Events](#discord-events-1)
 - [CrossVerification](#crossverification-1)
@@ -1030,6 +1122,72 @@ Beim ersten Durchlauf wird nur mitgeschrieben, damit beim Einschalten nicht jede
 **Debug-Bericht.** Ein Knopf gibt fertig zum Kopieren aus, was der Bot auf der VRChat-Seite sieht: die geltenden Einstellungen, das Bot-Konto (ohne Passwort, Geheimnis und Sitzungs-Keks), die Gruppe, ihre Rollen und deine Zuordnungen, jede offene Lobby roh, je Lobby eine eigene Abfrage mit herausgestellten Zustands- und Namensfeldern, den eigenen gespeicherten Stand und die Zahl der Verknüpfungen. Liest nur, ändert nichts.
 
 Die Adresse für die Links nimmt der Bot von dort, wo du dieses Dashboard geöffnet hast — genau wie der Einladungslink in der Benutzerverwaltung, es ist also nichts einzurichten. Eine in den Einstellungen gesetzte **Basis-Adresse** hat Vorrang.
+
+---
+
+## Profile
+
+Mitglieder tragen mit `/bio`, `/kinks`, `/triggers` und `/limits` selbst ein, was über sie
+bekannt sein soll, und sehen mit `/inspect` die Angaben anderer. `/profil` zeigt das eigene,
+`/profil-loeschen` räumt alles weg. Jede Antwort ist nur für die fragende Person sichtbar —
+ein Profil landet nie in einem Kanal.
+
+**18+ ist Pflicht** für kinks, triggers und limits, nicht für die Bio. Als Nachweis zählt die
+VRChat-Altersbestätigung aus VRC-Link oder eine Rolle, die der Server dafür bestimmt. Wer
+keinen Nachweis hat, darf trotzdem nachsehen — sieht dann aber nur die Bio, und zwar mit
+derselben Antwort wie bei einem leeren Profil. So verrät die Antwort nicht, dass da etwas
+verborgen ist.
+
+Einschalten unter **Server → 🪪 Profile**; dort stehen auch die 18+-Rolle und wer `/inspect`
+benutzen darf.
+
+### Profile aus einer VRChat-Welt lesen
+
+Eine Welt kann die Angaben über eine eigene Leseadresse holen. Dafür müssen drei Dinge
+zusammenkommen, alle drei mit Absicht:
+
+1. der Server hat **Anzeige in der VRChat-Welt** eingeschaltet,
+2. die Anfrage trägt den **Schlüssel** dieses Servers (mindestens 20 Zeichen, auf derselben
+   Seite),
+3. die Person hat ihr Profil **selbst freigegeben** — der Knopf unter `/profil`.
+
+Ohne Freigabe bekommt die Welt nichts, Schlüssel hin oder her. Eintragen heißt nicht
+veröffentlichen.
+
+```
+GET  https://dein-dashboard/api/profil?key=<SCHLÜSSEL>&vrc=<VRCHAT-NAME ODER -KENNUNG>
+```
+
+`vrc` nimmt den VRChat-Namen oder die `usr_…`-Kennung. Gesucht wird über die
+VRC-Link-Verknüpfung — wer sein VRChat-Konto nicht verknüpft hat, ist gar nicht auffindbar.
+
+Die Antwort steht oben im englischen Teil. Die Felder kommen in fester Reihenfolge und nur,
+soweit gefüllt. `gefunden: false` heißt: Name unbekannt, nichts geschrieben **oder** nichts
+freigegeben — bewusst dieselbe Antwort für alle drei Fälle, damit sich über die Adresse nicht
+herausfinden lässt, wer was hat. Status `400` fehlende Angaben, `403` falscher Schlüssel oder
+Anzeige aus, `429` mehr als 60 Anfragen je Minute.
+
+**Das Merkmal `erwachsen` muss die Welt selbst auswerten.** In Discord hängt an diesen Feldern
+eine Altersprüfung; in einer VRChat-Welt gibt es so etwas nicht — was auf einer Tafel steht,
+liest jeder, der davorsteht. Deshalb steht in jeder Antwort, welches Feld dahinter gehört.
+
+### Was VRChat dabei vorgibt
+
+- **Nicht vertraute Adressen.** VRChat lädt Zeichenketten nur von wenigen vertrauten Hosts
+  (`*.github.io`, `gist.githubusercontent.com`, `pastebin.com`, `*.disbridge.com`,
+  `*.vrcdn.cloud`, `assets.vrchat.com`). Ein selbst gehostetes Dashboard ist nicht dabei —
+  jeder Besucher braucht also **„Allow Untrusted URLs"** in seinen Einstellungen, sonst sieht
+  er nichts. In öffentlichen Instanzen muss die Adresse zusätzlich in der Hostliste der Welt
+  auf vrchat.com stehen. Die Liste kann sich ändern; VRChat liefert sie selbst als
+  `stringHostUrlList` aus.
+- **Auf einen vertrauten Dienst spiegeln ist keine Lösung.** Pastebin oder ein Gist lüden
+  ohne diese Einstellung — und legten kinks, triggers und limits auf eine öffentliche
+  Adresse, von der nichts je wieder verschwindet. Genau dafür gibt es diese Leseadresse.
+- **Ein Abruf nach dem anderen.** `VRCStringDownloader` hat eine welt-weite Sperre von rund
+  fünf Sekunden zwischen zwei Abrufen. Einmal holen, wenn jemand in die Nähe kommt, und das
+  Ergebnis behalten.
+- **HTTPS.** Das Dashboard hinter einen Proxy mit Zertifikat; der Schlüssel steht in der
+  Adresse.
 
 ---
 
