@@ -46,6 +46,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 - [Auto-Kick](#auto-kick)
 - [Embed Messages](#embed-messages)
 - [Birthday System](#birthday-system)
+- [Working with lists](#working-with-lists)
 - [Backup & Restore](#backup--restore)
 - [Two-Factor Authentication](#two-factor-authentication)
 - [Security](#security)
@@ -104,7 +105,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **Auto-Kick** | Shows still-unverified members the door after a deadline — with reminders first |
 | **Embed Messages** | Build a good-looking announcement in the dashboard and post it anywhere |
 | **Profiles** | Members fill in what should be known about them, and a VRChat world can read what they released |
-| **Plugins** | Packages of settings — commands, ticket panels, rewards — built once, exported, and applied to any server |
+| **Plugins** | Packages of settings — commands, ticket panels, rewards — built once, exported, and applied to any server. A plugin can also serve released data to a VRChat world |
 
 ## Multi-Bot
 
@@ -774,6 +775,38 @@ A birthday command word can't be the same as one of this server's Custom Command
 
 ---
 
+## Working with lists
+
+Lists in the dashboard — embed messages and ticket panels so far — can be handled in bulk
+instead of one row at a time.
+
+**Select and delete.** A checkbox per row, one in the header for all of them, and a button
+that counts along: *Delete selected (3)*. The count is there on purpose — "delete selected"
+alone leaves you guessing whether the header box really caught everything. Deleting an
+embed message or a ticket panel removes the message it posted into the channel too, exactly
+like deleting one on its own does.
+
+**Open tickets** get two bulk actions instead of one: **close** (tidies up the channels, as
+closing one does) and **take off the list** (leaves the channels alone). Each ticket runs on
+its own — if one fails, missing permissions or a channel already gone, the rest still go
+through and the result says how many made it.
+
+**Reordering** works two ways. The **arrows** ↑ ↓ move a row one place; they are greyed out
+at the top and bottom. Or **hold a row and drag it** — the new order saves on release and
+the page reloads. The arrows stay because dragging does not exist on a touch device or from
+the keyboard.
+
+Two details worth knowing:
+
+- Entries you never reordered all sit at position 0 and therefore keep the old
+  newest-first order. The first drag or arrow press gives that server's list fixed places
+  from 1 on.
+- Cancelling a drag — Escape, or letting go outside the list — reloads the page. The
+  preview you were looking at was never saved, and a list showing something other than what
+  is stored is worse than no preview at all.
+
+---
+
 ## Backup & Restore
 
 Every user can export their own data (account, bot tokens, all server configurations) as a JSON file via their **profile page**. Admins can additionally:
@@ -1136,7 +1169,7 @@ phobos-bot/
 │   ├── templates/            # Jinja2 HTML templates
 │   └── assets/               # Bundled welcome card overlay presets (PNG)
 ├── tools/                    # Helper scripts, checks run before each commit,
-│                             # and plugin-beispiel.json as a plugin to copy from
+│                             # plus two example plugins to copy from
 ├── android/                  # Android Studio project - packages the bot as a real APK
 ├── data/                     # SQLite database + secret key (auto-created, do not commit)
 └── data-*/                   # Additional instance databases (if using multi-instance)
@@ -1202,6 +1235,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 - [Auto-Kick](#auto-kick-1)
 - [Embed-Nachrichten](#embed-nachrichten)
 - [Geburtstags-System](#geburtstags-system)
+- [Listen bedienen](#listen-bedienen)
 - [Backup & Wiederherstellen](#backup--wiederherstellen)
 - [Zwei-Faktor-Authentifizierung](#zwei-faktor-authentifizierung)
 - [Sicherheit](#sicherheit)
@@ -1260,7 +1294,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **Auto-Kick** | Zeigt weiterhin unverifizierten Mitgliedern nach einer Frist die Tür — vorher mit Erinnerungen |
 | **Embed-Nachrichten** | Eine schön gesetzte Ankündigung im Dashboard bauen und überall posten |
 | **Profile** | Mitglieder tragen selbst ein, was über sie bekannt sein soll — und eine VRChat-Welt kann lesen, was sie freigegeben haben |
-| **Plugins** | Pakete aus Einstellungen — Befehle, Ticket-Panels, Belohnungen — einmal gebaut, exportiert und auf jedem Server einspielbar |
+| **Plugins** | Pakete aus Einstellungen — Befehle, Ticket-Panels, Belohnungen — einmal gebaut, exportiert und auf jedem Server einspielbar. Ein Plugin kann auch freigegebene Daten an eine VRChat-Welt liefern |
 
 ## Multi-Bot
 
@@ -1915,6 +1949,38 @@ Ein Geburtstags-Befehlswort darf nicht gleichzeitig ein Custom Command dieses Se
 
 ---
 
+## Listen bedienen
+
+Listen im Dashboard — bisher Embed-Nachrichten und Ticket-Panels — lassen sich im Ganzen
+bearbeiten statt Zeile für Zeile.
+
+**Markieren und löschen.** Ein Kästchen je Zeile, eins in der Kopfzeile für alle, und ein
+Knopf, der mitzählt: *Markierte löschen (3)*. Die Zahl steht da mit Absicht — „Markierte
+löschen" allein lässt einen raten, ob das Kästchen oben wirklich alles erwischt hat. Beim
+Löschen einer Embed-Nachricht oder eines Ticket-Panels verschwindet auch die Nachricht, die
+im Kanal steht, genau wie beim einzelnen Löschen.
+
+**Offene Tickets** haben statt einer zwei Sammelaktionen: **schließen** (räumt die Kanäle
+auf, wie beim einzelnen Schließen) und **aus der Liste nehmen** (lässt die Kanäle stehen).
+Jedes Ticket läuft für sich — klemmt eines, weil Rechte fehlen oder der Kanal schon weg ist,
+laufen die anderen trotzdem durch, und am Ende steht da, wie viele es waren.
+
+**Umsortieren** geht auf zwei Wegen. Die **Pfeile** ↑ ↓ schieben eine Zeile einen Platz; am
+oberen und unteren Ende sind sie ausgegraut. Oder **Zeile festhalten und ziehen** — beim
+Loslassen wird gespeichert und die Seite lädt neu. Die Pfeile bleiben, weil es Ziehen auf
+einem Touchgerät nicht gibt und mit der Tastatur auch nicht.
+
+Zwei Dinge, die man wissen sollte:
+
+- Was nie umsortiert wurde, steht auf Platz 0 und behält damit die bisherige Reihenfolge,
+  neueste zuerst. Beim ersten Ziehen oder Pfeildruck bekommt die Liste dieses Servers feste
+  Plätze ab 1.
+- Ein abgebrochener Zug — Escape, oder außerhalb der Liste losgelassen — lädt die Seite neu.
+  Die Vorschau war nie gespeichert, und eine Liste, die etwas anderes zeigt als gespeichert
+  ist, ist schlimmer als gar keine Vorschau.
+
+---
+
 ## Backup & Wiederherstellen
 
 Jeder Nutzer kann seine eigenen Daten (Konto, Bot-Tokens, alle Server-Konfigurationen) als JSON-Datei über die **Profilseite** exportieren. Admins können zusätzlich:
@@ -2282,7 +2348,7 @@ phobos-bot/
 │   ├── templates/            # Jinja2 HTML-Templates
 │   └── assets/               # Mitgelieferte Willkommenskarte-Overlay-Vorlagen (PNG)
 ├── tools/                    # Hilfsskripte, Prüfungen vor jedem Commit und
-│                             # plugin-beispiel.json als Plugin zum Abschreiben
+│                             # dazu zwei Beispiel-Plugins zum Abschreiben
 ├── android/                  # Android-Studio-Projekt - packt den Bot als echte APK
 ├── data/                     # SQLite-Datenbank + Secret-Key (auto-erstellt, nicht committen)
 └── data-*/                   # Weitere Instanz-Datenbanken (bei Multi-Instanz)
