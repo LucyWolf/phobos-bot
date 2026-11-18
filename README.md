@@ -435,6 +435,8 @@ specific server and fills in that server's values.
   "version": "1.0.0",
   "autor": "you",
   "beschreibung": "A ticket panel with three categories and two commands.",
+  "quelle": "https://raw.githubusercontent.com/you/repo/main/plugin.json",
+  "homepage": "https://github.com/you/repo",
 
   "einstellungen": [
     { "name": "support_role", "art": "rolle", "titel": "Support role", "pflicht": true },
@@ -463,6 +465,37 @@ admin fills a form in when adding it. Types: `text`, `mehrzeilig`, `zahl`, `roll
 **Placeholders** are `{{name}}` and may appear in any text of the content. A placeholder the
 plugin does not declare is rejected at upload — otherwise `{{name}}` would end up verbatim
 in somebody's command.
+
+**`quelle` and `homepage`** are optional and make the plugin updatable. `quelle` is the
+address of the file's newest version — put it on GitHub and the bot can fetch updates from
+there instead of you mailing a file to everyone. `homepage` is a link for humans, shown
+next to the plugin.
+
+### Keeping a plugin up to date
+
+With a `quelle` on the plugin, **Settings → Plugins** can ask the source whether something
+newer is there: per plugin, or "check all of them" for the whole list. If a newer version is
+found, it says so and offers a button — nothing is downloaded and installed behind your
+back, and nothing on any server changes until somebody presses "move to the new version"
+there.
+
+Plugins can also be **added straight from a link** instead of a file. A normal GitHub page
+link (`github.com/you/repo/blob/main/plugin.json`) is rewritten to the raw file address
+automatically — the most common stumbling block, so it is handled rather than explained.
+
+Versions are compared **as numbers**, not alphabetically: `1.10.0` is correctly newer than
+`1.9.0`. "Newer" is strictly greater, so a plugin you edited locally is never quietly
+overwritten by an older one at the source.
+
+Two guards on this, both deliberate:
+
+- **Only https, and only addresses on the open internet.** The bot would otherwise fetch an
+  address a stranger wrote into a file — a request from inside your network. Private
+  addresses (`127.*`, `10.*`, `192.168.*`, `::1` and the rest) are refused, including via a
+  redirect: every hop is checked again rather than followed blindly.
+- **The identifier has to match.** If a different plugin has appeared at that address, the
+  update is refused and says so. Otherwise it would create a stranger's content on every
+  server that uses the old one.
 
 ### What a plugin may create
 
@@ -1440,6 +1473,8 @@ einem bestimmten Server anlegt und dort die Werte ausfüllt.
   "version": "1.0.0",
   "autor": "du",
   "beschreibung": "Ein Ticket-Panel mit drei Kategorien und zwei Befehlen.",
+  "quelle": "https://raw.githubusercontent.com/du/repo/main/plugin.json",
+  "homepage": "https://github.com/du/repo",
 
   "einstellungen": [
     { "name": "support_rolle", "art": "rolle", "titel": "Support-Rolle", "pflicht": true },
@@ -1471,6 +1506,38 @@ Auswahlliste des jeweiligen Servers.
 **Platzhalter** heißen `{{name}}` und dürfen in jedem Text des Inhalts stehen. Ein
 Platzhalter, den das Plugin nicht erklärt, lässt die Datei beim Hochladen durchfallen —
 sonst stünde am Ende `{{name}}` wörtlich in irgendeinem Befehl.
+
+**`quelle` und `homepage`** sind freiwillig und machen das Plugin aktualisierbar. `quelle`
+ist die Adresse der jeweils neuesten Fassung — liegt die auf GitHub, kann der Bot Updates
+von dort holen, statt dass du allen eine Datei schicken musst. `homepage` ist ein Link für
+Menschen und steht neben dem Plugin.
+
+### Ein Plugin aktuell halten
+
+Nennt ein Plugin eine `quelle`, kann **Einstellungen → Plugins** dort nachfragen, ob es
+etwas Neueres gibt — je Plugin oder mit „Bei allen nachsehen" für die ganze Liste. Findet
+sich eine neuere Fassung, wird sie gemeldet und ein Knopf angeboten. Es wird nichts hinter
+deinem Rücken geladen und eingespielt, und auf keinem Server ändert sich etwas, bis dort
+jemand auf „Auf die neue Fassung bringen" drückt.
+
+Plugins lassen sich auch **direkt über einen Link** einspielen statt über eine Datei. Ein
+gewöhnlicher GitHub-Seitenlink (`github.com/du/repo/blob/main/plugin.json`) wird automatisch
+in die Rohadresse umgeschrieben — das ist die häufigste Stolperstelle, also wird sie
+erledigt statt erklärt.
+
+Versionen werden **als Zahlen** verglichen, nicht alphabetisch: `1.10.0` ist richtig neuer
+als `1.9.0`. „Neuer" heißt echt größer — ein Plugin, das du hier selbst bearbeitet hast,
+wird also nie klammheimlich durch eine ältere Fassung von der Quelle überschrieben.
+
+Zwei Sicherungen dabei, beide mit Absicht:
+
+- **Nur https, und nur Adressen im offenen Netz.** Der Bot holt hier eine Adresse, die ein
+  Fremder in eine Datei geschrieben hat — also eine Abfrage aus deinem Netz heraus. Private
+  Adressen (`127.*`, `10.*`, `192.168.*`, `::1` und der Rest) werden abgelehnt, auch über
+  eine Weiterleitung: jede Zwischenstation wird erneut geprüft statt blind verfolgt.
+- **Die Kennung muss übereinstimmen.** Liegt unter der Adresse inzwischen ein anderes
+  Plugin, wird das Update abgelehnt und sagt das auch. Sonst würde auf jedem Server, der das
+  alte benutzt, fremder Inhalt angelegt.
 
 ### Was ein Plugin anlegen darf
 
