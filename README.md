@@ -73,7 +73,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 
 ### Bot Features
 
-*Updated 24 September 2026.* The short version — what the bot can do. Everything below this table is the long one: settings, limits and the reasoning behind them.
+*Updated 18 November 2026.* The short version — what the bot can do. Everything below this table is the long one: settings, limits and the reasoning behind them.
 
 | Feature | What it does |
 |---|---|
@@ -84,7 +84,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **Reaction Roles** | Members pick their own roles by clicking an emoji |
 | **Event Logging** | Keeps a record of what happens on the server — and shows who deleted a message |
 | **Custom Commands** | Your own commands, without writing a line of code |
-| **Tickets** | A button turns a question into a private ticket channel — support role, category, archive when it closes |
+| **Tickets** | A button turns a question into a private ticket channel — support role, category, archive when it closes. One open ticket per category, so a pending verification does not block a report |
 | **Giveaways** | Run a giveaway in one click; the bot draws, announces and DMs the winners |
 | **Twitch Notifications** | Tells your channel the moment one of your streamers goes live |
 | **Free Stuff & Deals** | Posts free games and the deals you care about, by itself |
@@ -103,6 +103,8 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 | **Gameserver (AMP)** | Start, stop and watch your game servers without leaving Discord |
 | **Auto-Kick** | Shows still-unverified members the door after a deadline — with reminders first |
 | **Embed Messages** | Build a good-looking announcement in the dashboard and post it anywhere |
+| **Profiles** | Members fill in what should be known about them, and a VRChat world can read what they released |
+| **Plugins** | Packages of settings — commands, ticket panels, rewards — built once, exported, and applied to any server |
 
 ## Multi-Bot
 
@@ -143,7 +145,7 @@ The dashboard is at `http://<server>:8080`. First login is `admin` / `admin` —
 
 `BOT_CONTAINER_NAME` only matters if you run several instances on one server; without it the container is called `Phobos-Bot`. Nothing else needs configuring on the server side — the Discord token and everything else goes in through the dashboard.
 
-> The `.:/repo` mount gives the container access to the git repository itself, so the one-click update under **Settings → 🔄 Updates** can fetch and hard-reset to the new code (`git fetch` + `git reset --hard`, not a plain `git pull` — this forcibly overwrites any local drift instead of risking a merge conflict). It is optional if you prefer updating manually from the server shell (`git pull` + `docker compose up -d --build`).
+> The `.:/repo` mount gives the container access to the git repository itself, so the one-click update under **Settings → 🔄 Updates** can fetch and hard-reset to the new code (`git fetch` + `git reset --hard`, not a plain `git pull` — this forcibly overwrites any local drift instead of risking a merge conflict). **Leave it out and the dashboard update cannot work at all** — it is only dispensable if you update manually from the server shell (`git pull` + `docker compose up -d --build`). The folder it points at has to be a real `git clone`, not a copy of the files.
 >
 > There is deliberately **no** `/var/run/docker.sock` mount. Handing the Docker socket to a container is effectively root on the host; the update restarts the process by itself instead, and `restart: unless-stopped` brings it back.
 
@@ -500,6 +502,73 @@ hand around; the values (role ids, channel ids, your own wording) are yours. Und
 **Server → Plugins** each applied plugin can export its settings and import another
 server's — the file fits that one plugin and is refused for any other.
 
+### Build your own — step by step
+
+You need a text editor. Nothing else.
+
+**1. Start from the example.** Copy [`tools/plugin-beispiel.json`](tools/plugin-beispiel.json)
+and save it under your own name, ending in `.json`.
+
+**2. Fill in the head.**
+
+```json
+"kennung": "my-welcome-pack",
+"name": "My welcome pack",
+"version": "1.0.0",
+"autor": "your name or handle",
+"beschreibung": "One or two sentences: what does this do for a server?"
+```
+
+The `kennung` is the plugin's identity and never changes again — give it a name you can
+live with. `name` and `beschreibung` are what people see in the list, so write them for
+somebody who has never heard of your plugin.
+
+**3. Decide what differs from server to server.** Every role, every channel and every
+mention of a server's own name is something the next person has to be able to change. Each
+of those becomes an entry in `einstellungen`:
+
+```json
+{ "name": "support_rolle", "art": "rolle", "titel": "Support role", "pflicht": true }
+```
+
+- `name` — how you refer to it in the content, letters/digits/underscore
+- `art` — `rolle`, `kanal`, `kategorie` (pickers), or `text`, `mehrzeilig`, `zahl`
+- `titel` — the label above the field. Write it as a question the admin can answer.
+- `hinweis` — optional, a line under it explaining what it is used for
+- `pflicht` — `true` if the plugin is broken without it
+- `standard` — a prefilled value, for text fields
+
+**4. Write the content.** Pick from the five keys in the table above and put your
+placeholders where the values belong:
+
+```json
+"inhalt": {
+  "befehle": [
+    { "trigger": "!rules", "response": "Please read the pinned post, {{servername}}'s rules are short." },
+    { "trigger": "!team",  "response": "Ask <@&{{support_rolle}}>." }
+  ]
+}
+```
+
+A role placeholder on its own is only a number — write `<@&{{support_rolle}}>` to make
+Discord render it as a mention, and `<#{{kanal}}>` for a channel.
+
+**5. Upload it.** **Settings → Plugins → choose a file**. If something is wrong with the
+file, nothing is stored and the message says exactly what: an unknown content key, a
+placeholder you forgot to declare, a missing required field. Fix it and upload again.
+
+**6. Try it on a server.** Open a server, **Plugins**, fill in the form, apply. Check in
+Discord whether it looks the way you meant it. Not right? Edit the file, raise the
+`version`, upload again, then press "move to the new version" on the server.
+
+**7. Hand it on.** **Settings → Plugins → Export** gives you the file back, exactly as the
+bot has it. That file is the whole plugin — the other person imports it, fills in their own
+roles and channels, and is done.
+
+> **While you are still building**, keep applying it to one test server. Applying replaces
+> what the plugin created before, so you can iterate as often as you like without leaving a
+> mess behind — and "remove from this server" always gets you back to a clean state.
+
 ---
 
 ## Scheduled Messages
@@ -601,7 +670,9 @@ Every user can export their own data (account, bot tokens, all server configurat
 
 The per-server backup is built for exactly that: it is tied to **no bot token and no user account**, so the file can be restored in a completely different Phobos installation, onto any server that admin chooses. Only admins can download or restore it.
 
-What it contains: this one server's settings across all 21 configuration areas — reaction roles, commands, tickets, level roles and rewards, auto-mod categories, scheduled messages, recurring events including their reminder templates, embed posts, CrossVerification rules, ratings, auto-delete, auto-thread, gameserver connection, birthdays and warnings.
+What it contains: this one server's settings across all 22 configuration areas — reaction roles, commands, tickets, level roles and rewards, auto-mod categories, scheduled messages, recurring events including their reminder templates, embed posts, CrossVerification rules, ratings, auto-delete, auto-thread, temp voice, Twitch notifications, free-stuff channels, gameserver connection, birthdays, warnings — and the VRChat links of its members.
+
+> Two things worth knowing. **The VRChat links are members' data**, not settings: names and account ids of real people travel with this file. **Plugins are not in it** — what a plugin created (commands, panels, rewards) comes along as ordinary settings, but the link back to the plugin does not, so on the target server those entries are plain hand-made entries nobody can remove through the plugin any more.
 
 What it deliberately leaves out: dashboard users and their permissions, bot tokens, and all runtime/history data (level points, logs, open tickets, running giveaways and polls, counters).
 
@@ -817,6 +888,29 @@ docker compose restart
 
 > A full rebuild (`docker compose up -d --build`) is only needed when `requirements.txt` or `Dockerfile` changes. For code or template changes, `docker compose restart` is enough.
 
+### What the updater needs
+
+The dashboard update runs `git` inside the container, in `/repo` — the project folder
+mounted from the host. Your `docker-compose.yml` has to carry all three volume lines:
+
+```yaml
+    volumes:
+      - ./app:/app
+      - ./data:/app/data
+      - .:/repo
+```
+
+Without the last one the update fails before it starts (from 1.19.38 it says so; older
+versions just showed `exit 128`). **A restart does not fix this** — Docker only applies
+mounts when a container is *created*, so after changing the file you need
+`docker compose up -d`. The same goes for `./data:/app/data`: without it the database lives
+inside the container and is gone the moment it is recreated. Check what you actually have
+with:
+
+```bash
+docker inspect <container-name> --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}'
+```
+
 ---
 
 ## Twitch Notifications Setup
@@ -877,10 +971,16 @@ phobos-bot/
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   ├── VERSION
+│   ├── entrypoint.sh       # Drops root before starting the bot (see Security)
 │   ├── main.py             # FastAPI routes + bot setup
 │   ├── database.py         # SQLite schema + helpers
 │   ├── i18n.py             # DE/EN translations
 │   ├── totp.py             # TOTP secret/QR/backup-code logic for 2FA
+│   ├── plugins.py          # Plugin format: validation, placeholders, apply/remove
+│   ├── befehlstexte.py     # English names/descriptions for the slash commands
+│   ├── vrchat.py           # VRChat API client (login, 2FA, profile lookups)
+│   ├── backup_crypto.py    # Password-encrypted backup files
+│   ├── logbuch.py          # Mirrors every print() into data/logs/phobos.log
 │   ├── cogs/
 │   │   ├── moderation.py
 │   │   ├── leveling.py
@@ -903,9 +1003,13 @@ phobos-bot/
 │   │   ├── polls.py          # Polls with images, ranking, scheduling
 │   │   ├── ratings.py        # Persistent 1-5 star rating lists
 │   │   ├── amp.py            # CubeCoders AMP gameserver control
+│   │   ├── vrc_link.py       # VRChat account linking, group sync, instances
+│   │   ├── profile.py        # Member profiles (/bio, /inspect, ...)
 │   │   └── role_rules.py     # CrossVerification (role condition rules)
 │   ├── templates/            # Jinja2 HTML templates
 │   └── assets/               # Bundled welcome card overlay presets (PNG)
+├── tools/                    # Helper scripts, checks run before each commit,
+│                             # and plugin-beispiel.json as a plugin to copy from
 ├── android/                  # Android Studio project - packages the bot as a real APK
 ├── data/                     # SQLite database + secret key (auto-created, do not commit)
 └── data-*/                   # Additional instance databases (if using multi-instance)
@@ -998,7 +1102,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 
 ### Bot-Funktionen
 
-*Stand 24. September 2026.* Die Kurzfassung — was der Bot kann. Alles unterhalb dieser Tabelle ist die lange: Einstellungen, Grenzen und die Gründe dahinter.
+*Stand 18. November 2026.* Die Kurzfassung — was der Bot kann. Alles unterhalb dieser Tabelle ist die lange: Einstellungen, Grenzen und die Gründe dahinter.
 
 | Funktion | Was sie kann |
 |---|---|
@@ -1009,7 +1113,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **Reaction Roles** | Mitglieder holen sich ihre Rollen selbst — ein Klick auf ein Emoji genügt |
 | **Event-Logging** | Schreibt mit, was auf dem Server passiert — und zeigt, wer eine Nachricht gelöscht hat |
 | **Eigene Commands** | Deine eigenen Befehle, ohne eine Zeile Code |
-| **Tickets** | Ein Knopf macht aus einer Frage einen privaten Ticket-Kanal — Support-Rolle, Kategorie, Archiv beim Schließen |
+| **Tickets** | Ein Knopf macht aus einer Frage einen privaten Ticket-Kanal — Support-Rolle, Kategorie, Archiv beim Schließen. Ein offenes Ticket je Kategorie, damit eine laufende Verifizierung keine Meldung blockiert |
 | **Giveaways** | Verlosung mit einem Klick; der Bot zieht, verkündet und schreibt den Gewinnern eine DM |
 | **Twitch-Benachrichtigungen** | Sagt deinem Kanal Bescheid, sobald einer deiner Streamer live geht |
 | **Free Stuff & Deals** | Postet kostenlose Spiele und die Angebote, die dich interessieren — von selbst |
@@ -1028,6 +1132,8 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 | **Gameserver (AMP)** | Deine Gameserver starten, stoppen und im Blick behalten, ohne Discord zu verlassen |
 | **Auto-Kick** | Zeigt weiterhin unverifizierten Mitgliedern nach einer Frist die Tür — vorher mit Erinnerungen |
 | **Embed-Nachrichten** | Eine schön gesetzte Ankündigung im Dashboard bauen und überall posten |
+| **Profile** | Mitglieder tragen selbst ein, was über sie bekannt sein soll — und eine VRChat-Welt kann lesen, was sie freigegeben haben |
+| **Plugins** | Pakete aus Einstellungen — Befehle, Ticket-Panels, Belohnungen — einmal gebaut, exportiert und auf jedem Server einspielbar |
 
 ## Multi-Bot
 
@@ -1068,7 +1174,7 @@ Das Dashboard liegt unter `http://<server>:8080`. Erste Anmeldung mit `admin` / 
 
 `BOT_CONTAINER_NAME` braucht nur, wer mehrere Instanzen auf einem Server betreibt; ohne heißt der Container `Phobos-Bot`. Sonst ist serverseitig nichts einzustellen — der Discord-Token und alles Weitere kommt über das Dashboard hinein.
 
-> Der `.:/repo`-Mount gibt dem Container Zugriff auf das Git-Repository selbst, damit das Update unter **Einstellungen → 🔄 Updates** den neuen Stand per `git fetch` + `git reset --hard` holen kann (kein normales `git pull` — das würde bei lokalen Abweichungen mit einem Konflikt stehen bleiben, der harte Reset überschreibt sie absichtlich). Er ist optional, wenn Updates lieber von Hand über die Server-Shell laufen (`git pull` + `docker compose up -d --build`).
+> Der `.:/repo`-Mount gibt dem Container Zugriff auf das Git-Repository selbst, damit das Update unter **Einstellungen → 🔄 Updates** den neuen Stand per `git fetch` + `git reset --hard` holen kann (kein normales `git pull` — das würde bei lokalen Abweichungen mit einem Konflikt stehen bleiben, der harte Reset überschreibt sie absichtlich). **Ohne ihn funktioniert das Update aus dem Dashboard überhaupt nicht** — verzichtbar ist er nur, wenn Updates von Hand über die Server-Shell laufen (`git pull` + `docker compose up -d --build`). Der Ordner, auf den er zeigt, muss ein echter `git clone` sein, keine Kopie der Dateien.
 >
 > Einen `/var/run/docker.sock`-Mount gibt es bewusst **nicht**. Den Docker-Socket in einen Container zu reichen heißt faktisch Root auf dem Wirt; das Update startet den Prozess stattdessen selbst neu, und `restart: unless-stopped` holt ihn zurück.
 
@@ -1406,6 +1512,75 @@ Unter **Server → Plugins** lassen sich die Einstellungen je Plugin exportieren
 anderen Servers einspielen — die Datei passt nur zu genau diesem Plugin und wird für jedes
 andere abgelehnt.
 
+### Selber eins bauen — Schritt für Schritt
+
+Gebraucht wird ein Texteditor. Sonst nichts.
+
+**1. Vom Beispiel ausgehen.** [`tools/plugin-beispiel.json`](tools/plugin-beispiel.json)
+kopieren und unter eigenem Namen speichern, Endung `.json`.
+
+**2. Den Kopf ausfüllen.**
+
+```json
+"kennung": "mein-willkommenspaket",
+"name": "Mein Willkommenspaket",
+"version": "1.0.0",
+"autor": "dein Name",
+"beschreibung": "Ein, zwei Sätze: was bringt das einem Server?"
+```
+
+Die `kennung` ist die Identität des Plugins und ändert sich nie wieder — nimm einen Namen,
+mit dem du leben kannst. `name` und `beschreibung` sieht man in der Liste; schreib sie für
+jemanden, der von deinem Plugin noch nie gehört hat.
+
+**3. Überlegen, was von Server zu Server anders ist.** Jede Rolle, jeder Kanal und jede
+Stelle, an der ein Servername steht, muss der Nächste ändern können. Jedes davon wird ein
+Eintrag unter `einstellungen`:
+
+```json
+{ "name": "support_rolle", "art": "rolle", "titel": "Support-Rolle", "pflicht": true }
+```
+
+- `name` — so heißt es im Inhalt, Buchstaben/Ziffern/Unterstrich
+- `art` — `rolle`, `kanal`, `kategorie` (Auswahllisten) oder `text`, `mehrzeilig`, `zahl`
+- `titel` — die Beschriftung über dem Feld. Formulier sie als Frage, die man beantworten kann.
+- `hinweis` — freiwillig, eine Zeile darunter, wofür das gebraucht wird
+- `pflicht` — `true`, wenn das Plugin ohne diesen Wert kaputt ist
+- `standard` — ein vorausgefüllter Wert, bei Textfeldern
+
+**4. Den Inhalt schreiben.** Aus den fünf Schlüsseln der Tabelle oben auswählen und die
+Platzhalter dort einsetzen, wo die Werte hingehören:
+
+```json
+"inhalt": {
+  "befehle": [
+    { "trigger": "!regeln", "response": "Steht angepinnt — die Regeln von {{servername}} sind kurz." },
+    { "trigger": "!team",   "response": "Zuständig ist <@&{{support_rolle}}>." }
+  ]
+}
+```
+
+Ein Rollen-Platzhalter allein ist nur eine Nummer — `<@&{{support_rolle}}>` macht daraus
+eine echte Erwähnung, `<#{{kanal}}>` entsprechend einen Kanal.
+
+**5. Hochladen.** **Einstellungen → Plugins → Datei auswählen**. Stimmt an der Datei etwas
+nicht, wird nichts gespeichert und die Meldung sagt genau was: ein unbekannter Schlüssel im
+Inhalt, ein Platzhalter, den du nicht erklärt hast, ein fehlendes Pflichtfeld. Ändern,
+nochmal hochladen.
+
+**6. Auf einem Server ausprobieren.** Server öffnen, **Plugins**, Formular ausfüllen,
+anlegen. In Discord nachsehen, ob es so aussieht wie gedacht. Passt nicht? Datei ändern,
+`version` hochsetzen, neu hochladen, auf dem Server auf „Auf die neue Fassung bringen"
+drücken.
+
+**7. Weitergeben.** **Einstellungen → Plugins → Exportieren** gibt die Datei zurück, genau
+so wie der Bot sie hat. Diese Datei ist das ganze Plugin — der andere spielt sie ein, trägt
+seine eigenen Rollen und Kanäle ein, fertig.
+
+> **Solange du noch baust**, leg es immer wieder auf einem Testserver an. Anlegen ersetzt,
+> was das Plugin vorher erzeugt hat — du kannst also beliebig oft probieren, ohne
+> hinterherzuräumen, und „Vom Server entfernen" bringt dich jederzeit auf null zurück.
+
 ---
 
 ## Geplante Nachrichten
@@ -1507,7 +1682,9 @@ Jeder Nutzer kann seine eigenen Daten (Konto, Bot-Tokens, alle Server-Konfigurat
 
 Genau dafür ist das Server-Backup gebaut: Es hängt an **keinem Bot-Token und an keinem Benutzerkonto**, die Datei lässt sich also in einer völlig fremden Phobos-Installation auf einen beliebigen Server einspielen. Herunterladen und Einspielen dürfen nur Admins.
 
-Enthalten sind die Einstellungen dieses einen Servers über alle 21 Konfigurationsbereiche: Reaction Roles, Commands, Tickets, Level-Rollen und -Belohnungen, Auto-Mod-Kategorien, geplante Nachrichten, wiederkehrende Events samt ihrer Erinnerungs-Vorlagen, Embed-Nachrichten, CrossVerification-Regeln, Bewertungen, Auto-Delete, Auto-Thread, Gameserver-Anbindung, Geburtstage und Verwarnungen.
+Enthalten sind die Einstellungen dieses einen Servers über alle 22 Konfigurationsbereiche: Reaction Roles, Commands, Tickets, Level-Rollen und -Belohnungen, Auto-Mod-Kategorien, geplante Nachrichten, wiederkehrende Events samt ihrer Erinnerungs-Vorlagen, Embed-Nachrichten, CrossVerification-Regeln, Bewertungen, Auto-Delete, Auto-Thread, Temp-Voice, Twitch-Benachrichtigungen, Free-Stuff-Kanäle, Gameserver-Anbindung, Geburtstage, Verwarnungen — und die VRChat-Verknüpfungen der Mitglieder.
+
+> Zwei Dinge, die man wissen sollte. **Die VRChat-Verknüpfungen sind Daten von Personen**, keine Einstellungen: Namen und Konto-Kennungen echter Menschen wandern mit dieser Datei mit. **Plugins stecken nicht drin** — was ein Plugin angelegt hat (Befehle, Panels, Belohnungen), kommt als gewöhnliche Einstellung mit, die Verbindung zum Plugin aber nicht. Auf dem Zielserver sind das danach von Hand angelegte Einträge, die sich über das Plugin nicht mehr entfernen lassen.
 
 Bewusst nicht enthalten: Dashboard-Nutzer und deren Berechtigungen, Bot-Tokens, sowie sämtliche Laufzeit- und Verlaufsdaten (Level-Punkte, Logs, offene Tickets, laufende Giveaways und Umfragen, Zähler).
 
@@ -1727,6 +1904,30 @@ docker compose restart
 
 > Vollständiger Rebuild (`docker compose up -d --build`) ist nur nötig wenn sich `requirements.txt` oder `Dockerfile` geändert hat. Bei Code- oder Template-Änderungen reicht `docker compose restart`.
 
+### Was das Update braucht
+
+Das Update aus dem Dashboard führt `git` im Container aus, und zwar in `/repo` — dem
+Projektordner, der vom Wirt eingehängt wird. In der `docker-compose.yml` müssen alle drei
+Zeilen stehen:
+
+```yaml
+    volumes:
+      - ./app:/app
+      - ./data:/app/data
+      - .:/repo
+```
+
+Fehlt die letzte, scheitert das Update, bevor es anfängt (ab 1.19.38 sagt es das auch;
+ältere Fassungen zeigten nur `exit 128`). **Ein Neustart behebt das nicht** — Docker
+übernimmt Einhängepunkte nur beim *Neuerstellen*, nach einer Änderung an der Datei also
+`docker compose up -d`. Dasselbe gilt für `./data:/app/data`: ohne diese Zeile liegt die
+Datenbank im Container und ist weg, sobald er neu erstellt wird. Was tatsächlich eingehängt
+ist, zeigt:
+
+```bash
+docker inspect <container-name> --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}'
+```
+
 ---
 
 ## Twitch-Benachrichtigungen einrichten
@@ -1787,10 +1988,16 @@ phobos-bot/
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   ├── VERSION
+│   ├── entrypoint.sh         # Gibt root ab, bevor der Bot startet (siehe Sicherheit)
 │   ├── main.py               # FastAPI-Routen + Bot-Setup
 │   ├── database.py           # SQLite-Schema + Hilfsfunktionen
 │   ├── i18n.py               # DE/EN Übersetzungen
 │   ├── totp.py               # TOTP-Secret/QR/Backup-Code-Logik für 2FA
+│   ├── plugins.py            # Plugin-Format: Prüfung, Platzhalter, Anlegen/Entfernen
+│   ├── befehlstexte.py       # Englische Namen/Beschreibungen der Slash-Befehle
+│   ├── vrchat.py             # VRChat-API-Client (Login, 2FA, Profilabfragen)
+│   ├── backup_crypto.py      # Mit Passwort verschlüsselte Backup-Dateien
+│   ├── logbuch.py            # Schreibt jedes print() zusätzlich nach data/logs/phobos.log
 │   ├── cogs/
 │   │   ├── moderation.py
 │   │   ├── leveling.py
@@ -1813,9 +2020,13 @@ phobos-bot/
 │   │   ├── polls.py          # Umfragen mit Bildern, Rangliste, Planung
 │   │   ├── ratings.py        # Dauerhafte 1-5-Sterne-Bewertungslisten
 │   │   ├── amp.py            # CubeCoders-AMP-Gameserver-Steuerung
+│   │   ├── vrc_link.py       # VRChat-Verknüpfung, Gruppenabgleich, Instanzen
+│   │   ├── profile.py        # Profile der Mitglieder (/bio, /inspect, ...)
 │   │   └── role_rules.py     # CrossVerification (Rollen-Bedingungsregeln)
 │   ├── templates/            # Jinja2 HTML-Templates
 │   └── assets/               # Mitgelieferte Willkommenskarte-Overlay-Vorlagen (PNG)
+├── tools/                    # Hilfsskripte, Prüfungen vor jedem Commit und
+│                             # plugin-beispiel.json als Plugin zum Abschreiben
 ├── android/                  # Android-Studio-Projekt - packt den Bot als echte APK
 ├── data/                     # SQLite-Datenbank + Secret-Key (auto-erstellt, nicht committen)
 └── data-*/                   # Weitere Instanz-Datenbanken (bei Multi-Instanz)
