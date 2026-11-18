@@ -35,6 +35,8 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
 - [Auto-Delete](#auto-delete)
 - [Auto-Thread](#auto-thread)
 - [VRC-Link (VRChat)](#vrc-link-vrchat)
+- [Profiles](#profiles)
+- [Plugins](#plugins)
 - [Scheduled Messages](#scheduled-messages)
 - [Discord Events](#discord-events)
 - [CrossVerification](#crossverification)
@@ -302,6 +304,201 @@ The first run only records what is already open, so switching the feature on doe
 **Debug report.** One button prints, ready to copy, everything the bot can see on the VRChat side: the settings in force, the bot account (without password, secret or session cookie), the group, its roles and your mappings, every open lobby raw, a separate lookup per lobby with the state and name fields pulled out, the bot's own stored state, and how many members are linked. It only reads and changes nothing.
 
 The link address is taken from the address you have the dashboard open at — the same way the invite link in the user administration works, so there is nothing to configure. A **base address** set in the settings wins over it.
+
+---
+
+## Profiles
+
+Members fill in what should be known about them with `/bio`, `/kinks`, `/triggers` and
+`/limits`, and look at other people's entries with `/inspect`. `/profil` shows your own,
+`/profil-loeschen` removes everything. Every reply is only visible to the person who asked —
+a profile is never posted into a channel.
+
+**18+ is required** for kinks, triggers and limits, not for the bio. Either the VRChat age
+verification from VRC-Link counts as proof, or a role the server picks for it. Somebody
+without proof may still look at profiles — they just see the bio and nothing else, and the
+answer is the same one they get for an empty profile, so it never gives away that something
+is hidden.
+
+Switch it on under **Server → 🪪 Profiles**, where you also pick the 18+ role and who may use
+`/inspect`.
+
+### Reading profiles from a VRChat world
+
+A world can fetch the entries over a read address of its own. Three things have to line up,
+and all three are deliberate:
+
+1. the server has **Display in the VRChat world** enabled,
+2. the request carries that server's **key** (at least 20 characters, set on the same page),
+3. the person has **released their own profile** for it — the button under `/profil`.
+
+Without the release the world gets nothing, key or no key. Writing something down is not
+publishing it.
+
+```
+GET  https://your-dashboard/api/profil?key=<KEY>&vrc=<VRCHAT NAME OR ID>
+```
+
+`vrc` takes either the VRChat display name or the `usr_…` id. The lookup goes through the
+VRC-Link table, so only members who linked their VRChat account can be found at all.
+
+```json
+{
+  "gefunden": true,
+  "vrchat_name": "LucyVR",
+  "felder": [
+    {"feld": "bio",      "text": "…", "geaendert": "2026-11-17 15:04", "erwachsen": false},
+    {"feld": "kinks",    "text": "…", "geaendert": "2026-11-17 15:04", "erwachsen": true},
+    {"feld": "triggers", "text": "…", "geaendert": "2026-11-17 15:04", "erwachsen": true},
+    {"feld": "limits",   "text": "…", "geaendert": "2026-11-17 15:04", "erwachsen": true}
+  ]
+}
+```
+
+Fields come in a fixed order (bio, kinks, triggers, limits) and only the filled ones are
+included. `gefunden: false` with an empty list means: unknown name, nothing written, or
+nothing released — the answer is the same for all three on purpose, so the address cannot be
+used to find out who has what.
+
+| Status | Means |
+|---|---|
+| `200` | Answer as above, `gefunden` tells you whether there is anything. |
+| `400` | `key` or `vrc` missing. |
+| `403` | Wrong key, or the display is switched off for that server. |
+| `429` | More than 60 requests a minute from your address. |
+
+**`erwachsen` is yours to act on.** Inside Discord those fields sit behind an age check. A
+VRChat world has no such thing — whatever stands on a board is read by whoever walks past it.
+The flag is in the answer so your UI can decide: show the bio to everyone and keep the rest
+behind a button, a separate room, or your own 18+ gate. The bot cannot make that call for you.
+
+### What to expect from VRChat itself
+
+- **Untrusted URLs.** VRChat only loads strings from a short list of trusted hosts
+  (`*.github.io`, `gist.githubusercontent.com`, `pastebin.com`, `*.disbridge.com`,
+  `*.vrcdn.cloud`, `assets.vrchat.com`). A self-hosted dashboard is not on it, so every
+  visitor needs **Allow Untrusted URLs** switched on in their settings, or they see nothing.
+  Plan for that in the world: say so on the board instead of showing an empty panel. For
+  public instances the domain also has to be added to the world's allowed hosts on
+  vrchat.com. The current list is served by VRChat's own config endpoint as
+  `stringHostUrlList` and can change.
+- **Mirroring to a trusted host is not the answer.** Pastebin or a gist would load without
+  that setting — and would also put kinks, triggers and limits on a public address that
+  nothing ever takes back. That is exactly why this endpoint exists.
+- **One download at a time.** `VRCStringDownloader` has a global cooldown of about five
+  seconds across the whole world. Fetch once when a player comes into range, keep the result,
+  and queue rather than calling it per frame.
+- **HTTPS.** Put the dashboard behind a proxy with a certificate; the key travels in the
+  address.
+
+In Udon: `VRCStringDownloader.LoadUrl(url, (IUdonEventReceiver)this)`, then read
+`result.Result` in `OnStringLoadSuccess`. `VRCUrl` cannot be built from a string at runtime,
+so the address has to sit in a public `VRCUrl` field — one per world, with the key in it.
+
+---
+
+## Plugins
+
+*Available from 1.19.39 (beta).*
+
+A plugin is a **package of settings**, not a program. One JSON file describes what should be
+created — commands, a ticket panel with its categories, level rewards, auto-mod word lists —
+and the bot creates it. You can export it, hand it to someone else, and they can apply it to
+their own server.
+
+**A plugin executes no code.** That is deliberate and not a temporary limitation: a Python
+plugin would run in the same process as the bot, with access to the bot token, the whole
+database (dashboard emails, password hashes, 2FA secrets) and the host's filesystem. Python
+offers no sandbox that reliably prevents this. Whoever could upload a plugin would own the
+bot. A description cannot do that: it is read, validated, and written into exactly the
+tables listed below.
+
+### Where things live
+
+| | |
+|---|---|
+| **Settings → Plugins** | the installation's plugins: import, export, delete |
+| **Server → Plugins** | which of them act on *this* server, with their settings |
+
+Importing a plugin applies it to nothing. It becomes active only when someone adds it to a
+specific server and fills in that server's values.
+
+### The file format
+
+```json
+{
+  "phobos_plugin": "1.0",
+  "kennung": "support-basics",
+  "name": "Support basics",
+  "version": "1.0.0",
+  "autor": "you",
+  "beschreibung": "A ticket panel with three categories and two commands.",
+
+  "einstellungen": [
+    { "name": "support_role", "art": "rolle", "titel": "Support role", "pflicht": true },
+    { "name": "greeting", "art": "text", "titel": "Greeting", "standard": "Hi!" }
+  ],
+
+  "inhalt": {
+    "befehle": [
+      { "trigger": "!team", "response": "Ask <@&{{support_role}}>." }
+    ]
+  }
+}
+```
+
+A full, working example is in [`tools/plugin-beispiel.json`](tools/plugin-beispiel.json).
+
+**`kennung`** identifies the plugin across versions — lowercase letters, digits, `-` and
+`_`. Uploading the same identifier again is a *new version*, not a second plugin. Servers
+already using it keep running the old one until somebody presses "move to the new version".
+
+**`einstellungen`** are the open slots. A plugin is meant to work on servers its author has
+never seen, so it cannot carry role or channel numbers. It declares what it needs and the
+admin fills a form in when adding it. Types: `text`, `mehrzeilig`, `zahl`, `rolle`, `kanal`,
+`kategorie` — the last three render as a picker of that server's roles/channels/categories.
+
+**Placeholders** are `{{name}}` and may appear in any text of the content. A placeholder the
+plugin does not declare is rejected at upload — otherwise `{{name}}` would end up verbatim
+in somebody's command.
+
+### What a plugin may create
+
+| Key | Creates |
+|---|---|
+| `befehle` | custom commands (`trigger`, `response`) |
+| `ticket_panels` | ticket panels, with their categories nested under `optionen` |
+| `level_rollen` | level → role assignments (`level`, `role_id`) |
+| `level_belohnungen` | level → reward text (`level`, `reward`) |
+| `wortlisten` | auto-mod word lists (`label`, `words`) |
+
+Anything else in `inhalt` is refused. Three things are deliberately not on the list:
+reaction roles (they hang off the id of an existing message, which no package can bring
+along), the per-server config keys (that is the server's master switch — a file should not
+be able to turn features on), and anything holding people's data.
+
+An imported ticket panel is created as a **draft** and is not published on its own:
+publishing posts a message into a channel, and a human should trigger that, not a file
+upload.
+
+### Adding, changing, removing
+
+Applying is **replacing**: whatever the plugin created on that server before is removed
+first, then created fresh. So a change to the settings and an update to a new version are
+the same operation, and a plugin never leaves two sets of commands side by side.
+
+Every row a plugin creates is recorded. **Removing takes back exactly those rows** — never
+something that looks similar. A command you wrote by hand survives a plugin that wanted to
+create the same one (it is skipped at creation, so it is never recorded, so it is never
+deleted). Changes somebody made to a plugin's own rows afterwards are lost on the next
+apply, and the dashboard says so before you press it.
+
+### Settings, exported separately
+
+The plugin and a server's values for it are **two different files**. The plugin is what you
+hand around; the values (role ids, channel ids, your own wording) are yours. Under
+**Server → Plugins** each applied plugin can export its settings and import another
+server's — the file fits that one plugin and is refused for any other.
 
 ---
 
@@ -763,6 +960,8 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
 - [Auto-Delete](#auto-delete-1)
 - [Auto-Thread](#auto-thread-1)
 - [VRC-Link (VRChat)](#vrc-link-vrchat-1)
+- [Profile](#profile)
+- [Plugins](#plugins-1)
 - [Geplante Nachrichten](#geplante-nachrichten)
 - [Discord-Events](#discord-events-1)
 - [CrossVerification](#crossverification-1)
@@ -1030,6 +1229,182 @@ Beim ersten Durchlauf wird nur mitgeschrieben, damit beim Einschalten nicht jede
 **Debug-Bericht.** Ein Knopf gibt fertig zum Kopieren aus, was der Bot auf der VRChat-Seite sieht: die geltenden Einstellungen, das Bot-Konto (ohne Passwort, Geheimnis und Sitzungs-Keks), die Gruppe, ihre Rollen und deine Zuordnungen, jede offene Lobby roh, je Lobby eine eigene Abfrage mit herausgestellten Zustands- und Namensfeldern, den eigenen gespeicherten Stand und die Zahl der Verknüpfungen. Liest nur, ändert nichts.
 
 Die Adresse für die Links nimmt der Bot von dort, wo du dieses Dashboard geöffnet hast — genau wie der Einladungslink in der Benutzerverwaltung, es ist also nichts einzurichten. Eine in den Einstellungen gesetzte **Basis-Adresse** hat Vorrang.
+
+---
+
+## Profile
+
+Mitglieder tragen mit `/bio`, `/kinks`, `/triggers` und `/limits` selbst ein, was über sie
+bekannt sein soll, und sehen mit `/inspect` die Angaben anderer. `/profil` zeigt das eigene,
+`/profil-loeschen` räumt alles weg. Jede Antwort ist nur für die fragende Person sichtbar —
+ein Profil landet nie in einem Kanal.
+
+**18+ ist Pflicht** für kinks, triggers und limits, nicht für die Bio. Als Nachweis zählt die
+VRChat-Altersbestätigung aus VRC-Link oder eine Rolle, die der Server dafür bestimmt. Wer
+keinen Nachweis hat, darf trotzdem nachsehen — sieht dann aber nur die Bio, und zwar mit
+derselben Antwort wie bei einem leeren Profil. So verrät die Antwort nicht, dass da etwas
+verborgen ist.
+
+Einschalten unter **Server → 🪪 Profile**; dort stehen auch die 18+-Rolle und wer `/inspect`
+benutzen darf.
+
+### Profile aus einer VRChat-Welt lesen
+
+Eine Welt kann die Angaben über eine eigene Leseadresse holen. Dafür müssen drei Dinge
+zusammenkommen, alle drei mit Absicht:
+
+1. der Server hat **Anzeige in der VRChat-Welt** eingeschaltet,
+2. die Anfrage trägt den **Schlüssel** dieses Servers (mindestens 20 Zeichen, auf derselben
+   Seite),
+3. die Person hat ihr Profil **selbst freigegeben** — der Knopf unter `/profil`.
+
+Ohne Freigabe bekommt die Welt nichts, Schlüssel hin oder her. Eintragen heißt nicht
+veröffentlichen.
+
+```
+GET  https://dein-dashboard/api/profil?key=<SCHLÜSSEL>&vrc=<VRCHAT-NAME ODER -KENNUNG>
+```
+
+`vrc` nimmt den VRChat-Namen oder die `usr_…`-Kennung. Gesucht wird über die
+VRC-Link-Verknüpfung — wer sein VRChat-Konto nicht verknüpft hat, ist gar nicht auffindbar.
+
+Die Antwort steht oben im englischen Teil. Die Felder kommen in fester Reihenfolge und nur,
+soweit gefüllt. `gefunden: false` heißt: Name unbekannt, nichts geschrieben **oder** nichts
+freigegeben — bewusst dieselbe Antwort für alle drei Fälle, damit sich über die Adresse nicht
+herausfinden lässt, wer was hat. Status `400` fehlende Angaben, `403` falscher Schlüssel oder
+Anzeige aus, `429` mehr als 60 Anfragen je Minute.
+
+**Das Merkmal `erwachsen` muss die Welt selbst auswerten.** In Discord hängt an diesen Feldern
+eine Altersprüfung; in einer VRChat-Welt gibt es so etwas nicht — was auf einer Tafel steht,
+liest jeder, der davorsteht. Deshalb steht in jeder Antwort, welches Feld dahinter gehört.
+
+### Was VRChat dabei vorgibt
+
+- **Nicht vertraute Adressen.** VRChat lädt Zeichenketten nur von wenigen vertrauten Hosts
+  (`*.github.io`, `gist.githubusercontent.com`, `pastebin.com`, `*.disbridge.com`,
+  `*.vrcdn.cloud`, `assets.vrchat.com`). Ein selbst gehostetes Dashboard ist nicht dabei —
+  jeder Besucher braucht also **„Allow Untrusted URLs"** in seinen Einstellungen, sonst sieht
+  er nichts. In öffentlichen Instanzen muss die Adresse zusätzlich in der Hostliste der Welt
+  auf vrchat.com stehen. Die Liste kann sich ändern; VRChat liefert sie selbst als
+  `stringHostUrlList` aus.
+- **Auf einen vertrauten Dienst spiegeln ist keine Lösung.** Pastebin oder ein Gist lüden
+  ohne diese Einstellung — und legten kinks, triggers und limits auf eine öffentliche
+  Adresse, von der nichts je wieder verschwindet. Genau dafür gibt es diese Leseadresse.
+- **Ein Abruf nach dem anderen.** `VRCStringDownloader` hat eine welt-weite Sperre von rund
+  fünf Sekunden zwischen zwei Abrufen. Einmal holen, wenn jemand in die Nähe kommt, und das
+  Ergebnis behalten.
+- **HTTPS.** Das Dashboard hinter einen Proxy mit Zertifikat; der Schlüssel steht in der
+  Adresse.
+
+---
+
+## Plugins
+
+*Ab 1.19.39 (beta).*
+
+Ein Plugin ist ein **Paket aus Einstellungen**, kein Programm. Eine JSON-Datei beschreibt,
+was angelegt werden soll — Befehle, ein Ticket-Panel mit seinen Kategorien,
+Level-Belohnungen, Wortlisten für den Spam-Schutz —, und der Bot legt es an. Die Datei lässt
+sich exportieren, weitergeben und auf einem fremden Server einspielen.
+
+**Ein Plugin führt keinen Code aus.** Das ist Absicht und keine Einschränkung auf Zeit: Ein
+Python-Plugin liefe im selben Prozess wie der Bot und käme an den Bot-Token, an die ganze
+Datenbank (E-Mail-Adressen, Passwort-Hashes und 2FA-Geheimnisse der Dashboard-Konten) und an
+die Dateien des Wirts. In Python gibt es keine Abschottung, die das zuverlässig verhindert —
+wer ein Plugin hochladen dürfte, hätte den ganzen Bot. Eine Beschreibung kann das nicht: sie
+wird gelesen, geprüft und in genau die Tabellen geschrieben, die unten stehen.
+
+### Wo was liegt
+
+| | |
+|---|---|
+| **Einstellungen → Plugins** | die Plugins der Installation: einspielen, exportieren, löschen |
+| **Server → Plugins** | welche davon auf *diesem* Server wirken, mit ihren Werten |
+
+Ein eingespieltes Plugin tut zunächst gar nichts. Wirksam wird es erst, wenn es jemand auf
+einem bestimmten Server anlegt und dort die Werte ausfüllt.
+
+### Das Dateiformat
+
+```json
+{
+  "phobos_plugin": "1.0",
+  "kennung": "support-basis",
+  "name": "Support-Grundgerüst",
+  "version": "1.0.0",
+  "autor": "du",
+  "beschreibung": "Ein Ticket-Panel mit drei Kategorien und zwei Befehlen.",
+
+  "einstellungen": [
+    { "name": "support_rolle", "art": "rolle", "titel": "Support-Rolle", "pflicht": true },
+    { "name": "gruss", "art": "text", "titel": "Begrüßung", "standard": "Moin!" }
+  ],
+
+  "inhalt": {
+    "befehle": [
+      { "trigger": "!team", "response": "Zuständig ist <@&{{support_rolle}}>." }
+    ]
+  }
+}
+```
+
+Ein vollständiges Beispiel zum Abschreiben liegt in
+[`tools/plugin-beispiel.json`](tools/plugin-beispiel.json).
+
+**`kennung`** ist das, was ein Plugin über Versionen hinweg identifiziert — Kleinbuchstaben,
+Ziffern, `-` und `_`. Dieselbe Kennung nochmal hochzuladen ist eine *neue Fassung*, kein
+zweites Plugin. Server, die es benutzen, behalten die alte Fassung, bis dort jemand auf
+„Auf die neue Fassung bringen" drückt.
+
+**`einstellungen`** sind die offenen Stellen. Ein Plugin soll auf Servern laufen, die sein
+Autor nie gesehen hat — Rollen- und Kanalnummern kann es deshalb nicht mitbringen. Es sagt,
+was es braucht, und der Admin füllt beim Anlegen ein Formular aus. Arten: `text`,
+`mehrzeilig`, `zahl`, `rolle`, `kanal`, `kategorie` — die letzten drei zeigen eine
+Auswahlliste des jeweiligen Servers.
+
+**Platzhalter** heißen `{{name}}` und dürfen in jedem Text des Inhalts stehen. Ein
+Platzhalter, den das Plugin nicht erklärt, lässt die Datei beim Hochladen durchfallen —
+sonst stünde am Ende `{{name}}` wörtlich in irgendeinem Befehl.
+
+### Was ein Plugin anlegen darf
+
+| Schlüssel | Legt an |
+|---|---|
+| `befehle` | eigene Befehle (`trigger`, `response`) |
+| `ticket_panels` | Ticket-Panels, Kategorien verschachtelt unter `optionen` |
+| `level_rollen` | Level → Rolle (`level`, `role_id`) |
+| `level_belohnungen` | Level → Belohnungstext (`level`, `reward`) |
+| `wortlisten` | Wortlisten für den Spam-Schutz (`label`, `words`) |
+
+Alles andere unter `inhalt` wird abgelehnt. Drei Dinge fehlen mit Absicht: Reaction Roles
+(sie hängen an der Nummer einer bestehenden Nachricht, die kein Paket mitbringen kann), die
+Server-Einstellungen selbst (das ist der Generalschlüssel — eine Datei soll keine Funktionen
+anschalten können) und alles, worin Daten von Personen stehen.
+
+Ein eingespieltes Ticket-Panel steht als **Entwurf** da und wird nicht von selbst
+veröffentlicht: Veröffentlichen postet eine Nachricht in einen Kanal, und das soll ein
+Mensch auslösen, kein Datei-Upload.
+
+### Anlegen, ändern, entfernen
+
+Anlegen ist **ersetzen**: Was das Plugin auf diesem Server vorher angelegt hatte, wird erst
+entfernt und dann neu erzeugt. Eine geänderte Einstellung und ein Wechsel auf eine neue
+Fassung sind damit derselbe Vorgang, und es stehen nie zwei Sätze Befehle nebeneinander.
+
+Zu jeder angelegten Zeile wird mitgeschrieben, aus welchem Plugin sie stammt. **Entfernt
+wird genau das — nie etwas, das nur ähnlich aussieht.** Ein Befehl, den jemand von Hand
+geschrieben hat, überlebt ein Plugin, das denselben anlegen wollte: er wird beim Anlegen
+übersprungen, also nicht mitgeschrieben, also auch nicht gelöscht. Änderungen, die jemand
+nachträglich an den Zeilen des Plugins gemacht hat, gehen beim nächsten Anlegen verloren —
+das steht auch im Dashboard, bevor man drückt.
+
+### Einstellungen, getrennt exportierbar
+
+Das Plugin und die Werte eines Servers sind **zwei verschiedene Dateien**. Das Plugin gibt
+man weiter; die Werte (Rollennummern, Kanalnummern, eigene Formulierungen) sind die eigenen.
+Unter **Server → Plugins** lassen sich die Einstellungen je Plugin exportieren und die eines
+anderen Servers einspielen — die Datei passt nur zu genau diesem Plugin und wird für jedes
+andere abgelehnt.
 
 ---
 
