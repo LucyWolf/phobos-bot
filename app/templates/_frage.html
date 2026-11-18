@@ -88,9 +88,17 @@
   window.frage = function (el, text, titel, danach) {
     var form = el.form || (el.tagName === 'FORM' ? el
                            : (el.closest ? el.closest('form') : null));
+    /* Ein Knopf mit eigener formaction: beim programmierten Abschicken zaehlt nur die
+       action des FORMULARS, formaction wirkt nur beim echten Klick. Ohne diese Zeilen
+       landete ein "Markierte löschen" neben einem "Markierte schließen" im falschen
+       Ziel - und zwar lautlos. */
+    var eigene = (el.tagName === 'BUTTON' && el.hasAttribute('formaction'))
+                 ? el.getAttribute('formaction') : null;
     window.zeigeFrage(text, titel, function () {
       if (danach) { try { danach(form); } catch (e) {} }
-      if (form) form.submit();
+      if (!form) return;
+      if (eigene) form.setAttribute('action', eigene);
+      form.submit();
     });
     return false;
   };

@@ -1026,12 +1026,28 @@ document.addEventListener('click', function(e) {
     </form>
   </div>
 
+  <style>
+    #panel-liste tr[data-id] { cursor: grab; }
+    #panel-liste tr[data-id]:active { cursor: grabbing; }
+    #panel-liste tr[data-id] input,
+    #panel-liste tr[data-id] button { cursor: pointer; }
+  </style>
+  {# Formular neben der Tabelle, nicht darum herum - in den Zeilen stehen schon welche. #}
+  <form id="panels-bulk" method="post"
+        action="/servers/{{ guild.id }}/tickets/panels/markierte-loeschen" style="margin:0;"></form>
+
   <div class="table-wrap">
     <table>
-      <thead><tr><th>{{ tr.tickets_col_panel }}</th><th>{{ tr.tickets_col_status }}</th><th>{{ tr.label_channel }}</th><th>{{ tr.tickets_col_created }}</th><th></th></tr></thead>
-      <tbody>
+      <thead><tr>
+        <th style="width:1.8rem;"><input type="checkbox" onclick="alleMarkieren(this,'panels-bulk')"
+              title="{{ tr.mark_all }}" style="margin:0;"></th>
+        <th>{{ tr.tickets_col_panel }}</th><th>{{ tr.tickets_col_status }}</th><th>{{ tr.label_channel }}</th><th>{{ tr.tickets_col_created }}</th><th></th>
+      </tr></thead>
+      <tbody id="panel-liste">
         {% for p in ticket_panels %}
-        <tr>
+        <tr draggable="true" data-id="{{ p.id }}">
+          <td><input type="checkbox" name="markiert" value="{{ p.id }}" form="panels-bulk"
+                     onchange="zaehleMarkierte('panels-bulk')" style="margin:0;"></td>
           <td>
             <div style="font-weight:600;font-size:0.88rem;">{{ p.emoji or '🎫' }} {{ p.name }}</div>
             <div style="font-size:0.72rem;color:var(--muted);">{{ p.button_label or 'Ticket öffnen' }}</div>
@@ -1047,6 +1063,14 @@ document.addEventListener('click', function(e) {
           <td style="color:var(--muted);font-size:0.78rem;white-space:nowrap;">{{ p.created_at | dt }}</td>
           <td>
             <div style="display:flex;gap:0.3rem;justify-content:flex-end;">
+              <button type="submit" form="panels-bulk" class="btn btn-secondary"
+                      formaction="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/verschieben?richtung=hoch"
+                      style="font-size:0.72rem;padding:0.22rem 0.45rem;" title="{{ tr.move_up }}"
+                      {% if loop.first %}disabled{% endif %}>↑</button>
+              <button type="submit" form="panels-bulk" class="btn btn-secondary"
+                      formaction="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/verschieben?richtung=runter"
+                      style="font-size:0.72rem;padding:0.22rem 0.45rem;" title="{{ tr.move_down }}"
+                      {% if loop.last %}disabled{% endif %}>↓</button>
               <button class="btn btn-secondary" onclick="togglePanelEdit({{ p.id }})" style="font-size:0.72rem;padding:0.22rem 0.55rem;" title="{{ tr.btn_settings }}">⚙</button>
               {% if p.status == 'published' %}
               <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/unpublish" style="display:inline;">
@@ -1062,7 +1086,7 @@ document.addEventListener('click', function(e) {
 
         <!-- Edit-Zeile -->
         <tr id="panel-edit-{{ p.id }}" style="display:none;" class="panel-edit-row">
-          <td colspan="5" style="padding:1.1rem 1.25rem;">
+          <td colspan="6" style="padding:1.1rem 1.25rem;">
             <form method="post" action="/servers/{{ guild.id }}/tickets/panels/{{ p.id }}/update">
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
                 <div>
@@ -1286,23 +1310,44 @@ document.addEventListener('click', function(e) {
         {% endfor %}
 
         {% if not ticket_panels %}
-        <tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--muted);">{{ tr.tickets_panels_empty }}</td></tr>
+        <tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--muted);">{{ tr.tickets_panels_empty }}</td></tr>
         {% endif %}
       </tbody>
     </table>
   </div>
+  {% if ticket_panels %}
+  <div style="margin-top:0.9rem;display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+    <button type="submit" form="panels-bulk" class="btn btn-danger" disabled data-braucht-markierung
+            onclick="return frage(this, '{{ tr.mark_delete_confirm }}');">
+      🗑 <span id="panels-bulk-zahl">{{ tr.mark_delete }}</span>
+    </button>
+    <span class="hint" style="margin:0;">{{ tr.mark_hint }}</span>
+  </div>
+  {% endif %}
 </div>
 
 <!-- Offene Tickets -->
 <div class="section-label" style="margin-bottom:0.5rem;">{{ tr.tickets_open_title }}</div>
 {% if ticket_list %}
 <div class="card" style="padding:0;overflow:hidden;">
+  {# Zwei Formulare daneben, weil es hier zwei Sammelaktionen gibt: Schliessen raeumt den
+     Kanal mit ab, Loeschen nimmt nur den Eintrag aus der Liste. Die Kaestchen gehoeren
+     dem einen; der Loesch-Knopf leiht es sich mit formaction. Umsortieren gibt es hier
+     nicht - offene Tickets stehen nach Eingang, und das ist richtig so. #}
+  <form id="tickets-bulk" method="post"
+        action="/servers/{{ guild.id }}/tickets/markierte-schliessen" style="margin:0;"></form>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>{{ tr.tickets_open_col_user }}</th><th>{{ tr.label_channel }}</th><th>{{ tr.tickets_col_created }}</th><th></th></tr></thead>
+      <thead><tr>
+        <th style="width:1.8rem;"><input type="checkbox" onclick="alleMarkieren(this,'tickets-bulk')"
+              title="{{ tr.mark_all }}" style="margin:0;"></th>
+        <th>{{ tr.tickets_open_col_user }}</th><th>{{ tr.label_channel }}</th><th>{{ tr.tickets_col_created }}</th><th></th>
+      </tr></thead>
       <tbody>
         {% for t in ticket_list %}
         <tr>
+          <td><input type="checkbox" name="markiert" value="{{ t.id }}" form="tickets-bulk"
+                     onchange="zaehleMarkierte('tickets-bulk')" style="margin:0;"></td>
           <td style="font-weight:500">{{ t.username }}</td>
           <td style="color:#a78bfa">{{ t.channel_name }}</td>
           <td style="color:var(--muted);font-size:0.8rem">{{ t.created_at | dt }}</td>
@@ -1320,6 +1365,19 @@ document.addEventListener('click', function(e) {
         {% endfor %}
       </tbody>
     </table>
+  </div>
+  <div style="padding:0.9rem 1.1rem;display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;
+              border-top:1px solid var(--border);">
+    <button type="submit" form="tickets-bulk" class="btn btn-secondary" disabled data-braucht-markierung
+            onclick="return frage(this, '{{ tr.tickets_mark_close_confirm }}');">
+      🔒 <span id="tickets-bulk-zahl">{{ tr.tickets_mark_close }}</span>
+    </button>
+    <button type="submit" form="tickets-bulk" class="btn btn-danger" disabled data-braucht-markierung
+            formaction="/servers/{{ guild.id }}/tickets/markierte-loeschen"
+            onclick="return frage(this, '{{ tr.tickets_mark_delete_confirm }}');">
+      🗑 {{ tr.tickets_mark_delete }}
+    </button>
+    <span class="hint" style="margin:0;">{{ tr.tickets_mark_hint }}</span>
   </div>
 </div>
 {% else %}
@@ -3630,6 +3688,39 @@ document.addEventListener('click', function(e) {
     </button>
   </form>
 
+  {# Datenfreigabe. Nur wenn das Plugin überhaupt etwas lesen möchte - und immer aus,
+     bis jemand hier einen Haken setzt. Ein eingespieltes Plugin greift nichts ab. #}
+  {% if p.aktiv and p.daten %}
+  <div style="margin-top:1rem;padding:0.9rem 1rem;border:1px solid var(--border);
+              border-radius:0.6rem;background:var(--bg);">
+    <div style="font-size:0.82rem;font-weight:700;margin-bottom:0.3rem;">{{ tr.plug_data_heading }}</div>
+    <p class="hint" style="margin:0 0 0.8rem;">{{ tr.plug_data_hint }}</p>
+    <form method="post" action="/servers/{{ guild.id }}/plugins/{{ p.id }}/daten">
+      {% for d in p.daten %}
+      <label style="display:flex;align-items:flex-start;gap:0.45rem;font-size:0.83rem;font-weight:400;margin-bottom:0.55rem;">
+        <input type="checkbox" name="daten_an" value="{{ d.quelle }}" style="margin:0.15rem 0 0;"
+               {% if d.an %}checked{% endif %}>
+        <span>{{ d.titel }}
+          <span style="color:var(--muted);font-size:0.75rem;">— {{ d.felder|join(', ') }}</span>
+          {% if d.zweck %}<br><span style="color:var(--muted);font-size:0.75rem;">{{ d.zweck }}</span>{% endif %}
+        </span>
+      </label>
+      {% endfor %}
+      <label style="margin-top:0.5rem;">{{ tr.plug_data_key }}</label>
+      <p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ tr.plug_data_key_hint }}</p>
+      <input type="text" name="daten_key" maxlength="80" value="{{ p.daten_key }}"
+             placeholder="{{ tr.plug_data_key_ph }}">
+      <button type="submit" class="btn" style="margin-top:0.5rem;">{{ tr.btn_save }}</button>
+    </form>
+    {% if p.daten_key and p.daten|selectattr('an')|list %}
+    <p class="hint" style="margin:0.8rem 0 0.2rem;">{{ tr.plug_data_url }}</p>
+    <code style="display:block;word-break:break-all;background:var(--surface);
+                 border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem 0.7rem;
+                 font-size:0.75rem;">{{ base_url }}/api/plugin/{{ p.kennung }}?key={{ p.daten_key|urlencode }}</code>
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% if p.aktiv %}
   <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);
               display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
@@ -5404,6 +5495,14 @@ function updateAmpCmdPreview(id, action, value) {
   {# Das Formular steht NEBEN der Tabelle, nicht um sie herum: in den Zeilen stehen schon
      Formulare, und verschachtelte kennt HTML nicht. Die Kaestchen gehoeren ueber ihr
      form-Attribut hierher, die Pfeile leihen es sich mit formaction. #}
+  <style>
+    /* Der Mauszeiger ist der einzige Hinweis darauf, dass man ziehen kann - ohne ihn
+       findet es niemand, der nicht danach sucht. */
+    #embeds-liste tr[data-id] { cursor: grab; }
+    #embeds-liste tr[data-id]:active { cursor: grabbing; }
+    #embeds-liste tr[data-id] input,
+    #embeds-liste tr[data-id] button { cursor: pointer; }
+  </style>
   <form id="embeds-bulk" method="post"
         action="/servers/{{ guild.id }}/embeds/markierte-loeschen" style="margin:0;"></form>
 
@@ -5414,9 +5513,9 @@ function updateAmpCmdPreview(id, action, value) {
               title="{{ tr.mark_all }}" style="margin:0;"></th>
         <th>{{ tr.label_name }}</th><th>{{ tr.label_channel }}</th><th></th>
       </tr></thead>
-      <tbody>
+      <tbody id="embeds-liste">
         {% for ep in embed_posts %}
-        <tr>
+        <tr draggable="true" data-id="{{ ep.id }}">
           <td><input type="checkbox" name="markiert" value="{{ ep.id }}" form="embeds-bulk"
                      onchange="zaehleMarkierte('embeds-bulk')" style="margin:0;"></td>
           <td style="font-weight:600;font-size:0.88rem;">{{ ep.name }}</td>
@@ -5517,7 +5616,7 @@ function updateAmpCmdPreview(id, action, value) {
 
   {% if embed_posts %}
   <div style="margin-top:0.9rem;display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
-    <button type="submit" form="embeds-bulk" id="embeds-bulk-btn" class="btn btn-danger" disabled
+    <button type="submit" form="embeds-bulk" class="btn btn-danger" disabled data-braucht-markierung
             onclick="return frage(this, '{{ tr.mark_delete_confirm }}');">
       🗑 <span id="embeds-bulk-zahl">{{ tr.mark_delete }}</span>
     </button>
@@ -6535,9 +6634,11 @@ function markierteKaesten(formId) {
 }
 function zaehleMarkierte(formId) {
   const an = markierteKaesten(formId).filter(k => k.checked).length;
-  const knopf = document.getElementById(formId + '-btn');
   const zahl = document.getElementById(formId + '-zahl');
-  if (knopf) knopf.disabled = an === 0;
+  // Jeder Knopf, der ohne Markierung nichts tun kann - es sind je Liste mehrere
+  // (schließen UND löschen), und die Pfeile zum Umsortieren dürfen NICHT dazugehören.
+  document.querySelectorAll('[form="' + formId + '"][data-braucht-markierung]')
+    .forEach(k => { k.disabled = an === 0; });
   // Der Knopf sagt, wie viele es trifft. "Markierte löschen" allein laesst einen raten,
   // ob das Kaestchen oben wirklich alle erwischt hat.
   if (zahl) {
@@ -6550,6 +6651,107 @@ function alleMarkieren(quelle, formId) {
   zaehleMarkierte(formId);
 }
 
+// ── Reihenfolge per Ziehen ─────────────────────────────────────────────────────────
+// Gewuenscht am 18.11.2026: "nicht nur das verschieben per pfeil sondern links gedrückt
+// halten und nachoben ziehen und losslassen". Die Pfeile bleiben trotzdem - Ziehen gibt
+// es auf einem Touchgeraet nicht, und mit der Tastatur auch nicht.
+//
+// Zwei Dinge, die hier anders sind als in einer gewoehnlichen Liste:
+//   * Unter jeder Zeile haengt ihre ausgeklappte Bearbeitungszeile. Die muss mitwandern,
+//     sonst steht sie nach dem Ziehen unter einem fremden Eintrag.
+//   * Angefasst wird nicht, was in der Zeile anklickbar ist. Wer ein Kaestchen ankreuzt
+//     oder einen Knopf drueckt, will nicht ziehen.
+function ziehbareListe(tbodyId, speicherUrl) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+  let gezogen = null, anhang = null, geaendert = false, abgelegt = false;
+
+  function anhangVon(zeile) {
+    const n = zeile.nextElementSibling;
+    return (n && n.classList.contains('panel-edit-row')) ? n : null;
+  }
+  // Die nächste echte Datenzeile - die ausgeklappte Bearbeitungszeile wird übersprungen.
+  function naechsteDatenzeile(zeile) {
+    let n = zeile.nextElementSibling;
+    while (n && !n.hasAttribute('data-id')) n = n.nextElementSibling;
+    return n;
+  }
+  // Vor WELCHE Zeile gehört der Zeiger gerade? Berechnet aus der Mausposition über alle
+  // anderen Zeilen - nicht aus dem, was zufällig unter dem Zeiger liegt.
+  //
+  // Genau das war der Fehler: wer die Zeile unter dem Zeiger nimmt und davor einfügt,
+  // schiebt die eigene Zeile unter den Zeiger, beim nächsten dragover liegt wieder eine
+  // andere darunter, und die Liste springt im Takt der Mausbewegung hin und her.
+  function einfuegePunkt(y) {
+    const zeilen = Array.from(tbody.querySelectorAll('tr[data-id]'))
+                        .filter(z => z !== gezogen);
+    for (const z of zeilen) {
+      const k = z.getBoundingClientRect();
+      if (y < k.top + k.height / 2) return z;
+    }
+    return null;                        // unterhalb aller Zeilen: ans Ende
+  }
+
+  tbody.addEventListener('dragstart', function (e) {
+    const zeile = e.target.closest ? e.target.closest('tr[data-id]') : null;
+    if (!zeile) return;
+    if (e.target.closest('input,button,a,select,textarea')) { e.preventDefault(); return; }
+    gezogen = zeile;
+    anhang = anhangVon(zeile);
+    abgelegt = false;
+    zeile.style.opacity = '0.45';
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      // Firefox startet ohne setData gar keinen Zug.
+      try { e.dataTransfer.setData('text/plain', zeile.dataset.id); } catch (err) {}
+    }
+  });
+
+  tbody.addEventListener('dragover', function (e) {
+    if (!gezogen) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    const ziel = einfuegePunkt(e.clientY);
+    if (ziel === naechsteDatenzeile(gezogen)) return;   // steht schon richtig
+    tbody.insertBefore(gezogen, ziel);
+    if (anhang) gezogen.after(anhang);
+    geaendert = true;
+  });
+
+  tbody.addEventListener('drop', function (e) {
+    if (!gezogen) return;
+    e.preventDefault();
+    abgelegt = true;
+  });
+
+  tbody.addEventListener('dragend', function () {
+    if (!gezogen) return;
+    gezogen.style.opacity = '';
+    gezogen = null;
+    anhang = null;
+    if (!geaendert) return;
+    geaendert = false;
+    // Abgebrochen (Escape, oder losgelassen außerhalb der Liste): die Vorschau steht noch
+    // falsch da, gespeichert wurde nichts. Neu laden, damit die Liste wieder das zeigt,
+    // was tatsächlich gespeichert ist - stehenlassen wäre eine Anzeige, die lügt.
+    if (!abgelegt) { location.reload(); return; }
+    // Gespeichert wird als gewoehnliches Formular, nicht per fetch: danach laedt die Seite
+    // neu und zeigt genau das, was in der Datenbank steht - nicht das, was der Browser
+    // glaubt. Ein fehlgeschlagenes Speichern faellt so sofort auf.
+    const ids = Array.from(tbody.querySelectorAll('tr[data-id]')).map(z => z.dataset.id);
+    const form = document.createElement('form');
+    form.method = 'post';
+    form.action = speicherUrl;
+    const feld = document.createElement('input');
+    feld.type = 'hidden';
+    feld.name = 'reihenfolge';
+    feld.value = ids.join(',');
+    form.appendChild(feld);
+    document.body.appendChild(form);
+    form.submit();
+  });
+}
+
 function showTab(name) {
   if (!TABS.includes(name)) name = 'config';
   TABS.forEach(t => {
@@ -6557,6 +6759,9 @@ function showTab(name) {
     if (pane) pane.classList.toggle('active', t === name);
   });
 }
+ziehbareListe('embeds-liste', '/servers/{{ guild.id }}/embeds/reihenfolge');
+ziehbareListe('panel-liste', '/servers/{{ guild.id }}/tickets/panels/reihenfolge');
+
 const init = new URLSearchParams(location.search).get('tab') || '{{ tab }}' || 'config';
 showTab(init);
 

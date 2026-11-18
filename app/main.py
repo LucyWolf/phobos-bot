@@ -10518,8 +10518,8 @@ async def _plugins_fuer_server(guild_id, lang: str = "de") -> list:
             # mitnehmen - sie wird uebersprungen und faellt beim Export auf.
             continue
         dabei = await db_one(
-            "SELECT id, einstellungen, version, angelegt FROM plugin_guilds "
-            "WHERE plugin_id=? AND guild_id=?", (zeile["id"], gid))
+            "SELECT id, einstellungen, version, angelegt, daten_an, daten_key "
+            "FROM plugin_guilds WHERE plugin_id=? AND guild_id=?", (zeile["id"], gid))
         werte = {}
         if dabei:
             try:
@@ -10535,6 +10535,14 @@ async def _plugins_fuer_server(guild_id, lang: str = "de") -> list:
             "beschreibung": zeile["beschreibung"],
             "angelegt": angelegt,
             "einstellungen": paket.get("einstellungen", []),
+            # Was das Plugin lesen moechte, und was dieser Server davon freigegeben hat.
+            "daten": [
+                {**a,
+                 "titel": plugin_mod.DATENQUELLEN[a["quelle"]]["titel"][0 if lang != "en" else 1],
+                 "an": a["quelle"] in {q for q in ((dabei or {}).get("daten_an") or "").split(",") if q}}
+                for a in paket.get("daten", []) if a["quelle"] in plugin_mod.DATENQUELLEN
+            ],
+            "daten_key": (dabei or {}).get("daten_key", ""),
             "teile": plugin_mod.zusammenfassung(paket, lang),
             "aktiv": bool(dabei),
             "werte": werte,
@@ -10830,6 +10838,114 @@ async def server_plugin_anwenden(request: Request, guild_id: int, plugin_id: int
         print(f"[plugins] anwenden fehlgeschlagen: {e}")
         return _plugin_fehler(ziel, "Das Plugin liess sich nicht anlegen.")
     return _plugin_ok(ziel, meldung)
+
+
+@web.post("/servers/{guild_id}/plugins/{plugin_id}/daten")
+async def server_plugin_daten(request: Request, guild_id: int, plugin_id: int):
+    """Welche Datenansichten dieses Plugin auf diesem Server lesen darf - und womit.
+
+    Getrennt vom Anlegen gespeichert: ein erneutes Anwenden des Plugins (geaenderte
+    Einstellungen, neue Fassung) soll eine einmal erteilte Freigabe weder loeschen noch
+    stillschweigend erweitern.
+    """
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    ziel = f"/servers/{guild_id}?tab=plugins"
+    form = await request.form()
+    zeile = await db_one("SELECT id FROM plugin_guilds WHERE plugin_id=? AND guild_id=?",
+                         (plugin_id, str(guild_id)))
+    if not zeile:
+        return _plugin_fehler(ziel, "Dieses Plugin ist auf dem Server nicht angelegt.")
+
+    paket = await plugin_mod.plugin_paket(plugin_id) or {}
+    moeglich = {a["quelle"] for a in paket.get("daten", [])}
+    an = [q for q in form.getlist("daten_an") if q in moeglich]
+    schluessel = (form.get("daten_key") or "").strip()
+
+    if an:
+        # Dieselben Regeln wie beim Schluessel der Profil-Schnittstelle: kurz genug zum
+        # Raten ist kein Schluessel, und zwei Server duerfen sich keinen teilen - gesucht
+        # wird beim Abruf ueber den Schluessel, ein doppelter zeigte auf den falschen.
+        if len(schluessel) < 20:
+            return _plugin_fehler(
+                ziel, "Der Schlüssel muss mindestens 20 Zeichen haben. Ohne ihn kann die "
+                      "Welt nichts abrufen — und mit einem kurzen kann es jeder.")
+        fremd = await db_one(
+            "SELECT id FROM plugin_guilds WHERE daten_key=? AND daten_key<>'' AND id<>?",
+            (schluessel, zeile["id"]))
+        if fremd:
+            return _plugin_fehler(ziel, "Diesen Schlüssel benutzt schon eine andere "
+                                        "Freigabe. Nimm einen eigenen.")
+    else:
+        # Nichts freigegeben heisst auch: kein Schluessel, der weiterhin irgendwo steht.
+        schluessel = ""
+
+    await db_exec("UPDATE plugin_guilds SET daten_an=?, daten_key=? WHERE id=?",
+                  (",".join(an), schluessel, zeile["id"]))
+    if not an:
+        return _plugin_ok(ziel, "Datenfreigabe ausgeschaltet.")
+    return _plugin_ok(ziel, f"Freigegeben: {', '.join(an)}.")
+
+
+# Wie bei der Profil-Schnittstelle: eine Bremse je Adresse. Eine Welt fragt alle paar
+# Minuten, nicht hundertmal die Sekunde - wer das tut, probiert Schluessel durch.
+_plugin_api_zugriffe: dict = {}
+
+
+def _plugin_api_zu_viel(request: Request) -> bool:
+    jetzt = time.time()
+    adresse = (request.client.host if request.client else "?")
+    fenster = [t for t in _plugin_api_zugriffe.get(adresse, []) if jetzt - t < 60]
+    fenster.append(jetzt)
+    _plugin_api_zugriffe[adresse] = fenster
+    if len(_plugin_api_zugriffe) > 2000:
+        for a in [a for a, ts in _plugin_api_zugriffe.items() if not ts or jetzt - ts[-1] > 300]:
+            _plugin_api_zugriffe.pop(a, None)
+    return len(fenster) > 30
+
+
+@web.get("/api/plugin/{kennung}")
+async def plugin_daten_api(request: Request, kennung: str, key: str = ""):
+    """Die freigegebenen Daten eines Plugins - das, was eine VRChat-Welt abruft.
+
+    Gewuenscht am 18.11.2026: wer etwas Eigenes braucht, baut sich ein Plugin und holt
+    sich seine Daten selbst, statt dass fuer jeden Sonderfall eine Schnittstelle in den
+    Bot muss.
+
+    Gesucht wird ueber den Schluessel, nicht ueber eine Server-Kennung: die Welt kennt
+    ihren Schluessel und sonst nichts. Antwort immer gleich aufgebaut, auch im Fehlerfall -
+    wer Schluessel durchprobiert, soll an der Antwort nichts ablesen koennen.
+    """
+    leer = {"gefunden": False, "daten": {}}
+    schluessel = (key or "").strip()
+    if _plugin_api_zu_viel(request):
+        return JSONResponse(leer, status_code=429)
+    if not schluessel or len(schluessel) < 20:
+        return JSONResponse(leer, status_code=400)
+
+    zeile = await db_one(
+        "SELECT g.guild_id, g.daten_an, p.kennung, p.name, p.version, p.inhalt "
+        "FROM plugin_guilds g JOIN plugins p ON p.id=g.plugin_id "
+        "WHERE g.daten_key=? AND g.daten_key<>''", (schluessel,))
+    if not zeile or zeile["kennung"] != kennung:
+        return JSONResponse(leer, status_code=403)
+    erlaubt = {q for q in (zeile["daten_an"] or "").split(",") if q}
+    if not erlaubt:
+        return JSONResponse(leer, status_code=403)
+
+    try:
+        paket = _djson.loads(zeile["inhalt"])
+    except Exception:
+        return JSONResponse(leer, status_code=500)
+
+    daten = await plugin_mod.daten_holen(zeile["guild_id"], paket.get("daten", []), erlaubt)
+    return JSONResponse({
+        "gefunden": True,
+        "plugin": zeile["kennung"],
+        "version": zeile["version"],
+        "stand": datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "daten": daten,
+    })
 
 
 @web.post("/servers/{guild_id}/plugins/{plugin_id}/entfernen")
@@ -11601,7 +11717,10 @@ async def server_config(
 
     # Ticket panels
     ticket_panels = await db_rows(
-        "SELECT * FROM ticket_panels WHERE guild_id=? ORDER BY created_at DESC", (guild_id,)
+        # Wie bei den Embed-Nachrichten: eine von Hand gesetzte Reihenfolge geht vor,
+        # alles Unverschobene steht auf 0 und bleibt damit neueste-zuerst.
+        "SELECT * FROM ticket_panels WHERE guild_id=? ORDER BY sortierung, id DESC",
+        (guild_id,)
     )
     for p in ticket_panels:
         if p.get("channel_id"):
@@ -13143,13 +13262,17 @@ async def tickets_option_delete(request: Request, guild_id: int, panel_id: int,
                             status_code=302)
 
 
-@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/delete")
-async def tickets_panel_delete(request: Request, guild_id: int, panel_id: int):
-    if r := auth_redirect(request): return r
-    if not await _guild_access(request, guild_id):
-        return RedirectResponse("/servers", status_code=302)
-    panel = await db_one("SELECT * FROM ticket_panels WHERE id=? AND guild_id=?", (panel_id, guild_id))
-    if panel and panel.get("message_id") and panel.get("channel_id"):
+async def _ticket_panel_entfernen(guild_id: int, panel_id: int) -> bool:
+    """Ein Panel loeschen - samt der Nachricht, die es in den Kanal gestellt hat.
+
+    Herausgeloest wie bei den Embed-Nachrichten: es gibt das jetzt einzeln und fuer alles
+    Markierte, und die gepostete Nachricht darf in keinem der beiden Wege stehenbleiben.
+    """
+    panel = await db_one("SELECT * FROM ticket_panels WHERE id=? AND guild_id=?",
+                         (panel_id, guild_id))
+    if not panel:
+        return False
+    if panel.get("message_id") and panel.get("channel_id"):
         try:
             b = bot._bot_for_guild(guild_id)
             if b:
@@ -13160,7 +13283,66 @@ async def tickets_panel_delete(request: Request, guild_id: int, panel_id: int):
         except Exception:
             pass
     await db_exec("DELETE FROM ticket_panels WHERE id=? AND guild_id=?", (panel_id, guild_id))
+    return True
+
+
+@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/delete")
+async def tickets_panel_delete(request: Request, guild_id: int, panel_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    await _ticket_panel_entfernen(guild_id, panel_id)
     return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Panel+gelöscht", status_code=302)
+
+
+# ── Markieren und Sortieren im Ticket-Reiter ─────────────────────────────────────────
+# Gewuenscht am 18.11.2026: "das bei einbetten nachrichten das mit den auswählen auch rein
+# machen in tikets". Zwei Listen, zwei verschiedene Beduerfnisse:
+#   Panels  - loeschen und umsortieren, wie die Embed-Nachrichten
+#   Tickets - schliessen oder loeschen; umsortieren ergaebe hier keinen Sinn, die stehen
+#             nach Eingang.
+
+@web.post("/servers/{guild_id}/tickets/panels/markierte-loeschen")
+async def ticket_panels_bulk_delete(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    ids = _markierte_ids(await request.form())
+    if not ids:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=Nichts+markiert", status_code=302)
+    weg = 0
+    for panel_id in ids:
+        if await _ticket_panel_entfernen(guild_id, panel_id):
+            weg += 1
+    return RedirectResponse(
+        f"/servers/{guild_id}?tab=tickets&success={weg}+Panels+gelöscht", status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/verschieben")
+async def ticket_panel_move(request: Request, guild_id: int, panel_id: int,
+                            richtung: str = ""):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    if richtung not in ("hoch", "runter"):
+        richtung = "hoch"
+    await _neu_sortieren("ticket_panels", guild_id, panel_id, richtung)
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets", status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/panels/reihenfolge")
+async def ticket_panels_order(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    ids = [int(t) for t in
+           [s.strip() for s in (form.get("reihenfolge") or "").split(",")[:500]]
+           if t.isdigit()]
+    if ids:
+        await _reihenfolge_setzen("ticket_panels", guild_id, ids)
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets", status_code=302)
 
 
 @web.post("/servers/{guild_id}/tickets/panels/{panel_id}/publish")
@@ -13288,6 +13470,78 @@ async def ticket_delete(request: Request, guild_id: int, ticket_id: int):
         return RedirectResponse("/servers", status_code=302)
     await db_exec("DELETE FROM tickets WHERE id=? AND guild_id=?", (ticket_id, guild_id))
     return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Ticket+gelöscht", status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/markierte-schliessen")
+async def tickets_bulk_close(request: Request, guild_id: int):
+    """Mehrere Tickets auf einmal schliessen.
+
+    Jedes einzeln und unabhaengig: scheitert eines - fehlende Rechte, Kanal schon weg -,
+    laufen die anderen trotzdem durch, und am Ende steht da, wie viele es waren. Alles
+    abzubrechen, weil eines klemmt, waere bei zwanzig markierten Tickets die schlechtere
+    Haelfte der Arbeit.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    ids = _markierte_ids(await request.form())
+    if not ids:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=Nichts+markiert", status_code=302)
+    b = bot._bot_for_guild(guild_id)
+    if not b:
+        # Ohne laufenden Bot laesst sich nicht feststellen, ob der Kanal noch existiert -
+        # als geschlossen zu markieren hiesse, ihn verwaist zurueckzulassen.
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=Bot+nicht+online", status_code=302)
+
+    zu, klemmte = 0, 0
+    guild_obj = b.get_guild(guild_id)
+    for ticket_id in ids:
+        ticket = await db_one("SELECT * FROM tickets WHERE id=? AND guild_id=? "
+                              "AND status='open'", (ticket_id, guild_id))
+        if not ticket:
+            continue
+        ch = b.get_channel(ticket["channel_id"])
+        if ch:
+            panel = await db_one("SELECT * FROM ticket_panels WHERE id=?",
+                                 (ticket["panel_id"],)) if ticket.get("panel_id") else None
+            if not await _close_ticket_channel(ch, guild_obj, panel,
+                                               "Ticket via Dashboard geschlossen"):
+                klemmte += 1
+                continue
+        await db_exec("UPDATE tickets SET status='closed' WHERE id=? AND guild_id=?",
+                      (ticket_id, guild_id))
+        zu += 1
+    await _log_bot_event(bot, guild_id, "🔒", "Tickets geschlossen", "ticket",
+                         plain=f"{zu} Stück · über Dashboard")
+    text = f"{zu}+geschlossen"
+    if klemmte:
+        text += f",+{klemmte}+ging+nicht"
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success={text}",
+                            status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/markierte-loeschen")
+async def tickets_bulk_delete(request: Request, guild_id: int):
+    """Markierte Tickets aus der Liste nehmen.
+
+    Loescht nur den Eintrag, nicht den Kanal - genau wie das einzelne Loeschen daneben.
+    Wer den Kanal weghaben will, schliesst das Ticket.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    ids = _markierte_ids(await request.form())
+    if not ids:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=Nichts+markiert", status_code=302)
+    weg = 0
+    for ticket_id in ids:
+        weg += await db_exec_rowcount("DELETE FROM tickets WHERE id=? AND guild_id=?",
+                                      (ticket_id, guild_id))
+    return RedirectResponse(
+        f"/servers/{guild_id}?tab=tickets&success={weg}+Tickets+gelöscht", status_code=302)
 
 
 # ── Embed Posts ──────────────────────────────────────────────────────────────
@@ -14347,6 +14601,43 @@ async def _neu_sortieren(tabelle: str, guild_id, zeile_id: int, richtung: str) -
         await db_exec(f"UPDATE {tabelle} SET sortierung=? WHERE id=? AND guild_id=?",
                       (platz, kennung, str(guild_id)))
     return True
+
+
+async def _reihenfolge_setzen(tabelle: str, guild_id, ids: list) -> int:
+    """Eine ganze Reihenfolge auf einmal festschreiben - das Gegenstueck zum Ziehen.
+
+    Gegen die Liste des Servers abgeglichen, nicht blind uebernommen: was die Seite
+    mitschickt, kann veraltet sein oder gar nicht hierher gehoeren. Fremde Nummern fliegen
+    raus, Doppelte auch, und was der Browser nicht kannte (in einem anderen Fenster
+    angelegt), haengt hinten an, statt verloren zu gehen.
+    """
+    vorhanden = [z["id"] for z in await db_rows(
+        f"SELECT id FROM {tabelle} WHERE guild_id=? ORDER BY sortierung, id DESC",
+        (str(guild_id),))]
+    bekannt = set(vorhanden)
+    neu = [i for i in dict.fromkeys(ids) if i in bekannt]
+    neu += [i for i in vorhanden if i not in set(neu)]
+    for platz, zeile_id in enumerate(neu, start=1):
+        await db_exec(f"UPDATE {tabelle} SET sortierung=? WHERE id=? AND guild_id=?",
+                      (platz, zeile_id, str(guild_id)))
+    return len(neu)
+
+
+@web.post("/servers/{guild_id}/embeds/reihenfolge")
+async def embed_posts_order(request: Request, guild_id: int):
+    """Nach dem Ziehen: die neue Reihenfolge am Stueck."""
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    ids = []
+    for teil in (form.get("reihenfolge") or "").split(",")[:500]:
+        teil = teil.strip()
+        if teil.isdigit():
+            ids.append(int(teil))
+    if ids:
+        await _reihenfolge_setzen("embed_posts", guild_id, ids)
+    return RedirectResponse(f"/servers/{guild_id}?tab=embeds", status_code=302)
 
 
 @web.post("/servers/{guild_id}/embeds/markierte-loeschen")

@@ -263,6 +263,169 @@ ARTEN: dict = {
 }
 
 
+# ── Was ein Plugin LESEN darf ─────────────────────────────────────────────────────────────
+# Gewuenscht am 18.11.2026: "mach bei den plugins das mann auch andere datenpunkte nehmen
+# kann und verwenden also das was der andere tüp wolte kann ein eigenes plugin machen und
+# selber einbinden". Damit baut sich jemand seine eigene Datenabfrage fuer eine VRChat-Welt,
+# statt dass fuer jeden Sonderfall eine neue Schnittstelle in den Bot muss.
+#
+# Ein Plugin SAGT nur, was es lesen moechte. Ob es das darf, entscheidet der Server, auf dem
+# es angelegt ist - je Ansicht ein Schalter, dazu ein eigener Schluessel, und beides ist aus,
+# bis jemand es einschaltet. Ein eingespieltes Plugin kann also nichts abgreifen.
+#
+# Drei Regeln, die hier eingebaut sind und nicht umgangen werden koennen:
+#
+#   1. Nur freigegebene Profile. Ein Profiltext erscheint hier genau dann, wenn die Person
+#      selbst den Knopf dafuer gesetzt hat - Eintragen ist nicht Veroeffentlichen.
+#   2. Keine Discord-Kennungen. Gefunden wird ueber den VRChat-Namen aus der Verknuepfung.
+#      Wer keine hat, steht nirgends. Sonst waere die Antwort eine fertige Liste
+#      "VRChat-Name -> Discord-Konto", und die hat niemand bestellt.
+#   3. Nur was hier aufgezaehlt ist. Kein Plugin kann eine Tabelle oder Spalte nennen, an
+#      die hier niemand gedacht hat - E-Mail-Adressen, Tokens und Verwarnungen sind damit
+#      nicht "noch nicht freigegeben", sondern unerreichbar.
+DATENQUELLEN: dict = {
+    "profile": {
+        "titel": ("🪪 Profile (nur selbst freigegebene)",
+                  "🪪 Profiles (only those released by the person)"),
+        "felder": ("bio", "kinks", "triggers", "limits"),
+    },
+    "level": {
+        "titel": ("🏆 Level und XP", "🏆 Levels and XP"),
+        "felder": ("level", "xp", "messages", "voice_minutes", "voice_level"),
+    },
+    "vrchat": {
+        "titel": ("🔗 VRChat-Verknüpfungen", "🔗 VRChat links"),
+        "felder": ("trust", "verifiziert_18", "supporter", "gruppenmitglied"),
+    },
+}
+
+
+def _lese_daten(roh) -> list:
+    """Den Abschnitt „daten" eines Plugins pruefen.
+
+    Streng wie der Inhalt: eine unbekannte Quelle oder ein unbekanntes Feld laesst die Datei
+    durchfallen, statt still weggelassen zu werden. Ein Plugin, das etwas liest, das es nicht
+    gibt, soll das beim Hochladen erfahren und nicht beim Betrieb.
+    """
+    if roh is None:
+        return []
+    if not isinstance(roh, list):
+        raise PluginFehler("„daten“ muss eine Liste sein.")
+    if len(roh) > len(DATENQUELLEN):
+        raise PluginFehler("Mehr Datenansichten als es Quellen gibt.")
+    fertig, gesehen = [], set()
+    for eintrag in roh:
+        if not isinstance(eintrag, dict):
+            raise PluginFehler("Jede Datenansicht muss ein Objekt sein.")
+        quelle = _text(eintrag.get("quelle"), 40).strip()
+        if quelle not in DATENQUELLEN:
+            raise PluginFehler(
+                f"Unbekannte Datenquelle „{quelle}“. Möglich sind: "
+                f"{', '.join(sorted(DATENQUELLEN))}.")
+        if quelle in gesehen:
+            raise PluginFehler(f"Die Datenquelle „{quelle}“ kommt doppelt vor.")
+        gesehen.add(quelle)
+        erlaubt = DATENQUELLEN[quelle]["felder"]
+        roh_felder = eintrag.get("felder")
+        if roh_felder is None:
+            felder = list(erlaubt)
+        else:
+            if not isinstance(roh_felder, list):
+                raise PluginFehler(f"„felder“ bei „{quelle}“ muss eine Liste sein.")
+            felder = []
+            for f in roh_felder:
+                f = _text(f, 40).strip()
+                if f not in erlaubt:
+                    raise PluginFehler(
+                        f"„{f}“ gibt es bei „{quelle}“ nicht. Möglich sind: "
+                        f"{', '.join(erlaubt)}.")
+                if f not in felder:
+                    felder.append(f)
+            if not felder:
+                raise PluginFehler(f"Die Datenansicht „{quelle}“ nennt kein einziges Feld.")
+        fertig.append({
+            "quelle": quelle,
+            "felder": felder,
+            "zweck": _text(eintrag.get("zweck"), 300).strip(),
+        })
+    return fertig
+
+
+async def daten_holen(guild_id, ansichten: list, erlaubt: set) -> dict:
+    """Die freigegebenen Datenansichten dieses Servers, fertig zum Ausliefern.
+
+    `erlaubt` sind die Quellen, die der Server eingeschaltet hat - was ein Plugin darueber
+    hinaus im Paket stehen hat, wird hier nicht einmal nachgeschlagen.
+    """
+    gid = str(guild_id)
+    gefragt = [a for a in ansichten if a["quelle"] in erlaubt]
+    if not gefragt:
+        return {}
+
+    # Der VRChat-Name ist der Schluessel jeder Antwort - wer keine bestaetigte Verknuepfung
+    # hat, taucht nirgends auf. Siehe Regel 2 oben.
+    namen = {}
+    for z in await db_rows(
+            "SELECT user_id, vrchat_name FROM vrc_links "
+            "WHERE guild_id=? AND status='approved' AND vrchat_name<>''", (gid,)):
+        namen[str(z["user_id"])] = z["vrchat_name"]
+    if not namen:
+        return {a["quelle"]: [] for a in gefragt}
+
+    aus: dict = {}
+    for ansicht in gefragt:
+        quelle, felder = ansicht["quelle"], ansicht["felder"]
+        if quelle == "profile":
+            sammler: dict = {}
+            for z in await db_rows(
+                    "SELECT user_id, feld, text, geaendert FROM profil_eintraege "
+                    "WHERE guild_id=? AND welt=1 AND text<>''", (gid,)):
+                name = namen.get(str(z["user_id"]))
+                if not name or z["feld"] not in felder:
+                    continue
+                eintrag = sammler.setdefault(name, {"vrchat_name": name})
+                eintrag[z["feld"]] = z["text"]
+                # Der neueste Zeitpunkt aller Felder: damit eine Welt erkennt, ob sich seit
+                # ihrem letzten Laden ueberhaupt etwas getan hat.
+                if (z["geaendert"] or "") > eintrag.get("geaendert", ""):
+                    eintrag["geaendert"] = z["geaendert"] or ""
+            aus[quelle] = sorted(sammler.values(), key=lambda e: e["vrchat_name"].lower())
+
+        elif quelle == "level":
+            zeilen = []
+            for z in await db_rows(
+                    "SELECT user_id, xp, level, messages, voice_minutes, voice_level "
+                    "FROM levels WHERE guild_id=?", (gid,)):
+                name = namen.get(str(z["user_id"]))
+                if not name:
+                    continue
+                eintrag = {"vrchat_name": name}
+                for f in felder:
+                    eintrag[f] = z[f] if z[f] is not None else 0
+                zeilen.append(eintrag)
+            aus[quelle] = sorted(zeilen, key=lambda e: -int(e.get("xp", 0) or 0)) \
+                if "xp" in felder else sorted(zeilen, key=lambda e: e["vrchat_name"].lower())
+
+        elif quelle == "vrchat":
+            zeilen = []
+            for z in await db_rows(
+                    "SELECT vrchat_name, vrc_trust, vrc_age_verified, vrc_supporter, "
+                    "vrc_group_member FROM vrc_links WHERE guild_id=? AND status='approved' "
+                    "AND vrchat_name<>''", (gid,)):
+                eintrag = {"vrchat_name": z["vrchat_name"]}
+                if "trust" in felder:
+                    eintrag["trust"] = z["vrc_trust"] or ""
+                if "verifiziert_18" in felder:
+                    eintrag["verifiziert_18"] = bool(z["vrc_age_verified"])
+                if "supporter" in felder:
+                    eintrag["supporter"] = bool(z["vrc_supporter"])
+                if "gruppenmitglied" in felder:
+                    eintrag["gruppenmitglied"] = bool(z["vrc_group_member"])
+                zeilen.append(eintrag)
+            aus[quelle] = sorted(zeilen, key=lambda e: e["vrchat_name"].lower())
+    return aus
+
+
 # Umgekehrte Zuordnung: zu einer Tabelle die Ueberschrift und die Spalte, an der man einen
 # Eintrag WIEDERERKENNT ("!team", "Support", "Stufe 10"). Dafuer da, dass auf der Serverseite
 # steht, was ein Plugin dort tatsaechlich angelegt hat - eine Zahl ("3 Befehle") sagt nicht,
@@ -369,6 +532,8 @@ def lese_paket(roh: bytes | str) -> dict:
         "quelle": pruefe_quelle(_text(data.get("quelle"), 500), aufloesen=False),
         "homepage": _link(_text(data.get("homepage"), 500)),
         "einstellungen": _lese_einstellungen(data.get("einstellungen")),
+        # Was das Plugin lesen MOECHTE. Ob es darf, entscheidet jeder Server selbst.
+        "daten": _lese_daten(data.get("daten")),
         "inhalt": {},
     }
 
@@ -384,8 +549,11 @@ def lese_paket(roh: bytes | str) -> dict:
         zeilen = _lese_eintraege(art, eintraege)
         if zeilen:
             paket["inhalt"][art] = zeilen
-    if not paket["inhalt"]:
-        raise PluginFehler("Das Plugin legt nichts an — „inhalt“ ist leer.")
+    # Ein Plugin, das nur Daten bereitstellt, legt nichts an - das ist der Fall, fuer den
+    # "daten" ueberhaupt gebaut wurde. Nur beides leer ist ein Paket, das nichts tut.
+    if not paket["inhalt"] and not paket["daten"]:
+        raise PluginFehler(
+            "Das Plugin tut nichts — weder „inhalt“ noch „daten“ ist gefüllt.")
 
     # Ein Platzhalter, den niemand ausfuellen kann, wuerde beim Hinzufuegen als "{{name}}" in
     # einem Befehlstext landen. Lieber die Datei ablehnen als das.
@@ -657,6 +825,7 @@ def paket_als_datei(paket: dict) -> dict:
         "quelle": paket.get("quelle", ""),
         "homepage": paket.get("homepage", ""),
         "einstellungen": paket.get("einstellungen", []),
+        "daten": paket.get("daten", []),
         "inhalt": paket.get("inhalt", {}),
     }
 
