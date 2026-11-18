@@ -231,6 +231,10 @@
     <input type="password" name="password" autocomplete="new-password"
            placeholder="{{ tr.usr_restore_pw }}"
            style="margin-bottom:1rem;">
+    <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;font-weight:400;margin-bottom:1rem;">
+      <input type="checkbox" name="nochmal" value="1" style="margin:0;">
+      {{ tr.backup_again_label }}
+    </label>
     <button type="submit" class="btn btn-primary">📂 {{ tr.usr_restore_button }}</button>
   </form>
 </div>

@@ -721,6 +721,16 @@ Every user can export their own data (account, bot tokens, all server configurat
 - Download a **single server's backup** (its configuration only — no users, no tokens) from that server's own dashboard page, and restore it onto any server, including a completely different one
 - **Restore** any backup via file upload — existing entries are updated, new ones are added, nothing is deleted
 
+### The same backup, twice
+
+Restoring **creates** entries; it does not reconcile them. Restore the same file three times and you have three sets of reaction roles, commands and panels — and you only notice afterwards.
+
+So every exported file carries an **identifier** and a **running number**, and the number is in the filename: `backup_server_MyServer_nr0007_20261118_1430.json`. The number counts per server, so two files from the same server are told apart by something that means something — unlike the `(1)` a browser appends.
+
+A file that has already been restored **onto this server** is refused, with the date, who did it and its number. If you really want it again, there is a checkbox next to the upload saying exactly what will happen. Restoring the same file **onto a different server** is not blocked — that is what the per-server backup is for, and nothing is duplicated there.
+
+Older backups from before this have no identifier; for those the file's own fingerprint is used, so uploading the same old file twice is caught just the same.
+
 ### Handing a server over to someone else
 
 The per-server backup is built for exactly that: it is tied to **no bot token and no user account**, so the file can be restored in a completely different Phobos installation, onto any server that admin chooses. Only admins can download or restore it.
@@ -1788,6 +1798,16 @@ Jeder Nutzer kann seine eigenen Daten (Konto, Bot-Tokens, alle Server-Konfigurat
 - **Komplett-Backup** des gesamten Systems (alle Nutzer, Tokens, Konfigurationen)
 - **Backup eines einzelnen Servers** (nur dessen Konfiguration — keine Nutzer, keine Tokens) direkt über die Dashboard-Seite dieses Servers herunterladen und auf einen beliebigen anderen Server wiederherstellen
 - Beliebiges Backup per Datei-Upload **wiederherstellen** — bestehende Einträge werden aktualisiert, neue hinzugefügt, nichts wird gelöscht
+
+### Dasselbe Backup ein zweites Mal
+
+Einspielen **legt an**, es gleicht nicht ab. Wer dieselbe Datei dreimal einspielt, hat danach dreimal dieselben Reaction Roles, Befehle und Panels — und merkt es erst hinterher.
+
+Jede exportierte Datei trägt deshalb eine **Kennung** und eine **laufende Nummer**, und die Nummer steht im Dateinamen: `backup_server_MeinServer_nr0007_20261118_1430.json`. Gezählt wird je Server, damit zwei Dateien desselben Servers an etwas auseinanderzuhalten sind, das auch etwas bedeutet — anders als das `(1)`, das der Browser anhängt.
+
+Eine Datei, die **auf diesem Server** schon eingespielt wurde, wird abgelehnt — mit Datum, wer es war und welche Nummer sie hatte. Wer es trotzdem will, setzt den Haken neben dem Upload, auf dem steht, was dann passiert. Dieselbe Datei auf einem **anderen** Server einzuspielen ist nicht gesperrt: genau dafür ist das Server-Backup da, und dort wird nichts doppelt.
+
+Ältere Backups von vorher haben keine Kennung; für die springt der Fingerabdruck der Datei ein, sodass auch eine alte Datei zweimal hochgeladen auffällt.
 
 ### Einen Server an jemand anderen übergeben
 

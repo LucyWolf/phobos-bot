@@ -1421,6 +1421,33 @@ async def init_db():
             "ALTER TABLE plugins ADD COLUMN homepage TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE plugins ADD COLUMN geprueft TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE plugins ADD COLUMN neue_version TEXT NOT NULL DEFAULT ''",
+            # ── Backups: laufende Nummer und Schutz gegen doppeltes Einspielen ───────────
+            # Gemeldet am 18.11.2026: "ausversehen 3 mal das selbe backup eingespielt".
+            # Das Einspielen legt Zeilen an - dreimal dieselbe Datei heisst dreimal
+            # dieselben Reaction Roles, Befehle und Panels, und man sieht es erst hinterher.
+            #
+            # Jede exportierte Datei bekommt deshalb eine Kennung und eine laufende Nummer
+            # (die auch im Dateinamen steht, damit zwei Dateien im Download-Ordner
+            # unterscheidbar sind). Wer sie einspielt, wird hier vermerkt.
+            """CREATE TABLE IF NOT EXISTS backup_nummern (
+                bereich TEXT PRIMARY KEY,
+                nummer INTEGER NOT NULL DEFAULT 0
+            )""",
+            # Der Schluessel ist Kennung UND Server, nicht die Kennung allein: dieselbe
+            # Datei auf einem ANDEREN Server einzuspielen ist der eigentliche Zweck des
+            # Server-Backups ("einen Server an jemand anderen uebergeben"). Verhindert wird
+            # nur, was wirklich doppelt ist - dieselbe Datei nochmal auf denselben Server.
+            # Ein volles Backup hat keinen Server und traegt hier einen leeren Eintrag.
+            """CREATE TABLE IF NOT EXISTS backup_einspielungen (
+                kennung TEXT NOT NULL,
+                guild_id TEXT NOT NULL DEFAULT '',
+                art TEXT NOT NULL DEFAULT '',
+                nummer TEXT NOT NULL DEFAULT '',
+                datei TEXT NOT NULL DEFAULT '',
+                eingespielt TEXT NOT NULL DEFAULT '',
+                von TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (kennung, guild_id)
+            )""",
         ]:
             try:
                 await db.execute(col)

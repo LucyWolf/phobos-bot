@@ -79,7 +79,9 @@ except ImportError:
     from pytz import timezone as ZoneInfo
 import platform
 import re
+import hashlib
 import secrets
+import uuid
 import shutil
 import smtplib
 import sys
@@ -2616,6 +2618,89 @@ async def _restore_event_series(db, series_rows, guild_id_override: str | None) 
     return restored_any
 
 
+# ══════════════════════════════════════════════════════════════════════════════════════
+#  Backups: Kennung, laufende Nummer, und kein zweites Mal aus Versehen
+#
+#  Gemeldet am 18.11.2026: "ausversehen 3 mal das selbe backup eingespielt". Das
+#  Einspielen LEGT AN - es gleicht nicht ab. Dieselbe Datei dreimal heisst dreimal
+#  dieselben Reaction Roles, Befehle und Panels, und auffallen tut es erst danach.
+#
+#  Zwei Teile dagegen: jede exportierte Datei traegt eine Kennung, und wer eine Kennung
+#  schon eingespielt hat, bekommt sie nicht ein zweites Mal durch - ausser er sagt
+#  ausdruecklich, dass er genau das will.
+# ══════════════════════════════════════════════════════════════════════════════════════
+
+async def _backup_nummer(bereich: str) -> int:
+    """Die naechste laufende Nummer fuer diesen Bereich ("full" oder "guild:123").
+
+    Je Bereich gezaehlt und nicht global: "das siebte Backup DIESES Servers" ist die
+    Angabe, die jemandem etwas sagt, wenn er zwei Dateien nebeneinander liegen hat.
+    """
+    try:
+        await db_exec(
+            "INSERT INTO backup_nummern (bereich, nummer) VALUES (?, 0) "
+            "ON CONFLICT(bereich) DO NOTHING", (bereich,))
+        await db_exec("UPDATE backup_nummern SET nummer=nummer+1 WHERE bereich=?", (bereich,))
+        zeile = await db_one("SELECT nummer FROM backup_nummern WHERE bereich=?", (bereich,))
+        return int(zeile["nummer"]) if zeile else 1
+    except Exception:
+        # Ein Zaehler, der klemmt, darf kein Backup verhindern - das waere die weit
+        # schlimmere Richtung. Dann gibt es dieses eine Mal eben keine Nummer.
+        return 0
+
+
+def _backup_kennung(roh: bytes, meta: dict) -> str:
+    """Woran man diese Backup-DATEI wiedererkennt.
+
+    Zwei Wege, weil es zwei Sorten Dateien gibt: neue tragen ihre Kennung im Kopf, aeltere
+    nicht. Fuer die aelteren tut es der Fingerabdruck der Datei selbst - dieselbe Datei
+    nochmal hochzuladen faellt damit genauso auf, und genau das war der gemeldete Fall.
+    """
+    k = str(meta.get("kennung") or "").strip().lower()
+    if re.fullmatch(r"[0-9a-f]{16,64}", k):
+        return k
+    return "sha:" + hashlib.sha256(roh).hexdigest()
+
+
+async def _backup_schon_da(kennung: str, guild_id="") -> Optional[dict]:
+    """Wurde genau diese Datei auf genau diesem Server schon eingespielt?
+
+    Auf einem ANDEREN Server ist dieselbe Datei kein Versehen, sondern der Zweck des
+    Server-Backups - dort wird nichts doppelt, dort entsteht es zum ersten Mal.
+    """
+    try:
+        return await db_one(
+            "SELECT nummer, datei, eingespielt, von FROM backup_einspielungen "
+            "WHERE kennung=? AND guild_id=?", (kennung, str(guild_id or "")))
+    except Exception:
+        return None
+
+
+async def _backup_vermerken(kennung: str, art: str, guild_id, meta: dict,
+                            datei: str, von: str) -> None:
+    try:
+        await db_exec(
+            "INSERT INTO backup_einspielungen (kennung, guild_id, art, nummer, datei, "
+            "eingespielt, von) VALUES (?,?,?,?,?,?,?) "
+            "ON CONFLICT(kennung, guild_id) DO UPDATE SET "
+            "eingespielt=excluded.eingespielt, von=excluded.von",
+            (kennung, str(guild_id or ""), art, str(meta.get("nummer") or ""),
+             (datei or "")[:200], datetime.datetime.utcnow().isoformat(), von))
+    except Exception as e:
+        print(f"[backup] Einspielung liess sich nicht vermerken: {e}")
+
+
+def _backup_doppelt_text(alt: dict) -> str:
+    """Der Satz, den jemand bekommt, der dieselbe Datei ein zweites Mal hochlaedt."""
+    wann = (alt.get("eingespielt") or "")[:16].replace("T", " um ")
+    wer = alt.get("von") or "jemandem"
+    nummer = f" (Nr. {alt['nummer']})" if alt.get("nummer") else ""
+    return (f"Dieses Backup{nummer} wurde am {wann} von {wer} schon einmal eingespielt. "
+            f"Einspielen legt Einträge AN, es gleicht nicht ab — ein zweites Mal gäbe alles "
+            f"doppelt. Wenn du es trotzdem willst, setze den Haken „auch wenn es schon "
+            f"eingespielt wurde“.")
+
+
 async def _build_full_backup(exported_by: str) -> dict:
     scheduled = await db_rows("SELECT * FROM scheduled_messages WHERE sent=0")
     data: dict = {
@@ -2624,6 +2709,9 @@ async def _build_full_backup(exported_by: str) -> dict:
             "app_version": VERSION,
             "exported_at": datetime.datetime.utcnow().isoformat(),
             "exported_by": exported_by,
+            # Woran diese eine Datei wiedererkannt wird, und die wievielte sie ist.
+            "kennung": uuid.uuid4().hex,
+            "nummer": await _backup_nummer("full"),
         },
         "users": await db_rows("SELECT * FROM users"),
         "bot_tokens": await db_rows("SELECT * FROM bot_tokens"),
@@ -2663,6 +2751,10 @@ async def _build_guild_backup(guild_id: int, exported_by: str, include_secrets: 
             "exported_by": exported_by,
             "source_guild_id": gid_str,
             "source_guild_name": guild.name if guild else None,
+            # Siehe _backup_kennung: die Kennung macht dieselbe Datei beim zweiten
+            # Einspielen erkennbar, die Nummer macht zwei Dateien unterscheidbar.
+            "kennung": uuid.uuid4().hex,
+            "nummer": await _backup_nummer(f"guild:{gid_str}"),
         },
         "guild_configs": await db_rows(
             "SELECT key, value FROM guild_configs WHERE guild_id=?", (guild_id,)
@@ -2775,12 +2867,13 @@ async def backup_export_all(request: Request, password: str = Form("")):
     by = request.session.get("username", "admin")
     data = await _build_full_backup(by)
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-    return _json_dl(data, f"backup_full_{ts}.json", password)
+    nr = f"nr{int(data['meta'].get('nummer') or 0):04d}_"
+    return _json_dl(data, f"backup_full_{nr}{ts}.json", password)
 
 
 @web.post("/admin/backup/restore")
 async def backup_restore(request: Request, backup_file: UploadFile = File(...),
-                         password: str = Form("")):
+                         password: str = Form(""), nochmal: str = Form("")):
     if r := admin_redirect(request): return r
     try:
         raw = await backup_file.read()
@@ -2806,6 +2899,14 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...),
     meta = data.get("meta", {})
     if not meta.get("version"):
         return RedirectResponse("/users?error=Kein+gültiges+Phobos-Backup", status_code=302)
+
+    # Dieselbe Datei ein zweites Mal? Dann erst fragen. Siehe _backup_kennung.
+    kennung = _backup_kennung(raw, meta)
+    if nochmal != "1":
+        if alt := await _backup_schon_da(kennung):
+            return RedirectResponse(
+                f"/users?error={urllib.parse.quote_plus(_backup_doppelt_text(alt))}",
+                status_code=302)
 
     restored: list[str] = []
 
@@ -3042,6 +3143,11 @@ async def backup_restore(request: Request, backup_file: UploadFile = File(...),
         except Exception:
             pass  # best-effort, same as every other post-restore reload here
 
+    # Erst vermerken, wenn es wirklich durch ist: eine Datei, deren Einspielen unterwegs
+    # abgebrochen ist, soll man noch einmal versuchen koennen, ohne den Haken zu setzen.
+    await _backup_vermerken(kennung, "full", "", meta,
+                            getattr(backup_file, "filename", ""),
+                            request.session.get("username", "admin"))
     summary = ", ".join(restored) if restored else "Nichts"
     return RedirectResponse(
         f"/users?success=Backup+eingespielt:+{urllib.parse.quote(summary)}", status_code=302
@@ -3065,13 +3171,17 @@ async def server_backup_export(request: Request, guild_id: int,
     # that would be awkward or invalid in one, unlike the guild_id fallback which is already
     # filename-safe on its own.
     name_part = re.sub(r"[^\w\-]+", "_", guild.name).strip("_") if guild else str(guild_id)
-    return _json_dl(data, f"backup_server_{name_part or guild_id}_{ts}.json", password)
+    # Die laufende Nummer steht im Dateinamen, damit zwei Backups desselben Servers im
+    # Download-Ordner auseinanderzuhalten sind - "(1)", das der Browser anhaengt, sagt nur
+    # etwas ueber die Reihenfolge des Herunterladens, nichts ueber die Datei.
+    nr = f"nr{int(data['meta'].get('nummer') or 0):04d}_"
+    return _json_dl(data, f"backup_server_{name_part or guild_id}_{nr}{ts}.json", password)
 
 
 @web.post("/servers/{guild_id}/backup/restore")
 async def server_backup_restore(request: Request, guild_id: int,
                                 backup_file: UploadFile = File(...),
-                                password: str = Form("")):
+                                password: str = Form(""), nochmal: str = Form("")):
     if r := admin_redirect(request): return r
     try:
         raw = await backup_file.read()
@@ -3105,6 +3215,15 @@ async def server_backup_restore(request: Request, guild_id: int,
             f"/servers/{guild_id}?tab=config&error=Das+ist+kein+Server-Backup+(falscher+Typ)",
             status_code=302,
         )
+
+    # Dieselbe Datei ein zweites Mal auf DIESEN Server? Erst fragen - der gemeldete Fall.
+    kennung = _backup_kennung(raw, meta)
+    if nochmal != "1":
+        if alt := await _backup_schon_da(kennung, guild_id):
+            return RedirectResponse(
+                f"/servers/{guild_id}?tab=config"
+                f"&error={urllib.parse.quote_plus(_backup_doppelt_text(alt))}",
+                status_code=302)
 
     gid_str = str(guild_id)
     restored: list[str] = []
@@ -3213,6 +3332,9 @@ async def server_backup_restore(request: Request, guild_id: int,
         except Exception:
             pass
 
+    await _backup_vermerken(kennung, "guild", guild_id, meta,
+                            getattr(backup_file, "filename", ""),
+                            request.session.get("username", "admin"))
     summary = ", ".join(restored) if restored else "Nichts"
     return RedirectResponse(
         f"/servers/{guild_id}?tab=config&success=Server-Backup+eingespielt:+{urllib.parse.quote(summary)}",

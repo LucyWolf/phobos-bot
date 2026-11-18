@@ -118,6 +118,12 @@
       <input type="password" name="password" autocomplete="new-password"
              placeholder="{{ tr.backup_password_restore_ph }}" style="margin:0;max-width:230px;">
       <button type="submit" class="btn btn-primary">{{ tr.server_backup_restore_btn }}</button>
+      {# Erst setzen, wenn der Bot sagt, dass diese Datei hier schon durchgelaufen ist.
+         Ungesetzt heisst: ein zweites Mal wird abgelehnt statt alles zu verdoppeln. #}
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.78rem;font-weight:400;margin:0;flex-basis:100%;">
+        <input type="checkbox" name="nochmal" value="1" style="margin:0;">
+        {{ tr.backup_again_label }}
+      </label>
     </form>
   </div>
 </div>

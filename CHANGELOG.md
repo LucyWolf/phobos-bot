@@ -14,6 +14,45 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.41 — `beta` — 18.11.2026
+
+**Dasselbe Backup lässt sich nicht mehr aus Versehen zweimal einspielen**
+- Gemeldet: „ausversehen 3 mal das selbe backup eingespielt". Einspielen **legt an**, es
+  gleicht nicht ab — dreimal dieselbe Datei heißt dreimal dieselben Reaction Roles,
+  Befehle und Panels. Auffallen tut es erst hinterher, und aufräumen muss man von Hand.
+- Jede exportierte Datei trägt jetzt eine **Kennung**. Wird sie ein zweites Mal auf
+  denselben Server hochgeladen, wird sie abgelehnt — mit Datum, wer es war und welche
+  Nummer sie hatte. Wer es wirklich will, setzt einen Haken neben dem Upload, auf dem
+  steht, was dann passiert.
+
+**Eine Nummer im Dateinamen**
+`backup_server_MeinServer_nr0007_20261118_1430.json`. Gezählt wird je Server, nicht global:
+„das siebte Backup dieses Servers" sagt etwas, wenn zwei Dateien nebeneinander liegen. Das
+`(1)`, das der Browser anhängt, sagt nur etwas über die Reihenfolge des Herunterladens.
+
+**Was absichtlich erlaubt bleibt**
+Dieselbe Datei auf einem **anderen** Server einzuspielen ist kein Versehen, sondern der
+Zweck des Server-Backups („einen Server an jemand anderen übergeben"). Dort entsteht nichts
+doppelt, dort entsteht es zum ersten Mal. Gesperrt wird deshalb nur die Kombination aus
+Datei **und** Server.
+
+**Auch für alte Backups**
+Dateien von vor dieser Version haben keine Kennung. Für die springt der Fingerabdruck der
+Datei selbst ein — dieselbe alte Datei zweimal hochgeladen fällt damit genauso auf. Ein
+Kopfeintrag, der keine saubere Kennung ist, wird verworfen statt geglaubt: sonst könnte eine
+veränderte Datei behaupten, sie sei eine andere.
+
+**Vermerkt wird erst nach dem Durchlauf**, nicht davor. Ein Einspielen, das unterwegs
+abbricht, lässt sich damit noch einmal versuchen, ohne den Haken setzen zu müssen.
+
+**Geprüft:** 30 Prüfungen. Die Kennung aus dem Kopf und der Fingerabdruck als Ersatz, sechs
+Sorten Unfug im Kopfeintrag, die Nummernzähler je Server und getrennt fürs Komplett-Backup,
+die Sperre auf demselben Server, die **fehlende** Sperre auf einem anderen, zweimal
+vermerken ohne zweiten Eintrag — und dass die Meldung Nummer, Person und den Ausweg
+wirklich nennt.
+
+---
+
 ## 1.19.40 — `beta` — 18.11.2026
 
 **Plugins können sich selbst aktualisieren**
