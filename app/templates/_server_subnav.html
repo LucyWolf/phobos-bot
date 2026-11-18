@@ -1,4 +1,4 @@
-{% macro server_subnav(guild_id, active_page='', enabled_features=none, user_allowed_tabs=none, tr=none) %}
+{% macro server_subnav(guild_id, active_page='', enabled_features=none, user_allowed_tabs=none, tr=none, plugin_nav=none) %}
 {# Sidebar sub-navigation shared by server_config.html and its standalone sibling pages
    (freestuff.html, notifications.html, server_log.html, bot_design.html - anywhere that
    belongs "inside" one specific guild). Die Namen kommen seit v1.17.57 aus i18n (tab_<key>,
@@ -38,7 +38,15 @@
   {% if (enabled_features is none or 'autothread' in enabled_features) and (user_allowed_tabs is none or 'autothread' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=autothread" class="ssnav-item {% if active_page == 'autothread' %}active{% endif %}">{{ tr['tab_autothread'] if tr else '🧵 Auto-Thread' }}</a>{% endif %}
   {% if (enabled_features is none or 'vrclink' in enabled_features) and (user_allowed_tabs is none or 'vrclink' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=vrclink" class="ssnav-item {% if active_page == 'vrclink' %}active{% endif %}">{{ tr['tab_vrclink'] if tr else '🔗 VRC-Link' }}</a>{% endif %}
   {% if (enabled_features is none or 'profile' in enabled_features) and (user_allowed_tabs is none or 'profile' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=profile" class="ssnav-item {% if active_page == 'profile' %}active{% endif %}">{{ tr['tab_profile'] if tr else '🪪 Profile' }}</a>{% endif %}
-  {% if (enabled_features is none or 'plugins' in enabled_features) and (user_allowed_tabs is none or 'plugins' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=plugins" class="ssnav-item {% if active_page == 'plugins' %}active{% endif %}">{{ tr['tab_plugins'] if tr else '🧩 Plugins' }}</a>{% endif %}
+  {# Kein generischer "Plugins"-Eintrag mehr: je auf diesem Server angelegtem Plugin ein
+     eigener Eintrag mit Icon und Namen. Hinzugefuegt wird unter Einstellungen -> Plugins,
+     also braucht die Leiste hier keinen Verwaltungseintrag. plugin_nav kommt aus main.py
+     (_plugin_nav); wird es nicht durchgereicht, steht einfach keiner da. #}
+  {% if plugin_nav and (user_allowed_tabs is none or 'plugins' in user_allowed_tabs) %}
+    {% for pl in plugin_nav %}
+  <a href="/servers/{{ guild_id }}?tab=plugins&p={{ pl.id }}" class="ssnav-item {% if active_page == 'plugin_' ~ pl.id %}active{% endif %}">{{ pl.icon }} {{ pl.name }}</a>
+    {% endfor %}
+  {% endif %}
   {% if (enabled_features is none or 'amp' in enabled_features) and (user_allowed_tabs is none or 'amp' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=amp"        class="ssnav-item {% if active_page == 'amp' %}active{% endif %}">{{ tr['tab_amp'] if tr else '🎮 Gameserver' }}</a>{% endif %}
   {% if (enabled_features is none or 'autokick' in enabled_features) and (user_allowed_tabs is none or 'autokick' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=autokick" class="ssnav-item {% if active_page == 'autokick' %}active{% endif %}">{{ tr['tab_autokick'] if tr else '🚪 Auto-Kick' }}</a>{% endif %}
   {% if (enabled_features is none or 'embeds' in enabled_features) and (user_allowed_tabs is none or 'embeds' in user_allowed_tabs) %}<a href="/servers/{{ guild_id }}?tab=embeds" class="ssnav-item {% if active_page == 'embeds' %}active{% endif %}">{{ tr['tab_embeds'] if tr else '📨 Embed-Nachrichten' }}</a>{% endif %}

@@ -53,7 +53,7 @@
   <div style="display:flex;align-items:flex-start;gap:0.75rem;flex-wrap:wrap;">
     <div style="flex:1;min-width:220px;">
       <div style="font-weight:700;font-size:0.95rem;">
-        {{ p.name }}
+        {{ p.icon }} {{ p.name }}
         <span style="color:var(--muted);font-weight:400;font-size:0.78rem;">{{ p.version }}</span>
       </div>
       <div style="color:var(--muted);font-size:0.75rem;margin-top:0.15rem;">
@@ -95,6 +95,27 @@
     {% if p.geprueft %} · {{ tr.plug_checked }}: {{ p.geprueft[:16]|replace('T', ' ') }}{% endif %}
   </p>
   {% endif %}
+
+  {# Hinzufuegen und Einstellen passiert von hier aus: ein Server waehlen, dann steht
+     drueben auf dem Server das Formular. Schon laufende Server fuehren direkt zu ihren
+     Einstellungen. Ein reines Menue, das beim Auswaehlen navigiert - kein POST noetig. #}
+  <div style="margin-top:0.9rem;padding-top:0.8rem;border-top:1px solid var(--border);">
+    {% if p.laeuft_auf %}
+    <div style="font-size:0.78rem;margin-bottom:0.5rem;">{{ tr.plug_runs_on }}
+      {% for s in p.laeuft_auf %}<a href="/servers/{{ s.id }}?tab=plugins&p={{ p.id }}"
+         style="display:inline-block;background:var(--bg);border:1px solid var(--border);
+                border-radius:999px;padding:0.1rem 0.6rem;margin:0.1rem 0.15rem;font-size:0.75rem;">
+         {{ p.icon }} {{ s.name }}</a>{% endfor %}
+    </div>
+    {% endif %}
+    <label style="font-size:0.8rem;">{{ tr.plug_add_to_server }}</label>
+    <select onchange="if(this.value){location.href=this.value;}" style="max-width:320px;margin-top:0.3rem;">
+      <option value="">— {{ tr.plug_pick_server }} —</option>
+      {% for g in server_wahl %}
+      <option value="/servers/{{ g.id }}?tab=plugins&p={{ p.id }}">{{ g.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
 
   <div style="margin-top:0.9rem;display:flex;gap:0.4rem;flex-wrap:wrap;">
     {% for t in p.teile %}

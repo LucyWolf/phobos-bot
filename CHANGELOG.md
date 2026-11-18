@@ -14,6 +14,44 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.50 — `beta` — 18.11.2026
+
+**Plugins stehen in der Server-Leiste jetzt mit Namen und Icon, nicht als „Plugins"**
+- Gemeldet: der generische Reiter „🧩 Plugins" soll dort weg — „wenn man bei plugins was
+  rein lädt dann sollte direkt der name mit icon stehen wie ich das schon gesagt hatte".
+- Ab jetzt steht in der Server-Leiste **je angelegtem Plugin ein eigener Eintrag** mit
+  seinem Icon und Namen. Kein Sammel-Reiter mehr. Läuft kein Plugin auf dem Server, steht
+  dort auch nichts.
+- Ein Klick auf den Eintrag öffnet direkt die Einstellungen genau dieses Plugins
+  (Werte, Datenfreigabe, Entfernen).
+
+**Ein Plugin darf ein Icon mitbringen**
+Im Format neu: `"icon": "🎮"`. Freiwillig; ohne Angabe steht das Puzzleteil 🧩 davor.
+Buchstaben und ganze Sätze werden abgewiesen und durch das Standard-Icon ersetzt — sonst
+stünde ein Textschnipsel in der Navigation, der aussieht wie ein Fehler.
+
+**Hinzugefügt wird jetzt zentral**
+Weil es keinen Sammel-Reiter mehr gibt, passiert das Anlegen unter **Einstellungen →
+Plugins**: dort je Plugin ein Menü „Auf einem Server anlegen". Die Auswahl führt auf den
+Server, wo das Formular mit dessen Rollen und Kanälen steht — dort, wo diese Angaben
+überhaupt verfügbar sind. Schon laufende Server stehen daneben und führen direkt zu ihren
+Einstellungen.
+
+**Was das für Moderatoren-Rechte heißt**
+Wer einem Moderator den Reiter „plugins" nicht freigegeben hat, sieht die Plugin-Einträge
+weiterhin nicht — die Steuerung bleibt, nur der eine generische Eintrag wird zu mehreren
+benannten.
+
+**Geprüft:** 12 neue Prüfungen an der echten Leisten-Vorlage und an der Abfrage dahinter
+(je angelegtem Plugin ein Eintrag mit Icon+Name, der zum richtigen Plugin führt; kein
+generischer Eintrag mehr; ein gesperrter Moderator sieht nichts; ein fremder Server bleibt
+leer; ohne eigenes Icon das Puzzleteil). Dazu 5 Prüfungen am Format fürs Icon. Die
+bestehenden 104 Plugin-Prüfungen bleiben grün.
+
+**Nicht geprüft:** das Aussehen im Browser.
+
+---
+
 ## 1.19.49 — `beta` + `main` — 18.11.2026
 
 **Zehn Durchgänge über den Verknüpfungslink — zwei echte Fehler**

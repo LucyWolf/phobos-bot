@@ -2,6 +2,7 @@
   "phobos_plugin": "1.0",
   "kennung": "beispiel-support",
   "name": "Support-Grundgerüst",
+  "icon": "🎫",
   "version": "1.0.0",
   "autor": "Phobos",
   "beschreibung": "Ein Ticket-Panel mit drei Kategorien, zwei Befehle und eine Level-Belohnung. Gedacht als Vorlage zum Abschreiben: alles, was von Server zu Server verschieden ist, steht als Platzhalter drin.",

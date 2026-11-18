@@ -457,6 +457,26 @@ def _text(wert, grenze: int = MAX_TEXT) -> str:
     return wert[:grenze]
 
 
+#: Das Symbol, das ein Plugin ohne eigenes Icon in der Leiste bekommt.
+STANDARD_ICON = "🧩"
+
+
+def _icon(wert: str) -> str:
+    """Ein Icon fuer die Leiste - ein kurzes Symbol, oder das Standard-Puzzleteil.
+
+    Buchstaben und Ziffern sind kein Icon: "AB" als Navigationssymbol saehe aus wie ein
+    Fehler. Wer nichts Brauchbares angibt, bekommt den Standard, statt dass etwas Schraeges
+    in der Leiste steht.
+    """
+    wert = (wert or "").strip()
+    if not wert:
+        return STANDARD_ICON
+    # Enthaelt es gewoehnliche Schriftzeichen, ist es kein Emoji-Icon.
+    if any(c.isalnum() and c.isascii() for c in wert):
+        return STANDARD_ICON
+    return wert[:8]
+
+
 def _link(wert: str) -> str:
     """Eine Adresse zum Anklicken - oder leer.
 
@@ -524,6 +544,12 @@ def lese_paket(roh: bytes | str) -> dict:
         "phobos_plugin": FORMAT,
         "kennung": kennung,
         "name": _text(data.get("name"), 100).strip() or kennung,
+        # Ein Emoji, das in der Server-Leiste vor dem Namen steht. Freiwillig; ohne Angabe
+        # das Stecker-Symbol. Auf wenige Zeichen begrenzt, damit niemand einen ganzen Text
+        # als "Icon" in die Navigation schiebt - ein Emoji sind je nach Zusammensetzung
+        # mehrere Codepoints, 8 lassen Fahnen und zusammengesetzte Symbole zu, aber keinen
+        # Satz.
+        "icon": _icon(_text(data.get("icon"), 16)),
         "version": _text(data.get("version"), 30).strip() or "1.0.0",
         "autor": _text(data.get("autor"), 100).strip(),
         "beschreibung": _text(data.get("beschreibung"), 2000).strip(),
@@ -819,6 +845,7 @@ def paket_als_datei(paket: dict) -> dict:
         "phobos_plugin": FORMAT,
         "kennung": paket.get("kennung", ""),
         "name": paket.get("name", ""),
+        "icon": paket.get("icon", STANDARD_ICON),
         "version": paket.get("version", ""),
         "autor": paket.get("autor", ""),
         "beschreibung": paket.get("beschreibung", ""),
