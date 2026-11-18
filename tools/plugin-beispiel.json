@@ -6,6 +6,9 @@
   "autor": "Phobos",
   "beschreibung": "Ein Ticket-Panel mit drei Kategorien, zwei Befehle und eine Level-Belohnung. Gedacht als Vorlage zum Abschreiben: alles, was von Server zu Server verschieden ist, steht als Platzhalter drin.",
 
+  "quelle": "https://raw.githubusercontent.com/LucyWolf/phobos-bot/main/tools/plugin-beispiel.json",
+  "homepage": "https://github.com/LucyWolf/phobos-bot",
+
   "einstellungen": [
     {
       "name": "support_rolle",

@@ -35,8 +35,11 @@ Server selbst angelegt hat - nicht mehr und nicht weniger.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
+import socket
+import urllib.parse
 
 from database import db_rows, db_one, db_exec, db_insert
 
@@ -62,6 +65,128 @@ EINSTELLUNGSARTEN = ("text", "mehrzeilig", "zahl", "rolle", "kanal", "kategorie"
 
 class PluginFehler(ValueError):
     """Ein Paket, das so nicht eingespielt werden kann - mit einem Satz, der sagt warum."""
+
+
+# ── Herkunft: Plugins, die sich aktualisieren lassen ──────────────────────────────────────
+# Ein Plugin darf sagen, wo seine jeweils neueste Fassung liegt ("quelle"). Dann kann man im
+# Dashboard nachsehen lassen, ob es etwas Neueres gibt, statt dass der Autor allen eine neue
+# Datei schicken muss.
+#
+# Der Bot holt damit eine Adresse, die ein FREMDER in eine Datei geschrieben hat. Das ist
+# eine Abfrage aus dem Netz des Servers heraus - also genau die Stelle, an der man sich ein
+# Loch ins eigene Netz baut, wenn man nicht aufpasst:
+#   * nur https, damit unterwegs niemand etwas anderes unterschiebt
+#   * keine privaten Adressen (127.*, 10.*, 192.168.*, ::1, und was sonst nicht ins
+#     Internet gehoert) - sonst liesse sich der Bot als Fernbedienung fuer Geraete
+#     benutzen, die nur er erreicht: der Router, das Dashboard selbst, der Docker-Host
+#   * Weiterleitungen werden einzeln nachgeprueft, nicht blind verfolgt. Eine Adresse, die
+#     oeffentlich aussieht und dann auf 127.0.0.1 zeigt, ist der uebliche Trick.
+#   * Groesse und Zeit begrenzt
+MAX_UMLEITUNGEN = 3
+HOLZEIT = 15          # Sekunden
+
+
+def pruefe_quelle(roh: str, aufloesen: bool = True) -> str:
+    """Eine Bezugsadresse pruefen und geraderuecken, oder PluginFehler werfen.
+
+    Bequemlichkeit fuer GitHub: die Adresse, die man im Browser in der Leiste stehen hat,
+    zeigt auf eine HTML-Seite, nicht auf die Datei. Statt das jedem zu erklaeren, wird sie
+    hier in die Rohfassung umgeschrieben - das ist die haeufigste Stolperstelle ueberhaupt.
+    """
+    url = (roh or "").strip()
+    if not url:
+        return ""
+    if url.startswith("github.com/") or url.startswith("www.github.com/"):
+        url = "https://" + url.lstrip("w.")
+    teile = urllib.parse.urlsplit(url)
+    if teile.scheme != "https":
+        raise PluginFehler("Die Adresse muss mit https:// anfangen.")
+    if not teile.hostname:
+        raise PluginFehler("In der Adresse steht kein Rechnername.")
+
+    # github.com/<nutzer>/<repo>/blob/<zweig>/<pfad>  ->  raw.githubusercontent.com/...
+    if teile.hostname in ("github.com", "www.github.com"):
+        stuecke = [s for s in teile.path.split("/") if s]
+        if len(stuecke) >= 5 and stuecke[2] in ("blob", "raw"):
+            url = ("https://raw.githubusercontent.com/"
+                   + "/".join(stuecke[:2] + stuecke[3:]))
+            teile = urllib.parse.urlsplit(url)
+        else:
+            raise PluginFehler(
+                "Diese GitHub-Adresse zeigt auf eine Seite, nicht auf die Datei. Nimm den "
+                "Link der Datei selbst (bei GitHub der Knopf „Raw“).")
+    if len(url) > 500:
+        raise PluginFehler("Die Adresse ist zu lang.")
+    # Die Namensaufloesung bleibt beim Holen, nicht beim Lesen der Datei: ein Plugin, das
+    # man auf einem Rechner ohne Netz einspielt, soll deswegen nicht durchfallen.
+    if aufloesen:
+        pruefe_ziel(teile.hostname)
+    return url
+
+
+def pruefe_ziel(rechner: str) -> None:
+    """Zeigt dieser Rechnername ins oeffentliche Netz - oder nach innen?"""
+    try:
+        eintraege = socket.getaddrinfo(rechner, 443, proto=socket.IPPROTO_TCP)
+    except Exception:
+        raise PluginFehler(f"Der Rechner „{rechner}“ ist nicht auffindbar.")
+    for eintrag in eintraege:
+        adresse = ipaddress.ip_address(eintrag[4][0])
+        if (adresse.is_private or adresse.is_loopback or adresse.is_link_local
+                or adresse.is_reserved or adresse.is_multicast):
+            raise PluginFehler(
+                f"„{rechner}“ zeigt auf eine Adresse im eigenen Netz ({adresse}). Plugins "
+                f"werden nur aus dem offenen Netz geholt.")
+
+
+def version_neuer(neu: str, alt: str) -> bool:
+    """Ist `neu` groesser als `alt`? Zahlenweise, nicht alphabetisch.
+
+    Alphabetisch waere "1.10.0" kleiner als "1.9.0" - ein Fehler, den man erst bemerkt,
+    wenn die zehnte Fassung da ist und niemand mehr ein Update angeboten bekommt.
+    """
+    def zahlen(v: str) -> list:
+        return [int(t) for t in re.findall(r"\d+", v or "")[:4]] or [0]
+    a, b = zahlen(neu), zahlen(alt)
+    laenge = max(len(a), len(b))
+    a += [0] * (laenge - len(a))
+    b += [0] * (laenge - len(b))
+    return a > b
+
+
+async def hole_paket(url: str) -> dict:
+    """Ein Plugin von seiner Bezugsadresse holen und pruefen.
+
+    Weiterleitungen werden von Hand verfolgt, damit jede Zwischenstation dieselbe Pruefung
+    durchlaeuft wie die erste - aiohttp wuerde ihnen sonst ungefragt folgen.
+    """
+    import aiohttp
+
+    ziel = pruefe_quelle(url)
+    zeit = aiohttp.ClientTimeout(total=HOLZEIT)
+    async with aiohttp.ClientSession(timeout=zeit,
+                                     headers={"User-Agent": "phobos-bot"}) as sitzung:
+        for _ in range(MAX_UMLEITUNGEN + 1):
+            async with sitzung.get(ziel, allow_redirects=False) as antwort:
+                if antwort.status in (301, 302, 303, 307, 308):
+                    weiter = antwort.headers.get("Location") or ""
+                    if not weiter:
+                        raise PluginFehler("Die Adresse leitet ins Leere weiter.")
+                    ziel = pruefe_quelle(urllib.parse.urljoin(ziel, weiter))
+                    continue
+                if antwort.status == 404:
+                    raise PluginFehler(
+                        "Unter dieser Adresse liegt nichts (404). Zeigt der Link wirklich "
+                        "auf die Datei?")
+                if antwort.status != 200:
+                    raise PluginFehler(
+                        f"Die Adresse antwortet mit {antwort.status}.")
+                roh = await antwort.content.read(MAX_DATEI + 1)
+                if len(roh) > MAX_DATEI:
+                    raise PluginFehler(
+                        f"Die Datei dort ist zu groß (über {MAX_DATEI // 1024} KB).")
+                return lese_paket(roh)
+    raise PluginFehler("Die Adresse leitet zu oft weiter.")
 
 
 # ── Was ein Plugin anlegen darf ───────────────────────────────────────────────────────────
@@ -124,6 +249,8 @@ ARTEN: dict = {
         "kinder": {
             "schluessel": "optionen",
             "tabelle": "ticket_panel_options",
+            "titel": ("↳ Kategorien", "↳ Categories"),
+            "bezeichner": "label",
             "elternspalte": "panel_id",
             "felder": {
                 "label": "text", "description": "text", "emoji": "text",
@@ -134,6 +261,18 @@ ARTEN: dict = {
         },
     },
 }
+
+
+# Umgekehrte Zuordnung: zu einer Tabelle die Ueberschrift und die Spalte, an der man einen
+# Eintrag WIEDERERKENNT ("!team", "Support", "Stufe 10"). Dafuer da, dass auf der Serverseite
+# steht, was ein Plugin dort tatsaechlich angelegt hat - eine Zahl ("3 Befehle") sagt nicht,
+# ob der richtige dabei ist.
+TABELLEN_INFO: dict = {}
+for _art, _regel in ARTEN.items():
+    TABELLEN_INFO[_regel["tabelle"]] = (_regel["titel"], _regel["bezeichner"])
+    if _regel.get("kinder"):
+        _k = _regel["kinder"]
+        TABELLEN_INFO[_k["tabelle"]] = (_k["titel"], _k["bezeichner"])
 
 
 # ── Lesen und Pruefen ─────────────────────────────────────────────────────────────────────
@@ -153,6 +292,20 @@ def _text(wert, grenze: int = MAX_TEXT) -> str:
     if not isinstance(wert, str):
         raise PluginFehler("Ein Feld enthält etwas anderes als Text.")
     return wert[:grenze]
+
+
+def _link(wert: str) -> str:
+    """Eine Adresse zum Anklicken - oder leer.
+
+    Nur https. Eine Datei koennte sonst "javascript:..." hineinschreiben, und die Seite
+    haette daraus einen Knopf gemacht, der im Browser des Admins etwas ausfuehrt.
+    """
+    url = (wert or "").strip()
+    if not url:
+        return ""
+    if not url.lower().startswith("https://") or len(url) > 500:
+        raise PluginFehler("„homepage“ muss eine https-Adresse sein.")
+    return url
 
 
 def _zahl(wert) -> int:
@@ -211,6 +364,10 @@ def lese_paket(roh: bytes | str) -> dict:
         "version": _text(data.get("version"), 30).strip() or "1.0.0",
         "autor": _text(data.get("autor"), 100).strip(),
         "beschreibung": _text(data.get("beschreibung"), 2000).strip(),
+        # Wo die jeweils neueste Fassung liegt, und wo Menschen nachlesen koennen. Beides
+        # freiwillig; ohne "quelle" gibt es fuer dieses Plugin nur den Weg ueber eine Datei.
+        "quelle": pruefe_quelle(_text(data.get("quelle"), 500), aufloesen=False),
+        "homepage": _link(_text(data.get("homepage"), 500)),
         "einstellungen": _lese_einstellungen(data.get("einstellungen")),
         "inhalt": {},
     }
@@ -469,7 +626,8 @@ async def entfernen(plugin_guild_id: int) -> int:
 
 async def plugin_liste() -> list:
     zeilen = await db_rows(
-        "SELECT id, kennung, name, version, autor, beschreibung, angelegt, geaendert "
+        "SELECT id, kennung, name, version, autor, beschreibung, quelle, homepage, "
+        "geprueft, neue_version, angelegt, geaendert "
         "FROM plugins ORDER BY name COLLATE NOCASE")
     for z in zeilen:
         z["server"] = (await db_one(
@@ -496,8 +654,47 @@ def paket_als_datei(paket: dict) -> dict:
         "version": paket.get("version", ""),
         "autor": paket.get("autor", ""),
         "beschreibung": paket.get("beschreibung", ""),
+        "quelle": paket.get("quelle", ""),
+        "homepage": paket.get("homepage", ""),
         "einstellungen": paket.get("einstellungen", []),
         "inhalt": paket.get("inhalt", {}),
+    }
+
+
+async def angelegte_eintraege(plugin_guild_id: int, lang: str = "de") -> dict:
+    """Was dieses Plugin auf diesem Server angelegt hat - mit Namen, nicht als Anzahl.
+
+    Gewuenscht am 18.11.2026: „wenn man ein Plugin hinzufügt sollte dann das Teil was
+    hinzugefügt worden ist dann dort landen mit Namen". Eine Zahl beantwortet die Frage
+    nicht, die man davor hat: ist der Befehl dabei, den ich suche?
+
+    Nachgeschlagen wird jede Zeile einzeln, denn genau das ist die Aussage - nicht was in
+    der Datei steht, sondern was auf dem Server wirklich existiert. Zeilen, die jemand
+    inzwischen von Hand geloescht hat, werden mitgezaehlt und als solche gemeldet, statt
+    stillschweigend zu verschwinden.
+    """
+    i = 0 if lang != "en" else 1
+    gruppen: dict = {}
+    fehlend = 0
+    for z in await db_rows(
+            "SELECT tabelle, zeile_id FROM plugin_eintraege WHERE plugin_guild_id=? "
+            "ORDER BY id", (plugin_guild_id,)):
+        info = TABELLEN_INFO.get(z["tabelle"])
+        if not info:
+            continue
+        titel, bezeichner = info
+        # Tabellen- und Spaltenname stammen aus TABELLEN_INFO, also aus diesem Modul - nie
+        # aus der Zeile selbst. In der Datenbank koennte sonst stehen, was jemand will.
+        zeile = await db_one(
+            f"SELECT {bezeichner} AS b FROM {z['tabelle']} WHERE id=?", (z["zeile_id"],))
+        if not zeile:
+            fehlend += 1
+            continue
+        name = str(zeile["b"] if zeile["b"] not in (None, "") else "—")
+        gruppen.setdefault(titel[i] if i < len(titel) else titel[0], []).append(name[:60])
+    return {
+        "gruppen": [{"titel": k, "namen": v} for k, v in gruppen.items()],
+        "fehlend": fehlend,
     }
 
 

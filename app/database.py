@@ -1412,6 +1412,15 @@ async def init_db():
                 zeile_id INTEGER NOT NULL
             )""",
             "CREATE INDEX IF NOT EXISTS idx_plugin_eintraege ON plugin_eintraege(plugin_guild_id)",
+            # Ein Plugin darf sagen, wo seine neueste Fassung liegt - dann laesst es sich
+            # ueber das Dashboard aktualisieren, statt dass der Autor allen eine neue Datei
+            # schicken muss. "geprueft" und "neue_version" halten das Ergebnis der letzten
+            # Nachfrage fest, damit die Seite es zeigen kann, ohne bei jedem Aufruf eine
+            # fremde Adresse abzufragen.
+            "ALTER TABLE plugins ADD COLUMN quelle TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE plugins ADD COLUMN homepage TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE plugins ADD COLUMN geprueft TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE plugins ADD COLUMN neue_version TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 await db.execute(col)

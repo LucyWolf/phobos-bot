@@ -3551,6 +3551,27 @@ document.addEventListener('click', function(e) {
     </div>
   </div>
 
+  {# Was dort wirklich steht - nachgeschlagen in den echten Tabellen, nicht aus der Datei
+     abgeschrieben. Eine Zahl beantwortet die Frage nicht, die man davor hat. #}
+  {% if p.aktiv and p.angelegt and p.angelegt.gruppen %}
+  <div style="margin-top:1rem;padding:0.8rem 1rem;background:var(--bg);
+              border:1px solid var(--border);border-radius:0.6rem;">
+    <div style="font-size:0.78rem;font-weight:700;margin-bottom:0.5rem;">{{ tr.plug_created }}</div>
+    {% for g in p.angelegt.gruppen %}
+    <div style="font-size:0.8rem;line-height:1.7;">
+      <span style="color:var(--muted);">{{ g.titel }}:</span>
+      {% for n in g.namen %}<code style="background:var(--surface);border:1px solid var(--border);
+         border-radius:0.35rem;padding:0.05rem 0.35rem;margin-right:0.25rem;">{{ n }}</code>{% endfor %}
+    </div>
+    {% endfor %}
+    {% if p.angelegt.fehlend %}
+    <p class="hint" style="margin:0.6rem 0 0;color:#f59e0b;">
+      ⚠️ {{ p.angelegt.fehlend }} {{ tr.plug_missing }}
+    </p>
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% if p.aktiv and p.veraltet %}
   <div class="alert alert-error" style="margin:0.9rem 0 0;">
     ⚠️ {{ tr.plug_outdated }} ({{ p.stand or '?' }} → {{ p.version }})

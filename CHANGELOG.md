@@ -14,6 +14,55 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.40 — `beta` — 18.11.2026
+
+**Plugins können sich selbst aktualisieren**
+- Gewünscht: „die plugins können auch selber eine version und github links haben das mann
+  die plugins updaten kann". Ein Plugin nennt jetzt freiwillig eine `quelle` — die Adresse
+  seiner jeweils neuesten Fassung — und eine `homepage` für Menschen.
+- **Einstellungen → Plugins** fragt dort nach: je Plugin oder „Bei allen nachsehen". Liegt
+  etwas Neueres, steht es da samt Knopf. Geladen und eingespielt wird nur auf Druck, und auf
+  den Servern ändert sich weiterhin erst etwas, wenn dort jemand umstellt.
+- **Einspielen über einen Link** statt über eine Datei. Ein gewöhnlicher GitHub-Seitenlink
+  wird automatisch in die Rohadresse umgeschrieben — das ist die Stolperstelle, über die
+  sonst jeder einmal fällt.
+
+**Warum der Versionsvergleich zahlenweise ist**
+Alphabetisch wäre `1.10.0` kleiner als `1.9.0`. Den Fehler merkt man erst bei der zehnten
+Fassung, wenn plötzlich niemand mehr ein Update angeboten bekommt. „Neuer" heißt außerdem
+echt größer: ein selbst bearbeitetes Plugin wird nie klammheimlich von einer älteren Fassung
+an der Quelle überschrieben.
+
+**Der Bot holt eine Adresse, die ein Fremder geschrieben hat**
+Das ist eine Abfrage aus dem eigenen Netz heraus — also die Stelle, an der man sich ein Loch
+hineinbaut, wenn man es laufen lässt. Deshalb: nur https, und nur Adressen im offenen Netz.
+Private Adressen (`127.*`, `10.*`, `192.168.*`, `::1`) werden abgelehnt, **auch über eine
+Weiterleitung** — jede Zwischenstation wird erneut geprüft statt blind verfolgt. Dazu Zeit-
+und Größengrenze. Und: **die Kennung muss übereinstimmen.** Liegt unter der Adresse
+inzwischen ein anderes Plugin, wird abgelehnt — sonst entstünde auf jedem Server, der das
+alte benutzt, fremder Inhalt.
+
+Eine `homepage` muss https sein. Ohne diese Prüfung könnte eine Datei dort
+`javascript:…` hineinschreiben, und die Seite hätte daraus einen Knopf gemacht, der im
+Browser des Admins etwas ausführt.
+
+**Am Server steht jetzt, was angelegt wurde — mit Namen**
+- Gewünscht: „wenn man ein plugin hinzufügt sollte dann das teil was hinzugefügt worden ist
+  dann dort landen mit namen". Vorher stand dort nur, wie viele Einträge es sind. Die Frage,
+  die man davor hat, ist aber eine andere: ist der Befehl dabei, den ich suche?
+- Nachgeschlagen wird jede Zeile **in der echten Tabelle**, nicht in der Datei. Angezeigt
+  wird also, was auf dem Server wirklich existiert.
+- Hat jemand eine davon von Hand gelöscht, steht das auch da („2 Einträge sind nicht mehr
+  da"), statt dass sie stillschweigend aus der Liste verschwindet.
+
+**Geprüft:** 80 Prüfungen (vorher 53). Neu dabei: abgelehnte Adressen (http, ftp,
+GitHub-Seite statt Datei, zu lang, ohne Rechnernamen), das Umschreiben von GitHub-Links, die
+Abwehr von `localhost` und `127.0.0.1`, der Versionsvergleich inklusive `1.10.0` gegen
+`1.9.0`, `javascript:` als Projektseite — und dass die Namensliste am Server stimmt und eine
+von Hand gelöschte Zeile gemeldet wird.
+
+---
+
 ## 1.19.39 — `beta` — 18.11.2026
 
 **Plugins: Pakete aus Einstellungen, die man weitergeben kann**

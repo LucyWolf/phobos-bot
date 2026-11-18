@@ -10404,10 +10404,14 @@ async def _plugins_fuer_server(guild_id, lang: str = "de") -> list:
                 werte = _djson.loads(dabei["einstellungen"]) or {}
             except Exception:
                 werte = {}
+        # Was dort tatsaechlich steht, mit Namen - erst nachgeschlagen, wenn das Plugin auf
+        # diesem Server auch angelegt ist.
+        angelegt = (await plugin_mod.angelegte_eintraege(dabei["id"], lang)) if dabei else {}
         aus.append({
             "id": zeile["id"], "kennung": zeile["kennung"], "name": zeile["name"],
             "version": zeile["version"], "autor": zeile["autor"],
             "beschreibung": zeile["beschreibung"],
+            "angelegt": angelegt,
             "einstellungen": paket.get("einstellungen", []),
             "teile": plugin_mod.zusammenfassung(paket, lang),
             "aktiv": bool(dabei),
@@ -10440,48 +10444,178 @@ async def plugins_page(request: Request, success: str = "", error: str = ""):
     })
 
 
-@web.post("/settings/plugins/import")
-async def plugins_import(request: Request, plugin_file: UploadFile = File(...)):
-    if r := auth_redirect(request): return r
-    if r := admin_redirect(request): return r
-    try:
-        roh = await plugin_file.read()
-        paket = plugin_mod.lese_paket(roh)
-    except plugin_mod.PluginFehler as e:
-        return _plugin_fehler("/settings/plugins", str(e))
-    except Exception:
-        return _plugin_fehler("/settings/plugins", "Die Datei liess sich nicht lesen.")
+async def _plugin_speichern(paket: dict, quelle: str = "") -> str:
+    """Ein geprueftes Paket ablegen - neu oder als neue Fassung - und sagen, was geschah.
 
+    Dieselbe Kennung nochmal ist eine neue Fassung, kein zweites Plugin. Die Server, die es
+    benutzen, werden NICHT von selbst umgestellt: das wuerde ihre Zeilen hinter ihrem
+    Ruecken ersetzen. Sie sehen auf ihrer Seite, dass etwas Neueres bereitliegt.
+    """
     jetzt = datetime.datetime.utcnow().isoformat()
+    # Kommt das Paket von einer Adresse, aber nennt selbst keine, gilt die Adresse, von der
+    # es geholt wurde. Sonst waere ein ueber einen Link eingespieltes Plugin beim naechsten
+    # Mal wieder nur von Hand zu aktualisieren.
+    paket["quelle"] = paket.get("quelle") or quelle
     text = _djson.dumps(paket, ensure_ascii=False)
     vorhanden = await db_one("SELECT id, version FROM plugins WHERE kennung=?",
                              (paket["kennung"],))
     if vorhanden:
-        # Dieselbe Kennung nochmal: das ist eine neue Fassung, kein zweites Plugin. Die
-        # Server, die es benutzen, werden NICHT von selbst umgestellt - das wuerde ihre
-        # Zeilen hinter ihrem Ruecken ersetzen. Sie bekommen auf ihrer Seite den Hinweis,
-        # dass eine neuere Fassung bereitliegt, und entscheiden selbst.
         await db_exec(
-            "UPDATE plugins SET name=?, version=?, autor=?, beschreibung=?, inhalt=?, "
-            "geaendert=? WHERE id=?",
+            "UPDATE plugins SET name=?, version=?, autor=?, beschreibung=?, quelle=?, "
+            "homepage=?, inhalt=?, geaendert=?, neue_version='' WHERE id=?",
             (paket["name"], paket["version"], paket["autor"], paket["beschreibung"],
-             text, jetzt, vorhanden["id"]))
+             paket["quelle"], paket.get("homepage", ""), text, jetzt, vorhanden["id"]))
         benutzt = (await db_one("SELECT COUNT(*) AS n FROM plugin_guilds WHERE plugin_id=?",
                                 (vorhanden["id"],)))["n"]
         hinweis = (f" {benutzt} Server benutzen es — dort steht noch die alte Fassung, "
-                   f"bis jemand auf „Aktualisieren“ drückt.") if benutzt else ""
-        return _plugin_ok("/settings/plugins",
-                          f"„{paket['name']}“ auf {paket['version']} aktualisiert."
-                          + hinweis)
+                   f"bis jemand dort auf „Auf die neue Fassung bringen“ drückt.") if benutzt else ""
+        return (f"„{paket['name']}“ auf {paket['version']} gebracht "
+                f"(vorher {vorhanden['version'] or '?'}).{hinweis}")
 
     await db_exec(
-        "INSERT INTO plugins (kennung, name, version, autor, beschreibung, inhalt, "
-        "angelegt, geaendert) VALUES (?,?,?,?,?,?,?,?)",
+        "INSERT INTO plugins (kennung, name, version, autor, beschreibung, quelle, "
+        "homepage, inhalt, angelegt, geaendert) VALUES (?,?,?,?,?,?,?,?,?,?)",
         (paket["kennung"], paket["name"], paket["version"], paket["autor"],
-         paket["beschreibung"], text, jetzt, jetzt))
+         paket["beschreibung"], paket["quelle"], paket.get("homepage", ""),
+         text, jetzt, jetzt))
+    return (f"„{paket['name']}“ hinzugefügt. Auf einem Server anlegen: Server öffnen, "
+            f"Reiter „Plugins“.")
+
+
+@web.post("/settings/plugins/import")
+async def plugins_import(request: Request, plugin_file: UploadFile = File(None),
+                         quelle: str = Form("")):
+    """Einspielen - als hochgeladene Datei oder ueber einen Link.
+
+    Beides in einer Route, weil es danach derselbe Weg ist: lesen, pruefen, ablegen. Der
+    Unterschied liegt nur in den ersten zwei Zeilen.
+    """
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    url = (quelle or "").strip()
+    # Ein leer gelassenes Dateifeld schickt der Browser trotzdem mit, nur ohne Namen.
+    hat_datei = bool(plugin_file and (plugin_file.filename or "").strip())
+    if not hat_datei and not url:
+        return _plugin_fehler("/settings/plugins",
+                              "Weder eine Datei noch eine Adresse angegeben.")
+    try:
+        if hat_datei:
+            paket = plugin_mod.lese_paket(await plugin_file.read())
+            url = ""
+        else:
+            url = plugin_mod.pruefe_quelle(url)
+            paket = await plugin_mod.hole_paket(url)
+    except plugin_mod.PluginFehler as e:
+        return _plugin_fehler("/settings/plugins", str(e))
+    except Exception as e:
+        print(f"[plugins] einspielen fehlgeschlagen: {e}")
+        return _plugin_fehler("/settings/plugins",
+                              "Das Plugin liess sich nicht lesen." if hat_datei
+                              else "Die Adresse war nicht erreichbar.")
+    return _plugin_ok("/settings/plugins", await _plugin_speichern(paket, url))
+
+
+async def _plugin_nachsehen(zeile: dict) -> str:
+    """Bei der Bezugsadresse eines Plugins nachfragen und das Ergebnis festhalten."""
+    jetzt = datetime.datetime.utcnow().isoformat()
+    paket = await plugin_mod.hole_paket(zeile["quelle"])
+    if paket["kennung"] != zeile["kennung"]:
+        # Unter der Adresse liegt inzwischen ein ANDERES Plugin. Das ist kein Update - weder
+        # von selbst noch auf Knopfdruck -, denn es wuerde auf jedem Server, der das alte
+        # benutzt, fremden Inhalt anlegen.
+        await db_exec("UPDATE plugins SET geprueft=?, neue_version='' WHERE id=?",
+                      (jetzt, zeile["id"]))
+        raise plugin_mod.PluginFehler(
+            f"Unter der Adresse liegt „{paket['kennung']}“, hier steht aber "
+            f"„{zeile['kennung']}“. Das wird nicht eingespielt.")
+    neuer = plugin_mod.version_neuer(paket["version"], zeile["version"])
+    await db_exec("UPDATE plugins SET geprueft=?, neue_version=? WHERE id=?",
+                  (jetzt, paket["version"] if neuer else "", zeile["id"]))
+    if neuer:
+        return f"„{zeile['name']}“: {paket['version']} liegt bereit (hier: {zeile['version']})."
+    return f"„{zeile['name']}“ ist aktuell ({zeile['version']})."
+
+
+@web.post("/settings/plugins/pruefen")
+async def plugins_pruefen_alle(request: Request):
+    """Bei allen Plugins nachsehen, die eine Adresse nennen."""
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    zeilen = await db_rows(
+        "SELECT id, kennung, name, version, quelle FROM plugins WHERE quelle<>''")
+    if not zeilen:
+        return _plugin_fehler("/settings/plugins",
+                              "Kein Plugin nennt eine Adresse, bei der man nachsehen könnte.")
+    neu, fehler = [], []
+    for z in zeilen:
+        try:
+            await _plugin_nachsehen(z)
+        except plugin_mod.PluginFehler as e:
+            fehler.append(f"{z['name']}: {e}")
+            continue
+        except Exception:
+            fehler.append(f"{z['name']}: nicht erreichbar")
+            continue
+    # Nach dem Durchgang einmal frisch lesen, statt beim Zaehlen mitzuschreiben.
+    for z in await db_rows("SELECT name, neue_version FROM plugins WHERE neue_version<>''"):
+        neu.append(f"{z['name']} → {z['neue_version']}")
+    teile = []
+    teile.append(f"{len(zeilen)} geprüft")
+    teile.append(("neu: " + ", ".join(neu)) if neu else "alles aktuell")
+    if fehler:
+        teile.append("nicht geklappt: " + "; ".join(fehler[:3]))
+    return _plugin_ok("/settings/plugins", " — ".join(teile))
+
+
+@web.post("/settings/plugins/{plugin_id}/pruefen")
+async def plugins_pruefen(request: Request, plugin_id: int):
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    zeile = await db_one(
+        "SELECT id, kennung, name, version, quelle FROM plugins WHERE id=?", (plugin_id,))
+    if not zeile or not zeile["quelle"]:
+        return _plugin_fehler("/settings/plugins",
+                              "Dieses Plugin nennt keine Adresse zum Nachsehen.")
+    try:
+        return _plugin_ok("/settings/plugins", await _plugin_nachsehen(zeile))
+    except plugin_mod.PluginFehler as e:
+        return _plugin_fehler("/settings/plugins", str(e))
+    except Exception as e:
+        print(f"[plugins] pruefen fehlgeschlagen: {e}")
+        return _plugin_fehler("/settings/plugins", "Die Adresse war nicht erreichbar.")
+
+
+@web.post("/settings/plugins/{plugin_id}/aktualisieren")
+async def plugins_aktualisieren(request: Request, plugin_id: int):
+    """Die neueste Fassung von der Bezugsadresse holen und ablegen.
+
+    Holt in jedem Fall neu, statt sich auf das Ergebnis des letzten Nachsehens zu verlassen:
+    zwischen "nachgesehen" und "gedrueckt" koennen Tage liegen.
+    """
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    zeile = await db_one(
+        "SELECT id, kennung, name, version, quelle FROM plugins WHERE id=?", (plugin_id,))
+    if not zeile or not zeile["quelle"]:
+        return _plugin_fehler("/settings/plugins",
+                              "Dieses Plugin nennt keine Adresse zum Nachladen.")
+    try:
+        paket = await plugin_mod.hole_paket(zeile["quelle"])
+        if paket["kennung"] != zeile["kennung"]:
+            raise plugin_mod.PluginFehler(
+                f"Unter der Adresse liegt „{paket['kennung']}“, hier steht aber "
+                f"„{zeile['kennung']}“. Das wird nicht eingespielt.")
+    except plugin_mod.PluginFehler as e:
+        return _plugin_fehler("/settings/plugins", str(e))
+    except Exception as e:
+        print(f"[plugins] aktualisieren fehlgeschlagen: {e}")
+        return _plugin_fehler("/settings/plugins", "Die Adresse war nicht erreichbar.")
+    if not plugin_mod.version_neuer(paket["version"], zeile["version"]) \
+            and paket["version"] == zeile["version"]:
+        return _plugin_ok("/settings/plugins",
+                          f"„{zeile['name']}“ war schon auf {zeile['version']}.")
     return _plugin_ok("/settings/plugins",
-                      f"„{paket['name']}“ hinzugefügt. Auf einem Server anlegen: "
-                      f"Server öffnen, Reiter „Plugins“.")
+                      await _plugin_speichern(paket, zeile["quelle"]))
 
 
 @web.get("/settings/plugins/{plugin_id}/export")
