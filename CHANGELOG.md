@@ -26,7 +26,7 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
   Parameternamen (`grund` → `reason`, `sterne` → `stars`); deutsche Clients alles wie
   bisher.
 - **Maßgeblich ist die Client-Sprache der Person, nicht `bot_lang` des Servers.** Ein
-  Deutscher auf Zerafis englischem Server sieht weiter Deutsch. Das ist Absicht: die
+  Deutscher auf einem englischsprachigen Server sieht weiter Deutsch. Das ist Absicht: die
   Befehlsliste gehört zur Oberfläche dessen, der sie aufklappt.
 - Andere Sprachen bekommen den deutschen Standardtext — lieber Deutsch als Kauderwelsch.
 
@@ -189,7 +189,7 @@ VRChat-Welt.
 
 **Das Startskript fasst keine fremden Dateien mehr an**
 - Auf einem Server mit mehreren Instanzen liegen die Datenordner der *anderen*
-  Installationen im selben Verzeichnis wie das Repo (`data-zerafi/`, `data-paniczone/`).
+  Installationen im selben Verzeichnis wie das Repo (`data-<name>/`).
   Der Rundumschlag über `/repo` aus 1.19.29 hat sie beim ersten Start mit umgeschrieben —
   15 Einträge, die diesen Bot nichts angehen. Kaputt ging dabei nichts (jene Container
   laufen als root und kommen an Dateien von 1000 trotzdem heran), passieren durfte es

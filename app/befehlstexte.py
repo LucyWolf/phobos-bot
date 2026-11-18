@@ -1,7 +1,7 @@
 """Die Slash-Befehle auf Englisch - Namen, Beschreibungen, Parameter, Auswahleinträge.
 
-Gemeldet am 17.11.2026 ("hab noch 2 befehle in deutsch gefunden", dazu "zerafi hat alles in
-englich"): Auf einem englischsprachigen Server standen deutsche Befehlsnamen in der Liste -
+Gemeldet am 17.11.2026: Auf einem englischsprachigen Server standen deutsche Befehlsnamen
+in der Liste -
 und unter JEDEM Befehl eine deutsche Beschreibung, auch unter den englisch benannten.
 
 Discord kann beides je Sprache ausliefern. Entscheidend ist dabei die Client-Sprache der

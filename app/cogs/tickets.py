@@ -587,7 +587,7 @@ class PanelButton(ui.Button):
                       or [await tt(guild.id, "ticket_intro")])
             embeds = []
             for i, block in enumerate(blocks[:10]):
-                # User-reported ("Hallo @Zerafi! {user}, your ticket has been created." - the
+                # User-reported ("Hallo @Name! {user}, your ticket has been created." - the
                 # admin had typed their own {user} placeholder expecting it to be substituted,
                 # same as the {user}/{server} placeholders already supported elsewhere in this
                 # project (welcome messages, Auto-Kick reminders) - there was no substitution at

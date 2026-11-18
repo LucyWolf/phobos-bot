@@ -107,7 +107,7 @@ done
 
 # /repo ist der Sonderfall, und zwar ein teuer gelernter: auf einem Server mit mehreren
 # Instanzen liegen im selben Verzeichnis auch die Datenordner der ANDEREN Installationen
-# (data-zerafi/, data-paniczone/ - alles, was git gar nicht kennt). Ein "alles unter
+# (data-<name>/ - alles, was git gar nicht kennt). Ein "alles unter
 # /repo"-Durchlauf hat die am 17.11.2026 mit umgeschrieben. Kaputt ging dabei nichts,
 # weil jene Container als root laufen und root an Dateien von 1000 trotzdem herankommt -
 # aber fremde Dateien gehen diesen Bot nichts an.
