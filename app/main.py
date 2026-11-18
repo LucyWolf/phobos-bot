@@ -5367,6 +5367,27 @@ async def _do_git_update(ziel: str = ""):
     try:
         _ulog("$ phobos-bot update — " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "cmd")
 
+        # /repo ist der Projektordner des Wirts, in den Container eingehaengt. Ohne ihn gibt
+        # es hier kein Git und damit kein Update. Gemeldet am 18.11.2026 von einer fremden
+        # Installation beim Wechsel auf den Beta-Kanal: git meldete "cannot change to
+        # '/repo': No such file or directory", die Seite zeigte "exit 128" - eine Zahl, aus
+        # der niemand den fehlenden Einhaengepunkt ablesen kann.
+        #
+        # Der Bot kann das auch nicht selbst richten: Docker uebernimmt Einbindungen nur
+        # beim NEUERSTELLEN eines Containers, ein Neustart aendert daran nichts. Die
+        # Meldung muss also sagen, was auf dem Wirt zu tun ist - sonst beschreibt sie nur
+        # ein Problem, und das hilft niemandem.
+        if not IS_ANDROID and not os.path.isdir("/repo/.git"):
+            was = ("ist nicht eingehängt" if not os.path.isdir("/repo")
+                   else "enthält kein Git-Repository")
+            raise RuntimeError(
+                f"Der Projektordner /repo {was}. Das Update holt den Code per git aus "
+                f"/repo — ohne diesen Ordner geht es nicht, und der Bot kann es von innen "
+                f"nicht beheben. Auf dem Wirt, im Ordner mit der docker-compose.yml: unter "
+                f"\"volumes:\" muss die Zeile \"- .:/repo\" stehen, danach einmal "
+                f"\"docker compose up -d\" ausführen. Ein Neustart des Containers reicht "
+                f"nicht — Docker übernimmt Einbindungen erst beim Neuerstellen.")
+
         # Vor dem ersten Befehl nachsehen. Ein git fetch, dem mittendrin der Platz
         # ausgeht, laesst halb geschriebene Objekte im Repo liegen - der naechste Versuch
         # scheitert dann an etwas anderem als am eigentlichen Grund.

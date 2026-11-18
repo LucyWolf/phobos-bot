@@ -14,6 +14,30 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.38 — `beta` — 18.11.2026
+
+**Update scheiterte mit „exit 128", wenn der Projektordner fehlt**
+- Gemeldet von einer fremden Installation beim Wechsel auf den Beta-Kanal. In der Ausgabe
+  stand `fatal: cannot change to '/repo': No such file or directory`, darunter rot
+  „git fetch fehlgeschlagen (exit 128)". Aus der Zahl liest niemand ab, dass schlicht ein
+  Einhängepunkt fehlt.
+- `/repo` ist der Projektordner des Wirts im Container — daraus holt das Update den Code.
+  Fehlt in der `docker-compose.yml` die Zeile `- .:/repo`, oder wurde der Container noch
+  mit einer älteren Fassung angelegt, ist der Ordner nicht da und kein git-Befehl kann
+  gelingen.
+- Geprüft wird das jetzt **vor** dem ersten git-Aufruf. Die Meldung sagt, was fehlt und
+  was auf dem Wirt zu tun ist: Zeile prüfen, dann `docker compose up -d`.
+
+**Warum ein Neustart dafür nicht reicht**
+Docker übernimmt Einbindungen nur beim **Neuerstellen** eines Containers. Wer die
+compose-Datei ändert und danach nur neu startet, hat weiterhin keinen `/repo`-Ordner — und
+sucht den Fehler an der falschen Stelle. Das steht jetzt mit in der Meldung.
+
+Unter Android greift die Prüfung nicht: dort läuft das Update über den APK-Download, einen
+Projektordner gibt es gar nicht.
+
+---
+
 ## 1.19.37 — `beta` — 17.11.2026
 
 **Die Befehlsliste spricht jetzt die Sprache der Person**
