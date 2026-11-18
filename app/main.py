@@ -11717,7 +11717,10 @@ async def server_config(
 
     # Ticket panels
     ticket_panels = await db_rows(
-        "SELECT * FROM ticket_panels WHERE guild_id=? ORDER BY created_at DESC", (guild_id,)
+        # Wie bei den Embed-Nachrichten: eine von Hand gesetzte Reihenfolge geht vor,
+        # alles Unverschobene steht auf 0 und bleibt damit neueste-zuerst.
+        "SELECT * FROM ticket_panels WHERE guild_id=? ORDER BY sortierung, id DESC",
+        (guild_id,)
     )
     for p in ticket_panels:
         if p.get("channel_id"):
@@ -13259,13 +13262,17 @@ async def tickets_option_delete(request: Request, guild_id: int, panel_id: int,
                             status_code=302)
 
 
-@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/delete")
-async def tickets_panel_delete(request: Request, guild_id: int, panel_id: int):
-    if r := auth_redirect(request): return r
-    if not await _guild_access(request, guild_id):
-        return RedirectResponse("/servers", status_code=302)
-    panel = await db_one("SELECT * FROM ticket_panels WHERE id=? AND guild_id=?", (panel_id, guild_id))
-    if panel and panel.get("message_id") and panel.get("channel_id"):
+async def _ticket_panel_entfernen(guild_id: int, panel_id: int) -> bool:
+    """Ein Panel loeschen - samt der Nachricht, die es in den Kanal gestellt hat.
+
+    Herausgeloest wie bei den Embed-Nachrichten: es gibt das jetzt einzeln und fuer alles
+    Markierte, und die gepostete Nachricht darf in keinem der beiden Wege stehenbleiben.
+    """
+    panel = await db_one("SELECT * FROM ticket_panels WHERE id=? AND guild_id=?",
+                         (panel_id, guild_id))
+    if not panel:
+        return False
+    if panel.get("message_id") and panel.get("channel_id"):
         try:
             b = bot._bot_for_guild(guild_id)
             if b:
@@ -13276,7 +13283,66 @@ async def tickets_panel_delete(request: Request, guild_id: int, panel_id: int):
         except Exception:
             pass
     await db_exec("DELETE FROM ticket_panels WHERE id=? AND guild_id=?", (panel_id, guild_id))
+    return True
+
+
+@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/delete")
+async def tickets_panel_delete(request: Request, guild_id: int, panel_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    await _ticket_panel_entfernen(guild_id, panel_id)
     return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Panel+gelöscht", status_code=302)
+
+
+# ── Markieren und Sortieren im Ticket-Reiter ─────────────────────────────────────────
+# Gewuenscht am 18.11.2026: "das bei einbetten nachrichten das mit den auswählen auch rein
+# machen in tikets". Zwei Listen, zwei verschiedene Beduerfnisse:
+#   Panels  - loeschen und umsortieren, wie die Embed-Nachrichten
+#   Tickets - schliessen oder loeschen; umsortieren ergaebe hier keinen Sinn, die stehen
+#             nach Eingang.
+
+@web.post("/servers/{guild_id}/tickets/panels/markierte-loeschen")
+async def ticket_panels_bulk_delete(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    ids = _markierte_ids(await request.form())
+    if not ids:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=Nichts+markiert", status_code=302)
+    weg = 0
+    for panel_id in ids:
+        if await _ticket_panel_entfernen(guild_id, panel_id):
+            weg += 1
+    return RedirectResponse(
+        f"/servers/{guild_id}?tab=tickets&success={weg}+Panels+gelöscht", status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/panels/{panel_id}/verschieben")
+async def ticket_panel_move(request: Request, guild_id: int, panel_id: int,
+                            richtung: str = ""):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    if richtung not in ("hoch", "runter"):
+        richtung = "hoch"
+    await _neu_sortieren("ticket_panels", guild_id, panel_id, richtung)
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets", status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/panels/reihenfolge")
+async def ticket_panels_order(request: Request, guild_id: int):
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    form = await request.form()
+    ids = [int(t) for t in
+           [s.strip() for s in (form.get("reihenfolge") or "").split(",")[:500]]
+           if t.isdigit()]
+    if ids:
+        await _reihenfolge_setzen("ticket_panels", guild_id, ids)
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets", status_code=302)
 
 
 @web.post("/servers/{guild_id}/tickets/panels/{panel_id}/publish")
@@ -13404,6 +13470,78 @@ async def ticket_delete(request: Request, guild_id: int, ticket_id: int):
         return RedirectResponse("/servers", status_code=302)
     await db_exec("DELETE FROM tickets WHERE id=? AND guild_id=?", (ticket_id, guild_id))
     return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success=Ticket+gelöscht", status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/markierte-schliessen")
+async def tickets_bulk_close(request: Request, guild_id: int):
+    """Mehrere Tickets auf einmal schliessen.
+
+    Jedes einzeln und unabhaengig: scheitert eines - fehlende Rechte, Kanal schon weg -,
+    laufen die anderen trotzdem durch, und am Ende steht da, wie viele es waren. Alles
+    abzubrechen, weil eines klemmt, waere bei zwanzig markierten Tickets die schlechtere
+    Haelfte der Arbeit.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    ids = _markierte_ids(await request.form())
+    if not ids:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=Nichts+markiert", status_code=302)
+    b = bot._bot_for_guild(guild_id)
+    if not b:
+        # Ohne laufenden Bot laesst sich nicht feststellen, ob der Kanal noch existiert -
+        # als geschlossen zu markieren hiesse, ihn verwaist zurueckzulassen.
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=Bot+nicht+online", status_code=302)
+
+    zu, klemmte = 0, 0
+    guild_obj = b.get_guild(guild_id)
+    for ticket_id in ids:
+        ticket = await db_one("SELECT * FROM tickets WHERE id=? AND guild_id=? "
+                              "AND status='open'", (ticket_id, guild_id))
+        if not ticket:
+            continue
+        ch = b.get_channel(ticket["channel_id"])
+        if ch:
+            panel = await db_one("SELECT * FROM ticket_panels WHERE id=?",
+                                 (ticket["panel_id"],)) if ticket.get("panel_id") else None
+            if not await _close_ticket_channel(ch, guild_obj, panel,
+                                               "Ticket via Dashboard geschlossen"):
+                klemmte += 1
+                continue
+        await db_exec("UPDATE tickets SET status='closed' WHERE id=? AND guild_id=?",
+                      (ticket_id, guild_id))
+        zu += 1
+    await _log_bot_event(bot, guild_id, "🔒", "Tickets geschlossen", "ticket",
+                         plain=f"{zu} Stück · über Dashboard")
+    text = f"{zu}+geschlossen"
+    if klemmte:
+        text += f",+{klemmte}+ging+nicht"
+    return RedirectResponse(f"/servers/{guild_id}?tab=tickets&success={text}",
+                            status_code=302)
+
+
+@web.post("/servers/{guild_id}/tickets/markierte-loeschen")
+async def tickets_bulk_delete(request: Request, guild_id: int):
+    """Markierte Tickets aus der Liste nehmen.
+
+    Loescht nur den Eintrag, nicht den Kanal - genau wie das einzelne Loeschen daneben.
+    Wer den Kanal weghaben will, schliesst das Ticket.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return RedirectResponse("/servers", status_code=302)
+    ids = _markierte_ids(await request.form())
+    if not ids:
+        return RedirectResponse(
+            f"/servers/{guild_id}?tab=tickets&error=Nichts+markiert", status_code=302)
+    weg = 0
+    for ticket_id in ids:
+        weg += await db_exec_rowcount("DELETE FROM tickets WHERE id=? AND guild_id=?",
+                                      (ticket_id, guild_id))
+    return RedirectResponse(
+        f"/servers/{guild_id}?tab=tickets&success={weg}+Tickets+gelöscht", status_code=302)
 
 
 # ── Embed Posts ──────────────────────────────────────────────────────────────

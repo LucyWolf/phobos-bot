@@ -1460,6 +1460,9 @@ async def init_db():
             # anfragt. Siehe DATENQUELLEN in plugins.py.
             "ALTER TABLE plugin_guilds ADD COLUMN daten_an TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE plugin_guilds ADD COLUMN daten_key TEXT NOT NULL DEFAULT ''",
+            # Dieselbe eigene Reihenfolge wie bei den Embed-Nachrichten, jetzt auch fuer
+            # die Ticket-Panels - gewuenscht zusammen mit dem Markieren.
+            "ALTER TABLE ticket_panels ADD COLUMN sortierung INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await db.execute(col)

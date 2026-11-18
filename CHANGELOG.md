@@ -14,6 +14,53 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.45 — `beta` — 18.11.2026
+
+**Das Ziehen hatte drei Fehler**
+Gemeldet als „das klicken und verschieben hat bucks". Beim Durchgehen waren es drei, der
+erste davon der, den man sieht:
+
+*Die Liste sprang hin und her*
+- Es wurde die Zeile genommen, die gerade **unter dem Zeiger** lag, und davor eingefügt.
+  Damit liegt die gezogene Zeile selbst unter dem Zeiger, beim nächsten Mausereignis eine
+  andere — und die Liste zappelte im Takt der Bewegung.
+- Jetzt wird die Einfügestelle aus der **Mausposition über allen Zeilen** berechnet, nicht
+  aus dem, was zufällig darunter liegt. Und steht die Zeile schon richtig, passiert gar
+  nichts mehr.
+
+*Ein abgebrochener Zug ließ eine falsche Anzeige stehen*
+- Escape oder Loslassen außerhalb der Liste: gespeichert wurde nichts, die verschobene
+  Vorschau blieb aber stehen. Beim nächsten Aufruf war alles wieder anders.
+- Jetzt lädt die Seite in dem Fall neu. Eine Anzeige, die etwas anderes zeigt als
+  gespeichert ist, ist schlimmer als gar keine.
+
+*Der Tooltip klebte am Zeiger*
+- Der Hinweis „zum Umsortieren festhalten und ziehen" hing an **jeder** Zeile und folgte
+  beim Arbeiten dauernd der Maus. Er steht jetzt nur noch einmal unter der Tabelle.
+
+**Markieren und Sortieren jetzt auch bei den Tickets**
+- Gewünscht: „das bei einbetten nachrichten das mit den auswählen auch rein machen in
+  tikets". Zwei Listen, zwei verschiedene Bedürfnisse:
+- **Ticket-Panels**: ankreuzen, markierte löschen, Reihenfolge per Pfeil oder Ziehen — wie
+  bei den Embed-Nachrichten. Gelöscht wird auch die gepostete Nachricht im Kanal.
+- **Offene Tickets**: ankreuzen, dann **schließen** (räumt die Kanäle auf, wie beim
+  einzelnen Schließen) oder **aus der Liste nehmen** (lässt die Kanäle stehen). Umsortieren
+  gibt es hier nicht — offene Tickets stehen nach Eingang, und das ist richtig so.
+- Beim Sammel-Schließen läuft jedes Ticket für sich. Klemmt eines — fehlende Rechte, Kanal
+  schon weg —, laufen die anderen trotzdem durch, und am Ende steht da, wie viele es waren.
+
+**Ein Fehler, der dabei fast entstanden wäre**
+Der Dialog schickt ein Formular über dessen eigene Adresse ab; ein `formaction` am Knopf
+zählt nur beim echten Klick. „Markierte aus der Liste nehmen" wäre damit beim **Schließen**
+gelandet — lautlos und mit ganz anderer Wirkung. Der Dialog beachtet die Adresse des Knopfes
+jetzt, und ein Test hält das fest.
+
+**Geprüft:** 49 Prüfungen (vorher 38). Die drei Fehler von oben sind einzeln festgehalten,
+damit sie nicht zurückkommen, dazu: vier Sammelknöpfe sind ohne Markierung abgeschaltet, die
+vier Pfeile ausdrücklich **nicht** — sonst ließe sich ohne Markierung nichts mehr verschieben.
+
+---
+
 ## 1.19.44 — `beta` — 18.11.2026
 
 **Reihenfolge ändern durch Ziehen**
