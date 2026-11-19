@@ -96,18 +96,20 @@
   </p>
   {% endif %}
 
-  {# Hinzufuegen und Einstellen passiert von hier aus: ein Server waehlen, dann steht
-     drueben auf dem Server das Formular. Schon laufende Server fuehren direkt zu ihren
-     Einstellungen. Ein reines Menue, das beim Auswaehlen navigiert - kein POST noetig. #}
   <div style="margin-top:0.9rem;padding-top:0.8rem;border-top:1px solid var(--border);">
     {% if p.laeuft_auf %}
-    <div style="font-size:0.78rem;margin-bottom:0.5rem;">{{ tr.plug_runs_on }}
+    <div style="font-size:0.78rem;margin-bottom:0.6rem;">{{ tr.plug_runs_on }}
       {% for s in p.laeuft_auf %}<a href="/servers/{{ s.id }}?tab=plugins&p={{ p.id }}"
          style="display:inline-block;background:var(--bg);border:1px solid var(--border);
                 border-radius:999px;padding:0.1rem 0.6rem;margin:0.1rem 0.15rem;font-size:0.75rem;">
          {{ p.icon }} {{ s.name }}</a>{% endfor %}
     </div>
     {% endif %}
+
+    {% if p.braucht_wahl %}
+    {# Dieses Plugin fragt eine Rolle oder einen Kanal ab - die ist pro Server verschieden,
+       also geht nur einzeln. Auswahl navigiert direkt zum Server. #}
+    <p class="hint" style="margin:0 0 0.4rem;">{{ tr.plug_needs_per_server }}</p>
     <label style="font-size:0.8rem;">{{ tr.plug_add_to_server }}</label>
     <select onchange="if(this.value){location.href=this.value;}" style="max-width:320px;margin-top:0.3rem;">
       <option value="">— {{ tr.plug_pick_server }} —</option>
@@ -115,6 +117,31 @@
       <option value="/servers/{{ g.id }}?tab=plugins&p={{ p.id }}">{{ g.name }}</option>
       {% endfor %}
     </select>
+    {% else %}
+    {# Keine serverspezifischen Felder - also auf allen Servern auf einmal, kein Dropdown.
+       Die text/zahl-Werte gelten für jeden Server gleich. #}
+    <form method="post" action="/settings/plugins/{{ p.id }}/ueberall">
+      {% if p.einstellungen %}
+      <div class="grid-2" style="gap:1rem;">
+        {% for e in p.einstellungen %}
+        <div>
+          <label>{{ e.titel }}{% if e.pflicht %} <span style="color:#f59e0b;font-size:0.7rem;">({{ tr.plug_required }})</span>{% endif %}</label>
+          {% if e.hinweis %}<p class="hint" style="margin:-0.3rem 0 0.4rem;">{{ e.hinweis }}</p>{% endif %}
+          {% if e.art == 'mehrzeilig' %}
+          <textarea name="e_{{ e.name }}" rows="3">{{ e.standard }}</textarea>
+          {% elif e.art == 'zahl' %}
+          <input type="number" name="e_{{ e.name }}" value="{{ e.standard }}">
+          {% else %}
+          <input type="text" name="e_{{ e.name }}" maxlength="4000" value="{{ e.standard }}">
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <button type="submit" class="btn" style="margin-top:0.5rem;">🌐 {{ tr.plug_add_everywhere }}</button>
+      <p class="hint" style="margin:0.5rem 0 0;">{{ tr.plug_everywhere_hint }}</p>
+    </form>
+    {% endif %}
   </div>
 
   <div style="margin-top:0.9rem;display:flex;gap:0.4rem;flex-wrap:wrap;">

@@ -14,6 +14,33 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.53 — `beta` — 19.11.2026
+
+**Plugins: „Auf allen Servern anlegen" statt Server-für-Server, und ein toter Eintrag weg**
+- Gemeldet: in den „Angezeigten Funktionen" stand noch ein Kästchen „🧩 Plugins". Seit die
+  Plugins einzeln mit Namen und Icon in der Leiste stehen, gibt es keinen Sammel-Reiter mehr
+  zum Aus- oder Einblenden — das Kästchen steuerte nichts. Raus damit. Die
+  Moderator-Rechtesteuerung („darf dieser Mod Plugins sehen?") bleibt.
+- Gewünscht: ein Plugin soll gleich auf allen Servern gelten, ohne „Server wählen". Umgesetzt
+  für Plugins **ohne serverspezifische Felder**: unter Einstellungen → Plugins stehen die
+  Einstellungen direkt da, dazu ein Knopf **„Auf allen Servern anlegen"**. Ein Klick, überall
+  angelegt.
+
+**Warum nicht für jedes Plugin**
+Ein Plugin, das eine **Rolle, einen Kanal oder eine Kategorie** abfragt, kann nicht auf allen
+Servern denselben Wert haben — welche Rolle auf Server B gemeint ist, weiß nur dieser Server.
+Solche Plugins behalten die Auswahl je Server; der „alle Server"-Weg lehnt sie mit einem
+klaren Satz ab, statt leere Nummern anzulegen. Die Seite zeigt automatisch den richtigen
+Weg: Textfeld-Plugins den Knopf, Rollen-Plugins das Menü.
+
+**Geprüft:** 114 Plugin-Prüfungen (vorher 109). Neu: dass Textfelder und „keine Einstellung"
+keine Server-Wahl brauchen, Rolle/Kanal/Kategorie dagegen schon. Die Leisten-Prüfungen und
+die Kern-Kette bleiben grün.
+
+**Nicht geprüft:** das Aussehen im Browser.
+
+---
+
 ## 1.19.52 — `beta` — 19.11.2026
 
 **Ressourcengrenzen: CPU dazu, und eine Schritt-für-Schritt-Anleitung**

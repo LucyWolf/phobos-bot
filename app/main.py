@@ -10675,6 +10675,9 @@ async def plugins_page(request: Request, success: str = "", error: str = ""):
         p["icon"] = paket.get("icon") or plugin_mod.STANDARD_ICON
         p["teile"] = plugin_mod.zusammenfassung(paket, lang)
         p["einstellungen"] = paket.get("einstellungen", [])
+        # Braucht das Plugin pro Server eine Rolle/Kanal-Auswahl, oder lässt es sich in
+        # einem Zug auf allen anlegen? Entscheidet, welche Oberfläche die Seite zeigt.
+        p["braucht_wahl"] = plugin_mod.braucht_server_wahl(paket)
         # Auf welchen Servern dieses Plugin schon laeuft - mit Namen, damit die Seite es
         # zeigen kann, ohne dass jemand Server-Kennungen lesen muss.
         p["laeuft_auf"] = [
@@ -10940,6 +10943,51 @@ def _werte_aus_formular(form) -> dict:
     """
     return {k[2:]: v for k, v in form.items()
             if isinstance(k, str) and k.startswith("e_") and isinstance(v, str)}
+
+
+@web.post("/settings/plugins/{plugin_id}/ueberall")
+async def plugin_alle_server(request: Request, plugin_id: int):
+    """Ein Plugin in einem Zug auf allen Servern anlegen.
+
+    Gewuenscht am 19.11.2026: kein "Server waehlen" mehr, ein Plugin soll gleich ueberall
+    gelten. Das geht nur fuer Plugins ohne serverspezifische Felder (Rolle/Kanal/Kategorie)
+    - deren Wert kann nicht fuer alle Server derselbe sein. Solche Plugins behalten die
+    Auswahl je Server; diese Route lehnt sie ab.
+
+    Die text/zahl-Werte kommen EINMAL aus dem Formular und gelten fuer jeden Server gleich.
+    """
+    if r := auth_redirect(request): return r
+    if r := admin_redirect(request): return r
+    ziel = "/settings/plugins"
+    paket = await plugin_mod.plugin_paket(plugin_id)
+    if not paket:
+        return _plugin_fehler(ziel, "Dieses Plugin gibt es nicht mehr.")
+    if plugin_mod.braucht_server_wahl(paket):
+        return _plugin_fehler(
+            ziel, "Dieses Plugin fragt eine Rolle oder einen Kanal ab — das ist pro Server "
+                  "verschieden. Lege es je Server über das Auswahlmenü an.")
+
+    werte_roh = _werte_aus_formular(await request.form())
+    server = bot.guilds
+    if not server:
+        return _plugin_fehler(ziel, "Der Bot ist auf keinem Server — nichts anzulegen.")
+
+    gemacht, geklemmt = 0, 0
+    for g in server:
+        try:
+            await _plugin_anwenden(int(g.id), plugin_id, werte_roh)
+            gemacht += 1
+        except plugin_mod.PluginFehler as e:
+            # Fehlt ein Pflichtwert, ist das fuer ALLE Server gleich - dann gleich abbrechen
+            # und es sagen, statt es n-mal zu melden.
+            return _plugin_fehler(ziel, str(e))
+        except Exception as ex:
+            print(f"[plugins] alle-server: {g.id} fehlgeschlagen: {ex}")
+            geklemmt += 1
+    text = f"„{paket.get('name')}“ auf {gemacht} Servern angelegt."
+    if geklemmt:
+        text += f" {geklemmt} gingen nicht."
+    return _plugin_ok(ziel, text)
 
 
 @web.post("/servers/{guild_id}/plugins/{plugin_id}/anwenden")
@@ -11604,9 +11652,10 @@ _TOGGLEABLE_FEATURES = {
     "warnings": "⚠️ Warnungen", "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant",
     "events": "🗓️ Events", "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
     "autothread": "🧵 Auto-Thread", "vrclink": "🔗 VRC-Link", "profile": "🪪 Profile",
-    # Plugins stehen in dieser Liste, damit ein Server, der keine benutzt, den Reiter
-    # ausblenden kann - wie jede andere Funktion auch.
-    "plugins": "🧩 Plugins",
+    # Plugins stehen BEWUSST NICHT mehr hier: seit sie als eigene Eintraege mit Namen und
+    # Icon in der Leiste stehen (je angelegtem Plugin einer), gibt es keinen generischen
+    # "Plugins"-Reiter mehr, den man ein- oder ausblenden koennte. Ein Eintrag in dieser
+    # Liste hiess nur eine tote Kaestchen-Zeile unter "Angezeigte Funktionen".
     "amp": "🎮 Gameserver", "notifications": "🟣 Streaming", "freestuff": "🎁 Free Stuff",
     "log": "📋 Log", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
     "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen", "ratings": "⭐ Bewertungen",
@@ -11621,7 +11670,12 @@ _TOGGLEABLE_FEATURES = {
 # "botdesign" stay out of this superset too: their content is likewise already fully admin-gated
 # (a restricted moderator visiting either just sees an empty/admin-only state), so hiding their
 # links wouldn't add anything a determined narrowing-down admin actually needs.
-_MODERATOR_RESTRICTABLE_TABS = {**_TOGGLEABLE_FEATURES, "config": "⚙️ Config"}
+# "plugins" hier ausdruecklich wieder dazu: aus den server-weiten "Angezeigten Funktionen"
+# ist es raus (es gibt keinen Reiter zum Ausblenden), aber ein Admin soll einem Moderator
+# die Plugin-Eintraege in der Leiste weiterhin geben oder nehmen koennen - die Subnav prueft
+# genau das.
+_MODERATOR_RESTRICTABLE_TABS = {**_TOGGLEABLE_FEATURES, "config": "⚙️ Config",
+                                "plugins": "🧩 Plugins"}
 
 
 def _restriction_fallback_url(guild_id, user_allowed_tabs: Optional[set]) -> str:
