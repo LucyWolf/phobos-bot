@@ -14,6 +14,23 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.57 — `beta` — 19.11.2026
+
+**Plugin-Karte unter Einstellungen → Plugins kompakt gemacht**
+- Gemeldet: die Karte ist überladen, die Info soll kurz sein — die Details sieht und
+  schreibt man am Server. Umgesetzt:
+- Die **Beschreibung** ist auf zwei Zeilen begrenzt, egal wie lang ein Autor schreibt.
+- Die **lange Bezugs-URL** ist von der Karte weg (der „Nach Update suchen"-Knopf braucht
+  sie intern weiter, zeigt sie aber nicht mehr an).
+- Der **Hinweis „An/aus je Server …"** stand bei jeder Karte — jetzt nur noch **einmal
+  oben** über der Liste.
+- Geblieben: Icon, Name, Version, die Knöpfe, und die kompakten Badges (was das Plugin
+  anlegt, wie viele Einstellungen, auf wie vielen Servern).
+
+Bei Rollen-/Kanal-Plugins bleibt die Server-Wahl an der Karte, weil sie dort gebraucht wird.
+
+---
+
 ## 1.19.56 — `beta` — 19.11.2026
 
 **Plugin-Einstellungen gehören zum Server, nicht zentral**
