@@ -14,6 +14,29 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.56 — `beta` — 19.11.2026
+
+**Plugin-Einstellungen gehören zum Server, nicht zentral**
+- Unter Einstellungen → Plugins steht jetzt nur noch das Plugin selbst: hochladen,
+  exportieren, löschen, nach Update suchen. Das Werte-Formular (z. B. „Was soll der Befehl
+  antworten?") ist dort **weg** — gewünscht: „dabei sollte nur das plugin sein, einstelungen
+  immer noch intern im den jeweiligen server".
+- Die Werte setzt man jetzt **beim jeweiligen Server**: Plugin in der Leiste anklicken, dort
+  das Feld ausfüllen. Jeder Server hat seine eigenen — so wie es sein soll.
+- Angehakt wird weiterhin je Server in den Angezeigten Funktionen; beim Anhaken greifen die
+  Standardwerte, anpassen tut man sie dann am Server.
+- Die zentrale Werte-Route von 1.19.54 ist damit wieder raus.
+
+**Kleiner Aufräumer von 1.19.55 mit dabei**
+Die „Läuft auf"-Server-Pillen stehen nur noch bei Rollen-/Kanal-Plugins (wo sie zur
+Server-Konfiguration führen), nicht beim Text-Plugin.
+
+**Geprüft:** die 13 + 114 + 12 Plugin-Prüfungen bleiben grün.
+
+**Nicht geprüft:** das Aussehen im Browser.
+
+---
+
 ## 1.19.55 — `beta` — 19.11.2026
 
 **Plugin-Seite: die „Läuft auf"-Serverliste beim Text-Plugin entfernt**

@@ -10979,48 +10979,6 @@ def _werte_aus_formular(form) -> dict:
             if isinstance(k, str) and k.startswith("e_") and isinstance(v, str)}
 
 
-@web.post("/settings/plugins/{plugin_id}/werte")
-async def plugin_werte_speichern(request: Request, plugin_id: int):
-    """Die zentralen Werte eines Plugins setzen - einmal, gelten für alle Server.
-
-    Gewuenscht am 19.11.2026: ein Plugin wird je Server nur noch an-/abgehakt (Config →
-    Angezeigte Funktionen), die Werte setzt man hier einmal. Nur fuer Plugins ohne
-    serverspezifische Felder; Rollen-/Kanal-Plugins behalten die Auswahl je Server.
-
-    Ist das Plugin schon auf Servern aktiv, wird es dort mit den neuen Werten neu angelegt,
-    sonst wuerde eine geaenderte Antwort erst beim naechsten An-/Abhaken greifen.
-    """
-    if r := auth_redirect(request): return r
-    if r := admin_redirect(request): return r
-    ziel = "/settings/plugins"
-    paket = await plugin_mod.plugin_paket(plugin_id)
-    if not paket:
-        return _plugin_fehler(ziel, "Dieses Plugin gibt es nicht mehr.")
-    if plugin_mod.braucht_server_wahl(paket):
-        return _plugin_fehler(
-            ziel, "Dieses Plugin fragt eine Rolle oder einen Kanal ab — das wird je Server "
-                  "angelegt, nicht zentral.")
-
-    werte_roh = _werte_aus_formular(await request.form())
-    try:
-        werte = plugin_mod.pruefe_werte(paket, werte_roh)
-    except plugin_mod.PluginFehler as e:
-        return _plugin_fehler(ziel, str(e))
-    await db_exec("UPDATE plugins SET werte=? WHERE id=?",
-                  (_djson.dumps(werte, ensure_ascii=False), plugin_id))
-
-    # Auf jedem Server, der das Plugin schon aktiv hat, mit den neuen Werten auffrischen.
-    aktiv = await db_rows("SELECT guild_id FROM plugin_guilds WHERE plugin_id=?", (plugin_id,))
-    for z in aktiv:
-        if str(z["guild_id"]).isdigit():
-            try:
-                await _plugin_anwenden(int(z["guild_id"]), plugin_id, werte_roh)
-            except Exception as e:
-                print(f"[plugins] Werte auffrischen {z['guild_id']}: {e}")
-    nachsatz = f" Auf {len(aktiv)} aktiven Servern aktualisiert." if aktiv else ""
-    return _plugin_ok(ziel, f"Einstellungen von „{paket.get('name')}“ gespeichert.{nachsatz}")
-
-
 @web.post("/servers/{guild_id}/plugins/{plugin_id}/anwenden")
 async def server_plugin_anwenden(request: Request, guild_id: int, plugin_id: int):
     if r := auth_redirect(request): return r
