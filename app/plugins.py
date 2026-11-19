@@ -821,7 +821,7 @@ async def entfernen(plugin_guild_id: int) -> int:
 async def plugin_liste() -> list:
     zeilen = await db_rows(
         "SELECT id, kennung, name, version, autor, beschreibung, quelle, homepage, "
-        "geprueft, neue_version, angelegt, geaendert "
+        "geprueft, neue_version, werte, angelegt, geaendert "
         "FROM plugins ORDER BY name COLLATE NOCASE")
     for z in zeilen:
         z["server"] = (await db_one(

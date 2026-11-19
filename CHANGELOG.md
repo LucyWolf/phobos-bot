@@ -14,6 +14,41 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.54 — `beta` — 19.11.2026
+
+**Plugins werden jetzt wie eine Funktion je Server an- und abgehakt**
+- Gewünscht: ein eingespieltes Plugin soll auf allen Servern verfügbar sein und dann
+  **in den „Angezeigten Funktionen" je Server** aktiviert oder deaktiviert werden —
+  genau wie Willkommen, Tickets und die anderen. Kein „Server wählen", kein „alle
+  Server"-Knopf mehr.
+- Jedes eingespielte Plugin (ohne Rollen-/Kanal-Feld) steht nun im Funktions-Kasten des
+  Config-Reiters als eigener Haken, mit Icon und Namen. **Haken dran** = auf diesem Server
+  angelegt und in der Leiste; **Haken weg** = wieder entfernt.
+- Die Werte (z. B. die Antwort deines Test-Plugins) setzt man **einmal zentral** unter
+  Einstellungen → Plugins. Sie gelten dann auf jedem Server gleich. Ändert man sie, werden
+  alle Server, auf denen das Plugin aktiv ist, gleich mit aufgefrischt.
+
+**Der „Auf allen Servern anlegen"-Knopf ist weg**
+Braucht man nicht mehr — das An/Aus je Server macht das sauberer. Unter Einstellungen →
+Plugins steht bei einem Text-Plugin jetzt nur noch das Werte-Formular mit „Speichern" und
+der Hinweis, dass das Ein- und Ausschalten im Config-Reiter sitzt.
+
+**Rollen-/Kanal-Plugins bleiben außen vor**
+Ein Plugin, das eine Rolle oder einen Kanal abfragt, taucht **nicht** in den Haken auf —
+seine Werte sind pro Server verschieden, das ließe sich nicht mit einem Haken für alle
+setzen. Solche Plugins behalten die Auswahl je Server (Menü unter Einstellungen → Plugins).
+
+**Und der tote Eintrag von vorhin**
+Das generische „🧩 Plugins" ist aus den Angezeigten Funktionen raus (steuerte nichts mehr).
+
+**Geprüft:** 13 neue Prüfungen am Haken-Modell (nur Text-Plugins erscheinen, Anhaken legt
+mit den zentralen Werten an, Abhaken entfernt, ein anderer Server bleibt unberührt, der
+Standard greift ohne gesetzte Werte) plus die 114 + 12 + 8 bestehenden Plugin-Prüfungen.
+
+**Nicht geprüft:** das Aussehen im Browser.
+
+---
+
 ## 1.19.53 — `beta` — 19.11.2026
 
 **Plugins: „Auf allen Servern anlegen" statt Server-für-Server, und ein toter Eintrag weg**

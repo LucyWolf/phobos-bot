@@ -10605,6 +10605,32 @@ async def _plugin_nav(guild_id) -> list:
     return aus
 
 
+async def _plugin_features(guild_id) -> list:
+    """Die Plugins, die bei den „Angezeigten Funktionen" je Server an/aus gehen.
+
+    Gewuenscht am 19.11.2026: ein eingespieltes Plugin wird je Server nur noch angehakt oder
+    abgehakt, wie jede andere Funktion. Nur Plugins OHNE serverspezifische Felder stehen hier
+    - eins, das eine Rolle oder einen Kanal braucht, kann man nicht mit einem Haken ueberall
+    gleich anlegen und bleibt beim Anlegen je Server.
+    """
+    gid = str(guild_id)
+    aktiv = {str(z["plugin_id"]) for z in await db_rows(
+        "SELECT plugin_id FROM plugin_guilds WHERE guild_id=?", (gid,))}
+    aus = []
+    for z in await db_rows(
+            "SELECT id, name, inhalt FROM plugins ORDER BY name COLLATE NOCASE"):
+        try:
+            paket = _djson.loads(z["inhalt"]) or {}
+        except Exception:
+            continue
+        if plugin_mod.braucht_server_wahl(paket):
+            continue
+        aus.append({"id": z["id"], "name": z["name"],
+                    "icon": paket.get("icon") or plugin_mod.STANDARD_ICON,
+                    "aktiv": str(z["id"]) in aktiv})
+    return aus
+
+
 async def _plugins_fuer_server(guild_id, lang: str = "de") -> list:
     """Alle Plugins dieser Installation, je Server um den Stand davor ergaenzt.
 
@@ -10678,6 +10704,14 @@ async def plugins_page(request: Request, success: str = "", error: str = ""):
         # Braucht das Plugin pro Server eine Rolle/Kanal-Auswahl, oder lässt es sich in
         # einem Zug auf allen anlegen? Entscheidet, welche Oberfläche die Seite zeigt.
         p["braucht_wahl"] = plugin_mod.braucht_server_wahl(paket)
+        # Die zentral gesetzten Werte, damit das Formular sie vorausgefüllt zeigt.
+        try:
+            p["werte"] = _djson.loads(p.get("werte") or "{}") or {}
+        except Exception:
+            p["werte"] = {}
+        # Auf wie vielen Servern das Plugin aktiv ist - für die Anzeige „läuft auf N".
+        p["aktiv_zahl"] = (await db_one(
+            "SELECT COUNT(*) AS n FROM plugin_guilds WHERE plugin_id=?", (p["id"],)))["n"]
         # Auf welchen Servern dieses Plugin schon laeuft - mit Namen, damit die Seite es
         # zeigen kann, ohne dass jemand Server-Kennungen lesen muss.
         p["laeuft_auf"] = [
@@ -10945,16 +10979,16 @@ def _werte_aus_formular(form) -> dict:
             if isinstance(k, str) and k.startswith("e_") and isinstance(v, str)}
 
 
-@web.post("/settings/plugins/{plugin_id}/ueberall")
-async def plugin_alle_server(request: Request, plugin_id: int):
-    """Ein Plugin in einem Zug auf allen Servern anlegen.
+@web.post("/settings/plugins/{plugin_id}/werte")
+async def plugin_werte_speichern(request: Request, plugin_id: int):
+    """Die zentralen Werte eines Plugins setzen - einmal, gelten für alle Server.
 
-    Gewuenscht am 19.11.2026: kein "Server waehlen" mehr, ein Plugin soll gleich ueberall
-    gelten. Das geht nur fuer Plugins ohne serverspezifische Felder (Rolle/Kanal/Kategorie)
-    - deren Wert kann nicht fuer alle Server derselbe sein. Solche Plugins behalten die
-    Auswahl je Server; diese Route lehnt sie ab.
+    Gewuenscht am 19.11.2026: ein Plugin wird je Server nur noch an-/abgehakt (Config →
+    Angezeigte Funktionen), die Werte setzt man hier einmal. Nur fuer Plugins ohne
+    serverspezifische Felder; Rollen-/Kanal-Plugins behalten die Auswahl je Server.
 
-    Die text/zahl-Werte kommen EINMAL aus dem Formular und gelten fuer jeden Server gleich.
+    Ist das Plugin schon auf Servern aktiv, wird es dort mit den neuen Werten neu angelegt,
+    sonst wuerde eine geaenderte Antwort erst beim naechsten An-/Abhaken greifen.
     """
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
@@ -10964,30 +10998,27 @@ async def plugin_alle_server(request: Request, plugin_id: int):
         return _plugin_fehler(ziel, "Dieses Plugin gibt es nicht mehr.")
     if plugin_mod.braucht_server_wahl(paket):
         return _plugin_fehler(
-            ziel, "Dieses Plugin fragt eine Rolle oder einen Kanal ab — das ist pro Server "
-                  "verschieden. Lege es je Server über das Auswahlmenü an.")
+            ziel, "Dieses Plugin fragt eine Rolle oder einen Kanal ab — das wird je Server "
+                  "angelegt, nicht zentral.")
 
     werte_roh = _werte_aus_formular(await request.form())
-    server = bot.guilds
-    if not server:
-        return _plugin_fehler(ziel, "Der Bot ist auf keinem Server — nichts anzulegen.")
+    try:
+        werte = plugin_mod.pruefe_werte(paket, werte_roh)
+    except plugin_mod.PluginFehler as e:
+        return _plugin_fehler(ziel, str(e))
+    await db_exec("UPDATE plugins SET werte=? WHERE id=?",
+                  (_djson.dumps(werte, ensure_ascii=False), plugin_id))
 
-    gemacht, geklemmt = 0, 0
-    for g in server:
-        try:
-            await _plugin_anwenden(int(g.id), plugin_id, werte_roh)
-            gemacht += 1
-        except plugin_mod.PluginFehler as e:
-            # Fehlt ein Pflichtwert, ist das fuer ALLE Server gleich - dann gleich abbrechen
-            # und es sagen, statt es n-mal zu melden.
-            return _plugin_fehler(ziel, str(e))
-        except Exception as ex:
-            print(f"[plugins] alle-server: {g.id} fehlgeschlagen: {ex}")
-            geklemmt += 1
-    text = f"„{paket.get('name')}“ auf {gemacht} Servern angelegt."
-    if geklemmt:
-        text += f" {geklemmt} gingen nicht."
-    return _plugin_ok(ziel, text)
+    # Auf jedem Server, der das Plugin schon aktiv hat, mit den neuen Werten auffrischen.
+    aktiv = await db_rows("SELECT guild_id FROM plugin_guilds WHERE plugin_id=?", (plugin_id,))
+    for z in aktiv:
+        if str(z["guild_id"]).isdigit():
+            try:
+                await _plugin_anwenden(int(z["guild_id"]), plugin_id, werte_roh)
+            except Exception as e:
+                print(f"[plugins] Werte auffrischen {z['guild_id']}: {e}")
+    nachsatz = f" Auf {len(aktiv)} aktiven Servern aktualisiert." if aktiv else ""
+    return _plugin_ok(ziel, f"Einstellungen von „{paket.get('name')}“ gespeichert.{nachsatz}")
 
 
 @web.post("/servers/{guild_id}/plugins/{plugin_id}/anwenden")
@@ -12421,6 +12452,9 @@ async def server_config(
         "amp_raw_debug": amp_raw_debug,
         "welcome_overlay_presets": _WELCOME_OVERLAY_PRESETS,
         "toggleable_features": _TOGGLEABLE_FEATURES,
+        # Eingespielte Plugins ohne serverspezifische Felder - stehen bei den „Angezeigten
+        # Funktionen" als eigene Haken, die das Plugin auf diesem Server an-/abschalten.
+        "plugin_features": await _plugin_features(guild_id),
         "moderator_restrictable_tabs": _MODERATOR_RESTRICTABLE_TABS,
         "enabled_features": await _get_enabled_features(guild_id),
         "user_allowed_tabs": user_allowed_tabs,
@@ -12541,7 +12575,53 @@ async def server_features_save(request: Request, guild_id: int):
     # tabs) - _get_enabled_features() only falls back to "show everything" when the key was
     # NEVER saved at all, not when it was explicitly saved empty.
     await set_guild_config(guild_id, "enabled_features", ",".join(sorted(selected)))
+
+    # Die Plugin-Haken in derselben Maske: angehakt = auf diesem Server angelegt, abgehakt =
+    # entfernt. Nur die text-fähigen Plugins kommen überhaupt in die Liste (serverspezifische
+    # bleiben beim Anlegen je Server) - gegen genau die wird geprüft, damit ein mitgeschickter
+    # fremder Haken nichts bewirkt.
+    moeglich = {str(p["id"]): p for p in await _plugin_features(guild_id)}
+    gewuenscht = {pid for pid in form.getlist("plugin_an") if pid in moeglich}
+    angelegt = await _plugin_angelegt_ids(guild_id)
+    for pid, pf in moeglich.items():
+        war = pid in angelegt
+        soll = pid in gewuenscht
+        if soll and not war:
+            try:
+                await _plugin_zentral_anlegen(guild_id, int(pid))
+            except Exception as e:
+                print(f"[plugins] Haken-Anlegen {pid} auf {guild_id}: {e}")
+        elif war and not soll:
+            await _plugin_vom_server(guild_id, int(pid))
     return RedirectResponse(f"/servers/{guild_id}?tab=config&success=Gespeichert", status_code=302)
+
+
+async def _plugin_angelegt_ids(guild_id) -> set:
+    return {str(z["plugin_id"]) for z in await db_rows(
+        "SELECT plugin_id FROM plugin_guilds WHERE guild_id=?", (str(guild_id),))}
+
+
+async def _plugin_zentral_anlegen(guild_id, plugin_id: int) -> None:
+    """Ein Plugin mit seinen zentral gesetzten Werten auf einem Server anlegen.
+
+    Die Werte stehen in plugins.werte (einmal gesetzt, gelten für alle Server). Fehlt dort
+    etwas, springt der in den Einstellungen hinterlegte Standard ein - deshalb geht das
+    Anlegen auch, bevor jemand die Werte das erste Mal angefasst hat.
+    """
+    zeile = await db_one("SELECT werte FROM plugins WHERE id=?", (plugin_id,))
+    try:
+        werte_roh = _djson.loads((zeile or {}).get("werte") or "{}")
+    except Exception:
+        werte_roh = {}
+    await _plugin_anwenden(int(guild_id), plugin_id, werte_roh)
+
+
+async def _plugin_vom_server(guild_id, plugin_id: int) -> None:
+    zeile = await db_one("SELECT id FROM plugin_guilds WHERE plugin_id=? AND guild_id=?",
+                         (plugin_id, str(guild_id)))
+    if zeile:
+        await plugin_mod.entfernen(zeile["id"])
+        await db_exec("DELETE FROM plugin_guilds WHERE id=?", (zeile["id"],))
 
 
 @web.post("/servers/{guild_id}")
