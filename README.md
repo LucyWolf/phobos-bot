@@ -28,6 +28,7 @@ A self-hostable Discord bot with a full web dashboard. Open source, free, foreve
   - [Bot Features](#bot-features)
 - [Multi-Bot](#multi-bot)
 - [Docker Compose](#docker-compose)
+- [Resource limits](#resource-limits-for-small-machines--step-by-step)
 - [Leveling / XP](#leveling--xp)
 - [Welcome Card](#welcome-card)
 - [Temp Voice Channels](#temp-voice-channels)
@@ -178,6 +179,62 @@ The dashboard is at `http://<server>:8080`. First login is `admin` / `admin` —
 > **The `logging` block is not optional in practice.** Without it Docker writes the bot's output into a file that never gets smaller. On 2 November 2026 one of those had grown to 21 GB and filled the server's disk — the bot kept running the whole time and it only showed up when nothing could be saved any more. 20 MB × 5 files caps it at 100 MB per container.
 >
 > Docker applies this when a container is **created**, so adding it to an existing installation needs `docker compose up -d`, not a restart. To limit by *time* rather than size, use `tools/logrotate-phobos.conf` — Docker itself only knows size and count.
+
+### Resource limits (for small machines) — step by step
+
+`docker-compose.yml` has three lines that are **commented out by default**, so a normal
+install ignores them:
+
+```yaml
+    #mem_limit: 512m
+    #pids_limit: 200
+    #cpus: "1.0"
+```
+
+On a regular server you don't need these. On a **Raspberry Pi 4/5** or any small box where
+several containers share a little RAM, they keep one runaway container from taking the whole
+machine down. **`mem_limit` and `pids_limit` are a ceiling, not a throttle** — the bot takes
+what it needs below them and never notices they're there; they only act when something breaks
+loose. **`cpus` is different: it really does throttle.** Leave it off unless you want to hold
+the bot back on purpose.
+
+**1 — See what the bot actually uses.** On the host:
+```bash
+docker stats --no-stream <container-name>
+```
+Look at the `MEM USAGE` column. Phobos normally sits well under 300 MB.
+
+**2 — Pick a memory ceiling comfortably above that.** Roughly double the usage, and at least
+256–512 MB. Too low and Docker kills the bot (see step 6); generous is fine — the ceiling
+only matters when something runs away.
+
+**3 — Edit `docker-compose.yml`.** Remove the `#` in front of the lines you want and set the
+values. For a Pi, memory and process count are the useful two:
+```yaml
+    mem_limit: 512m
+    pids_limit: 200
+```
+Add `cpus: "1.0"` (at most one core) only if you deliberately want to cap CPU.
+
+**4 — Apply it.** In the folder with `docker-compose.yml`:
+```bash
+docker compose up -d
+```
+This **re-creates** the container. A plain restart does **not** apply new limits — Docker
+only reads them when a container is created.
+
+**5 — Check it took.**
+```bash
+docker inspect <container-name> --format 'mem={{.HostConfig.Memory}} pids={{.HostConfig.PidsLimit}}'
+```
+`mem` is the limit in bytes (`536870912` for 512 MB), `pids` the process cap. Both non-zero
+means it's active.
+
+**6 — If the bot keeps restarting, the limit is too low.** `docker ps` showing constant
+restarts, or an exit code `137`, means Docker ran it out of memory (OOM-killed). Raise
+`mem_limit` and run `docker compose up -d` again.
+
+**To remove the limits:** put the `#` back and run `docker compose up -d` once more.
 
 ### Without Compose
 
@@ -423,8 +480,6 @@ so the address has to sit in a public `VRCUrl` field — one per world, with the
 ---
 
 ## Plugins
-
-*Available from 1.19.39 (beta).*
 
 A plugin is a **package of settings**, not a program. One JSON file describes what should be
 created — commands, a ticket panel with its categories, level rewards, auto-mod word lists —
@@ -967,7 +1022,7 @@ The dashboard is available on port `8080`.
 
 > **Raspberry Pi:** Supported on **Pi 3, 4 and 5**, running Raspberry Pi OS in either 64-bit (`aarch64`) or 32-bit (`armv7`) — same `docker compose up -d --build` command. A couple of Python dependencies (`psutil`, and `bcrypt`/`Pillow` on 32-bit) have no prebuilt wheel for ARM and get compiled from source during the build — the first build takes noticeably longer than on a regular PC/server (several minutes, more on an older Pi), later builds are unaffected since the image layer gets cached. **Pi Zero / Pi 1** (`armv6`) are not guaranteed — the Python base image this project builds on doesn't publish a dedicated armv6 build, and such old hardware would likely struggle with the bot's workload regardless.
 >
-> On a small machine like this, consider the two commented-out lines in `docker-compose.yml` (`mem_limit` / `pids_limit`): they cap a runaway container so one bad instance can't take the whole Pi down with it. They are off by default and don't slow normal operation — see the comment above them.
+> On a small machine like this, consider the two commented-out lines in `docker-compose.yml` (`mem_limit` / `pids_limit`): they cap a runaway container so one bad instance can't take the whole Pi down with it. They are off by default and don't slow normal operation — see **[Resource limits](#resource-limits-for-small-machines--step-by-step)** for the step-by-step.
 
 ### Android (Termux) — no Docker required
 
@@ -1223,6 +1278,7 @@ Ein selbst-hostbarer Discord-Bot mit vollständigem Web-Dashboard. Open Source, 
   - [Bot-Funktionen](#bot-funktionen)
 - [Multi-Bot](#multi-bot-1)
 - [Docker Compose](#docker-compose-1)
+- [Ressourcengrenzen](#ressourcengrenzen-für-kleine-maschinen--schritt-für-schritt)
 - [Leveling / XP](#leveling--xp-1)
 - [Willkommenskarte](#willkommenskarte)
 - [Temporäre Voice-Kanäle](#temporäre-voice-kanäle)
@@ -1373,6 +1429,62 @@ Das Dashboard liegt unter `http://<server>:8080`. Erste Anmeldung mit `admin` / 
 > **Der `logging`-Block ist in der Praxis nicht freiwillig.** Ohne ihn schreibt Docker die Ausgabe des Bots in eine Datei, die nie kleiner wird. Am 02.11.2026 war eine davon auf 21 GB angewachsen und die Platte des Servers voll — der Bot lief dabei die ganze Zeit normal weiter, es fiel erst auf, als nichts mehr gespeichert werden konnte. 20 MB × 5 Dateien sind höchstens 100 MB je Container.
 >
 > Docker übernimmt das beim **Anlegen** des Containers. Wer es einer bestehenden Installation hinzufügt, braucht `docker compose up -d`, kein Neustart. Wer nach **Zeit** statt nach Größe begrenzen will, nimmt `tools/logrotate-phobos.conf` — Docker selbst kennt nur Größe und Anzahl.
+
+### Ressourcengrenzen (für kleine Maschinen) — Schritt für Schritt
+
+In der `docker-compose.yml` stehen drei Zeilen, die **standardmäßig auskommentiert** sind —
+eine normale Installation ignoriert sie:
+
+```yaml
+    #mem_limit: 512m
+    #pids_limit: 200
+    #cpus: "1.0"
+```
+
+Auf einem gewöhnlichen Server braucht man sie nicht. Auf einem **Raspberry Pi 4/5** oder
+jeder kleinen Maschine, auf der sich mehrere Container wenig RAM teilen, verhindern sie, dass
+ein ausgebrochener Container die ganze Maschine mitnimmt. **`mem_limit` und `pids_limit` sind
+ein Dach, keine Drossel** — der Bot nimmt sich darunter, was er braucht, und merkt die
+Grenzen nie; sie greifen nur, wenn etwas ausbricht. **`cpus` ist anders: das drosselt
+wirklich.** Nur setzen, wenn du den Bot bewusst zügeln willst.
+
+**1 — Nachsehen, was der Bot wirklich zieht.** Auf dem Wirt:
+```bash
+docker stats --no-stream <container-name>
+```
+Die Spalte `MEM USAGE` zeigt es. Phobos liegt normal deutlich unter 300 MB.
+
+**2 — Ein Speicher-Dach deutlich darüber wählen.** Grob das Doppelte des Verbrauchs,
+mindestens 256–512 MB. Zu niedrig, und Docker schießt den Bot ab (siehe Schritt 6);
+großzügig ist unproblematisch — das Dach zählt nur, wenn etwas ausbricht.
+
+**3 — `docker-compose.yml` bearbeiten.** Das `#` vor den gewünschten Zeilen entfernen und die
+Werte setzen. Für einen Pi sind Speicher und Prozesszahl die zwei nützlichen:
+```yaml
+    mem_limit: 512m
+    pids_limit: 200
+```
+`cpus: "1.0"` (höchstens ein Kern) nur ergänzen, wenn du die CPU bewusst deckeln willst.
+
+**4 — Anwenden.** Im Ordner mit der `docker-compose.yml`:
+```bash
+docker compose up -d
+```
+Das **erstellt den Container neu**. Ein bloßer Neustart übernimmt neue Grenzen **nicht** —
+Docker liest sie nur beim Anlegen.
+
+**5 — Prüfen, dass es gegriffen hat.**
+```bash
+docker inspect <container-name> --format 'mem={{.HostConfig.Memory}} pids={{.HostConfig.PidsLimit}}'
+```
+`mem` ist die Grenze in Bytes (`536870912` für 512 MB), `pids` die Prozessgrenze. Beide
+ungleich null heißt: aktiv.
+
+**6 — Startet der Bot ständig neu, ist die Grenze zu niedrig.** Dauernde Neustarts in
+`docker ps` oder ein Exit-Code `137` heißen: Docker hat ihm den Speicher ausgehen lassen
+(OOM). `mem_limit` erhöhen und noch einmal `docker compose up -d`.
+
+**Grenzen wieder entfernen:** das `#` zurücksetzen und erneut `docker compose up -d`.
 
 ### Ohne Compose
 
@@ -1594,8 +1706,6 @@ liest jeder, der davorsteht. Deshalb steht in jeder Antwort, welches Feld dahint
 ---
 
 ## Plugins
-
-*Ab 1.19.39 (beta).*
 
 Ein Plugin ist ein **Paket aus Einstellungen**, kein Programm. Eine JSON-Datei beschreibt,
 was angelegt werden soll — Befehle, ein Ticket-Panel mit seinen Kategorien,
@@ -2147,7 +2257,7 @@ Dashboard ist auf Port `8080` erreichbar.
 
 > **Raspberry Pi:** Unterstützt auf **Pi 3, 4 und 5**, mit Raspberry Pi OS in 64-bit (`aarch64`) oder 32-bit (`armv7`) — gleicher Befehl `docker compose up -d --build`. Ein paar Python-Abhängigkeiten (`psutil`, sowie auf 32-bit zusätzlich `bcrypt`/`Pillow`) haben kein fertiges Wheel für ARM und werden beim Bauen aus dem Quellcode kompiliert — der erste Build dauert dadurch spürbar länger als auf einem normalen PC/Server (mehrere Minuten, auf älteren Pi-Modellen mehr), spätere Builds sind davon nicht betroffen da die Image-Schicht gecacht wird. **Pi Zero / Pi 1** (`armv6`) sind nicht garantiert — das Python-Basis-Image dieses Projekts hat kein eigenes armv6-Build, und so alte Hardware wäre mit der Bot-Last vermutlich ohnehin überfordert.
 >
-> Auf so einer kleinen Maschine lohnen sich die zwei auskommentierten Zeilen in der `docker-compose.yml` (`mem_limit` / `pids_limit`): sie decken einen ausgebrochenen Container ab, damit eine kaputte Instanz nicht den ganzen Pi mitreißt. Standardmäßig aus, bremsen den Normalbetrieb nicht — siehe den Kommentar darüber.
+> Auf so einer kleinen Maschine lohnen sich die zwei auskommentierten Zeilen in der `docker-compose.yml` (`mem_limit` / `pids_limit`): sie decken einen ausgebrochenen Container ab, damit eine kaputte Instanz nicht den ganzen Pi mitreißt. Standardmäßig aus, bremsen den Normalbetrieb nicht — die Schrittanleitung steht unter **[Ressourcengrenzen](#ressourcengrenzen-für-kleine-maschinen--schritt-für-schritt)**.
 
 ### Android (Termux) — ohne Docker
 
