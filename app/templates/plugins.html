@@ -48,6 +48,11 @@
   <div class="card" style="max-width:760px;"><p class="hint" style="margin:0;">{{ tr.plug_none }}</p></div>
 {% endif %}
 
+{# Einmal erklärt, nicht bei jeder Karte: wo man ein Plugin je Server an-/abschaltet. #}
+{% if plugins %}
+<p class="hint" style="max-width:760px;margin:0 0 0.8rem;">{{ tr.plug_toggle_hint }}</p>
+{% endif %}
+
 {% for p in plugins %}
 <div class="card" style="max-width:760px;">
   <div style="display:flex;align-items:flex-start;gap:0.75rem;flex-wrap:wrap;">
@@ -60,7 +65,11 @@
         <code>{{ p.kennung }}</code>{% if p.autor %} · {{ tr.plug_author }} {{ p.autor }}{% endif %}
       </div>
       {% if p.beschreibung %}
-      <p style="margin:0.6rem 0 0;font-size:0.82rem;line-height:1.6;">{{ p.beschreibung }}</p>
+      {# Auf zwei Zeilen begrenzt: die Beschreibung ist nur eine kurze Info, egal wie lang
+         ein Autor schreibt. Das Ausführliche gehört zum Plugin am Server. #}
+      <p style="margin:0.5rem 0 0;font-size:0.8rem;line-height:1.5;color:var(--muted);
+                display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+                overflow:hidden;">{{ p.beschreibung }}</p>
       {% endif %}
     </div>
     <div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
@@ -88,26 +97,20 @@
   </div>
   {% endif %}
 
-  {% if p.quelle or p.homepage %}
-  <p class="hint" style="margin:0.7rem 0 0;font-size:0.72rem;word-break:break-all;">
-    {% if p.homepage %}<a href="{{ p.homepage }}" target="_blank" rel="noopener noreferrer">{{ tr.plug_homepage }}</a> · {% endif %}
-    {% if p.quelle %}{{ tr.plug_source }}: <code>{{ p.quelle }}</code>{% endif %}
-    {% if p.geprueft %} · {{ tr.plug_checked }}: {{ p.geprueft[:16]|replace('T', ' ') }}{% endif %}
-  </p>
-  {% endif %}
-
-  {# Hinzufuegen und Einstellen passiert von hier aus: ein Server waehlen, dann steht
-     drueben auf dem Server das Formular. Schon laufende Server fuehren direkt zu ihren
-     Einstellungen. Ein reines Menue, das beim Auswaehlen navigiert - kein POST noetig. #}
+  {# Rollen-/Kanal-Plugins brauchen die Server-Wahl - die bleibt an der Karte. Text-Plugins
+     werden je Server gehakt (Config → Angezeigte Funktionen); dafür steht EIN Hinweis oben
+     über der Liste, nicht bei jeder Karte. #}
+  {% if p.braucht_wahl %}
   <div style="margin-top:0.9rem;padding-top:0.8rem;border-top:1px solid var(--border);">
     {% if p.laeuft_auf %}
-    <div style="font-size:0.78rem;margin-bottom:0.5rem;">{{ tr.plug_runs_on }}
+    <div style="font-size:0.78rem;margin-bottom:0.6rem;">{{ tr.plug_runs_on }}
       {% for s in p.laeuft_auf %}<a href="/servers/{{ s.id }}?tab=plugins&p={{ p.id }}"
          style="display:inline-block;background:var(--bg);border:1px solid var(--border);
                 border-radius:999px;padding:0.1rem 0.6rem;margin:0.1rem 0.15rem;font-size:0.75rem;">
          {{ p.icon }} {{ s.name }}</a>{% endfor %}
     </div>
     {% endif %}
+    <p class="hint" style="margin:0 0 0.4rem;">{{ tr.plug_needs_per_server }}</p>
     <label style="font-size:0.8rem;">{{ tr.plug_add_to_server }}</label>
     <select onchange="if(this.value){location.href=this.value;}" style="max-width:320px;margin-top:0.3rem;">
       <option value="">— {{ tr.plug_pick_server }} —</option>
@@ -116,8 +119,9 @@
       {% endfor %}
     </select>
   </div>
+  {% endif %}
 
-  <div style="margin-top:0.9rem;display:flex;gap:0.4rem;flex-wrap:wrap;">
+  <div style="margin-top:0.9rem;display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">
     {% for t in p.teile %}
     <span style="background:var(--bg);border:1px solid var(--border);border-radius:999px;
                  padding:0.15rem 0.6rem;font-size:0.72rem;">

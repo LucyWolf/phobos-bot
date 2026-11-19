@@ -14,6 +14,118 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.57 — `beta` — 19.11.2026
+
+**Plugin-Karte unter Einstellungen → Plugins kompakt gemacht**
+- Gemeldet: die Karte ist überladen, die Info soll kurz sein — die Details sieht und
+  schreibt man am Server. Umgesetzt:
+- Die **Beschreibung** ist auf zwei Zeilen begrenzt, egal wie lang ein Autor schreibt.
+- Die **lange Bezugs-URL** ist von der Karte weg (der „Nach Update suchen"-Knopf braucht
+  sie intern weiter, zeigt sie aber nicht mehr an).
+- Der **Hinweis „An/aus je Server …"** stand bei jeder Karte — jetzt nur noch **einmal
+  oben** über der Liste.
+- Geblieben: Icon, Name, Version, die Knöpfe, und die kompakten Badges (was das Plugin
+  anlegt, wie viele Einstellungen, auf wie vielen Servern).
+
+Bei Rollen-/Kanal-Plugins bleibt die Server-Wahl an der Karte, weil sie dort gebraucht wird.
+
+---
+
+## 1.19.56 — `beta` — 19.11.2026
+
+**Plugin-Einstellungen gehören zum Server, nicht zentral**
+- Unter Einstellungen → Plugins steht jetzt nur noch das Plugin selbst: hochladen,
+  exportieren, löschen, nach Update suchen. Das Werte-Formular (z. B. „Was soll der Befehl
+  antworten?") ist dort **weg** — gewünscht: „dabei sollte nur das plugin sein, einstelungen
+  immer noch intern im den jeweiligen server".
+- Die Werte setzt man jetzt **beim jeweiligen Server**: Plugin in der Leiste anklicken, dort
+  das Feld ausfüllen. Jeder Server hat seine eigenen — so wie es sein soll.
+- Angehakt wird weiterhin je Server in den Angezeigten Funktionen; beim Anhaken greifen die
+  Standardwerte, anpassen tut man sie dann am Server.
+- Die zentrale Werte-Route von 1.19.54 ist damit wieder raus.
+
+**Kleiner Aufräumer von 1.19.55 mit dabei**
+Die „Läuft auf"-Server-Pillen stehen nur noch bei Rollen-/Kanal-Plugins (wo sie zur
+Server-Konfiguration führen), nicht beim Text-Plugin.
+
+**Geprüft:** die 13 + 114 + 12 Plugin-Prüfungen bleiben grün.
+
+**Nicht geprüft:** das Aussehen im Browser.
+
+---
+
+## 1.19.55 — `beta` — 19.11.2026
+
+**Plugin-Seite: die „Läuft auf"-Serverliste beim Text-Plugin entfernt**
+Seit ein Text-Plugin je Server in den „Angezeigten Funktionen" an- und abgehakt wird, waren
+die Server-Pillen unter Einstellungen → Plugins doppelt — wie viele Server es sind, steht
+ohnehin im Hinweis darunter. Die Pillen bleiben nur noch bei Rollen-/Kanal-Plugins, wo sie
+der Weg zur Konfiguration je Server sind.
+
+---
+
+## 1.19.54 — `beta` — 19.11.2026
+
+**Plugins werden jetzt wie eine Funktion je Server an- und abgehakt**
+- Gewünscht: ein eingespieltes Plugin soll auf allen Servern verfügbar sein und dann
+  **in den „Angezeigten Funktionen" je Server** aktiviert oder deaktiviert werden —
+  genau wie Willkommen, Tickets und die anderen. Kein „Server wählen", kein „alle
+  Server"-Knopf mehr.
+- Jedes eingespielte Plugin (ohne Rollen-/Kanal-Feld) steht nun im Funktions-Kasten des
+  Config-Reiters als eigener Haken, mit Icon und Namen. **Haken dran** = auf diesem Server
+  angelegt und in der Leiste; **Haken weg** = wieder entfernt.
+- Die Werte (z. B. die Antwort deines Test-Plugins) setzt man **einmal zentral** unter
+  Einstellungen → Plugins. Sie gelten dann auf jedem Server gleich. Ändert man sie, werden
+  alle Server, auf denen das Plugin aktiv ist, gleich mit aufgefrischt.
+
+**Der „Auf allen Servern anlegen"-Knopf ist weg**
+Braucht man nicht mehr — das An/Aus je Server macht das sauberer. Unter Einstellungen →
+Plugins steht bei einem Text-Plugin jetzt nur noch das Werte-Formular mit „Speichern" und
+der Hinweis, dass das Ein- und Ausschalten im Config-Reiter sitzt.
+
+**Rollen-/Kanal-Plugins bleiben außen vor**
+Ein Plugin, das eine Rolle oder einen Kanal abfragt, taucht **nicht** in den Haken auf —
+seine Werte sind pro Server verschieden, das ließe sich nicht mit einem Haken für alle
+setzen. Solche Plugins behalten die Auswahl je Server (Menü unter Einstellungen → Plugins).
+
+**Und der tote Eintrag von vorhin**
+Das generische „🧩 Plugins" ist aus den Angezeigten Funktionen raus (steuerte nichts mehr).
+
+**Geprüft:** 13 neue Prüfungen am Haken-Modell (nur Text-Plugins erscheinen, Anhaken legt
+mit den zentralen Werten an, Abhaken entfernt, ein anderer Server bleibt unberührt, der
+Standard greift ohne gesetzte Werte) plus die 114 + 12 + 8 bestehenden Plugin-Prüfungen.
+
+**Nicht geprüft:** das Aussehen im Browser.
+
+---
+
+## 1.19.53 — `beta` — 19.11.2026
+
+**Plugins: „Auf allen Servern anlegen" statt Server-für-Server, und ein toter Eintrag weg**
+- Gemeldet: in den „Angezeigten Funktionen" stand noch ein Kästchen „🧩 Plugins". Seit die
+  Plugins einzeln mit Namen und Icon in der Leiste stehen, gibt es keinen Sammel-Reiter mehr
+  zum Aus- oder Einblenden — das Kästchen steuerte nichts. Raus damit. Die
+  Moderator-Rechtesteuerung („darf dieser Mod Plugins sehen?") bleibt.
+- Gewünscht: ein Plugin soll gleich auf allen Servern gelten, ohne „Server wählen". Umgesetzt
+  für Plugins **ohne serverspezifische Felder**: unter Einstellungen → Plugins stehen die
+  Einstellungen direkt da, dazu ein Knopf **„Auf allen Servern anlegen"**. Ein Klick, überall
+  angelegt.
+
+**Warum nicht für jedes Plugin**
+Ein Plugin, das eine **Rolle, einen Kanal oder eine Kategorie** abfragt, kann nicht auf allen
+Servern denselben Wert haben — welche Rolle auf Server B gemeint ist, weiß nur dieser Server.
+Solche Plugins behalten die Auswahl je Server; der „alle Server"-Weg lehnt sie mit einem
+klaren Satz ab, statt leere Nummern anzulegen. Die Seite zeigt automatisch den richtigen
+Weg: Textfeld-Plugins den Knopf, Rollen-Plugins das Menü.
+
+**Geprüft:** 114 Plugin-Prüfungen (vorher 109). Neu: dass Textfelder und „keine Einstellung"
+keine Server-Wahl brauchen, Rolle/Kanal/Kategorie dagegen schon. Die Leisten-Prüfungen und
+die Kern-Kette bleiben grün.
+
+**Nicht geprüft:** das Aussehen im Browser.
+
+---
+
 ## 1.19.52 — `beta` — 19.11.2026
 
 **Ressourcengrenzen: CPU dazu, und eine Schritt-für-Schritt-Anleitung**

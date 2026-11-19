@@ -821,7 +821,7 @@ async def entfernen(plugin_guild_id: int) -> int:
 async def plugin_liste() -> list:
     zeilen = await db_rows(
         "SELECT id, kennung, name, version, autor, beschreibung, quelle, homepage, "
-        "geprueft, neue_version, angelegt, geaendert "
+        "geprueft, neue_version, werte, angelegt, geaendert "
         "FROM plugins ORDER BY name COLLATE NOCASE")
     for z in zeilen:
         z["server"] = (await db_one(
@@ -892,6 +892,23 @@ async def angelegte_eintraege(plugin_guild_id: int, lang: str = "de") -> dict:
         "gruppen": [{"titel": k, "namen": v} for k, v in gruppen.items()],
         "fehlend": fehlend,
     }
+
+
+#: Einstellungsarten, deren Wert von Server zu Server verschieden ist. Ein Plugin, das so
+#: eine Art nutzt, lässt sich nicht "auf allen Servern" mit einem Wert anlegen - welche
+#: Rolle auf Server B gemeint ist, weiß nur dieser Server.
+SERVER_ARTEN = ("rolle", "kanal", "kategorie")
+
+
+def braucht_server_wahl(paket: dict) -> bool:
+    """Hat dieses Plugin eine Einstellung, die pro Server verschieden ist?
+
+    Gewünscht am 19.11.2026: ein eingespieltes Plugin soll möglichst auf allen Servern auf
+    einmal gelten, statt je Server ausgewählt zu werden. Das geht - aber nur, solange es
+    keine Rolle, keinen Kanal und keine Kategorie abfragt. Sobald es das tut, muss die
+    Auswahl pro Server bleiben; alles andere legte eine leere oder falsche Nummer an.
+    """
+    return any(e.get("art") in SERVER_ARTEN for e in paket.get("einstellungen", []))
 
 
 def zusammenfassung(paket: dict, lang: str = "de") -> list:

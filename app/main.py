@@ -10605,6 +10605,32 @@ async def _plugin_nav(guild_id) -> list:
     return aus
 
 
+async def _plugin_features(guild_id) -> list:
+    """Die Plugins, die bei den „Angezeigten Funktionen" je Server an/aus gehen.
+
+    Gewuenscht am 19.11.2026: ein eingespieltes Plugin wird je Server nur noch angehakt oder
+    abgehakt, wie jede andere Funktion. Nur Plugins OHNE serverspezifische Felder stehen hier
+    - eins, das eine Rolle oder einen Kanal braucht, kann man nicht mit einem Haken ueberall
+    gleich anlegen und bleibt beim Anlegen je Server.
+    """
+    gid = str(guild_id)
+    aktiv = {str(z["plugin_id"]) for z in await db_rows(
+        "SELECT plugin_id FROM plugin_guilds WHERE guild_id=?", (gid,))}
+    aus = []
+    for z in await db_rows(
+            "SELECT id, name, inhalt FROM plugins ORDER BY name COLLATE NOCASE"):
+        try:
+            paket = _djson.loads(z["inhalt"]) or {}
+        except Exception:
+            continue
+        if plugin_mod.braucht_server_wahl(paket):
+            continue
+        aus.append({"id": z["id"], "name": z["name"],
+                    "icon": paket.get("icon") or plugin_mod.STANDARD_ICON,
+                    "aktiv": str(z["id"]) in aktiv})
+    return aus
+
+
 async def _plugins_fuer_server(guild_id, lang: str = "de") -> list:
     """Alle Plugins dieser Installation, je Server um den Stand davor ergaenzt.
 
@@ -10675,6 +10701,17 @@ async def plugins_page(request: Request, success: str = "", error: str = ""):
         p["icon"] = paket.get("icon") or plugin_mod.STANDARD_ICON
         p["teile"] = plugin_mod.zusammenfassung(paket, lang)
         p["einstellungen"] = paket.get("einstellungen", [])
+        # Braucht das Plugin pro Server eine Rolle/Kanal-Auswahl, oder lässt es sich in
+        # einem Zug auf allen anlegen? Entscheidet, welche Oberfläche die Seite zeigt.
+        p["braucht_wahl"] = plugin_mod.braucht_server_wahl(paket)
+        # Die zentral gesetzten Werte, damit das Formular sie vorausgefüllt zeigt.
+        try:
+            p["werte"] = _djson.loads(p.get("werte") or "{}") or {}
+        except Exception:
+            p["werte"] = {}
+        # Auf wie vielen Servern das Plugin aktiv ist - für die Anzeige „läuft auf N".
+        p["aktiv_zahl"] = (await db_one(
+            "SELECT COUNT(*) AS n FROM plugin_guilds WHERE plugin_id=?", (p["id"],)))["n"]
         # Auf welchen Servern dieses Plugin schon laeuft - mit Namen, damit die Seite es
         # zeigen kann, ohne dass jemand Server-Kennungen lesen muss.
         p["laeuft_auf"] = [
@@ -11604,9 +11641,10 @@ _TOGGLEABLE_FEATURES = {
     "warnings": "⚠️ Warnungen", "tempvoice": "🔊 Temp-Voice", "scheduled": "📅 Geplant",
     "events": "🗓️ Events", "birthday": "🎂 Geburtstage", "autodelete": "🗑️ Auto-Delete",
     "autothread": "🧵 Auto-Thread", "vrclink": "🔗 VRC-Link", "profile": "🪪 Profile",
-    # Plugins stehen in dieser Liste, damit ein Server, der keine benutzt, den Reiter
-    # ausblenden kann - wie jede andere Funktion auch.
-    "plugins": "🧩 Plugins",
+    # Plugins stehen BEWUSST NICHT mehr hier: seit sie als eigene Eintraege mit Namen und
+    # Icon in der Leiste stehen (je angelegtem Plugin einer), gibt es keinen generischen
+    # "Plugins"-Reiter mehr, den man ein- oder ausblenden koennte. Ein Eintrag in dieser
+    # Liste hiess nur eine tote Kaestchen-Zeile unter "Angezeigte Funktionen".
     "amp": "🎮 Gameserver", "notifications": "🟣 Streaming", "freestuff": "🎁 Free Stuff",
     "log": "📋 Log", "autokick": "🚪 Auto-Kick", "embeds": "📨 Embed-Nachrichten",
     "rolerules": "🔗 CrossVerification", "polls": "🗳️ Umfragen", "ratings": "⭐ Bewertungen",
@@ -11621,7 +11659,12 @@ _TOGGLEABLE_FEATURES = {
 # "botdesign" stay out of this superset too: their content is likewise already fully admin-gated
 # (a restricted moderator visiting either just sees an empty/admin-only state), so hiding their
 # links wouldn't add anything a determined narrowing-down admin actually needs.
-_MODERATOR_RESTRICTABLE_TABS = {**_TOGGLEABLE_FEATURES, "config": "⚙️ Config"}
+# "plugins" hier ausdruecklich wieder dazu: aus den server-weiten "Angezeigten Funktionen"
+# ist es raus (es gibt keinen Reiter zum Ausblenden), aber ein Admin soll einem Moderator
+# die Plugin-Eintraege in der Leiste weiterhin geben oder nehmen koennen - die Subnav prueft
+# genau das.
+_MODERATOR_RESTRICTABLE_TABS = {**_TOGGLEABLE_FEATURES, "config": "⚙️ Config",
+                                "plugins": "🧩 Plugins"}
 
 
 def _restriction_fallback_url(guild_id, user_allowed_tabs: Optional[set]) -> str:
@@ -12367,6 +12410,9 @@ async def server_config(
         "amp_raw_debug": amp_raw_debug,
         "welcome_overlay_presets": _WELCOME_OVERLAY_PRESETS,
         "toggleable_features": _TOGGLEABLE_FEATURES,
+        # Eingespielte Plugins ohne serverspezifische Felder - stehen bei den „Angezeigten
+        # Funktionen" als eigene Haken, die das Plugin auf diesem Server an-/abschalten.
+        "plugin_features": await _plugin_features(guild_id),
         "moderator_restrictable_tabs": _MODERATOR_RESTRICTABLE_TABS,
         "enabled_features": await _get_enabled_features(guild_id),
         "user_allowed_tabs": user_allowed_tabs,
@@ -12487,7 +12533,53 @@ async def server_features_save(request: Request, guild_id: int):
     # tabs) - _get_enabled_features() only falls back to "show everything" when the key was
     # NEVER saved at all, not when it was explicitly saved empty.
     await set_guild_config(guild_id, "enabled_features", ",".join(sorted(selected)))
+
+    # Die Plugin-Haken in derselben Maske: angehakt = auf diesem Server angelegt, abgehakt =
+    # entfernt. Nur die text-fähigen Plugins kommen überhaupt in die Liste (serverspezifische
+    # bleiben beim Anlegen je Server) - gegen genau die wird geprüft, damit ein mitgeschickter
+    # fremder Haken nichts bewirkt.
+    moeglich = {str(p["id"]): p for p in await _plugin_features(guild_id)}
+    gewuenscht = {pid for pid in form.getlist("plugin_an") if pid in moeglich}
+    angelegt = await _plugin_angelegt_ids(guild_id)
+    for pid, pf in moeglich.items():
+        war = pid in angelegt
+        soll = pid in gewuenscht
+        if soll and not war:
+            try:
+                await _plugin_zentral_anlegen(guild_id, int(pid))
+            except Exception as e:
+                print(f"[plugins] Haken-Anlegen {pid} auf {guild_id}: {e}")
+        elif war and not soll:
+            await _plugin_vom_server(guild_id, int(pid))
     return RedirectResponse(f"/servers/{guild_id}?tab=config&success=Gespeichert", status_code=302)
+
+
+async def _plugin_angelegt_ids(guild_id) -> set:
+    return {str(z["plugin_id"]) for z in await db_rows(
+        "SELECT plugin_id FROM plugin_guilds WHERE guild_id=?", (str(guild_id),))}
+
+
+async def _plugin_zentral_anlegen(guild_id, plugin_id: int) -> None:
+    """Ein Plugin mit seinen zentral gesetzten Werten auf einem Server anlegen.
+
+    Die Werte stehen in plugins.werte (einmal gesetzt, gelten für alle Server). Fehlt dort
+    etwas, springt der in den Einstellungen hinterlegte Standard ein - deshalb geht das
+    Anlegen auch, bevor jemand die Werte das erste Mal angefasst hat.
+    """
+    zeile = await db_one("SELECT werte FROM plugins WHERE id=?", (plugin_id,))
+    try:
+        werte_roh = _djson.loads((zeile or {}).get("werte") or "{}")
+    except Exception:
+        werte_roh = {}
+    await _plugin_anwenden(int(guild_id), plugin_id, werte_roh)
+
+
+async def _plugin_vom_server(guild_id, plugin_id: int) -> None:
+    zeile = await db_one("SELECT id FROM plugin_guilds WHERE plugin_id=? AND guild_id=?",
+                         (plugin_id, str(guild_id)))
+    if zeile:
+        await plugin_mod.entfernen(zeile["id"])
+        await db_exec("DELETE FROM plugin_guilds WHERE id=?", (zeile["id"],))
 
 
 @web.post("/servers/{guild_id}")

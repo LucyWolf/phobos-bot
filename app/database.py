@@ -1463,6 +1463,12 @@ async def init_db():
             # Dieselbe eigene Reihenfolge wie bei den Embed-Nachrichten, jetzt auch fuer
             # die Ticket-Panels - gewuenscht zusammen mit dem Markieren.
             "ALTER TABLE ticket_panels ADD COLUMN sortierung INTEGER NOT NULL DEFAULT 0",
+            # Zentrale Werte eines Plugins, gesetzt unter Einstellungen → Plugins. Gewuenscht
+            # am 19.11.2026: ein Plugin wird je Server nur noch an- oder abgehakt (in den
+            # "Angezeigten Funktionen"), die Werte setzt man einmal zentral statt pro Server.
+            # Gilt nur fuer Plugins ohne serverspezifische Felder (Rolle/Kanal) - die
+            # brauchen weiter eine Auswahl je Server und laufen nicht ueber diese Spalte.
+            "ALTER TABLE plugins ADD COLUMN werte TEXT NOT NULL DEFAULT '{}'",
             # Wann der Verknuepfungslink zum ersten Mal geoeffnet wurde. Leer heisst: noch
             # nie. Gewuenscht am 18.11.2026 nach einer Meldung von aussen - "der link zum
             # registrieren solte nur einmal benutzt werden dann wieder schliessen".

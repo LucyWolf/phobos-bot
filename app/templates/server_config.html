@@ -87,6 +87,15 @@
         {{ tr.get('tab_' ~ key, label) }}
       </label>
       {% endfor %}
+      {# Eingespielte Plugins (ohne Rollen/Kanal-Feld) stehen hier als eigene Haken. Ein
+         Haken legt das Plugin auf diesem Server an, ein Wegnehmen entfernt es wieder - mit
+         eigenem Feldnamen, damit die Server-Funktionen oben davon unberührt bleiben. #}
+      {% for pf in plugin_features %}
+      <label style="display:flex;align-items:center;gap:0.5rem;font-weight:400;margin-bottom:0;">
+        <input type="checkbox" name="plugin_an" value="{{ pf.id }}" style="width:auto;margin:0;" {% if pf.aktiv %}checked{% endif %}>
+        {{ pf.icon }} {{ pf.name }}
+      </label>
+      {% endfor %}
     </div>
     <button type="submit" class="btn btn-primary">{{ tr.btn_save }}</button>
   </form>
