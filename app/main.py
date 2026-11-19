@@ -4591,6 +4591,7 @@ async def bot_design_page(request: Request, guild_id: str = "", success: str = "
         "bot_online": bot_online, "guild_id": guild_id,
         "enabled_features": await _get_enabled_features(guild_id) if guild_id else None,
         "user_allowed_tabs": await _viewer_allowed_tabs(request, guild_id) if guild_id else None,
+        "plugin_nav": await _plugin_nav(guild_id) if guild_id else None,
     })
 
 
@@ -6046,6 +6047,7 @@ async def freestuff_page(request: Request, guild_id: str, success: str = "", err
         "success": success, "error": error,
         "enabled_features": await _get_enabled_features(guild_id),
         "user_allowed_tabs": user_allowed_tabs,
+        "plugin_nav": await _plugin_nav(guild_id),
     })
 
 
@@ -10203,6 +10205,7 @@ async def notifications_page(request: Request, guild_id: str, success: str = "",
         "success": success, "error": error,
         "enabled_features": await _get_enabled_features(guild_id),
         "user_allowed_tabs": user_allowed_tabs,
+        "plugin_nav": await _plugin_nav(guild_id),
     })
 
 
@@ -10578,6 +10581,30 @@ def _plugin_ok(ziel: str, text: str) -> RedirectResponse:
                             status_code=302)
 
 
+async def _plugin_nav(guild_id) -> list:
+    """Die auf DIESEM Server angelegten Plugins, wie sie in der Seitenleiste stehen.
+
+    Gewuenscht am 18.11.2026: kein generischer "🧩 Plugins"-Eintrag mehr, sondern jedes
+    angelegte Plugin mit seinem Icon und Namen - "wenn man bei plugins was rein laedt dann
+    sollte direkt der name mit icon stehen". Hinzugefuegt wird nur noch zentral unter
+    Einstellungen, also braucht die Leiste keinen Verwaltungseintrag.
+
+    Bewusst schlank gehalten (ein JOIN, nur das Noetige): dieselbe Abfrage laeuft auf jeder
+    Seite, die zu einem Server gehoert, nicht nur auf der Konfigurationsseite.
+    """
+    aus = []
+    for z in await db_rows(
+            "SELECT p.id, p.name, p.inhalt FROM plugin_guilds g "
+            "JOIN plugins p ON p.id=g.plugin_id WHERE g.guild_id=? "
+            "ORDER BY p.name COLLATE NOCASE", (str(guild_id),)):
+        try:
+            icon = (_djson.loads(z["inhalt"]) or {}).get("icon") or plugin_mod.STANDARD_ICON
+        except Exception:
+            icon = plugin_mod.STANDARD_ICON
+        aus.append({"id": z["id"], "name": z["name"], "icon": icon})
+    return aus
+
+
 async def _plugins_fuer_server(guild_id, lang: str = "de") -> list:
     """Alle Plugins dieser Installation, je Server um den Stand davor ergaenzt.
 
@@ -10639,13 +10666,25 @@ async def plugins_page(request: Request, success: str = "", error: str = ""):
     if r := admin_redirect(request): return r
     lang = request.session.get("lang", "de")
     liste = await plugin_mod.plugin_liste()
+    # Welche Server der Bot ueberhaupt bedient - fuer die "auf Server anlegen"-Auswahl. Nur
+    # die mit Zugriff; ein Moderator sieht hier dieselben Server wie ueberall.
+    server = await _guild_list(request)
+    namen = {str(g["id"]): g["name"] for g in server}
     for p in liste:
         paket = await plugin_mod.plugin_paket(p["id"]) or {}
+        p["icon"] = paket.get("icon") or plugin_mod.STANDARD_ICON
         p["teile"] = plugin_mod.zusammenfassung(paket, lang)
         p["einstellungen"] = paket.get("einstellungen", [])
+        # Auf welchen Servern dieses Plugin schon laeuft - mit Namen, damit die Seite es
+        # zeigen kann, ohne dass jemand Server-Kennungen lesen muss.
+        p["laeuft_auf"] = [
+            {"id": str(z["guild_id"]), "name": namen.get(str(z["guild_id"]), str(z["guild_id"]))}
+            for z in await db_rows(
+                "SELECT guild_id FROM plugin_guilds WHERE plugin_id=?", (p["id"],))
+            if str(z["guild_id"]) in namen]
     return templates.TemplateResponse("plugins.html", {
         **session(request), "request": request,
-        "guilds": await _guild_list(request), "token_set": await _token_configured(),
+        "guilds": server, "server_wahl": server, "token_set": await _token_configured(),
         "active": "plugins", "plugins": liste,
         "arten": sorted(plugin_mod.ARTEN),
         "format": plugin_mod.FORMAT,
@@ -10907,7 +10946,7 @@ def _werte_aus_formular(form) -> dict:
 async def server_plugin_anwenden(request: Request, guild_id: int, plugin_id: int):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
-    ziel = f"/servers/{guild_id}?tab=plugins"
+    ziel = f"/servers/{guild_id}?tab=plugins&p={plugin_id}"
     try:
         meldung = await _plugin_anwenden(guild_id, plugin_id,
                                          _werte_aus_formular(await request.form()))
@@ -10929,7 +10968,7 @@ async def server_plugin_daten(request: Request, guild_id: int, plugin_id: int):
     """
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
-    ziel = f"/servers/{guild_id}?tab=plugins"
+    ziel = f"/servers/{guild_id}?tab=plugins&p={plugin_id}"
     form = await request.form()
     zeile = await db_one("SELECT id FROM plugin_guilds WHERE plugin_id=? AND guild_id=?",
                          (plugin_id, str(guild_id)))
@@ -11077,7 +11116,7 @@ async def server_plugin_einstellungen_import(request: Request, guild_id: int, pl
                                              einstellungen_file: UploadFile = File(...)):
     if r := auth_redirect(request): return r
     if r := admin_redirect(request): return r
-    ziel = f"/servers/{guild_id}?tab=plugins"
+    ziel = f"/servers/{guild_id}?tab=plugins&p={plugin_id}"
     try:
         roh = await einstellungen_file.read()
         if len(roh) > plugin_mod.MAX_DATEI:
@@ -11398,6 +11437,7 @@ async def server_log_page(request: Request, guild_id: str, success: str = "", er
         "bot_event_categories": BOT_EVENT_CATEGORIES, "active_bot_events": active_bot_events,
         "enabled_features": await _get_enabled_features(guild_id),
         "user_allowed_tabs": user_allowed_tabs,
+        "plugin_nav": await _plugin_nav(guild_id),
     })
 
 
@@ -12330,6 +12370,7 @@ async def server_config(
         "moderator_restrictable_tabs": _MODERATOR_RESTRICTABLE_TABS,
         "enabled_features": await _get_enabled_features(guild_id),
         "user_allowed_tabs": user_allowed_tabs,
+        "plugin_nav": await _plugin_nav(guild_id),
         "scheduled_messages": _scheduled_messages,
         "birthdays": _birthdays,
         # The words that ACTUALLY take effect after parsing, not the raw string - shown back

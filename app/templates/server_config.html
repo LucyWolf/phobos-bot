@@ -35,7 +35,7 @@
 </style>
 
 {% from '_server_subnav.html' import server_subnav %}
-{{ server_subnav(guild.id, request.query_params.get('tab', 'config'), enabled_features, user_allowed_tabs, tr) }}
+{% set _ptab = request.query_params.get('tab', 'config') %}{% set _pid = request.query_params.get('p', '') %}{{ server_subnav(guild.id, ('plugin_' ~ _pid) if (_ptab == 'plugins' and _pid) else _ptab, enabled_features, user_allowed_tabs, tr, plugin_nav) }}
 
 {% if saved %}<div class="alert alert-success">✅ Einstellungen gespeichert.</div>{% endif %}
 {% if success %}<div class="alert alert-success">✅ {{ meldung(success, lang) }}</div>{% endif %}
@@ -3579,13 +3579,17 @@ document.addEventListener('click', function(e) {
    aus dem Paket kommen und bei jedem anders aussehen. #}
 <div class="tab-pane" id="pane-plugins">
 
-<p class="hint" style="margin-bottom:1.25rem;">{{ tr.plug_server_hint }}</p>
+{# Dieser Reiter zeigt immer GENAU EIN Plugin - das aus der Leiste angeklickte (?p=<id>).
+   Angelegt werden Plugins unter Einstellungen -> Plugins; von dort fuehrt "auf Server
+   anlegen" mit ?p=<id> hierher, dann steht unten das Anlege-Formular. #}
+{% set _sel = request.query_params.get('p', '') %}
+{% set _ausgewaehlt = (plugins_liste | selectattr('id', 'equalto', _sel|int) | list) if _sel else [] %}
 
-{% if not plugins_liste %}
-  <div class="card"><p class="hint" style="margin:0;">{{ tr.plug_server_none }}</p></div>
+{% if not _ausgewaehlt %}
+  <div class="card"><p class="hint" style="margin:0;">{{ tr.plug_pick_hint }}</p></div>
 {% endif %}
 
-{% for p in plugins_liste %}
+{% for p in _ausgewaehlt %}
 <div class="card">
   <div style="display:flex;align-items:flex-start;gap:0.75rem;flex-wrap:wrap;">
     <div style="flex:1;min-width:220px;">
