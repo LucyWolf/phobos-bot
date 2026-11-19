@@ -1,3 +1,7 @@
+# Diese Installation gehoert ins Home eines normalen Benutzers (z.B. /home/du/phobos-bot),
+# nicht nach /root. Der Container laeuft ohnehin als Benutzer 1000 (siehe weiter unten) - aber
+# die Dateien ins Konto des Administrators zu legen, macht man nicht. Schon unter /root? Den
+# ganzen Ordner in ein normales Benutzer-Home verschieben und dort "docker compose up -d".
 services:
   bot:
     build: ./app

@@ -1010,6 +1010,12 @@ cd phobos-bot
 docker compose up -d --build
 ```
 
+> **Install this as a normal user, not as root.** Run the `git clone` and `docker compose` from
+> an ordinary user's home (`/home/you/phobos-bot`), never from `/root`. The container drops to
+> user `1000` either way — but the installation itself has no business sitting in the
+> administrator's account. Already set it up under `/root`? Move the whole folder into a normal
+> user's home and run `docker compose up -d` there.
+
 The dashboard is available on port `8080`.
 
 > **Does this need to be reachable from the internet?** No. The bot itself only ever makes
@@ -2244,6 +2250,12 @@ git clone https://github.com/LucyWolf/phobos-bot.git
 cd phobos-bot
 docker compose up -d --build
 ```
+
+> **Als normaler Benutzer installieren, nicht als root.** Den `git clone` und `docker compose`
+> aus dem Home eines gewöhnlichen Benutzers ausführen (`/home/du/phobos-bot`), nie aus `/root`.
+> Der Container gibt die Rechte ohnehin an Benutzer `1000` ab — aber die Installation selbst hat
+> im Konto des Administrators nichts zu suchen. Schon unter `/root` eingerichtet? Den ganzen
+> Ordner ins Home eines normalen Benutzers verschieben und dort `docker compose up -d`.
 
 Dashboard ist auf Port `8080` erreichbar.
 
