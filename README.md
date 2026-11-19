@@ -481,8 +481,6 @@ so the address has to sit in a public `VRCUrl` field — one per world, with the
 
 ## Plugins
 
-*Available from 1.19.39 (beta).*
-
 A plugin is a **package of settings**, not a program. One JSON file describes what should be
 created — commands, a ticket panel with its categories, level rewards, auto-mod word lists —
 and the bot creates it. You can export it, hand it to someone else, and they can apply it to
@@ -1708,8 +1706,6 @@ liest jeder, der davorsteht. Deshalb steht in jeder Antwort, welches Feld dahint
 ---
 
 ## Plugins
-
-*Ab 1.19.39 (beta).*
 
 Ein Plugin ist ein **Paket aus Einstellungen**, kein Programm. Eine JSON-Datei beschreibt,
 was angelegt werden soll — Befehle, ein Ticket-Panel mit seinen Kategorien,
