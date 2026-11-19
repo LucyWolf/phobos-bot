@@ -14,6 +14,16 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.55 — `beta` — 19.11.2026
+
+**Plugin-Seite: die „Läuft auf"-Serverliste beim Text-Plugin entfernt**
+Seit ein Text-Plugin je Server in den „Angezeigten Funktionen" an- und abgehakt wird, waren
+die Server-Pillen unter Einstellungen → Plugins doppelt — wie viele Server es sind, steht
+ohnehin im Hinweis darunter. Die Pillen bleiben nur noch bei Rollen-/Kanal-Plugins, wo sie
+der Weg zur Konfiguration je Server sind.
+
+---
+
 ## 1.19.54 — `beta` — 19.11.2026
 
 **Plugins werden jetzt wie eine Funktion je Server an- und abgehakt**

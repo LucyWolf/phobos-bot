@@ -97,7 +97,11 @@
   {% endif %}
 
   <div style="margin-top:0.9rem;padding-top:0.8rem;border-top:1px solid var(--border);">
-    {% if p.laeuft_auf %}
+    {# Die „Läuft auf"-Pillen nur bei Rollen-/Kanal-Plugins: dort führen sie zur
+       Konfiguration je Server und sind der Weg zum Bearbeiten. Bei einem Text-Plugin wird
+       das An/Aus im Config-Reiter jedes Servers gehakt - dann sind die Pillen doppelt, und
+       die Zahl „läuft auf N" steht ohnehin im Hinweis unten. #}
+    {% if p.laeuft_auf and p.braucht_wahl %}
     <div style="font-size:0.78rem;margin-bottom:0.6rem;">{{ tr.plug_runs_on }}
       {% for s in p.laeuft_auf %}<a href="/servers/{{ s.id }}?tab=plugins&p={{ p.id }}"
          style="display:inline-block;background:var(--bg);border:1px solid var(--border);
