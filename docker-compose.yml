@@ -51,6 +51,11 @@ services:
     # -d"), nicht bei einem blossen Neustart.
     #mem_limit: 512m
     #pids_limit: 200
+    # CPU ist anders als RAM eine ECHTE Drossel, kein Dach gegen Ausreisser: "1.0" heisst
+    # hoechstens ein Kern. Auf einem Pi, wo der Bot sonst alle Kerne an sich reissen und
+    # andere Dienste ausbremsen koennte, sinnvoll - aber wer ihn hier zu knapp setzt, macht
+    # den Bot langsamer. Im Zweifel weglassen. Schrittanleitung in der README.
+    #cpus: "1.0"
     # Ohne diesen Block schreibt Docker die Ausgabe des Bots in eine Datei, die nie
     # kleiner wird. Am 02.11.2026 war eine davon auf 21 GB angewachsen und die Platte
     # des Servers voll - der Bot lief dabei die ganze Zeit normal weiter, es fiel erst

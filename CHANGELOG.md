@@ -14,6 +14,26 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.52 — `beta` — 19.11.2026
+
+**Ressourcengrenzen: CPU dazu, und eine Schritt-für-Schritt-Anleitung**
+- Entschieden wurde: kein Einstellfeld im Dashboard. Der Bot kann seine eigenen
+  Container-Grenzen nicht selbst setzen — das ginge nur über den Docker-Socket, und der ist
+  genau der root-Weg, den wir abgeschafft haben. Also bleibt es dort, wo Docker es liest: in
+  der `docker-compose.yml`, standardmäßig aus.
+- Zur RAM- und Prozessgrenze (1.19.51) kommt jetzt eine CPU-Grenze (`cpus`), ebenfalls
+  auskommentiert. Mit dem ehrlichen Hinweis dabei: **CPU ist anders als RAM eine echte
+  Drossel**, kein Dach gegen Ausreißer — nur setzen, wer den Bot bewusst zügeln will.
+- Neu in der README, beide Sprachen: ein eigener Abschnitt **„Ressourcengrenzen (für kleine
+  Maschinen) — Schritt für Schritt"**. Sechs Schritte vom Nachsehen des Verbrauchs
+  (`docker stats`) über das Wählen und Eintragen der Werte bis zum Anwenden, Prüfen und dem,
+  was zu tun ist, wenn der Bot ständig neu startet (Grenze zu niedrig, Exit 137). Verlinkt
+  aus den Pi-Hinweisen und im Inhaltsverzeichnis.
+
+Nichts am Bot-Code geändert — compose-Vorlage und README.
+
+---
+
 ## 1.19.51 — `beta` — 19.11.2026
 
 **Obergrenzen gegen Ausreißer — für kleine Maschinen, standardmäßig aus**
