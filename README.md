@@ -966,6 +966,8 @@ The dashboard is available on port `8080`.
 > reach the dashboard from a *different* network than the one it's running on.
 
 > **Raspberry Pi:** Supported on **Pi 3, 4 and 5**, running Raspberry Pi OS in either 64-bit (`aarch64`) or 32-bit (`armv7`) — same `docker compose up -d --build` command. A couple of Python dependencies (`psutil`, and `bcrypt`/`Pillow` on 32-bit) have no prebuilt wheel for ARM and get compiled from source during the build — the first build takes noticeably longer than on a regular PC/server (several minutes, more on an older Pi), later builds are unaffected since the image layer gets cached. **Pi Zero / Pi 1** (`armv6`) are not guaranteed — the Python base image this project builds on doesn't publish a dedicated armv6 build, and such old hardware would likely struggle with the bot's workload regardless.
+>
+> On a small machine like this, consider the two commented-out lines in `docker-compose.yml` (`mem_limit` / `pids_limit`): they cap a runaway container so one bad instance can't take the whole Pi down with it. They are off by default and don't slow normal operation — see the comment above them.
 
 ### Android (Termux) — no Docker required
 
@@ -2144,6 +2146,8 @@ Dashboard ist auf Port `8080` erreichbar.
 > das Dashboard aus einem *anderen* Netzwerk erreichen sollen als dem, in dem es läuft.
 
 > **Raspberry Pi:** Unterstützt auf **Pi 3, 4 und 5**, mit Raspberry Pi OS in 64-bit (`aarch64`) oder 32-bit (`armv7`) — gleicher Befehl `docker compose up -d --build`. Ein paar Python-Abhängigkeiten (`psutil`, sowie auf 32-bit zusätzlich `bcrypt`/`Pillow`) haben kein fertiges Wheel für ARM und werden beim Bauen aus dem Quellcode kompiliert — der erste Build dauert dadurch spürbar länger als auf einem normalen PC/Server (mehrere Minuten, auf älteren Pi-Modellen mehr), spätere Builds sind davon nicht betroffen da die Image-Schicht gecacht wird. **Pi Zero / Pi 1** (`armv6`) sind nicht garantiert — das Python-Basis-Image dieses Projekts hat kein eigenes armv6-Build, und so alte Hardware wäre mit der Bot-Last vermutlich ohnehin überfordert.
+>
+> Auf so einer kleinen Maschine lohnen sich die zwei auskommentierten Zeilen in der `docker-compose.yml` (`mem_limit` / `pids_limit`): sie decken einen ausgebrochenen Container ab, damit eine kaputte Instanz nicht den ganzen Pi mitreißt. Standardmäßig aus, bremsen den Normalbetrieb nicht — siehe den Kommentar darüber.
 
 ### Android (Termux) — ohne Docker
 

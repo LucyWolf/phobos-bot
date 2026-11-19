@@ -14,6 +14,24 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.51 — `beta` — 19.11.2026
+
+**Obergrenzen gegen Ausreißer — für kleine Maschinen, standardmäßig aus**
+- Zwei Zeilen in der `docker-compose.yml` vorbereitet (`mem_limit`, `pids_limit`),
+  **auskommentiert**. An einer gewöhnlichen Installation ändert sich damit nichts.
+- Es ist **keine Drosselung**: der Bot nimmt sich im Normalbetrieb, was er braucht (meist
+  unter 300 MB, eine Handvoll Prozesse), und merkt die Grenzen nie. Sie greifen nur, wenn
+  etwas ausbricht — ein Speicherleck, oder durch einen Fehler plötzlich tausend Prozesse.
+  Dann stoppt Docker **nur diesen** Container, statt dass er die ganze Maschine mitnimmt.
+  Dasselbe Prinzip wie die Log-Grenze, nur für RAM und Prozesse.
+- Gedacht für **Raspberry Pi 4/5** und ähnliche kleine Maschinen, wo oft mehrere Container
+  um knappen Speicher konkurrieren. Einkommentieren, `mem_limit` an die Maschine anpassen,
+  einmal `docker compose up -d`. Der Hinweis steht auch im Pi-Abschnitt der README.
+
+Nichts am Bot-Code geändert — nur die Vorlage und ihre Erklärung.
+
+---
+
 ## 1.19.50 — `beta` — 18.11.2026
 
 **Plugins stehen in der Server-Leiste jetzt mit Namen und Icon, nicht als „Plugins"**
