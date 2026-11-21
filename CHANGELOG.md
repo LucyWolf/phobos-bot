@@ -14,6 +14,27 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.59 — `beta` — 21.11.2026
+
+**VRC-Link-Debug: aus dem Datenpunkt-Fenster wird eine Konsole**
+Das 🐞-Fenster (1.19.58) ist jetzt eine kleine Debug-Kommandozeile — **zentriert** statt links
+angedockt. Statt nur Datenpunkte zu suchen, kennt sie Befehle:
+- `data <name>` — die Datenpunkte, die ein Plugin aus der Quelle „vrchat" bekäme (nur
+  bestätigte Verknüpfungen, nur die vier Felder).
+- `status <name>` — der volle Verknüpfungs-Status, auch wartende und ungelöste, um Probleme zu
+  sehen: Status, Eigentumsnachweis, Zeitpunkte, Rollen-Sync, Notiz.
+- `help` — die Befehlsliste.
+
+**Es ist eine Attrappe, kein Terminal**
+Die Konsole kennt nur diese drei Wörter. Kein Shell-Zugang, kein `eval`, kein `subprocess` —
+was nicht genau „data", „status" oder „help" ist, ergibt „unknown command". Die Eingabe löst
+nur feste, parametrisierte Datenbank-Abfragen aus; Tabellen- und Spaltennamen stehen im Code,
+nie in der Eingabe. Nur für Server-Admins, nur beim VRC-Link. Fremde Namen/Notizen werden in
+der Anzeige als Text behandelt, nie als HTML.
+
+**Doku**
+- README (EN + DE): der Hinweis im Daten-Abschnitt nennt jetzt die Konsole und ihre Befehle.
+
 ## 1.19.58 — `beta` — 21.11.2026
 
 **Neu: „Plugin data points" — Debug-Fenster im VRC-Link-Reiter**

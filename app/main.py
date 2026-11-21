@@ -11103,35 +11103,91 @@ async def plugin_daten_api(request: Request, kennung: str, key: str = ""):
     })
 
 
-@web.get("/servers/{guild_id}/vrclink/datapoints")
-async def vrc_datapoints_debug(request: Request, guild_id: int, q: str = ""):
-    """Debug-Box im VRC-Link-Reiter: zeigt, was ein Plugin aus der Quelle „vrchat" läse.
+@web.get("/servers/{guild_id}/vrclink/console")
+async def vrc_console(request: Request, guild_id: int, cmd: str = "", arg: str = ""):
+    """Debug-Kommandozeile im VRC-Link-Reiter. Nur zum Nachsehen - ändert nichts.
 
-    Nur zum Nachsehen beim Plugin-Bauen. Dieselben Regeln wie die echte Daten-API: nur
-    bestätigte Verknüpfungen, nur die vier freigebbaren Felder, keine Discord-IDs - was ein
-    Plugin hier nicht bekommt, zeigt auch dieses Fenster nicht. Antwortet als JSON; die
-    Oberfläche fragt per fetch und zeigt bei mehreren Namen mehrere Treffer.
+    Zwei Befehle, beide nach Name (Teiltreffer, Groß-/Kleinschreibung egal):
+      data <name>   - die Datenpunkte, die ein Plugin aus der Quelle „vrchat" bekäme.
+                      Dieselben Schranken wie die echte API: nur bestätigte Verknüpfungen,
+                      nur die vier Felder.
+      status <name> - der volle Verknüpfungs-Status, auch wartende und ungelöste, damit man
+                      Probleme sieht (kein Eigentumsnachweis, hängt in „pending", ...).
+
+    Admin-/Server-Zugriff wie der ganze Reiter. Gibt Textzeilen zurück, die die Oberfläche
+    als Konsole ausgibt. Tabellen- und Spaltennamen stehen fest im Code, nie aus der Eingabe.
     """
     if r := auth_redirect(request): return r
     if not await _guild_access(request, guild_id):
-        return JSONResponse({"treffer": [], "gesamt": 0}, status_code=403)
-    suche = (q or "").strip().lower()
+        return JSONResponse({"zeilen": ["access denied"]}, status_code=403)
+    cmd = (cmd or "").strip().lower()
+    arg = (arg or "").strip()
     gid = str(guild_id)
-    treffer = []
-    for z in await db_rows(
-            "SELECT vrchat_name, vrc_trust, vrc_age_verified, vrc_supporter, "
-            "vrc_group_member FROM vrc_links WHERE guild_id=? AND status='approved' "
-            "AND vrchat_name<>'' ORDER BY vrchat_name COLLATE NOCASE", (gid,)):
-        if suche and suche not in (z["vrchat_name"] or "").lower():
-            continue
-        treffer.append({
-            "vrchat_name": z["vrchat_name"],
-            "trust": z["vrc_trust"] or "",
-            "verifiziert_18": bool(z["vrc_age_verified"]),
-            "supporter": bool(z["vrc_supporter"]),
-            "gruppenmitglied": bool(z["vrc_group_member"]),
-        })
-    return JSONResponse({"treffer": treffer[:25], "gesamt": len(treffer)})
+
+    if cmd in ("", "help", "?", "hilfe"):
+        return JSONResponse({"zeilen": [
+            "Commands:",
+            "  data <name>     plugin data points (vrchat source) — what a plugin reads",
+            "  status <name>   full link status — to spot problems (pending, no proof, …)",
+            "  help            this list",
+            "",
+            "Name matching is partial and case-insensitive.",
+        ]})
+
+    if not arg:
+        return JSONResponse({"zeilen": [f"usage: {cmd} <name>"]})
+    suche = arg.lower()
+
+    if cmd in ("data", "datapoints", "dp"):
+        zeilen, n = [], 0
+        for z in await db_rows(
+                "SELECT vrchat_name, vrc_trust, vrc_age_verified, vrc_supporter, "
+                "vrc_group_member FROM vrc_links WHERE guild_id=? AND status='approved' "
+                "AND vrchat_name<>'' ORDER BY vrchat_name COLLATE NOCASE", (gid,)):
+            if suche not in (z["vrchat_name"] or "").lower():
+                continue
+            n += 1
+            zeilen += [
+                f"● {z['vrchat_name']}",
+                f"    trust: {z['vrc_trust'] or '—'}",
+                f"    verifiziert_18: {bool(z['vrc_age_verified'])}",
+                f"    supporter: {bool(z['vrc_supporter'])}",
+                f"    gruppenmitglied: {bool(z['vrc_group_member'])}",
+            ]
+        if not n:
+            return JSONResponse({"zeilen": ["no confirmed link matches."]})
+        return JSONResponse({"zeilen": [f"{n} match(es) — exactly what a plugin reads:"] + zeilen})
+
+    if cmd in ("status", "stat", "s"):
+        zeilen, n = [], 0
+        for z in await db_rows(
+                "SELECT vrchat_name, user_id, status, requested_at, decided_at, decided_by, "
+                "verified_at, vrc_user_id, vrc_trust, vrc_age_verified, vrc_supporter, "
+                "vrc_group_member, vrc_roles_synced, note FROM vrc_links "
+                "WHERE guild_id=? AND vrchat_name<>'' ORDER BY vrchat_name COLLATE NOCASE", (gid,)):
+            if suche not in (z["vrchat_name"] or "").lower():
+                continue
+            n += 1
+            entschieden = z["decided_at"] or "—"
+            if z["decided_by"]:
+                entschieden += f" (by {z['decided_by']})"
+            zeilen += [
+                f"● {z['vrchat_name']}  (Discord {z['user_id']})",
+                f"    status: {z['status']}",
+                f"    requested: {z['requested_at'] or '—'}   decided: {entschieden}",
+                f"    ownership proven: {'yes, ' + z['verified_at'] if z['verified_at'] else 'NO — no proof yet'}",
+                f"    vrc_user_id: {z['vrc_user_id'] or '—'}",
+                f"    trust: {z['vrc_trust'] or '—'}   18+: {bool(z['vrc_age_verified'])}   "
+                f"supporter: {bool(z['vrc_supporter'])}   group: {bool(z['vrc_group_member'])}",
+                f"    roles synced: {z['vrc_roles_synced'] or '—'}",
+            ]
+            if z["note"]:
+                zeilen.append(f"    note: {z['note']}")
+        if not n:
+            return JSONResponse({"zeilen": ["no link matches (not even pending)."]})
+        return JSONResponse({"zeilen": [f"{n} match(es):"] + zeilen})
+
+    return JSONResponse({"zeilen": [f"unknown command: {cmd}", "type 'help'"]})
 
 
 @web.post("/servers/{guild_id}/plugins/{plugin_id}/entfernen")

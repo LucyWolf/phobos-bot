@@ -354,16 +354,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "vrc_info_item_effect":   "Eine freigegebene Verknüpfung vergibt die eingestellte Rolle und setzt den Discord-Spitznamen nach deiner Vorlage. Zurücknehmen entzieht beides wieder.",
         "vrc_info_item_noapi":    "Den Eigentumsnachweis führt das Mitglied selbst: Es trägt einen kurzen Code in seine VRChat-Statusmeldung ein, der Bot liest das Profil zurück und vergleicht. Nach dem VRChat-Passwort wird dabei nie gefragt. Die Spalte „Eigentum“ zeigt dir, wer das gemacht hat.",
         "vrc_info_item_perms":    "Für die Rolle braucht der Bot „Rollen verwalten“, für den Spitznamen „Nicknames verwalten“. Den Server-Inhaber kann kein Bot umbenennen, und niemanden, dessen höchste Rolle über der des Bots liegt.",
-        # Debug-Box im VRC-Link-Kopf: zeigt, welche Datenpunkte ein Plugin aus der Quelle
-        # "vrchat" hier lesen könnte — mit echten Werten, zum Nachsehen beim Plugin-Bauen. Der
-        # Name bleibt englisch, so heißt der Datenpunkt auch in der Plugin-Schnittstelle.
-        "vrc_dp_tooltip":         "Plugin data points — was ein Plugin hier auslesen kann",
-        "vrc_dp_title":           "🐞 Plugin data points",
-        "vrc_dp_hint":            "Dieselben Datenpunkte, die ein Plugin über die Quelle „vrchat“ bekommt. Nur bestätigte Verknüpfungen, nur diese vier Felder — zum Nachsehen beim Plugin-Bauen.",
-        "vrc_dp_placeholder":     "VRChat-Name (Teil reicht) …",
-        "vrc_dp_search":          "Zeigen",
-        "vrc_dp_matches":         "Treffer",
-        "vrc_dp_none":            "Keine bestätigte Verknüpfung passt dazu.",
+        # Debug-Konsole im VRC-Link-Kopf (nur dort). Eine kleine Kommandozeile mit festen
+        # Befehlen — data/status/help — zum Nachsehen von Datenpunkten und Verknüpfungs-
+        # Problemen. KEIN Shell- oder Server-Zugriff: was nicht genau „data", „status" oder
+        # „help" ist, ergibt „unknown command". Der sichtbare Name bleibt englisch.
+        "vrc_dp_tooltip":         "VRC-Link debug console",
+        "vrc_dp_title":           "🐞 VRC-Link debug console",
+        "vrc_dp_hint":            "Kleine Debug-Konsole, nur für VRC-Link. „help“ zeigt die Befehle. Sie kennt nur diese festen Befehle — kein Zugriff auf den Server oder eine Shell.",
+        "vrc_dp_placeholder":     "Befehl eingeben, z. B. status <name> …",
         "vrc_hint":               "Verknüpft VRChat-Namen mit Discord-Konten — für eine Rolle und einen einheitlichen Spitznamen.",
         "vrc_enabled_label":      "VRC-Link aktiviert (Knopf und /vrc-link nutzbar)",
         "vrc_role_label":         "Rolle für verknüpfte Mitglieder",
@@ -2240,13 +2238,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "vrc_info_item_effect":   "An approved link grants the configured role and sets the Discord nickname from your format. Revoking takes both away again.",
         "vrc_info_item_noapi":    "Members prove ownership themselves: they put a short code into their VRChat status message, the bot reads the profile back and compares. It never asks for a VRChat password. The “Ownership” column shows you who has done it.",
         "vrc_info_item_perms":    "The role needs “Manage Roles”, the nickname needs “Manage Nicknames”. No bot can rename the server owner, nor anyone whose top role sits above the bot's.",
-        "vrc_dp_tooltip":         "Plugin data points — what a plugin can read here",
-        "vrc_dp_title":           "🐞 Plugin data points",
-        "vrc_dp_hint":            "The same data points a plugin gets from the “vrchat” source. Only confirmed links, only these four fields — handy while building a plugin.",
-        "vrc_dp_placeholder":     "VRChat name (part is enough) …",
-        "vrc_dp_search":          "Show",
-        "vrc_dp_matches":         "matches",
-        "vrc_dp_none":            "No confirmed link matches.",
+        "vrc_dp_tooltip":         "VRC-Link debug console",
+        "vrc_dp_title":           "🐞 VRC-Link debug console",
+        "vrc_dp_hint":            "A small debug console, VRC-Link only. Type “help” for the commands. It knows only these fixed commands — no access to the server or a shell.",
+        "vrc_dp_placeholder":     "Type a command, e.g. status <name> …",
         "vrc_hint":               "Links VRChat names to Discord accounts — for a role and a consistent nickname.",
         "vrc_enabled_label":      "VRC-Link enabled (button and /vrc-link usable)",
         "vrc_role_label":         "Role for linked members",

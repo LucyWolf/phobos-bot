@@ -3787,18 +3787,32 @@ document.addEventListener('click', function(e) {
       <li>{{ tr.vrc_info_item_perms }}</li>
     </ul>
   </div>
-  <div id="vrc-dp-box" style="display:none;position:absolute;z-index:55;left:0;top:100%;margin-top:0.4rem;
-       background:var(--surface);border:1px solid #f59e0b;border-radius:0.6rem;padding:0.85rem 1rem;
-       font-size:0.78rem;min-width:300px;max-width:460px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
-    <div style="font-weight:700;margin-bottom:0.4rem;color:#f59e0b;">{{ tr.vrc_dp_title }}</div>
-    <p class="hint" style="margin:0 0 0.6rem;">{{ tr.vrc_dp_hint }}</p>
-    <div style="display:flex;gap:0.4rem;">
-      <input type="text" id="vrc-dp-input" placeholder="{{ tr.vrc_dp_placeholder }}" style="flex:1;margin:0;"
-             onkeydown="if(event.key==='Enter'){event.preventDefault();vrcDpSearch();}">
-      <button type="button" class="btn btn-secondary" style="margin:0;" onclick="vrcDpSearch()">{{ tr.vrc_dp_search }}</button>
+  {# Zentriertes Modal mit einer Debug-Konsole. Nur drei feste Befehle (data/status/help),
+     die der Server kennt - kein Shell-Zugang, siehe /servers/.../vrclink/console. #}
+  <div id="vrc-dp-overlay" onclick="if(event.target===this)toggleVrcDp()"
+       style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.6);
+              align-items:center;justify-content:center;padding:1rem;">
+    <div onclick="event.stopPropagation()"
+         style="background:var(--surface);border:1px solid #f59e0b;border-radius:0.7rem;
+                width:min(640px,96vw);max-height:85vh;display:flex;flex-direction:column;
+                box-shadow:0 10px 40px rgba(0,0,0,0.5);text-align:left;">
+      <div style="display:flex;align-items:center;gap:0.5rem;padding:0.8rem 1rem;border-bottom:1px solid var(--border);">
+        <div style="font-weight:700;color:#f59e0b;flex:1;">{{ tr.vrc_dp_title }}</div>
+        <button type="button" onclick="toggleVrcDp()" title="✕"
+          style="background:none;border:none;color:var(--muted);font-size:1.15rem;line-height:1;cursor:pointer;">✕</button>
+      </div>
+      <p class="hint" style="margin:0;padding:0.6rem 1rem 0;">{{ tr.vrc_dp_hint }}</p>
+      <div id="vrc-dp-out" data-guild="{{ guild.id }}"
+           style="flex:1;overflow:auto;margin:0.6rem 1rem;padding:0.7rem 0.8rem;background:#0b0b0f;
+                  border:1px solid var(--border);border-radius:0.5rem;font-family:ui-monospace,Menlo,Consolas,monospace;
+                  font-size:0.76rem;line-height:1.5;white-space:pre-wrap;color:#d6d6e0;min-height:170px;"></div>
+      <div style="display:flex;align-items:center;gap:0.45rem;padding:0 1rem 1rem;">
+        <span style="color:#f59e0b;font-family:ui-monospace,monospace;font-weight:700;">&gt;</span>
+        <input type="text" id="vrc-dp-input" autocomplete="off" spellcheck="false" placeholder="{{ tr.vrc_dp_placeholder }}"
+               style="flex:1;margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();vrcDpRun();}">
+      </div>
     </div>
-    <div id="vrc-dp-result" data-guild="{{ guild.id }}" data-none="{{ tr.vrc_dp_none }}"
-         data-matches="{{ tr.vrc_dp_matches }}" style="margin-top:0.7rem;"></div>
   </div>
 </div>
 
@@ -4823,45 +4837,57 @@ function toggleVrcInfo() {
   const box = document.getElementById('vrc-info-box');
   if (box) box.style.display = box.style.display === 'none' ? '' : 'none';
 }
-// Debug-Box „Plugin data points": zeigt per fetch die vrchat-Datenpunkte, nach Name gesucht.
-function vrcDpEsc(s) {
-  return String(s).replace(/[&<>"']/g, function (c) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-  });
-}
+// Debug-Konsole „VRC-Link debug console": zentriertes Fenster mit drei festen Befehlen
+// (data/status/help). KEINE Shell - die Eingabe geht nur an /vrclink/console, und der Server
+// kennt nur diese drei Wörter. Ausgabe immer per textContent, nie innerHTML (kein XSS aus
+// fremden VRChat-Namen oder Notizen).
 function toggleVrcDp() {
-  const box = document.getElementById('vrc-dp-box');
-  if (box) box.style.display = box.style.display === 'none' ? '' : 'none';
+  const ov = document.getElementById('vrc-dp-overlay');
+  if (!ov) return;
+  const auf = (ov.style.display === 'none' || !ov.style.display);
+  ov.style.display = auf ? 'flex' : 'none';
+  if (auf) {
+    const out = document.getElementById('vrc-dp-out');
+    if (out && !out.dataset.started) { out.dataset.started = '1'; vrcDpSend('help', ''); }
+    const inp = document.getElementById('vrc-dp-input');
+    if (inp) setTimeout(function () { inp.focus(); }, 30);
+  }
 }
-async function vrcDpSearch() {
-  const res = document.getElementById('vrc-dp-result');
-  if (!res) return;
-  const gid = res.getAttribute('data-guild');
-  const q = (document.getElementById('vrc-dp-input').value || '').trim();
-  res.textContent = '…';
+function vrcDpPrint(text, farbe) {
+  const out = document.getElementById('vrc-dp-out');
+  if (!out) return;
+  const div = document.createElement('div');
+  if (farbe) div.style.color = farbe;
+  div.textContent = text;
+  out.appendChild(div);
+  out.scrollTop = out.scrollHeight;
+}
+function vrcDpRun() {
+  const inp = document.getElementById('vrc-dp-input');
+  if (!inp) return;
+  const zeile = (inp.value || '').trim();
+  inp.value = '';
+  if (!zeile) return;
+  vrcDpPrint('> ' + zeile, '#f59e0b');
+  const i = zeile.indexOf(' ');
+  const cmd = (i === -1 ? zeile : zeile.slice(0, i));
+  const arg = (i === -1 ? '' : zeile.slice(i + 1).trim());
+  vrcDpSend(cmd, arg);
+}
+async function vrcDpSend(cmd, arg) {
+  const out = document.getElementById('vrc-dp-out');
+  const gid = out ? out.getAttribute('data-guild') : '';
   try {
-    const r = await fetch('/servers/' + gid + '/vrclink/datapoints?q=' + encodeURIComponent(q));
+    const r = await fetch('/servers/' + gid + '/vrclink/console?cmd='
+      + encodeURIComponent(cmd) + '&arg=' + encodeURIComponent(arg));
     const d = await r.json();
-    const treffer = d.treffer || [];
-    if (!treffer.length) { res.textContent = res.getAttribute('data-none'); return; }
-    let html = '<div style="color:var(--muted);margin-bottom:0.4rem;">' + d.gesamt + ' ' + res.getAttribute('data-matches') + '</div>';
-    for (const t of treffer) {
-      html += '<div style="border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem 0.6rem;margin-bottom:0.4rem;">'
-            + '<div style="font-weight:700;margin-bottom:0.25rem;">' + vrcDpEsc(t.vrchat_name) + '</div>'
-            + '<code style="font-size:0.72rem;white-space:pre-wrap;display:block;">'
-            + 'trust: ' + vrcDpEsc(String(t.trust || '—')) + '\n'
-            + 'verifiziert_18: ' + t.verifiziert_18 + '\n'
-            + 'supporter: ' + t.supporter + '\n'
-            + 'gruppenmitglied: ' + t.gruppenmitglied + '</code></div>';
-    }
-    res.innerHTML = html;
-  } catch (e) { res.textContent = '⚠'; }
+    (d.zeilen || []).forEach(function (z) { vrcDpPrint(z); });
+  } catch (e) { vrcDpPrint('error', '#f87171'); }
 }
-document.addEventListener('click', function (e) {
-  const box = document.getElementById('vrc-dp-box');
-  if (box && box.style.display !== 'none' && !box.contains(e.target)
-      && !e.target.closest('[onclick="toggleVrcDp()"]')) {
-    box.style.display = 'none';
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') {
+    const ov = document.getElementById('vrc-dp-overlay');
+    if (ov && ov.style.display && ov.style.display !== 'none') ov.style.display = 'none';
   }
 });
 document.addEventListener('click', function(e) {
