@@ -14,6 +14,26 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.60 — `beta` — 21.11.2026
+
+**VRC-Link-Konsole: `live` zeigt die Vorgänge in Echtzeit**
+Neuer Befehl `live` in der 🐞-Konsole: zeigt die VRC-Link-Vorgänge **dieses Servers**
+mitlaufend, bis man `stop` schreibt (oder das Fenster schließt / Escape). Protokolliert werden
+die Ereignisse — einen VRChat-Namen nachschlagen, eine Verknüpfung anwenden, eine zurücknehmen.
+Die Konsole fragt alle zwei Sekunden das Neue nach und merkt sich, was sie schon gezeigt hat.
+
+**Wie das „live" entsteht**
+- Kleiner Ringpuffer im Speicher (neues Modul `app/vrc_log.py`): die letzten ~400 Vorgänge, je
+  mit Server-ID. Nichts auf der Platte, nichts übersteht einen Neustart.
+- Drei Ereignis-Funktionen im VRC-Link-Cog bekommen je eine Protokoll-Zeile — **additiv**, ohne
+  Verhaltensänderung: `resolve_vrchat`, `apply_link`, `revoke_link`. Der Rollen-Sync
+  (`sync_vrc_roles`) bleibt bewusst stumm — er läuft im Timer-Leerlauf und würde nur rauschen.
+- **Server-getrennt:** Die Konsole zeigt nur das Geschehen des eigenen Servers, nie das eines
+  anderen auf derselben Installation. Admin-only, weiterhin keine Shell.
+
+**Doku**
+- README (EN + DE): der Konsolen-Hinweis nennt jetzt auch `live`/`stop`.
+
 ## 1.19.59 — `beta` — 21.11.2026
 
 **VRC-Link-Debug: aus dem Datenpunkt-Fenster wird eine Konsole**

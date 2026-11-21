@@ -11129,10 +11129,25 @@ async def vrc_console(request: Request, guild_id: int, cmd: str = "", arg: str =
             "Commands:",
             "  data <name>     plugin data points (vrchat source) — what a plugin reads",
             "  status <name>   full link status — to spot problems (pending, no proof, …)",
+            "  live            stream this server's VRC-Link activity — 'stop' to end",
+            "  stop            stop the live stream",
             "  help            this list",
             "",
             "Name matching is partial and case-insensitive.",
         ]})
+
+    # Live-Strom: die neuen Vorgänge dieses Servers seit der zuletzt gesehenen Nummer (arg).
+    # Die Oberfläche fragt im Takt nach und merkt sich den Cursor; stoppen tut sie selbst.
+    if cmd in ("live", "watch", "tail"):
+        from vrc_log import seit
+        try:
+            cursor = int(arg or 0)
+        except ValueError:
+            cursor = 0
+        eintraege = seit(gid, cursor, 60)
+        zeilen = [f"{e['zeit']}  {e['text']}" for e in eintraege]
+        neuer = eintraege[-1]["nr"] if eintraege else cursor
+        return JSONResponse({"zeilen": zeilen, "cursor": neuer, "live": True})
 
     if not arg:
         return JSONResponse({"zeilen": [f"usage: {cmd} <name>"]})

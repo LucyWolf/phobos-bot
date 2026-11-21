@@ -4851,6 +4851,8 @@ function toggleVrcDp() {
     if (out && !out.dataset.started) { out.dataset.started = '1'; vrcDpSend('help', ''); }
     const inp = document.getElementById('vrc-dp-input');
     if (inp) setTimeout(function () { inp.focus(); }, 30);
+  } else {
+    vrcDpStopLive();          // Fenster zu: Live-Strom darf nicht im Hintergrund weiterlaufen
   }
 }
 function vrcDpPrint(text, farbe) {
@@ -4870,9 +4872,34 @@ function vrcDpRun() {
   if (!zeile) return;
   vrcDpPrint('> ' + zeile, '#f59e0b');
   const i = zeile.indexOf(' ');
-  const cmd = (i === -1 ? zeile : zeile.slice(0, i));
+  const cmd = (i === -1 ? zeile : zeile.slice(0, i)).toLowerCase();
   const arg = (i === -1 ? '' : zeile.slice(i + 1).trim());
+  if (cmd === 'stop') { vrcDpStopLive(); return; }
+  if (cmd === 'live' || cmd === 'watch' || cmd === 'tail') { vrcDpStartLive(); return; }
   vrcDpSend(cmd, arg);
+}
+let vrcDpTimer = null, vrcDpCursor = 0;
+function vrcDpStartLive() {
+  if (vrcDpTimer) { vrcDpPrint('already live — type "stop"', '#9ca3af'); return; }
+  vrcDpCursor = 0;
+  vrcDpPrint('— live: this server’s VRC-Link activity. type "stop" to end —', '#9ca3af');
+  vrcDpLivePoll();
+  vrcDpTimer = setInterval(vrcDpLivePoll, 2000);
+}
+function vrcDpStopLive() {
+  if (!vrcDpTimer) return;
+  clearInterval(vrcDpTimer); vrcDpTimer = null;
+  vrcDpPrint('— live stopped —', '#9ca3af');
+}
+async function vrcDpLivePoll() {
+  const out = document.getElementById('vrc-dp-out');
+  const gid = out ? out.getAttribute('data-guild') : '';
+  try {
+    const r = await fetch('/servers/' + gid + '/vrclink/console?cmd=live&arg=' + vrcDpCursor);
+    const d = await r.json();
+    (d.zeilen || []).forEach(function (z) { vrcDpPrint(z, '#86efac'); });
+    if (typeof d.cursor === 'number') vrcDpCursor = d.cursor;
+  } catch (e) {}
 }
 async function vrcDpSend(cmd, arg) {
   const out = document.getElementById('vrc-dp-out');

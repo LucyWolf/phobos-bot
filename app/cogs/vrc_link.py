@@ -42,6 +42,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from vrc_log import vrc_log
 from database import (db_rows, db_one, db_exec, get_config, get_guild_config,
                       set_guild_config,
                       vrc_nickname, DEFAULT_VRC_NICKNAME_FORMAT,
@@ -363,6 +364,7 @@ async def resolve_vrchat(name: str, guild_id=None) -> tuple:
     or keeps still - the profile text is what this flow depends on, so it is read from the endpoint
     that is actually defined to carry it rather than hoped for on the search hit.
     """
+    vrc_log(guild_id, f"lookup VRChat name {name!r}")
     session = await _sitzung(guild_id)
     if not session:
         return "unavailable", None
@@ -963,6 +965,7 @@ def _darf_umbenennen(guild, member) -> bool:
 async def apply_link(bot, guild: discord.Guild, member: discord.Member, vrchat_name: str) -> list:
     """Give the member everything an approved link earns them. Returns what actually changed,
     for the caller to report - an empty list means "nothing to do", not "it failed"."""
+    vrc_log(guild.id, f"apply link: {member.display_name} → {vrchat_name}")
     changed = []
 
     role_id = await get_guild_config(guild.id, "vrc_linked_role")
@@ -1060,6 +1063,7 @@ async def strip_vrc_roles(guild_id, link) -> int:
 
 async def revoke_link(bot, guild: discord.Guild, member: discord.Member) -> None:
     """Undo what apply_link() gave, as far as it is still there."""
+    vrc_log(guild.id, f"revoke link: {member.display_name}")
     role_id = await get_guild_config(guild.id, "vrc_linked_role")
     if role_id and str(role_id).isdigit():
         role = guild.get_role(int(role_id))

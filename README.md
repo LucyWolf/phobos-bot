@@ -616,11 +616,12 @@ Unticking every box switches fetching off entirely and clears the key. Changing 
 locks the old address out immediately. Requests are rate-limited per address.
 
 > **A debug console for VRC-Link.** In a server's **VRC-Link** tab, the 🐞 icon (next to ℹ and
-> ⚠) opens a small centered console with three fixed commands: `data <name>` shows the exact
+> ⚠) opens a small centered console with a few fixed commands: `data <name>` shows the exact
 > fields a plugin would read from the `vrchat` source (`trust`, `verifiziert_18`, `supporter`,
 > `gruppenmitglied`, confirmed links only); `status <name>` shows the full link status — even
-> pending or unresolved ones — so you can spot problems; `help` lists them. It is **not a
-> shell**: it knows only those three commands and runs only fixed, parameterised lookups.
+> pending or unresolved ones — so you can spot problems; `live` streams this server's VRC-Link
+> activity in real time until you type `stop`; `help` lists them. It is **not a shell**: it
+> knows only these fixed commands and runs only fixed, parameterised lookups.
 
 ### Keeping a plugin up to date
 
@@ -1853,12 +1854,13 @@ Alle Haken zu entfernen schaltet den Abruf ganz ab und löscht den Schlüssel. E
 Schlüssel sperrt die alte Adresse sofort aus. Abrufe sind je Adresse gedrosselt.
 
 > **Eine Debug-Konsole für VRC-Link.** Im **VRC-Link**-Reiter eines Servers öffnet das 🐞-Icon
-> (neben ℹ und ⚠) ein kleines, zentriertes Konsolenfenster mit drei festen Befehlen:
+> (neben ℹ und ⚠) ein kleines, zentriertes Konsolenfenster mit ein paar festen Befehlen:
 > `data <name>` zeigt genau die Felder, die ein Plugin aus der Quelle `vrchat` läse (`trust`,
 > `verifiziert_18`, `supporter`, `gruppenmitglied`, nur bestätigte Verknüpfungen);
 > `status <name>` zeigt den vollen Verknüpfungs-Status — auch wartende und ungelöste — damit man
-> Probleme sieht; `help` listet sie auf. Es ist **keine Shell**: Es kennt nur diese drei Befehle
-> und führt nur feste, parametrisierte Abfragen aus.
+> Probleme sieht; `live` zeigt die VRC-Link-Vorgänge dieses Servers in Echtzeit, bis man `stop`
+> tippt; `help` listet sie auf. Es ist **keine Shell**: Es kennt nur diese festen Befehle und
+> führt nur feste, parametrisierte Abfragen aus.
 
 ### Ein Plugin aktuell halten
 
