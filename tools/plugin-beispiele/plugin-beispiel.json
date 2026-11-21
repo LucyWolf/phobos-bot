@@ -5,9 +5,9 @@
   "icon": "🎫",
   "version": "1.0.0",
   "autor": "Phobos",
-  "beschreibung": "Ein Ticket-Panel mit drei Kategorien, zwei Befehle und eine Level-Belohnung. Gedacht als Vorlage zum Abschreiben: alles, was von Server zu Server verschieden ist, steht als Platzhalter drin.",
+  "beschreibung": "Ein Ticket-Panel mit drei Kategorien, zwei Befehle und eine Level-Belohnung — plus als Beispiel ein Datenpunkt-Teil (daten). Vorlage zum Abschreiben: alles, was von Server zu Server verschieden ist, steht als Platzhalter drin. Prüfen, was ankommt: im VRC-Link-Reiter die 🐞-Konsole, „data <name>“.",
 
-  "quelle": "https://raw.githubusercontent.com/LucyWolf/phobos-bot/main/tools/plugin-beispiel.json",
+  "quelle": "https://raw.githubusercontent.com/LucyWolf/phobos-bot/main/tools/plugin-beispiele/plugin-beispiel.json",
   "homepage": "https://github.com/LucyWolf/phobos-bot",
 
   "einstellungen": [
@@ -34,6 +34,14 @@
       "art": "text",
       "titel": "Wie der Server in Texten heißen soll",
       "standard": "unserem Server"
+    }
+  ],
+
+  "daten": [
+    {
+      "quelle": "vrchat",
+      "felder": ["trust", "verifiziert_18"],
+      "zweck": "Beispiel für Datenpunkte: so liest ein Plugin VRC-Link-Daten. Was dabei ankommt, zeigt die 🐞-Konsole im VRC-Link-Reiter mit „data <name>“."
     }
   ],
 

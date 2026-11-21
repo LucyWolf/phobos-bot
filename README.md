@@ -486,6 +486,8 @@ created — commands, a ticket panel with its categories, level rewards, auto-mo
 and the bot creates it. You can export it, hand it to someone else, and they can apply it to
 their own server.
 
+> 📂 **Ready-made examples to copy:** [`tools/plugin-beispiele/`](tools/plugin-beispiele/) — upload one and it runs. Each carries a data-point section and a note on checking it in the 🐞 console.
+
 **A plugin executes no code.** That is deliberate and not a temporary limitation: a Python
 plugin would run in the same process as the bot, with access to the bot token, the whole
 database (dashboard emails, password hashes, 2FA secrets) and the host's filesystem. Python
@@ -533,7 +535,7 @@ the server and out of the sidebar.
 }
 ```
 
-A full, working example is in [`tools/plugin-beispiel.json`](tools/plugin-beispiel.json).
+A full, working example is in [`tools/plugin-beispiele/plugin-beispiel.json`](tools/plugin-beispiele/plugin-beispiel.json).
 
 **`kennung`** identifies the plugin across versions — lowercase letters, digits, `-` and
 `_`. Uploading the same identifier again is a *new version*, not a second plugin. Servers
@@ -567,7 +569,7 @@ instead of a new endpoint going into the bot for every special case.
 ```
 
 A complete example that only reads and creates nothing is
-[`tools/plugin-beispiel-welt.json`](tools/plugin-beispiel-welt.json).
+[`tools/plugin-beispiele/plugin-beispiel-welt.json`](tools/plugin-beispiele/plugin-beispiel-welt.json).
 
 | `quelle` | Fields |
 |---|---|
@@ -691,7 +693,7 @@ server's — the file fits that one plugin and is refused for any other.
 
 You need a text editor. Nothing else.
 
-**1. Start from the example.** Copy [`tools/plugin-beispiel.json`](tools/plugin-beispiel.json)
+**1. Start from the example.** Copy [`tools/plugin-beispiele/plugin-beispiel.json`](tools/plugin-beispiele/plugin-beispiel.json)
 and save it under your own name, ending in `.json`.
 
 **2. Fill in the head.**
@@ -1720,6 +1722,8 @@ was angelegt werden soll — Befehle, ein Ticket-Panel mit seinen Kategorien,
 Level-Belohnungen, Wortlisten für den Spam-Schutz —, und der Bot legt es an. Die Datei lässt
 sich exportieren, weitergeben und auf einem fremden Server einspielen.
 
+> 📂 **Fertige Beispiele zum Abschreiben:** [`tools/plugin-beispiele/`](tools/plugin-beispiele/) — eine Datei hochladen, läuft. Jedes hat einen Datenpunkt-Teil und einen Hinweis, wie man ihn in der 🐞-Konsole prüft.
+
 **Ein Plugin führt keinen Code aus.** Das ist Absicht und keine Einschränkung auf Zeit: Ein
 Python-Plugin liefe im selben Prozess wie der Bot und käme an den Bot-Token, an die ganze
 Datenbank (E-Mail-Adressen, Passwort-Hashes und 2FA-Geheimnisse der Dashboard-Konten) und an
@@ -1768,7 +1772,7 @@ dort entfernt heißt: wieder vom Server herunter und aus der Leiste.
 ```
 
 Ein vollständiges Beispiel zum Abschreiben liegt in
-[`tools/plugin-beispiel.json`](tools/plugin-beispiel.json).
+[`tools/plugin-beispiele/plugin-beispiel.json`](tools/plugin-beispiele/plugin-beispiel.json).
 
 **`kennung`** ist das, was ein Plugin über Versionen hinweg identifiziert — Kleinbuchstaben,
 Ziffern, `-` und `_`. Dieselbe Kennung nochmal hochzuladen ist eine *neue Fassung*, kein
@@ -1804,7 +1808,7 @@ statt dass für jeden Sonderfall eine neue Schnittstelle in den Bot muss.
 ```
 
 Ein vollständiges Beispiel, das nur liest und nichts anlegt, liegt in
-[`tools/plugin-beispiel-welt.json`](tools/plugin-beispiel-welt.json).
+[`tools/plugin-beispiele/plugin-beispiel-welt.json`](tools/plugin-beispiele/plugin-beispiel-welt.json).
 
 | `quelle` | Felder |
 |---|---|
@@ -1933,7 +1937,7 @@ andere abgelehnt.
 
 Gebraucht wird ein Texteditor. Sonst nichts.
 
-**1. Vom Beispiel ausgehen.** [`tools/plugin-beispiel.json`](tools/plugin-beispiel.json)
+**1. Vom Beispiel ausgehen.** [`tools/plugin-beispiele/plugin-beispiel.json`](tools/plugin-beispiele/plugin-beispiel.json)
 kopieren und unter eigenem Namen speichern, Endung `.json`.
 
 **2. Den Kopf ausfüllen.**

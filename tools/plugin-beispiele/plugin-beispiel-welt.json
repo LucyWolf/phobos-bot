@@ -7,7 +7,7 @@
   "autor": "Phobos",
   "beschreibung": "Ein Plugin, das nichts anlegt, sondern nur Daten bereitstellt: freigegebene Profile und die Rangliste, abrufbar unter einer Adresse. Gedacht für eine Welt, die alles einmal lädt und dann selbst durchsucht.",
 
-  "quelle": "https://raw.githubusercontent.com/LucyWolf/phobos-bot/main/tools/plugin-beispiel-welt.json",
+  "quelle": "https://raw.githubusercontent.com/LucyWolf/phobos-bot/main/tools/plugin-beispiele/plugin-beispiel-welt.json",
   "homepage": "https://github.com/LucyWolf/phobos-bot",
 
   "daten": [
