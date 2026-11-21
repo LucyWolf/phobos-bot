@@ -497,14 +497,26 @@ tables listed below.
 
 | | |
 |---|---|
-| **Settings → Plugins** | the installation's plugins: import, export, delete, and add to a server |
+| **Settings → Plugins** | the installation's plugins: import, export, update, delete |
+| **Config → Shown features** (per server) | tick a plugin on for that server, like any built-in feature |
 | **a server's sidebar** | one entry per plugin running on that server, by its own icon and name |
 
-Importing a plugin applies it to nothing. Under **Settings → Plugins** you then pick a
-server for it and fill in that server's values. From there on the plugin shows up in that
-server's sidebar under its own name (and `icon`, if it declares one) — there is no generic
-"Plugins" tab. Clicking it opens that plugin's settings; removing it there takes it back off
-the server and out of the sidebar.
+Importing a plugin applies it to nothing — it only adds it to the installation. How it then
+reaches a server depends on what the plugin asks for:
+
+- **A plugin with no server-specific field** (only text, number or multiline settings, or no
+  settings at all) is available on every server at once. You turn it on **per server** under
+  **Config → Shown features**, exactly like a built-in feature. Its values live **on each
+  server** — every server has its own: click the plugin in that server's sidebar and fill them
+  in there. Unticking it takes it back off that one server.
+- **A plugin that asks for a role, channel or category** can't be switched on everywhere,
+  because those differ from server to server. It keeps a **server picker** on its card under
+  **Settings → Plugins**: pick a server, fill in that server's roles/channels and values, and
+  it appears in that server's sidebar.
+
+Either way, a running plugin shows up in the sidebar under its own name (and `icon`, if it
+declares one) — there is no generic "Plugins" tab. Clicking it opens that plugin's settings;
+removing it takes it back off the server and out of the sidebar.
 
 ### The file format
 
@@ -1729,14 +1741,27 @@ wird gelesen, geprüft und in genau die Tabellen geschrieben, die unten stehen.
 
 | | |
 |---|---|
-| **Einstellungen → Plugins** | die Plugins der Installation: einspielen, exportieren, löschen, auf einen Server anlegen |
+| **Einstellungen → Plugins** | die Plugins der Installation: einspielen, exportieren, aktualisieren, löschen |
+| **Config → Angezeigte Funktionen** (je Server) | ein Plugin für diesen Server anhaken, wie jede eingebaute Funktion |
 | **die Leiste eines Servers** | je laufendem Plugin ein Eintrag mit eigenem Icon und Namen |
 
-Ein eingespieltes Plugin tut zunächst gar nichts. Unter **Einstellungen → Plugins** wählst
-du dann einen Server dafür und füllst dessen Werte aus. Ab da erscheint das Plugin in der
-Leiste dieses Servers unter seinem Namen (und `icon`, falls es eins angibt) — einen
-generischen „Plugins"-Reiter gibt es nicht. Ein Klick öffnet die Einstellungen des Plugins;
-dort entfernt heißt: wieder vom Server herunter und aus der Leiste.
+Ein eingespieltes Plugin tut zunächst gar nichts — es liegt erst nur in der Installation. Wie
+es dann auf einen Server kommt, hängt davon ab, was das Plugin braucht:
+
+- **Ein Plugin ohne serverabhängiges Feld** (nur Text-, Zahl- oder mehrzeilige Felder, oder
+  gar keine Einstellungen) steht auf **jedem Server zugleich** zur Verfügung. Angeschaltet wird
+  es **je Server** unter **Config → Angezeigte Funktionen**, genau wie eine eingebaute Funktion.
+  Die Werte stehen **beim jeweiligen Server** — jeder hat seine eigenen: dafür das Plugin in der
+  Leiste dieses Servers anklicken und dort ausfüllen. Den Haken wegnehmen nimmt es von genau
+  diesem Server wieder herunter.
+- **Ein Plugin, das eine Rolle, einen Kanal oder eine Kategorie abfragt**, lässt sich nicht
+  überall anschalten, weil die von Server zu Server verschieden sind. Es behält unter
+  **Einstellungen → Plugins** eine **Server-Auswahl** an seiner Karte: Server wählen, dort dessen
+  Rollen/Kanäle und Werte eintragen — danach steht es in der Leiste dieses Servers.
+
+So oder so erscheint ein laufendes Plugin in der Leiste unter seinem Namen (und `icon`, falls es
+eins angibt) — einen generischen „Plugins"-Reiter gibt es nicht. Ein Klick öffnet die
+Einstellungen des Plugins; dort entfernt heißt: wieder vom Server herunter und aus der Leiste.
 
 ### Das Dateiformat
 
