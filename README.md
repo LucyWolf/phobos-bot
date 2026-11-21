@@ -615,6 +615,12 @@ Three rules are built into this and cannot be configured away:
 Unticking every box switches fetching off entirely and clears the key. Changing the key
 locks the old address out immediately. Requests are rate-limited per address.
 
+> **Seeing what `vrchat` actually returns.** In a server's **VRC-Link** tab, the 🐞 **Plugin
+> data points** icon (next to the ℹ and ⚠ ones) opens a small box: type a VRChat name and it
+> shows the exact fields a plugin would read for that person — `trust`, `verifiziert_18`,
+> `supporter`, `gruppenmitglied` — under the same rules as the live interface (only confirmed
+> links, nothing else). Handy while building a plugin, so you don't have to guess the values.
+
 ### Keeping a plugin up to date
 
 With a `quelle` on the plugin, **Settings → Plugins** can ask the source whether something
@@ -1844,6 +1850,13 @@ Drei Regeln sind dabei fest eingebaut und nicht einstellbar:
 
 Alle Haken zu entfernen schaltet den Abruf ganz ab und löscht den Schlüssel. Ein geänderter
 Schlüssel sperrt die alte Adresse sofort aus. Abrufe sind je Adresse gedrosselt.
+
+> **Sehen, was `vrchat` wirklich liefert.** Im **VRC-Link**-Reiter eines Servers öffnet das
+> 🐞-Icon **Plugin data points** (neben ℹ und ⚠) ein kleines Fenster: Du gibst einen
+> VRChat-Namen ein und siehst genau die Felder, die ein Plugin für diese Person lesen würde —
+> `trust`, `verifiziert_18`, `supporter`, `gruppenmitglied` — nach denselben Regeln wie die
+> echte Schnittstelle (nur bestätigte Verknüpfungen, sonst nichts). Praktisch beim
+> Plugin-Bauen, damit man die Werte nicht raten muss.
 
 ### Ein Plugin aktuell halten
 

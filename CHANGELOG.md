@@ -14,6 +14,26 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.58 — `beta` — 21.11.2026
+
+**Neu: „Plugin data points" — Debug-Fenster im VRC-Link-Reiter**
+Wer ein Plugin baut, das die Quelle „vrchat" liest, musste bisher raten, welche Werte dort
+ankommen — oder erst ein Plugin einspielen, freigeben und eine Welt bauen. Jetzt steht im Kopf
+des VRC-Link-Reiters ein drittes Icon (🐞) neben ℹ und ⚠. Es klappt ein Fenster auf, in das man
+einen VRChat-Namen eingibt (ein Teil reicht) und die Datenpunkte dieser Person sieht, genau wie
+ein Plugin sie bekäme: `trust`, `verifiziert_18`, `supporter`, `gruppenmitglied`. Passen mehrere
+Namen, erscheinen mehrere Treffer.
+
+**Dieselben Schranken wie die echte Daten-Schnittstelle**
+- Nur bestätigte Verknüpfungen, nur diese vier Felder, keine Discord-IDs — was ein Plugin nicht
+  lesen darf, zeigt auch dieses Fenster nicht.
+- Nur für Server, die man verwalten darf (dieselbe Zugriffsprüfung wie der ganze Reiter).
+- Der VRChat-Name wird beim Anzeigen gegen HTML abgesichert.
+
+**Doku**
+- README (EN + DE): ein nur-lesendes VRC-Link-Beispielplugin im Abschnitt „A plugin can also read
+  data", mit Hinweis auf das neue Debug-Fenster.
+
 ## 1.19.57 — `beta` — 19.11.2026
 
 **Plugin-Karte unter Einstellungen → Plugins kompakt gemacht**

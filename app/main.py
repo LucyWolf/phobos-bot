@@ -11103,6 +11103,37 @@ async def plugin_daten_api(request: Request, kennung: str, key: str = ""):
     })
 
 
+@web.get("/servers/{guild_id}/vrclink/datapoints")
+async def vrc_datapoints_debug(request: Request, guild_id: int, q: str = ""):
+    """Debug-Box im VRC-Link-Reiter: zeigt, was ein Plugin aus der Quelle „vrchat" läse.
+
+    Nur zum Nachsehen beim Plugin-Bauen. Dieselben Regeln wie die echte Daten-API: nur
+    bestätigte Verknüpfungen, nur die vier freigebbaren Felder, keine Discord-IDs - was ein
+    Plugin hier nicht bekommt, zeigt auch dieses Fenster nicht. Antwortet als JSON; die
+    Oberfläche fragt per fetch und zeigt bei mehreren Namen mehrere Treffer.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return JSONResponse({"treffer": [], "gesamt": 0}, status_code=403)
+    suche = (q or "").strip().lower()
+    gid = str(guild_id)
+    treffer = []
+    for z in await db_rows(
+            "SELECT vrchat_name, vrc_trust, vrc_age_verified, vrc_supporter, "
+            "vrc_group_member FROM vrc_links WHERE guild_id=? AND status='approved' "
+            "AND vrchat_name<>'' ORDER BY vrchat_name COLLATE NOCASE", (gid,)):
+        if suche and suche not in (z["vrchat_name"] or "").lower():
+            continue
+        treffer.append({
+            "vrchat_name": z["vrchat_name"],
+            "trust": z["vrc_trust"] or "",
+            "verifiziert_18": bool(z["vrc_age_verified"]),
+            "supporter": bool(z["vrc_supporter"]),
+            "gruppenmitglied": bool(z["vrc_group_member"]),
+        })
+    return JSONResponse({"treffer": treffer[:25], "gesamt": len(treffer)})
+
+
 @web.post("/servers/{guild_id}/plugins/{plugin_id}/entfernen")
 async def server_plugin_entfernen(request: Request, guild_id: int, plugin_id: int):
     if r := auth_redirect(request): return r
