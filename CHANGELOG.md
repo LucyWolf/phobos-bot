@@ -14,6 +14,15 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.62 — `beta` — 25.11.2026
+
+**Debug-Konsole: `status` zeigt nur noch das Nötige**
+Die `status`-Ausgabe zeigte zu einem User alles — auch Discord-ID, VRChat-ID und genaue
+Zeitstempel. Zum Debuggen („hängt eine Verknüpfung?") braucht man das nicht, und es
+identifiziert die Person unnötig. Ab jetzt nur noch: VRChat-Name, Status, Eigentumsnachweis
+(ja/nein), die vier Flags, Rollen-Sync (ja/nein), Notiz. Discord-ID, VRChat-ID und die
+Zeitstempel sind raus — gespeichert bleiben sie, nur diese Ansicht zeigt sie nicht mehr.
+
 ## 1.19.61 — `beta` — 25.11.2026
 
 **Plugin-Daten: die Quelle „profile" gibt nur noch die Bio her**

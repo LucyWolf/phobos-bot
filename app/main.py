@@ -11174,27 +11174,25 @@ async def vrc_console(request: Request, guild_id: int, cmd: str = "", arg: str =
         return JSONResponse({"zeilen": [f"{n} match(es) — exactly what a plugin reads:"] + zeilen})
 
     if cmd in ("status", "stat", "s"):
+        # Bewusst sparsam: der VRChat-Name genügt zum Finden, Status/Nachweis/Flags sagen, ob
+        # etwas klemmt. Discord-ID, VRChat-ID und genaue Zeitstempel braucht das Debuggen nicht
+        # und identifizieren die Person unnötig - wer nur nachsieht, ob eine Verknüpfung hängt,
+        # geht das nichts an. Gespeichert bleiben sie, nur diese Ansicht zeigt sie nicht mehr.
         zeilen, n = [], 0
         for z in await db_rows(
-                "SELECT vrchat_name, user_id, status, requested_at, decided_at, decided_by, "
-                "verified_at, vrc_user_id, vrc_trust, vrc_age_verified, vrc_supporter, "
-                "vrc_group_member, vrc_roles_synced, note FROM vrc_links "
+                "SELECT vrchat_name, status, verified_at, vrc_trust, vrc_age_verified, "
+                "vrc_supporter, vrc_group_member, vrc_roles_synced, note FROM vrc_links "
                 "WHERE guild_id=? AND vrchat_name<>'' ORDER BY vrchat_name COLLATE NOCASE", (gid,)):
             if suche not in (z["vrchat_name"] or "").lower():
                 continue
             n += 1
-            entschieden = z["decided_at"] or "—"
-            if z["decided_by"]:
-                entschieden += f" (by {z['decided_by']})"
             zeilen += [
-                f"● {z['vrchat_name']}  (Discord {z['user_id']})",
+                f"● {z['vrchat_name']}",
                 f"    status: {z['status']}",
-                f"    requested: {z['requested_at'] or '—'}   decided: {entschieden}",
-                f"    ownership proven: {'yes, ' + z['verified_at'] if z['verified_at'] else 'NO — no proof yet'}",
-                f"    vrc_user_id: {z['vrc_user_id'] or '—'}",
+                f"    ownership proven: {'yes' if z['verified_at'] else 'NO — no proof yet'}",
                 f"    trust: {z['vrc_trust'] or '—'}   18+: {bool(z['vrc_age_verified'])}   "
                 f"supporter: {bool(z['vrc_supporter'])}   group: {bool(z['vrc_group_member'])}",
-                f"    roles synced: {z['vrc_roles_synced'] or '—'}",
+                f"    roles synced: {'yes' if z['vrc_roles_synced'] else 'no'}",
             ]
             if z["note"]:
                 zeilen.append(f"    note: {z['note']}")
