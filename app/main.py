@@ -1565,6 +1565,10 @@ async def _complete_login(request: Request, user: dict) -> None:
     try:
         ip = _login_client(request)
         if not await _ort_bekannt(user["id"], ip):
+            # Welche Webseite gemeint ist: die Dashboard-Adresse. Sie unterscheidet mehrere
+            # Installationen, wo der App-Name (im Betreff) gleich sein kann. Fehlt sie (nie
+            # geöffnet / nicht konfiguriert), tritt der App-Name an ihre Stelle.
+            webseite = (await link_base_url()) or _app_name
             await _warn_mail(user, f"neu:{user['id']}",
                              f"{_app_name}: Anmeldung von einer neuen Adresse", [
                 f"Hallo {user.get('display_name') or user['username']},",
@@ -1572,9 +1576,10 @@ async def _complete_login(request: Request, user: dict) -> None:
                 "gerade hat sich jemand bei deinem Konto angemeldet — von einer Adresse, "
                 "von der aus das noch nie passiert ist:",
                 "",
-                f"    Konto:   {user['username']}",
-                f"    Adresse: {ip}",
-                f"    Zeit:    {_fmt_dt(now)}",
+                f"    Webseite: {webseite}",
+                f"    Konto:    {user['username']}",
+                f"    Adresse:  {ip}",
+                f"    Zeit:     {_fmt_dt(now)}",
                 "",
                 "Warst du das, ist alles in Ordnung — diese Meldung kommt pro Adresse nur "
                 "einmal. Warst du es nicht, ändere sofort dein Passwort und schalte die "

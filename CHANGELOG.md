@@ -14,6 +14,14 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.63 — `beta` — 25.11.2026
+
+**Login-Warnung per Mail nennt jetzt die Webseite**
+Die Mail „Anmeldung von einer neuen Adresse" zeigte Konto, Adresse und Zeit — aber nicht, um
+welche Installation es geht. Bei mehreren Dashboards mit gleichem App-Namen war nicht zu
+erkennen, welches gemeint ist. Jetzt steht die Dashboard-Adresse als erste Zeile in der Mail;
+fehlt sie (nie geöffnet / nicht konfiguriert), tritt der App-Name an ihre Stelle.
+
 ## 1.19.62 — `beta` — 25.11.2026
 
 **Debug-Konsole: `status` zeigt nur noch das Nötige**
