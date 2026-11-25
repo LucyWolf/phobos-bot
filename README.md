@@ -465,7 +465,7 @@ behind a button, a separate room, or your own 18+ gate. The bot cannot make that
   vrchat.com. The current list is served by VRChat's own config endpoint as
   `stringHostUrlList` and can change.
 - **Mirroring to a trusted host is not the answer.** Pastebin or a gist would load without
-  that setting — and would also put kinks, triggers and limits on a public address that
+  that setting — and would also put the released profile data on a public address that
   nothing ever takes back. That is exactly why this endpoint exists.
 - **One download at a time.** `VRCStringDownloader` has a global cooldown of about five
   seconds across the whole world. Fetch once when a player comes into range, keep the result,
@@ -563,7 +563,7 @@ instead of a new endpoint going into the bot for every special case.
 
 ```json
 "daten": [
-  { "quelle": "profile", "felder": ["bio", "kinks"], "zweck": "For the boards in the world" },
+  { "quelle": "profile", "felder": ["bio"], "zweck": "For the boards in the world" },
   { "quelle": "level",   "felder": ["level", "xp"],  "zweck": "For the ranking on the wall" }
 ]
 ```
@@ -573,7 +573,7 @@ A complete example that only reads and creates nothing is
 
 | `quelle` | Fields |
 |---|---|
-| `profile` | `bio`, `kinks`, `triggers`, `limits` |
+| `profile` | `bio` |
 | `level` | `level`, `xp`, `messages`, `voice_minutes`, `voice_level` |
 | `vrchat` | `trust`, `verifiziert_18`, `supporter`, `gruppenmitglied` |
 
@@ -1705,7 +1705,7 @@ liest jeder, der davorsteht. Deshalb steht in jeder Antwort, welches Feld dahint
   auf vrchat.com stehen. Die Liste kann sich ändern; VRChat liefert sie selbst als
   `stringHostUrlList` aus.
 - **Auf einen vertrauten Dienst spiegeln ist keine Lösung.** Pastebin oder ein Gist lüden
-  ohne diese Einstellung — und legten kinks, triggers und limits auf eine öffentliche
+  ohne diese Einstellung — und legten die freigegebenen Profildaten auf eine öffentliche
   Adresse, von der nichts je wieder verschwindet. Genau dafür gibt es diese Leseadresse.
 - **Ein Abruf nach dem anderen.** `VRCStringDownloader` hat eine welt-weite Sperre von rund
   fünf Sekunden zwischen zwei Abrufen. Einmal holen, wenn jemand in die Nähe kommt, und das
@@ -1802,7 +1802,7 @@ statt dass für jeden Sonderfall eine neue Schnittstelle in den Bot muss.
 
 ```json
 "daten": [
-  { "quelle": "profile", "felder": ["bio", "kinks"], "zweck": "Für die Tafeln in der Welt" },
+  { "quelle": "profile", "felder": ["bio"], "zweck": "Für die Tafeln in der Welt" },
   { "quelle": "level",   "felder": ["level", "xp"],  "zweck": "Für die Rangliste an der Wand" }
 ]
 ```
@@ -1812,7 +1812,7 @@ Ein vollständiges Beispiel, das nur liest und nichts anlegt, liegt in
 
 | `quelle` | Felder |
 |---|---|
-| `profile` | `bio`, `kinks`, `triggers`, `limits` |
+| `profile` | `bio` |
 | `level` | `level`, `xp`, `messages`, `voice_minutes`, `voice_level` |
 | `vrchat` | `trust`, `verifiziert_18`, `supporter`, `gruppenmitglied` |
 

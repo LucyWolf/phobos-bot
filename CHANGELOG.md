@@ -14,6 +14,22 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.61 — `beta` — 25.11.2026
+
+**Plugin-Daten: die Quelle „profile" gibt nur noch die Bio her**
+Bisher konnte ein Plugin über die Daten-Schnittstelle neben der Bio auch `kinks`, `triggers`
+und `limits` einer Person abrufen. Diese drei sind besondere Kategorien (DSGVO Art. 9) und
+haben in einer per Schlüssel abrufbaren Liste nichts verloren — ein durchgesickerter Schlüssel
+wäre dort ein ganz anderer Schaden als die vier harmlosen VRC-Link-Flags. Ab jetzt gibt
+`profile` nur noch `bio` her.
+
+- Die Felder bleiben im Profil der Person **erhalten** — sie trägt sie weiter mit `/kinks` ein,
+  andere sehen sie mit `/inspect`. Nur die Plugin-Schnittstelle liefert sie nicht mehr.
+- Wirkt **sofort**, auch für schon eingespielte Plugins: `daten_holen` schneidet jede Ansicht
+  auf die aktuell erlaubten Felder — ein altes Paket, das `kinks` anfordert, bekommt es nicht
+  mehr, ohne dass jemand es neu einspielen muss.
+- README (EN + DE) und das Welt-Beispiel (`plugin-beispiel-welt.json`) entsprechend angepasst.
+
 ## 1.19.60 — `beta` — 21.11.2026
 
 **VRC-Link-Konsole: `live` zeigt die Vorgänge in Echtzeit**

@@ -13,7 +13,7 @@
   "daten": [
     {
       "quelle": "profile",
-      "felder": ["bio", "kinks", "triggers", "limits"],
+      "felder": ["bio"],
       "zweck": "Für die Tafeln in der Welt. Es erscheint nur, wer sein Profil selbst freigegeben hat."
     },
     {
