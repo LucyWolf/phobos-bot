@@ -1,0 +1,20 @@
+{
+  "phobos_plugin": "1.0",
+  "kennung": "beispiel-datenpunkte",
+  "name": "Datenpunkte (nur lesen)",
+  "icon": "🔎",
+  "version": "1.0.0",
+  "autor": "Phobos",
+  "beschreibung": "Legt nichts an — liest nur die VRC-Link-Datenpunkte und stellt sie unter einer Adresse bereit, z. B. für eine VRChat-Welt. Was ankommt, prüfst du vorher in der 🐞-Konsole (VRC-Link-Reiter) mit „data <name>“.",
+
+  "quelle": "https://raw.githubusercontent.com/LucyWolf/phobos-bot/main/tools/plugin-beispiele/plugin-beispiel-datenpunkte.json",
+  "homepage": "https://github.com/LucyWolf/phobos-bot",
+
+  "daten": [
+    {
+      "quelle": "vrchat",
+      "felder": ["trust", "verifiziert_18", "supporter", "gruppenmitglied"],
+      "zweck": "Alle vier VRC-Link-Datenpunkte. Vorab prüfen mit der 🐞-Konsole: „data <name>“."
+    }
+  ]
+}

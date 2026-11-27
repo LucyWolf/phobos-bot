@@ -287,7 +287,11 @@ DATENQUELLEN: dict = {
     "profile": {
         "titel": ("🪪 Profile (nur selbst freigegebene)",
                   "🪪 Profiles (only those released by the person)"),
-        "felder": ("bio", "kinks", "triggers", "limits"),
+        # Bewusst nur die Vorstellung ("bio"). kinks/triggers/limits sind besondere Kategorien
+        # (DSGVO Art. 9) und haben in einer per Schluessel abrufbaren Liste nichts verloren -
+        # ein durchgesickerter Schluessel waere dort ein ganz anderer Schaden als vier Flags.
+        # Die Felder bleiben im Profil der Person erhalten, sie sind nur nicht mehr abrufbar.
+        "felder": ("bio",),
     },
     "level": {
         "titel": ("🏆 Level und XP", "🏆 Levels and XP"),
@@ -374,7 +378,13 @@ async def daten_holen(guild_id, ansichten: list, erlaubt: set) -> dict:
 
     aus: dict = {}
     for ansicht in gefragt:
-        quelle, felder = ansicht["quelle"], ansicht["felder"]
+        quelle = ansicht["quelle"]
+        # Nur Felder ausliefern, die DATENQUELLEN jetzt noch kennt: ein aelteres Paket, das ein
+        # inzwischen gestrichenes Feld (kinks/triggers/limits) anfordert, bekommt es nicht mehr -
+        # die Einschraenkung wirkt sofort, nicht erst nach einem Neu-Einspielen des Plugins.
+        felder = [f for f in ansicht["felder"] if f in DATENQUELLEN[quelle]["felder"]]
+        if not felder:
+            continue
         if quelle == "profile":
             sammler: dict = {}
             for z in await db_rows(

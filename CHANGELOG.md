@@ -14,6 +14,100 @@ Was davor war, steht in der Commit-Geschichte: `git log --oneline` oder auf GitH
 
 ---
 
+## 1.19.63 — `beta` — 25.11.2026
+
+**Login-Warnung per Mail nennt jetzt die Webseite**
+Die Mail „Anmeldung von einer neuen Adresse" zeigte Konto, Adresse und Zeit — aber nicht, um
+welche Installation es geht. Bei mehreren Dashboards mit gleichem App-Namen war nicht zu
+erkennen, welches gemeint ist. Jetzt steht die Dashboard-Adresse als erste Zeile in der Mail;
+fehlt sie (nie geöffnet / nicht konfiguriert), tritt der App-Name an ihre Stelle.
+
+## 1.19.62 — `beta` — 25.11.2026
+
+**Debug-Konsole: `status` zeigt nur noch das Nötige**
+Die `status`-Ausgabe zeigte zu einem User alles — auch Discord-ID, VRChat-ID und genaue
+Zeitstempel. Zum Debuggen („hängt eine Verknüpfung?") braucht man das nicht, und es
+identifiziert die Person unnötig. Ab jetzt nur noch: VRChat-Name, Status, Eigentumsnachweis
+(ja/nein), die vier Flags, Rollen-Sync (ja/nein), Notiz. Discord-ID, VRChat-ID und die
+Zeitstempel sind raus — gespeichert bleiben sie, nur diese Ansicht zeigt sie nicht mehr.
+
+## 1.19.61 — `beta` — 25.11.2026
+
+**Plugin-Daten: die Quelle „profile" gibt nur noch die Bio her**
+Bisher konnte ein Plugin über die Daten-Schnittstelle neben der Bio auch `kinks`, `triggers`
+und `limits` einer Person abrufen. Diese drei sind besondere Kategorien (DSGVO Art. 9) und
+haben in einer per Schlüssel abrufbaren Liste nichts verloren — ein durchgesickerter Schlüssel
+wäre dort ein ganz anderer Schaden als die vier harmlosen VRC-Link-Flags. Ab jetzt gibt
+`profile` nur noch `bio` her.
+
+- Die Felder bleiben im Profil der Person **erhalten** — sie trägt sie weiter mit `/kinks` ein,
+  andere sehen sie mit `/inspect`. Nur die Plugin-Schnittstelle liefert sie nicht mehr.
+- Wirkt **sofort**, auch für schon eingespielte Plugins: `daten_holen` schneidet jede Ansicht
+  auf die aktuell erlaubten Felder — ein altes Paket, das `kinks` anfordert, bekommt es nicht
+  mehr, ohne dass jemand es neu einspielen muss.
+- README (EN + DE) und das Welt-Beispiel (`plugin-beispiel-welt.json`) entsprechend angepasst.
+
+## 1.19.60 — `beta` — 21.11.2026
+
+**VRC-Link-Konsole: `live` zeigt die Vorgänge in Echtzeit**
+Neuer Befehl `live` in der 🐞-Konsole: zeigt die VRC-Link-Vorgänge **dieses Servers**
+mitlaufend, bis man `stop` schreibt (oder das Fenster schließt / Escape). Protokolliert werden
+die Ereignisse — einen VRChat-Namen nachschlagen, eine Verknüpfung anwenden, eine zurücknehmen.
+Die Konsole fragt alle zwei Sekunden das Neue nach und merkt sich, was sie schon gezeigt hat.
+
+**Wie das „live" entsteht**
+- Kleiner Ringpuffer im Speicher (neues Modul `app/vrc_log.py`): die letzten ~400 Vorgänge, je
+  mit Server-ID. Nichts auf der Platte, nichts übersteht einen Neustart.
+- Drei Ereignis-Funktionen im VRC-Link-Cog bekommen je eine Protokoll-Zeile — **additiv**, ohne
+  Verhaltensänderung: `resolve_vrchat`, `apply_link`, `revoke_link`. Der Rollen-Sync
+  (`sync_vrc_roles`) bleibt bewusst stumm — er läuft im Timer-Leerlauf und würde nur rauschen.
+- **Server-getrennt:** Die Konsole zeigt nur das Geschehen des eigenen Servers, nie das eines
+  anderen auf derselben Installation. Admin-only, weiterhin keine Shell.
+
+**Doku**
+- README (EN + DE): der Konsolen-Hinweis nennt jetzt auch `live`/`stop`.
+
+## 1.19.59 — `beta` — 21.11.2026
+
+**VRC-Link-Debug: aus dem Datenpunkt-Fenster wird eine Konsole**
+Das 🐞-Fenster (1.19.58) ist jetzt eine kleine Debug-Kommandozeile — **zentriert** statt links
+angedockt. Statt nur Datenpunkte zu suchen, kennt sie Befehle:
+- `data <name>` — die Datenpunkte, die ein Plugin aus der Quelle „vrchat" bekäme (nur
+  bestätigte Verknüpfungen, nur die vier Felder).
+- `status <name>` — der volle Verknüpfungs-Status, auch wartende und ungelöste, um Probleme zu
+  sehen: Status, Eigentumsnachweis, Zeitpunkte, Rollen-Sync, Notiz.
+- `help` — die Befehlsliste.
+
+**Es ist eine Attrappe, kein Terminal**
+Die Konsole kennt nur diese drei Wörter. Kein Shell-Zugang, kein `eval`, kein `subprocess` —
+was nicht genau „data", „status" oder „help" ist, ergibt „unknown command". Die Eingabe löst
+nur feste, parametrisierte Datenbank-Abfragen aus; Tabellen- und Spaltennamen stehen im Code,
+nie in der Eingabe. Nur für Server-Admins, nur beim VRC-Link. Fremde Namen/Notizen werden in
+der Anzeige als Text behandelt, nie als HTML.
+
+**Doku**
+- README (EN + DE): der Hinweis im Daten-Abschnitt nennt jetzt die Konsole und ihre Befehle.
+
+## 1.19.58 — `beta` — 21.11.2026
+
+**Neu: „Plugin data points" — Debug-Fenster im VRC-Link-Reiter**
+Wer ein Plugin baut, das die Quelle „vrchat" liest, musste bisher raten, welche Werte dort
+ankommen — oder erst ein Plugin einspielen, freigeben und eine Welt bauen. Jetzt steht im Kopf
+des VRC-Link-Reiters ein drittes Icon (🐞) neben ℹ und ⚠. Es klappt ein Fenster auf, in das man
+einen VRChat-Namen eingibt (ein Teil reicht) und die Datenpunkte dieser Person sieht, genau wie
+ein Plugin sie bekäme: `trust`, `verifiziert_18`, `supporter`, `gruppenmitglied`. Passen mehrere
+Namen, erscheinen mehrere Treffer.
+
+**Dieselben Schranken wie die echte Daten-Schnittstelle**
+- Nur bestätigte Verknüpfungen, nur diese vier Felder, keine Discord-IDs — was ein Plugin nicht
+  lesen darf, zeigt auch dieses Fenster nicht.
+- Nur für Server, die man verwalten darf (dieselbe Zugriffsprüfung wie der ganze Reiter).
+- Der VRChat-Name wird beim Anzeigen gegen HTML abgesichert.
+
+**Doku**
+- README (EN + DE): ein nur-lesendes VRC-Link-Beispielplugin im Abschnitt „A plugin can also read
+  data", mit Hinweis auf das neue Debug-Fenster.
+
 ## 1.19.57 — `beta` — 19.11.2026
 
 **Plugin-Karte unter Einstellungen → Plugins kompakt gemacht**

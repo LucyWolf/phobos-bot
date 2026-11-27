@@ -465,7 +465,7 @@ behind a button, a separate room, or your own 18+ gate. The bot cannot make that
   vrchat.com. The current list is served by VRChat's own config endpoint as
   `stringHostUrlList` and can change.
 - **Mirroring to a trusted host is not the answer.** Pastebin or a gist would load without
-  that setting — and would also put kinks, triggers and limits on a public address that
+  that setting — and would also put the released profile data on a public address that
   nothing ever takes back. That is exactly why this endpoint exists.
 - **One download at a time.** `VRCStringDownloader` has a global cooldown of about five
   seconds across the whole world. Fetch once when a player comes into range, keep the result,
@@ -485,6 +485,8 @@ A plugin is a **package of settings**, not a program. One JSON file describes wh
 created — commands, a ticket panel with its categories, level rewards, auto-mod word lists —
 and the bot creates it. You can export it, hand it to someone else, and they can apply it to
 their own server.
+
+> 📂 **Ready-made examples to copy:** [`tools/plugin-beispiele/`](tools/plugin-beispiele/) — upload one and it runs. Each carries a data-point section and a note on checking it in the 🐞 console.
 
 **A plugin executes no code.** That is deliberate and not a temporary limitation: a Python
 plugin would run in the same process as the bot, with access to the bot token, the whole
@@ -545,7 +547,7 @@ removing it takes it back off the server and out of the sidebar.
 }
 ```
 
-A full, working example is in [`tools/plugin-beispiel.json`](tools/plugin-beispiel.json).
+A full, working example is in [`tools/plugin-beispiele/plugin-beispiel.json`](tools/plugin-beispiele/plugin-beispiel.json).
 
 **`kennung`** identifies the plugin across versions — lowercase letters, digits, `-` and
 `_`. Uploading the same identifier again is a *new version*, not a second plugin. Servers
@@ -573,17 +575,17 @@ instead of a new endpoint going into the bot for every special case.
 
 ```json
 "daten": [
-  { "quelle": "profile", "felder": ["bio", "kinks"], "zweck": "For the boards in the world" },
+  { "quelle": "profile", "felder": ["bio"], "zweck": "For the boards in the world" },
   { "quelle": "level",   "felder": ["level", "xp"],  "zweck": "For the ranking on the wall" }
 ]
 ```
 
 A complete example that only reads and creates nothing is
-[`tools/plugin-beispiel-welt.json`](tools/plugin-beispiel-welt.json).
+[`tools/plugin-beispiele/plugin-beispiel-welt.json`](tools/plugin-beispiele/plugin-beispiel-welt.json).
 
 | `quelle` | Fields |
 |---|---|
-| `profile` | `bio`, `kinks`, `triggers`, `limits` |
+| `profile` | `bio` |
 | `level` | `level`, `xp`, `messages`, `voice_minutes`, `voice_level` |
 | `vrchat` | `trust`, `verifiziert_18`, `supporter`, `gruppenmitglied` |
 
@@ -626,6 +628,14 @@ Three rules are built into this and cannot be configured away:
 
 Unticking every box switches fetching off entirely and clears the key. Changing the key
 locks the old address out immediately. Requests are rate-limited per address.
+
+> **A debug console for VRC-Link.** In a server's **VRC-Link** tab, the 🐞 icon (next to ℹ and
+> ⚠) opens a small centered console with a few fixed commands: `data <name>` shows the exact
+> fields a plugin would read from the `vrchat` source (`trust`, `verifiziert_18`, `supporter`,
+> `gruppenmitglied`, confirmed links only); `status <name>` shows the full link status — even
+> pending or unresolved ones — so you can spot problems; `live` streams this server's VRC-Link
+> activity in real time until you type `stop`; `help` lists them. It is **not a shell**: it
+> knows only these fixed commands and runs only fixed, parameterised lookups.
 
 ### Keeping a plugin up to date
 
@@ -695,7 +705,7 @@ server's — the file fits that one plugin and is refused for any other.
 
 You need a text editor. Nothing else.
 
-**1. Start from the example.** Copy [`tools/plugin-beispiel.json`](tools/plugin-beispiel.json)
+**1. Start from the example.** Copy [`tools/plugin-beispiele/plugin-beispiel.json`](tools/plugin-beispiele/plugin-beispiel.json)
 and save it under your own name, ending in `.json`.
 
 **2. Fill in the head.**
@@ -1710,7 +1720,7 @@ liest jeder, der davorsteht. Deshalb steht in jeder Antwort, welches Feld dahint
   auf vrchat.com stehen. Die Liste kann sich ändern; VRChat liefert sie selbst als
   `stringHostUrlList` aus.
 - **Auf einen vertrauten Dienst spiegeln ist keine Lösung.** Pastebin oder ein Gist lüden
-  ohne diese Einstellung — und legten kinks, triggers und limits auf eine öffentliche
+  ohne diese Einstellung — und legten die freigegebenen Profildaten auf eine öffentliche
   Adresse, von der nichts je wieder verschwindet. Genau dafür gibt es diese Leseadresse.
 - **Ein Abruf nach dem anderen.** `VRCStringDownloader` hat eine welt-weite Sperre von rund
   fünf Sekunden zwischen zwei Abrufen. Einmal holen, wenn jemand in die Nähe kommt, und das
@@ -1726,6 +1736,8 @@ Ein Plugin ist ein **Paket aus Einstellungen**, kein Programm. Eine JSON-Datei b
 was angelegt werden soll — Befehle, ein Ticket-Panel mit seinen Kategorien,
 Level-Belohnungen, Wortlisten für den Spam-Schutz —, und der Bot legt es an. Die Datei lässt
 sich exportieren, weitergeben und auf einem fremden Server einspielen.
+
+> 📂 **Fertige Beispiele zum Abschreiben:** [`tools/plugin-beispiele/`](tools/plugin-beispiele/) — eine Datei hochladen, läuft. Jedes hat einen Datenpunkt-Teil und einen Hinweis, wie man ihn in der 🐞-Konsole prüft.
 
 **Ein Plugin führt keinen Code aus.** Das ist Absicht und keine Einschränkung auf Zeit: Ein
 Python-Plugin liefe im selben Prozess wie der Bot und käme an den Bot-Token, an die ganze
@@ -1788,7 +1800,7 @@ Einstellungen des Plugins; dort entfernt heißt: wieder vom Server herunter und 
 ```
 
 Ein vollständiges Beispiel zum Abschreiben liegt in
-[`tools/plugin-beispiel.json`](tools/plugin-beispiel.json).
+[`tools/plugin-beispiele/plugin-beispiel.json`](tools/plugin-beispiele/plugin-beispiel.json).
 
 **`kennung`** ist das, was ein Plugin über Versionen hinweg identifiziert — Kleinbuchstaben,
 Ziffern, `-` und `_`. Dieselbe Kennung nochmal hochzuladen ist eine *neue Fassung*, kein
@@ -1818,17 +1830,17 @@ statt dass für jeden Sonderfall eine neue Schnittstelle in den Bot muss.
 
 ```json
 "daten": [
-  { "quelle": "profile", "felder": ["bio", "kinks"], "zweck": "Für die Tafeln in der Welt" },
+  { "quelle": "profile", "felder": ["bio"], "zweck": "Für die Tafeln in der Welt" },
   { "quelle": "level",   "felder": ["level", "xp"],  "zweck": "Für die Rangliste an der Wand" }
 ]
 ```
 
 Ein vollständiges Beispiel, das nur liest und nichts anlegt, liegt in
-[`tools/plugin-beispiel-welt.json`](tools/plugin-beispiel-welt.json).
+[`tools/plugin-beispiele/plugin-beispiel-welt.json`](tools/plugin-beispiele/plugin-beispiel-welt.json).
 
 | `quelle` | Felder |
 |---|---|
-| `profile` | `bio`, `kinks`, `triggers`, `limits` |
+| `profile` | `bio` |
 | `level` | `level`, `xp`, `messages`, `voice_minutes`, `voice_level` |
 | `vrchat` | `trust`, `verifiziert_18`, `supporter`, `gruppenmitglied` |
 
@@ -1872,6 +1884,15 @@ Drei Regeln sind dabei fest eingebaut und nicht einstellbar:
 
 Alle Haken zu entfernen schaltet den Abruf ganz ab und löscht den Schlüssel. Ein geänderter
 Schlüssel sperrt die alte Adresse sofort aus. Abrufe sind je Adresse gedrosselt.
+
+> **Eine Debug-Konsole für VRC-Link.** Im **VRC-Link**-Reiter eines Servers öffnet das 🐞-Icon
+> (neben ℹ und ⚠) ein kleines, zentriertes Konsolenfenster mit ein paar festen Befehlen:
+> `data <name>` zeigt genau die Felder, die ein Plugin aus der Quelle `vrchat` läse (`trust`,
+> `verifiziert_18`, `supporter`, `gruppenmitglied`, nur bestätigte Verknüpfungen);
+> `status <name>` zeigt den vollen Verknüpfungs-Status — auch wartende und ungelöste — damit man
+> Probleme sieht; `live` zeigt die VRC-Link-Vorgänge dieses Servers in Echtzeit, bis man `stop`
+> tippt; `help` listet sie auf. Es ist **keine Shell**: Es kennt nur diese festen Befehle und
+> führt nur feste, parametrisierte Abfragen aus.
 
 ### Ein Plugin aktuell halten
 
@@ -1944,7 +1965,7 @@ andere abgelehnt.
 
 Gebraucht wird ein Texteditor. Sonst nichts.
 
-**1. Vom Beispiel ausgehen.** [`tools/plugin-beispiel.json`](tools/plugin-beispiel.json)
+**1. Vom Beispiel ausgehen.** [`tools/plugin-beispiele/plugin-beispiel.json`](tools/plugin-beispiele/plugin-beispiel.json)
 kopieren und unter eigenem Namen speichern, Endung `.json`.
 
 **2. Den Kopf ausfüllen.**

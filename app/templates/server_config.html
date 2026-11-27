@@ -3768,6 +3768,10 @@ document.addEventListener('click', function(e) {
      cannot be exercised against a real account by tests alone. #}
   <button type="button" class="untested-warn-trigger" onclick="toggleUntestedWarnBox(this)" data-warn-target="warn10-warn-box" title="{{ tr.untested_warning_tooltip }}"
     style="background:rgba(245,158,11,0.15);border:1px solid #f59e0b;color:#f59e0b;border-radius:50%;width:18px;height:18px;font-size:0.65rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:0.35rem;">⚠</button>
+  {# Debug-Icon: nur hier beim VRC-Link. Klappt eine Box auf, die zeigt, welche Datenpunkte
+     ein Plugin aus der Quelle „vrchat" hier bekäme - mit echten Werten, nach Name gesucht. #}
+  <button type="button" onclick="toggleVrcDp()" title="{{ tr.vrc_dp_tooltip }}"
+    style="background:rgba(245,158,11,0.15);border:1px solid #f59e0b;color:#f59e0b;border-radius:50%;width:18px;height:18px;font-size:0.65rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:0.35rem;">🐞</button>
   <div id="warn10-warn-box" class="untested-warn-box" style="display:none;position:absolute;z-index:60;right:0;left:auto;top:100%;margin-top:0.4rem;background:var(--surface);border:1px solid #f59e0b;border-radius:0.6rem;padding:0.85rem 1rem;font-size:0.78rem;min-width:240px;max-width:360px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
     <strong style="color:#f59e0b;">⚠️ {{ tr.untested_warning_title }}</strong>
     <p style="margin:0.4rem 0 0;">{{ tr.untested_warning_tooltip }}</p>
@@ -3782,6 +3786,33 @@ document.addEventListener('click', function(e) {
       <li>{{ tr.vrc_info_item_noapi }}</li>
       <li>{{ tr.vrc_info_item_perms }}</li>
     </ul>
+  </div>
+  {# Zentriertes Modal mit einer Debug-Konsole. Nur drei feste Befehle (data/status/help),
+     die der Server kennt - kein Shell-Zugang, siehe /servers/.../vrclink/console. #}
+  <div id="vrc-dp-overlay" onclick="if(event.target===this)toggleVrcDp()"
+       style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.6);
+              align-items:center;justify-content:center;padding:1rem;">
+    <div onclick="event.stopPropagation()"
+         style="background:var(--surface);border:1px solid #f59e0b;border-radius:0.7rem;
+                width:min(640px,96vw);max-height:85vh;display:flex;flex-direction:column;
+                box-shadow:0 10px 40px rgba(0,0,0,0.5);text-align:left;">
+      <div style="display:flex;align-items:center;gap:0.5rem;padding:0.8rem 1rem;border-bottom:1px solid var(--border);">
+        <div style="font-weight:700;color:#f59e0b;flex:1;">{{ tr.vrc_dp_title }}</div>
+        <button type="button" onclick="toggleVrcDp()" title="✕"
+          style="background:none;border:none;color:var(--muted);font-size:1.15rem;line-height:1;cursor:pointer;">✕</button>
+      </div>
+      <p class="hint" style="margin:0;padding:0.6rem 1rem 0;">{{ tr.vrc_dp_hint }}</p>
+      <div id="vrc-dp-out" data-guild="{{ guild.id }}"
+           style="flex:1;overflow:auto;margin:0.6rem 1rem;padding:0.7rem 0.8rem;background:#0b0b0f;
+                  border:1px solid var(--border);border-radius:0.5rem;font-family:ui-monospace,Menlo,Consolas,monospace;
+                  font-size:0.76rem;line-height:1.5;white-space:pre-wrap;color:#d6d6e0;min-height:170px;"></div>
+      <div style="display:flex;align-items:center;gap:0.45rem;padding:0 1rem 1rem;">
+        <span style="color:#f59e0b;font-family:ui-monospace,monospace;font-weight:700;">&gt;</span>
+        <input type="text" id="vrc-dp-input" autocomplete="off" spellcheck="false" placeholder="{{ tr.vrc_dp_placeholder }}"
+               style="flex:1;margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();vrcDpRun();}">
+      </div>
+    </div>
   </div>
 </div>
 
@@ -4806,6 +4837,86 @@ function toggleVrcInfo() {
   const box = document.getElementById('vrc-info-box');
   if (box) box.style.display = box.style.display === 'none' ? '' : 'none';
 }
+// Debug-Konsole „VRC-Link debug console": zentriertes Fenster mit drei festen Befehlen
+// (data/status/help). KEINE Shell - die Eingabe geht nur an /vrclink/console, und der Server
+// kennt nur diese drei Wörter. Ausgabe immer per textContent, nie innerHTML (kein XSS aus
+// fremden VRChat-Namen oder Notizen).
+function toggleVrcDp() {
+  const ov = document.getElementById('vrc-dp-overlay');
+  if (!ov) return;
+  const auf = (ov.style.display === 'none' || !ov.style.display);
+  ov.style.display = auf ? 'flex' : 'none';
+  if (auf) {
+    const out = document.getElementById('vrc-dp-out');
+    if (out && !out.dataset.started) { out.dataset.started = '1'; vrcDpSend('help', ''); }
+    const inp = document.getElementById('vrc-dp-input');
+    if (inp) setTimeout(function () { inp.focus(); }, 30);
+  } else {
+    vrcDpStopLive();          // Fenster zu: Live-Strom darf nicht im Hintergrund weiterlaufen
+  }
+}
+function vrcDpPrint(text, farbe) {
+  const out = document.getElementById('vrc-dp-out');
+  if (!out) return;
+  const div = document.createElement('div');
+  if (farbe) div.style.color = farbe;
+  div.textContent = text;
+  out.appendChild(div);
+  out.scrollTop = out.scrollHeight;
+}
+function vrcDpRun() {
+  const inp = document.getElementById('vrc-dp-input');
+  if (!inp) return;
+  const zeile = (inp.value || '').trim();
+  inp.value = '';
+  if (!zeile) return;
+  vrcDpPrint('> ' + zeile, '#f59e0b');
+  const i = zeile.indexOf(' ');
+  const cmd = (i === -1 ? zeile : zeile.slice(0, i)).toLowerCase();
+  const arg = (i === -1 ? '' : zeile.slice(i + 1).trim());
+  if (cmd === 'stop') { vrcDpStopLive(); return; }
+  if (cmd === 'live' || cmd === 'watch' || cmd === 'tail') { vrcDpStartLive(); return; }
+  vrcDpSend(cmd, arg);
+}
+let vrcDpTimer = null, vrcDpCursor = 0;
+function vrcDpStartLive() {
+  if (vrcDpTimer) { vrcDpPrint('already live — type "stop"', '#9ca3af'); return; }
+  vrcDpCursor = 0;
+  vrcDpPrint('— live: this server’s VRC-Link activity. type "stop" to end —', '#9ca3af');
+  vrcDpLivePoll();
+  vrcDpTimer = setInterval(vrcDpLivePoll, 2000);
+}
+function vrcDpStopLive() {
+  if (!vrcDpTimer) return;
+  clearInterval(vrcDpTimer); vrcDpTimer = null;
+  vrcDpPrint('— live stopped —', '#9ca3af');
+}
+async function vrcDpLivePoll() {
+  const out = document.getElementById('vrc-dp-out');
+  const gid = out ? out.getAttribute('data-guild') : '';
+  try {
+    const r = await fetch('/servers/' + gid + '/vrclink/console?cmd=live&arg=' + vrcDpCursor);
+    const d = await r.json();
+    (d.zeilen || []).forEach(function (z) { vrcDpPrint(z, '#86efac'); });
+    if (typeof d.cursor === 'number') vrcDpCursor = d.cursor;
+  } catch (e) {}
+}
+async function vrcDpSend(cmd, arg) {
+  const out = document.getElementById('vrc-dp-out');
+  const gid = out ? out.getAttribute('data-guild') : '';
+  try {
+    const r = await fetch('/servers/' + gid + '/vrclink/console?cmd='
+      + encodeURIComponent(cmd) + '&arg=' + encodeURIComponent(arg));
+    const d = await r.json();
+    (d.zeilen || []).forEach(function (z) { vrcDpPrint(z); });
+  } catch (e) { vrcDpPrint('error', '#f87171'); }
+}
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') {
+    const ov = document.getElementById('vrc-dp-overlay');
+    if (ov && ov.style.display && ov.style.display !== 'none') ov.style.display = 'none';
+  }
+});
 document.addEventListener('click', function(e) {
   const box = document.getElementById('vrc-info-box');
   if (box && !box.contains(e.target) && !e.target.matches('[onclick="toggleVrcInfo()"]')) {

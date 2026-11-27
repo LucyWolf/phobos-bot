@@ -1565,6 +1565,10 @@ async def _complete_login(request: Request, user: dict) -> None:
     try:
         ip = _login_client(request)
         if not await _ort_bekannt(user["id"], ip):
+            # Welche Webseite gemeint ist: die Dashboard-Adresse. Sie unterscheidet mehrere
+            # Installationen, wo der App-Name (im Betreff) gleich sein kann. Fehlt sie (nie
+            # geöffnet / nicht konfiguriert), tritt der App-Name an ihre Stelle.
+            webseite = (await link_base_url()) or _app_name
             await _warn_mail(user, f"neu:{user['id']}",
                              f"{_app_name}: Anmeldung von einer neuen Adresse", [
                 f"Hallo {user.get('display_name') or user['username']},",
@@ -1572,9 +1576,10 @@ async def _complete_login(request: Request, user: dict) -> None:
                 "gerade hat sich jemand bei deinem Konto angemeldet — von einer Adresse, "
                 "von der aus das noch nie passiert ist:",
                 "",
-                f"    Konto:   {user['username']}",
-                f"    Adresse: {ip}",
-                f"    Zeit:    {_fmt_dt(now)}",
+                f"    Webseite: {webseite}",
+                f"    Konto:    {user['username']}",
+                f"    Adresse:  {ip}",
+                f"    Zeit:     {_fmt_dt(now)}",
                 "",
                 "Warst du das, ist alles in Ordnung — diese Meldung kommt pro Adresse nur "
                 "einmal. Warst du es nicht, ändere sofort dein Passwort und schalte die "
@@ -11101,6 +11106,106 @@ async def plugin_daten_api(request: Request, kennung: str, key: str = ""):
         "stand": datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z",
         "daten": daten,
     })
+
+
+@web.get("/servers/{guild_id}/vrclink/console")
+async def vrc_console(request: Request, guild_id: int, cmd: str = "", arg: str = ""):
+    """Debug-Kommandozeile im VRC-Link-Reiter. Nur zum Nachsehen - ändert nichts.
+
+    Zwei Befehle, beide nach Name (Teiltreffer, Groß-/Kleinschreibung egal):
+      data <name>   - die Datenpunkte, die ein Plugin aus der Quelle „vrchat" bekäme.
+                      Dieselben Schranken wie die echte API: nur bestätigte Verknüpfungen,
+                      nur die vier Felder.
+      status <name> - der volle Verknüpfungs-Status, auch wartende und ungelöste, damit man
+                      Probleme sieht (kein Eigentumsnachweis, hängt in „pending", ...).
+
+    Admin-/Server-Zugriff wie der ganze Reiter. Gibt Textzeilen zurück, die die Oberfläche
+    als Konsole ausgibt. Tabellen- und Spaltennamen stehen fest im Code, nie aus der Eingabe.
+    """
+    if r := auth_redirect(request): return r
+    if not await _guild_access(request, guild_id):
+        return JSONResponse({"zeilen": ["access denied"]}, status_code=403)
+    cmd = (cmd or "").strip().lower()
+    arg = (arg or "").strip()
+    gid = str(guild_id)
+
+    if cmd in ("", "help", "?", "hilfe"):
+        return JSONResponse({"zeilen": [
+            "Commands:",
+            "  data <name>     plugin data points (vrchat source) — what a plugin reads",
+            "  status <name>   full link status — to spot problems (pending, no proof, …)",
+            "  live            stream this server's VRC-Link activity — 'stop' to end",
+            "  stop            stop the live stream",
+            "  help            this list",
+            "",
+            "Name matching is partial and case-insensitive.",
+        ]})
+
+    # Live-Strom: die neuen Vorgänge dieses Servers seit der zuletzt gesehenen Nummer (arg).
+    # Die Oberfläche fragt im Takt nach und merkt sich den Cursor; stoppen tut sie selbst.
+    if cmd in ("live", "watch", "tail"):
+        from vrc_log import seit
+        try:
+            cursor = int(arg or 0)
+        except ValueError:
+            cursor = 0
+        eintraege = seit(gid, cursor, 60)
+        zeilen = [f"{e['zeit']}  {e['text']}" for e in eintraege]
+        neuer = eintraege[-1]["nr"] if eintraege else cursor
+        return JSONResponse({"zeilen": zeilen, "cursor": neuer, "live": True})
+
+    if not arg:
+        return JSONResponse({"zeilen": [f"usage: {cmd} <name>"]})
+    suche = arg.lower()
+
+    if cmd in ("data", "datapoints", "dp"):
+        zeilen, n = [], 0
+        for z in await db_rows(
+                "SELECT vrchat_name, vrc_trust, vrc_age_verified, vrc_supporter, "
+                "vrc_group_member FROM vrc_links WHERE guild_id=? AND status='approved' "
+                "AND vrchat_name<>'' ORDER BY vrchat_name COLLATE NOCASE", (gid,)):
+            if suche not in (z["vrchat_name"] or "").lower():
+                continue
+            n += 1
+            zeilen += [
+                f"● {z['vrchat_name']}",
+                f"    trust: {z['vrc_trust'] or '—'}",
+                f"    verifiziert_18: {bool(z['vrc_age_verified'])}",
+                f"    supporter: {bool(z['vrc_supporter'])}",
+                f"    gruppenmitglied: {bool(z['vrc_group_member'])}",
+            ]
+        if not n:
+            return JSONResponse({"zeilen": ["no confirmed link matches."]})
+        return JSONResponse({"zeilen": [f"{n} match(es) — exactly what a plugin reads:"] + zeilen})
+
+    if cmd in ("status", "stat", "s"):
+        # Bewusst sparsam: der VRChat-Name genügt zum Finden, Status/Nachweis/Flags sagen, ob
+        # etwas klemmt. Discord-ID, VRChat-ID und genaue Zeitstempel braucht das Debuggen nicht
+        # und identifizieren die Person unnötig - wer nur nachsieht, ob eine Verknüpfung hängt,
+        # geht das nichts an. Gespeichert bleiben sie, nur diese Ansicht zeigt sie nicht mehr.
+        zeilen, n = [], 0
+        for z in await db_rows(
+                "SELECT vrchat_name, status, verified_at, vrc_trust, vrc_age_verified, "
+                "vrc_supporter, vrc_group_member, vrc_roles_synced, note FROM vrc_links "
+                "WHERE guild_id=? AND vrchat_name<>'' ORDER BY vrchat_name COLLATE NOCASE", (gid,)):
+            if suche not in (z["vrchat_name"] or "").lower():
+                continue
+            n += 1
+            zeilen += [
+                f"● {z['vrchat_name']}",
+                f"    status: {z['status']}",
+                f"    ownership proven: {'yes' if z['verified_at'] else 'NO — no proof yet'}",
+                f"    trust: {z['vrc_trust'] or '—'}   18+: {bool(z['vrc_age_verified'])}   "
+                f"supporter: {bool(z['vrc_supporter'])}   group: {bool(z['vrc_group_member'])}",
+                f"    roles synced: {'yes' if z['vrc_roles_synced'] else 'no'}",
+            ]
+            if z["note"]:
+                zeilen.append(f"    note: {z['note']}")
+        if not n:
+            return JSONResponse({"zeilen": ["no link matches (not even pending)."]})
+        return JSONResponse({"zeilen": [f"{n} match(es):"] + zeilen})
+
+    return JSONResponse({"zeilen": [f"unknown command: {cmd}", "type 'help'"]})
 
 
 @web.post("/servers/{guild_id}/plugins/{plugin_id}/entfernen")
