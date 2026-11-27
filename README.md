@@ -306,7 +306,7 @@ Requires the `fonts-dejavu-core` package (included in the Docker image). If imag
 Under **Server → Temp Voice** you can set up **Join-to-Create** channels:
 
 1. Select any existing voice channel as the **trigger**
-2. Set a **name template** (e.g. `{user}'s Channel` → `Wolfi's Channel`)
+2. Set a **name template** (e.g. `{user}'s Channel` → `Alex's Channel`)
 3. Optionally set a **user limit** and **category**
 
 When a member joins the trigger channel, the bot creates a private voice channel and moves them into it. When the last member leaves, the channel is deleted automatically.
@@ -427,7 +427,7 @@ VRC-Link table, so only members who linked their VRChat account can be found at 
 ```json
 {
   "gefunden": true,
-  "vrchat_name": "LucyVR",
+  "vrchat_name": "SomeUser",
   "felder": [
     {"feld": "bio",      "text": "…", "geaendert": "2026-11-17 15:04", "erwachsen": false},
     {"feld": "kinks",    "text": "…", "geaendert": "2026-11-17 15:04", "erwachsen": true},
@@ -1279,9 +1279,6 @@ Bot and web dashboard run in the **same asyncio process** — no separate web se
 This code was created by Claude AI — and I know, many people roll their eyes at those words. Even so, this bot stands for a simple idea: to be there for everyone, without exception. AI is not a miracle that solves every problem on its own — it's a tool that only unfolds its power through the hands that guide it. And because there is no paid work behind this, only the time I was happy to invest, this bot will never cost anything. All files are open, freely accessible and freely usable by anyone.
 
 I want to be honest here: this is AI-generated, and I make no claim to have written it myself. That credit is not mine to take. The 3D printer once gave rise to hobby engineers who used it to solve everyday problems they previously lacked the knowledge or resources for. That is exactly what AI can — and should — be: not a miracle, but a tool that makes our lives easier. A tool that allows people without a computer science background to tackle the small, nagging problems we all encounter. Not out of any claim to genius, but out of the simple desire to make something better.
-
-> *— lucy_wolf*
-
 ---
 
 <a name="deutsch"></a>
@@ -1574,7 +1571,7 @@ Benötigt das Paket `fonts-dejavu-core` (im Docker-Image bereits enthalten). Sch
 Unter **Server → Temp Voice** können **Join-to-Create**-Kanäle eingerichtet werden:
 
 1. Beliebigen bestehenden Voice-Kanal als **Trigger** wählen
-2. **Name-Vorlage** festlegen (z.B. `{user}'s Channel` → `Wolfi's Channel`)
+2. **Name-Vorlage** festlegen (z.B. `{user}'s Channel` → `Alex's Channel`)
 3. Optional **Nutzer-Limit** und **Kategorie** setzen
 
 Sobald ein Mitglied den Trigger-Kanal betritt, erstellt der Bot einen eigenen Voice-Kanal und verschiebt die Person hinein. Wenn das letzte Mitglied den Kanal verlässt, wird er automatisch gelöscht.
@@ -2535,16 +2532,13 @@ Bot und Web-Dashboard laufen im **selben asyncio-Prozess** — kein separater We
 
 ## License / Lizenz
 
-**EN —** The code is under the **MIT License** (see [LICENSE](LICENSE)): use it, change it,
-self-host it, fork it, even sell it — just keep the copyright notice. One request, not a legal
-one: "Phobos" is the name of *this* project, so please run a fork under your **own name**, or
-mark it clearly as a **mod / fork of Phobos**, so nobody confuses it with the original.
+**EN —** This is **public domain**, released under [The Unlicense](LICENSE). Use it, change it,
+self-host it, fork it, sell it: no permission needed, no attribution, no name required. Once
+something is free for everyone, a name on it only gets in the way.
 
-**DE —** Der Code steht unter der **MIT-Lizenz** (siehe [LICENSE](LICENSE)): nutzen, ändern,
-selbst hosten, forken, sogar verkaufen — nur der Copyright-Hinweis muss drinbleiben. Eine
-Bitte, kein Rechtssatz: „Phobos" ist der Name *dieses* Projekts; betreib einen Fork bitte unter
-**eigenem Namen**, oder kennzeichne ihn klar als **Mod / Fork von Phobos**, damit ihn niemand
-mit dem Original verwechselt.
+**DE —** Dies ist **gemeinfrei**, freigegeben unter [The Unlicense](LICENSE). Nutzen, ändern,
+selbst hosten, forken, verkaufen: keine Erlaubnis, keine Namensnennung, kein Name nötig. Sobald
+etwas für alle frei ist, steht ein Name darauf nur im Weg.
 
 ---
 
@@ -2553,5 +2547,3 @@ mit dem Original verwechselt.
 Dieser Code wurde von Claude AI erschaffen – und ich weiß, viele rümpfen bei diesen Worten die Nase. Trotzdem steht dieser Bot für einen einfachen Gedanken: für alle da zu sein, ohne Ausnahme. Eine KI ist kein Wundermittel, das jedes Problem von selbst löst – sie ist ein Werkzeug, das seine Kraft erst durch die Hände entfaltet, die es führen. Und weil dahinter keine bezahlte Arbeit steckt, sondern nur die Zeit, die ich gerne investiert habe, wird dieser Bot niemals etwas kosten. Alle Dateien liegen offen, für jeden frei zugänglich, frei verwendbar.
 
 Ich will an dieser Stelle ehrlich sein: Das hier ist KI-generiert, und ich beanspruche nicht, es selbst geschrieben zu haben. Diese Ehre gebührt mir nicht. Der 3D-Drucker hat einst Hobby-Ingenieure entstehen lassen, die damit Probleme des Alltags lösten, für die ihnen früher Wissen oder Mittel fehlten. Genau das kann – und sollte – auch KI sein: kein Wundermittel, sondern ein Werkzeug, das unser Leben einfacher macht. Ein Werkzeug, mit dem auch Menschen ohne Informatik-Hintergrund die kleinen, nervigen Probleme angehen können, die uns allen begegnen. Nicht aus Anspruch auf Genialität, sondern aus dem einfachen Wunsch, etwas besser zu machen.
-
-> *— lucy_wolf*

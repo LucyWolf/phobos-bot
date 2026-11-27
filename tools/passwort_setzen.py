@@ -10,8 +10,8 @@ hat, kann die Datenbank ohnehin lesen und schreiben.
 Aufruf (im Container, in dem auch der Bot laeuft):
 
     docker exec -it phobos python3 /w/tools/passwort_setzen.py --liste
-    docker exec -it phobos python3 /w/tools/passwort_setzen.py --benutzer lucy
-    docker exec -it phobos python3 /w/tools/passwort_setzen.py --benutzer lucy --2fa-aus
+    docker exec -it phobos python3 /w/tools/passwort_setzen.py --benutzer admin
+    docker exec -it phobos python3 /w/tools/passwort_setzen.py --benutzer admin --2fa-aus
 
 Das Passwort wird abgefragt, nicht als Argument uebergeben - sonst stuende es in der
 Shell-Geschichte und in der Prozessliste.
