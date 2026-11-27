@@ -2533,6 +2533,21 @@ Bot und Web-Dashboard laufen im **selben asyncio-Prozess** — kein separater We
 
 ---
 
+## License / Lizenz
+
+**EN —** The code is under the **MIT License** (see [LICENSE](LICENSE)): use it, change it,
+self-host it, fork it, even sell it — just keep the copyright notice. One request, not a legal
+one: "Phobos" is the name of *this* project, so please run a fork under your **own name**, or
+mark it clearly as a **mod / fork of Phobos**, so nobody confuses it with the original.
+
+**DE —** Der Code steht unter der **MIT-Lizenz** (siehe [LICENSE](LICENSE)): nutzen, ändern,
+selbst hosten, forken, sogar verkaufen — nur der Copyright-Hinweis muss drinbleiben. Eine
+Bitte, kein Rechtssatz: „Phobos" ist der Name *dieses* Projekts; betreib einen Fork bitte unter
+**eigenem Namen**, oder kennzeichne ihn klar als **Mod / Fork von Phobos**, damit ihn niemand
+mit dem Original verwechselt.
+
+---
+
 ## Eine Anmerkung zu diesem Projekt
 
 Dieser Code wurde von Claude AI erschaffen – und ich weiß, viele rümpfen bei diesen Worten die Nase. Trotzdem steht dieser Bot für einen einfachen Gedanken: für alle da zu sein, ohne Ausnahme. Eine KI ist kein Wundermittel, das jedes Problem von selbst löst – sie ist ein Werkzeug, das seine Kraft erst durch die Hände entfaltet, die es führen. Und weil dahinter keine bezahlte Arbeit steckt, sondern nur die Zeit, die ich gerne investiert habe, wird dieser Bot niemals etwas kosten. Alle Dateien liegen offen, für jeden frei zugänglich, frei verwendbar.
